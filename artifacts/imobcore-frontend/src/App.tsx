@@ -674,36 +674,69 @@ export default function App() {
             {/* ════ STEP 0: Boas-vindas ════ */}
             {obStep === 0 && (
               <div style={{ animation: "fadeIn .25s ease" }}>
-                <div style={{ textAlign: "center", padding: "8px 0 24px" }}>
-                  <div style={{ fontSize: 52, marginBottom: 12 }}>🏢</div>
-                  <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, background: "linear-gradient(135deg,#6366F1,#38BDF8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                    Bem-vindo ao ImobCore v2
+
+                {/* Logo + título */}
+                <div style={{ textAlign: "center", padding: "4px 0 28px" }}>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: 16,
+                    background: "rgba(99,102,241,.1)", border: "1px solid rgba(99,102,241,.2)", borderRadius: 16, padding: "10px 20px" }}>
+                    <span style={{ fontSize: 28 }}>🏢</span>
+                    <div style={{ textAlign: "left" }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, background: "linear-gradient(135deg,#A5B4FC,#38BDF8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", lineHeight: 1.1 }}>ImobCore</div>
+                      <div style={{ fontSize: 10, color: "#6366F1", fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase" }}>v2 · SaaS</div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 14, color: "#94A3B8", maxWidth: 380, margin: "0 auto 24px" }}>
-                    Configure seu condomínio em 7 passos e ative o sistema completo de gestão inteligente.
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#F1F5F9", marginBottom: 8, lineHeight: 1.2 }}>
+                    Configure seu condomínio<br />
+                    <span style={{ background: "linear-gradient(135deg,#6366F1,#38BDF8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>em 7 passos</span>
+                  </div>
+                  <div style={{ fontSize: 13, color: "#64748B", maxWidth: 340, margin: "0 auto" }}>
+                    Ative o sistema completo de gestão inteligente para o seu condomínio.
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
-                  {[
-                    ["🤖", "Síndico Virtual IA", "Claude AI integrado"],
-                    ["💧", "IoT Água", "Sensores em tempo real"],
-                    ["🔧", "Ordens de Serviço", "CRUD + SSE ao vivo"],
-                    ["💰", "Financeiro", "Receitas e despesas"],
-                    ["🚨", "MISP", "Alertas de segurança"],
-                    ["📢", "Comunicados", "Geração automática"],
-                  ].map(([ic, n, d]) => (
-                    <div key={n} style={{ background: "rgba(99,102,241,.07)", border: "1px solid rgba(99,102,241,.12)", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
-                      <div style={{ fontSize: 22, marginBottom: 4 }}>{ic}</div>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: "#C4B5FD" }}>{n}</div>
-                      <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>{d}</div>
+
+                {/* 4 benefícios principais */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
+                  {([
+                    { ic: "🤖", cor: "#6366F1", bg: "rgba(99,102,241,.1)", bd: "rgba(99,102,241,.2)", titulo: "Síndico Virtual IA", desc: "Claude AI com contexto do condomínio — análises, comunicados e alertas automáticos" },
+                    { ic: "💧", cor: "#38BDF8", bg: "rgba(56,189,248,.08)", bd: "rgba(56,189,248,.15)", titulo: "IoT Água", desc: "5 sensores de nível monitorados em tempo real com alertas de criticidade" },
+                    { ic: "📱", cor: "#10B981", bg: "rgba(16,185,129,.08)", bd: "rgba(16,185,129,.15)", titulo: "App Morador", desc: "Reservas, visitantes, boletos e comunicados na palma da mão" },
+                    { ic: "⚡", cor: "#F59E0B", bg: "rgba(245,158,11,.08)", bd: "rgba(245,158,11,.15)", titulo: "SSE Realtime", desc: "Notificações push instantâneas via Server-Sent Events sem polling" },
+                  ] as const).map(({ ic, cor, bg, bd, titulo, desc }) => (
+                    <div key={titulo} style={{ background: bg, border: `1px solid ${bd}`, borderRadius: 14, padding: "16px 14px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+                      <div style={{ fontSize: 26, flexShrink: 0, marginTop: 1 }}>{ic}</div>
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: cor, marginBottom: 4 }}>{titulo}</div>
+                        <div style={{ fontSize: 11, color: "#64748B", lineHeight: 1.4 }}>{desc}</div>
+                      </div>
                     </div>
                   ))}
                 </div>
-                {obIsReset && (
-                  <div style={{ padding: 12, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10, marginBottom: 8 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#F87171" }}>⚠️ Modo Reconfiguração ativo</div>
-                    <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>Todos os dados existentes serão apagados ao finalizar.</div>
+
+                {/* CTA — varia se já existe condomínio */}
+                {hasCondo ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ fontSize: 12, color: "#64748B", textAlign: "center", marginBottom: 2 }}>
+                      ✅ Condomínio já configurado — o que deseja fazer?
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <button className="btn-ob-next" style={{ padding: "14px 10px", fontSize: 14, borderRadius: 12 }} onClick={() => setObStep(1)}>
+                        ▶ Continuar configuração
+                      </button>
+                      <button onClick={() => { setObIsReset(true); setObStep(1); }}
+                        style={{ padding: "14px 10px", fontSize: 14, borderRadius: 12, border: "1px solid rgba(239,68,68,.3)", background: "rgba(239,68,68,.08)", color: "#F87171", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .15s" }}>
+                        🔄 Reconfigurar
+                      </button>
+                    </div>
+                    {obIsReset && (
+                      <div style={{ padding: "10px 14px", background: "rgba(239,68,68,.07)", border: "1px solid rgba(239,68,68,.18)", borderRadius: 10, fontSize: 12, color: "#F87171" }}>
+                        ⚠️ Modo Reconfiguração ativo — todos os dados serão apagados ao finalizar.
+                      </div>
+                    )}
                   </div>
+                ) : (
+                  <button className="btn-ativar" style={{ fontSize: 16, padding: "16px" }} onClick={() => setObStep(1)}>
+                    <span>🚀</span> Começar agora
+                  </button>
                 )}
               </div>
             )}
@@ -922,15 +955,19 @@ export default function App() {
 
           {/* ── Footer (navegação) ── */}
           <div className="ob-footer">
-            <button className="btn-ob-back" onClick={() => {
-              if (obStep === 0) { if (hasCondo) setView("gestor"); }
-              else obPrevStep();
-            }}>
-              {obStep === 0 ? (hasCondo ? "✕ Cancelar" : "") : "← Voltar"}
-            </button>
+            {/* Back / Cancel */}
+            {obStep === 0 ? (
+              hasCondo
+                ? <button className="btn-ob-back" onClick={() => setView("gestor")}>✕ Voltar ao painel</button>
+                : <span />
+            ) : (
+              <button className="btn-ob-back" onClick={obPrevStep}>← Voltar</button>
+            )}
+
+            {/* Counter + Próximo (hidden on step 0 — CTAs are inline) */}
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <span style={{ fontSize: 12, color: "#334155" }}>{obStep + 1} / {OB_STEPS.length}</span>
-              {obStep < OB_STEPS.length - 1 && (
+              {obStep > 0 && obStep < OB_STEPS.length - 1 && (
                 <button className="btn-ob-next" onClick={obNextStep}>Próximo →</button>
               )}
             </div>
