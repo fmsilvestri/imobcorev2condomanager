@@ -388,6 +388,18 @@ export default function App() {
   const [mantAiResult, setMantAiResult] = useState<string>("");
   const [mantMapHover, setMantMapHover] = useState<string|null>(null);
   const [mantPlanMonth, setMantPlanMonth] = useState(5); // index in MANUT_SCHEDULE (current=Mar/26)
+  // ── CRM state ──────────────────────────────────────────────────────────────
+  const [crmTab, setCrmTab] = useState<"moradores"|"inquilinos">("moradores");
+  const [crmSearch, setCrmSearch] = useState("");
+  const [crmNovoModal, setCrmNovoModal] = useState(false);
+  const [crmPerfilId, setCrmPerfilId] = useState<string|null>(null);
+  const [crmNovoForm, setCrmNovoForm] = useState({ nome:"", bloco:"", apto:"", email:"", telefone:"", veiculo:"", segmentos:[] as string[], pet:false, homeOffice:false });
+  const [crmMoradores, setCrmMoradores] = useState([
+    { id:"cm1", nome:"Dircilene Lunardi",         bloco:"",  apto:"102", email:"",                        telefone:"(48)99100-1234", veiculo:"",       segmentos:["outro"],                    score:72, status:"ativo",  pet:false, homeOffice:false, pendencias:0, interesses:["Delivery","Farmácia"] },
+    { id:"cm2", nome:"Fabio Mantese Silvestri",   bloco:"A", apto:"",    email:"fmsilvestri39@gmail.com", telefone:"(48)98800-5599", veiculo:"próprio", segmentos:["proprietario","airbnb"],    score:85, status:"ativo",  pet:true,  homeOffice:false, pendencias:0, interesses:["Internet","Academia"] },
+    { id:"cm3", nome:"Jardim Franta",             bloco:"A", apto:"",    email:"fmsilvestri39@gmail.com", telefone:"(48)97700-3311", veiculo:"",       segmentos:["outro"],                    score:68, status:"ativo",  pet:false, homeOffice:true,  pendencias:0, interesses:["Esportes/Lazer"] },
+  ]);
+  const [crmInquilinos] = useState<typeof crmMoradores>([]);
   // ── Gás state ──────────────────────────────────────────────────────────────
   const [gasNovaLeitModal, setGasNovaLeitModal] = useState(false);
   const [gasNovaLeitForm, setGasNovaLeitForm] = useState({ nivel:"", obs:"" });
@@ -2757,6 +2769,9 @@ export default function App() {
           <div className={`sb-item ${panel === "misp" ? "active" : ""}`} onClick={() => setPanel("misp")}>
             <span className="sb-icon">🚨</span> MISP<span className="sb-badge">{t?.alertas_ativos || 0}</span>
           </div>
+          <div className={`sb-item ${panel === "crm" ? "active" : ""}`} onClick={() => setPanel("crm")}>
+            <span className="sb-icon">👥</span> CRM Inteligente
+          </div>
           <div className={`sb-item ${panel === "manutencao" ? "active" : ""}`} onClick={() => setPanel("manutencao")}>
             <span className="sb-icon">🏗️</span> Manutenção
             <span className="sb-badge" style={{ background: EQUIP_DEMO.filter(e=>e.status==="manutencao"||e.status==="atencao").length>0?"#EF4444":"#1e293b" }}>{EQUIP_DEMO.filter(e=>e.status==="manutencao"||e.status==="atencao").length}</span>
@@ -4357,6 +4372,326 @@ export default function App() {
                       {!mantAiResult && !mantAiLoading && (
                         <div style={{ fontSize:12, color:"#334155" }}>Clique em "Analisar com IA" para receber um diagnóstico completo dos equipamentos com recomendações do Síndico Virtual.</div>
                       )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* PANEL: CRM INTELIGENTE */}
+          {panel === "crm" && (() => {
+            const lista = crmTab === "moradores" ? crmMoradores : crmInquilinos;
+            const filtered = lista.filter(m =>
+              !crmSearch || m.nome.toLowerCase().includes(crmSearch.toLowerCase()) ||
+              m.email.toLowerCase().includes(crmSearch.toLowerCase()) ||
+              m.bloco.toLowerCase().includes(crmSearch.toLowerCase()) ||
+              m.apto.toLowerCase().includes(crmSearch.toLowerCase())
+            );
+
+            // ── Segment counts ─────────────────────────────────────────
+            const segCounts: Record<string, number> = {};
+            crmMoradores.forEach(m => m.segmentos.forEach(s => { segCounts[s] = (segCounts[s]||0)+1; }));
+            const SEG_LABEL: Record<string,string> = { proprietario:"Proprietário", airbnb:"AIRBNB", outro:"Outro", inquilino:"Inquilino" };
+            const SEG_COLOR: Record<string,string> = { proprietario:"#10B981", airbnb:"#EF4444", outro:"#6B7280", inquilino:"#6366F1" };
+
+            const pieSeg = Object.entries(segCounts).map(([k,v])=>({ name: SEG_LABEL[k]||k, value:v, color: SEG_COLOR[k]||"#475569" }));
+
+            // ── KPIs ───────────────────────────────────────────────────
+            const petCount      = crmMoradores.filter(m=>m.pet).length;
+            const hoCount       = crmMoradores.filter(m=>m.homeOffice).length;
+            const scoreMedio    = crmMoradores.length ? (crmMoradores.reduce((s,m)=>s+m.score,0)/crmMoradores.length).toFixed(1) : "0.0";
+            const pendTotal     = crmMoradores.reduce((s,m)=>s+m.pendencias,0);
+
+            // ── ImobSpace interest counts ──────────────────────────────
+            const INTERESTS = ["Esportes/Lazer","Saúde","Delivery","Estudos","Academia","Internet","Farmácia"];
+            const INTEREST_ICONS: Record<string,string> = { "Esportes/Lazer":"🏃","Saúde":"❤️","Delivery":"🛵","Estudos":"📚","Academia":"💪","Internet":"🌐","Farmácia":"💊" };
+            const intCounts: Record<string,number> = {};
+            INTERESTS.forEach(i => {
+              intCounts[i] = crmMoradores.reduce((s,m) => s + (m.interesses.includes(i)?1:0), 0);
+            });
+
+            // ── Selected morador for profile ───────────────────────────
+            const perfilMorador = crmMoradores.find(m=>m.id===crmPerfilId);
+
+            const segPill = (seg: string) => (
+              <span key={seg} style={{
+                background: `${SEG_COLOR[seg]||"#6B7280"}22`,
+                color: SEG_COLOR[seg]||"#6B7280",
+                border:`1px solid ${SEG_COLOR[seg]||"#6B7280"}44`,
+                borderRadius:5, padding:"2px 8px", fontSize:10, fontWeight:700,
+              }}>{SEG_LABEL[seg]||seg}</span>
+            );
+
+            const saveNovoMorador = () => {
+              if (!crmNovoForm.nome.trim()) return;
+              setCrmMoradores(prev=>[...prev,{
+                id:`cm${Date.now()}`, nome:crmNovoForm.nome, bloco:crmNovoForm.bloco, apto:crmNovoForm.apto,
+                email:crmNovoForm.email, telefone:crmNovoForm.telefone, veiculo:crmNovoForm.veiculo,
+                segmentos:crmNovoForm.segmentos.length?crmNovoForm.segmentos:["outro"],
+                score:70, status:"ativo", pet:crmNovoForm.pet, homeOffice:crmNovoForm.homeOffice,
+                pendencias:0, interesses:[],
+              }]);
+              setCrmNovoForm({nome:"",bloco:"",apto:"",email:"",telefone:"",veiculo:"",segmentos:[],pet:false,homeOffice:false});
+              setCrmNovoModal(false);
+            };
+
+            const toggleSeg = (seg: string) => {
+              setCrmNovoForm(f=>({ ...f, segmentos: f.segmentos.includes(seg) ? f.segmentos.filter(s=>s!==seg) : [...f.segmentos, seg] }));
+            };
+
+            return (
+              <div style={{ padding:20 }}>
+                {/* ── Header ── */}
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+                  <div>
+                    <div style={{ fontSize:22, fontWeight:800, marginBottom:2 }}>👥 CRM Inteligente</div>
+                    <div style={{ fontSize:12, color:"#475569" }}>Gerencie e analise o perfil comportamental dos moradores e inquilinos</div>
+                  </div>
+                  <button onClick={()=>setCrmNovoModal(true)} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"9px 18px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                    + Novo Morador
+                  </button>
+                </div>
+
+                {/* ── Main tabs ── */}
+                <div style={{ display:"flex", gap:8, marginBottom:20 }}>
+                  {([["moradores","👥",`Moradores (${crmMoradores.length})`,"#10B981"],["inquilinos","🏠",`Inquilinos Temporários (${crmInquilinos.length})`,"#6366F1"]] as [typeof crmTab,string,string,string][]).map(([id,icon,label,col])=>(
+                    <button key={id} onClick={()=>setCrmTab(id)} style={{
+                      background: crmTab===id ? col : "rgba(255,255,255,.04)",
+                      border: crmTab===id ? "none" : "1px solid rgba(255,255,255,.1)",
+                      borderRadius:8, padding:"7px 18px", color:crmTab===id?"#fff":"#64748B",
+                      fontSize:12, fontWeight:crmTab===id?700:400, cursor:"pointer", display:"flex", alignItems:"center", gap:6,
+                    }}>{icon} {label}</button>
+                  ))}
+                </div>
+
+                {/* ── KPI Cards ── */}
+                <div style={{ display:"flex", gap:8, marginBottom:20 }}>
+                  {[
+                    { label:"Total Moradores",  val:crmMoradores.length,  sub:`${crmMoradores.filter(m=>m.status==="ativo").length} ativos`,          icon:"👤", bg:"#3B82F6" },
+                    { label:"Pet Owners",        val:petCount,              sub:"moradores com pet",                                                    icon:"🐾", bg:"#10B981" },
+                    { label:"Home Office",       val:hoCount,               sub:"trabalham de casa",                                                    icon:"🏠", bg:"#8B5CF6" },
+                    { label:"Score Médio",       val:scoreMedio,            sub:"pontuação geral",                                                      icon:"⭐", bg:"#F59E0B" },
+                    { label:"Em Branco",         val:pendTotal,             sub:"pendências abertas",                                                   icon:"⚠️", bg:"#EF4444" },
+                  ].map(k=>(
+                    <div key={k.label} style={{ flex:1, background:`linear-gradient(135deg, ${k.bg}cc, ${k.bg}88)`, borderRadius:12, padding:"16px 18px", position:"relative", overflow:"hidden" }}>
+                      <div style={{ position:"absolute", right:12, top:12, fontSize:28, opacity:0.25 }}>{k.icon}</div>
+                      <div style={{ fontSize:10, color:"rgba(255,255,255,.7)", marginBottom:6 }}>{k.label}</div>
+                      <div style={{ fontSize:26, fontWeight:900, color:"#fff" }}>{k.val}</div>
+                      <div style={{ fontSize:10, color:"rgba(255,255,255,.6)", marginTop:3 }}>{k.sub}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Charts row ── */}
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:20 }}>
+                  {/* Donut */}
+                  <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px 20px" }}>
+                    <div style={{ fontSize:12, fontWeight:700, marginBottom:12, display:"flex", alignItems:"center", gap:6 }}>📊 Distribuição por Segmentos</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                      <PieChart width={200} height={160}>
+                        <Pie data={pieSeg} cx={95} cy={75} innerRadius={45} outerRadius={75} dataKey="value" paddingAngle={3}>
+                          {pieSeg.map((entry,i)=><Cell key={i} fill={entry.color}/>)}
+                        </Pie>
+                        <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} formatter={(v:number,n:string)=>[`${v} morador${v!==1?"es":""}`,n]}/>
+                      </PieChart>
+                      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                        {pieSeg.map(s=>(
+                          <div key={s.name} style={{ display:"flex", alignItems:"center", gap:6, fontSize:11 }}>
+                            <div style={{ width:10, height:10, borderRadius:2, background:s.color, flexShrink:0 }}/>
+                            <span style={{ color:"#94A3B8" }}>{s.name}</span>
+                            <span style={{ color:"#fff", fontWeight:700 }}>{s.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Segmentos ativos */}
+                  <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px 20px" }}>
+                    <div style={{ fontSize:12, fontWeight:700, marginBottom:14 }}>Segmentos Ativos</div>
+                    {Object.entries(segCounts).sort((a,b)=>b[1]-a[1]).map(([seg,count])=>(
+                      <div key={seg} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                        <span style={{ background:`${SEG_COLOR[seg]||"#475569"}20`, color:SEG_COLOR[seg]||"#475569", border:`1px solid ${SEG_COLOR[seg]||"#475569"}40`, borderRadius:5, padding:"2px 10px", fontSize:11, fontWeight:700 }}>
+                          {SEG_LABEL[seg]||seg}
+                        </span>
+                        <span style={{ fontSize:12, color:"#94A3B8" }}>{count} morador{count!==1?"es":""}</span>
+                      </div>
+                    ))}
+                    {Object.keys(segCounts).length === 0 && <div style={{ fontSize:12, color:"#475569", textAlign:"center", padding:20 }}>Nenhum segmento cadastrado</div>}
+                  </div>
+                </div>
+
+                {/* ── ImobSpace Interesses ── */}
+                <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px 20px", marginBottom:20 }}>
+                  <div style={{ fontSize:12, fontWeight:700, marginBottom:14, display:"flex", alignItems:"center", gap:6 }}>🏠 Resumo ImobSpace – Interesses dos Moradores</div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    {INTERESTS.map(int=>(
+                      <div key={int} style={{ flex:1, minWidth:90, textAlign:"center", padding:"14px 10px", background:"rgba(255,255,255,.03)", borderRadius:10, border:"1px solid rgba(255,255,255,.06)" }}>
+                        <div style={{ fontSize:22, marginBottom:6 }}>{INTEREST_ICONS[int]||"•"}</div>
+                        <div style={{ fontSize:20, fontWeight:800, color: intCounts[int]>0?"#6366F1":"#334155" }}>{intCounts[int]}</div>
+                        <div style={{ fontSize:10, color:"#475569", marginTop:3 }}>{int}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ── Moradores table ── */}
+                <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, overflow:"hidden" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 18px", borderBottom:"1px solid rgba(255,255,255,.06)" }}>
+                    <div style={{ fontSize:13, fontWeight:700 }}>Moradores Cadastrados</div>
+                    <input value={crmSearch} onChange={e=>setCrmSearch(e.target.value)} placeholder="🔍 Buscar morador..." style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"6px 12px", color:"#fff", fontSize:12, width:200, outline:"none" }}/>
+                  </div>
+
+                  {/* Table header */}
+                  <div style={{ display:"grid", gridTemplateColumns:"2fr 100px 1.5fr 110px 1.5fr 80px auto", gap:0, padding:"8px 18px", background:"rgba(255,255,255,.02)", fontSize:10, color:"#475569", fontWeight:600, letterSpacing:.5 }}>
+                    <span>NOME</span><span>BLOCO/APTO</span><span>EMAIL</span><span>VEÍCULO</span><span>INTERESSES</span><span>STATUS</span><span></span>
+                  </div>
+
+                  {filtered.length===0 && (
+                    <div style={{ padding:"24px", textAlign:"center", color:"#475569", fontSize:13 }}>
+                      {crmSearch ? "Nenhum morador encontrado." : "Nenhum cadastro ainda."}
+                    </div>
+                  )}
+
+                  {filtered.map((m,i)=>(
+                    <div key={m.id} style={{ display:"grid", gridTemplateColumns:"2fr 100px 1.5fr 110px 1.5fr 80px auto", gap:0, padding:"12px 18px", borderTop:"1px solid rgba(255,255,255,.04)", alignItems:"center", fontSize:12 }}>
+                      <div style={{ fontWeight:600 }}>{m.nome}</div>
+                      <div style={{ color:"#94A3B8" }}>{[m.bloco,m.apto].filter(Boolean).join(" ") || "—"}</div>
+                      <div style={{ color:"#475569", fontSize:11 }}>{m.email||"—"}</div>
+                      <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                        {m.veiculo ? <span style={{ color:"#94A3B8", fontSize:11 }}>{m.veiculo}</span> : <span style={{ color:"#334155" }}>N/A</span>}
+                        {m.segmentos.map(s=>segPill(s))}
+                      </div>
+                      <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                        {m.interesses.length>0
+                          ? m.interesses.slice(0,2).map(int=><span key={int} style={{ background:"rgba(99,102,241,.15)", color:"#A5B4FC", border:"1px solid rgba(99,102,241,.3)", borderRadius:5, padding:"2px 7px", fontSize:10 }}>{int}</span>)
+                          : <span style={{ color:"#334155", fontSize:11 }}>—</span>}
+                      </div>
+                      <div>
+                        <span style={{ background:m.status==="ativo"?"rgba(16,185,129,.15)":"rgba(239,68,68,.15)", color:m.status==="ativo"?"#10B981":"#EF4444", border:`1px solid ${m.status==="ativo"?"#10B98144":"#EF444444"}`, borderRadius:6, padding:"3px 9px", fontSize:10, fontWeight:700 }}>
+                          {m.status==="ativo"?"Ativo":"Inativo"}
+                        </span>
+                      </div>
+                      <div style={{ display:"flex", gap:5 }}>
+                        <button onClick={()=>setCrmPerfilId(m.id)} style={{ background:"#3B82F6", border:"none", borderRadius:6, padding:"5px 10px", color:"#fff", fontSize:10, cursor:"pointer", fontWeight:600, whiteSpace:"nowrap" }}>Ver Perfil</button>
+                        <button style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:6, width:28, height:28, color:"#94A3B8", fontSize:12, cursor:"pointer" }}>✏️</button>
+                        <button onClick={()=>setCrmMoradores(prev=>prev.filter(x=>x.id!==m.id))} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:6, width:28, height:28, color:"#EF4444", fontSize:12, cursor:"pointer" }}>🗑️</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Novo Morador Modal ── */}
+                {crmNovoModal && (
+                  <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setCrmNovoModal(false)}>
+                    <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:14, padding:28, width:520, maxHeight:"85vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
+                      <div style={{ fontSize:16, fontWeight:700, marginBottom:20 }}>👤 Novo Morador</div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                        {[["Nome completo*","text","nome","Ex: João Silva"],["Email","email","email","email@exemplo.com"],["Telefone","text","telefone","(48)99999-9999"],["Veículo","text","veiculo","Ex: Carro próprio"]].map(([label,type,field,ph])=>(
+                          <div key={field}>
+                            <div style={{ fontSize:11, color:"#475569", marginBottom:4 }}>{label}</div>
+                            <input type={type} value={(crmNovoForm as any)[field]} onChange={e=>setCrmNovoForm(f=>({...f,[field]:e.target.value}))} placeholder={ph} style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" }}/>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                        {[["Bloco","text","bloco","Ex: A"],["Apto / Número","text","apto","Ex: 102"]].map(([label,type,field,ph])=>(
+                          <div key={field}>
+                            <div style={{ fontSize:11, color:"#475569", marginBottom:4 }}>{label}</div>
+                            <input type={type} value={(crmNovoForm as any)[field]} onChange={e=>setCrmNovoForm(f=>({...f,[field]:e.target.value}))} placeholder={ph} style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" }}/>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginBottom:14 }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:8 }}>Segmentos</div>
+                        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                          {Object.entries(SEG_LABEL).map(([seg,label])=>(
+                            <button key={seg} onClick={()=>toggleSeg(seg)} style={{ background:crmNovoForm.segmentos.includes(seg)?`${SEG_COLOR[seg]}33`:"rgba(255,255,255,.04)", border:`1px solid ${crmNovoForm.segmentos.includes(seg)?SEG_COLOR[seg]:"rgba(255,255,255,.1)"}`, borderRadius:6, padding:"5px 12px", color:crmNovoForm.segmentos.includes(seg)?SEG_COLOR[seg]:"#64748B", fontSize:11, cursor:"pointer", fontWeight:crmNovoForm.segmentos.includes(seg)?700:400 }}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ display:"flex", gap:16, marginBottom:18 }}>
+                        {[["pet","🐾 Tem pet",crmNovoForm.pet],["homeOffice","🏠 Home Office",crmNovoForm.homeOffice]].map(([field,label,val])=>(
+                          <label key={field as string} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:12, color:"#94A3B8" }}>
+                            <input type="checkbox" checked={val as boolean} onChange={e=>setCrmNovoForm(f=>({...f,[field as string]:e.target.checked}))} style={{ accentColor:"#3B82F6" }}/>
+                            {label as string}
+                          </label>
+                        ))}
+                      </div>
+                      <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+                        <button onClick={()=>setCrmNovoModal(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 16px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                        <button onClick={saveNovoMorador} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 22px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>Salvar Morador</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Ver Perfil Modal ── */}
+                {perfilMorador && (
+                  <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setCrmPerfilId(null)}>
+                    <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:14, padding:28, width:500, maxHeight:"85vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
+                      {/* Avatar + name */}
+                      <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
+                        <div style={{ width:60, height:60, borderRadius:"50%", background:"linear-gradient(135deg,#6366F1,#3B82F6)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:24, fontWeight:800, color:"#fff" }}>
+                          {perfilMorador.nome.charAt(0)}
+                        </div>
+                        <div>
+                          <div style={{ fontSize:18, fontWeight:800 }}>{perfilMorador.nome}</div>
+                          <div style={{ display:"flex", gap:5, marginTop:4 }}>
+                            {perfilMorador.segmentos.map(s=>segPill(s))}
+                            <span style={{ background:"rgba(16,185,129,.15)", color:"#10B981", border:"1px solid rgba(16,185,129,.3)", borderRadius:5, padding:"2px 8px", fontSize:10, fontWeight:700 }}>
+                              {perfilMorador.status==="ativo"?"Ativo":"Inativo"}
+                            </span>
+                          </div>
+                        </div>
+                        {/* Score circle */}
+                        <div style={{ marginLeft:"auto", textAlign:"center" }}>
+                          <svg width={64} height={64} viewBox="0 0 64 64">
+                            <circle cx={32} cy={32} r={26} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth={6}/>
+                            <circle cx={32} cy={32} r={26} fill="none" stroke={perfilMorador.score>=80?"#10B981":perfilMorador.score>=60?"#F59E0B":"#EF4444"} strokeWidth={6} strokeDasharray={`${perfilMorador.score/100*163.4} 163.4`} strokeLinecap="round" transform="rotate(-90 32 32)"/>
+                            <text x={32} y={36} textAnchor="middle" fill="#fff" fontSize={14} fontWeight={800}>{perfilMorador.score}</text>
+                          </svg>
+                          <div style={{ fontSize:9, color:"#475569" }}>Score</div>
+                        </div>
+                      </div>
+
+                      {/* Details grid */}
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:16 }}>
+                        {[
+                          ["📍 Bloco/Apto", [perfilMorador.bloco,perfilMorador.apto].filter(Boolean).join(" ")||"—"],
+                          ["📧 Email", perfilMorador.email||"—"],
+                          ["📞 Telefone", perfilMorador.telefone||"—"],
+                          ["🚗 Veículo", perfilMorador.veiculo||"—"],
+                          ["🐾 Pet", perfilMorador.pet?"Sim":"Não"],
+                          ["💻 Home Office", perfilMorador.homeOffice?"Sim":"Não"],
+                        ].map(([l,v])=>(
+                          <div key={l} style={{ background:"rgba(255,255,255,.03)", borderRadius:8, padding:"10px 14px" }}>
+                            <div style={{ fontSize:10, color:"#475569", marginBottom:2 }}>{l}</div>
+                            <div style={{ fontSize:13, fontWeight:600 }}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Interesses */}
+                      {perfilMorador.interesses.length>0 && (
+                        <div style={{ marginBottom:16 }}>
+                          <div style={{ fontSize:11, color:"#475569", marginBottom:8 }}>Interesses ImobSpace</div>
+                          <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                            {perfilMorador.interesses.map(int=>(
+                              <span key={int} style={{ background:"rgba(99,102,241,.15)", color:"#A5B4FC", border:"1px solid rgba(99,102,241,.3)", borderRadius:6, padding:"3px 10px", fontSize:11 }}>
+                                {INTEREST_ICONS[int]||""} {int}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ display:"flex", justifyContent:"flex-end" }}>
+                        <button onClick={()=>setCrmPerfilId(null)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 18px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Fechar</button>
+                      </div>
                     </div>
                   </div>
                 )}
