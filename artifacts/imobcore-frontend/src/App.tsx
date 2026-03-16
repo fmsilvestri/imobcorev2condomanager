@@ -9,7 +9,8 @@ interface Despesa { id: string; descricao: string; valor: number; categoria: str
 interface Comunicado { id: string; titulo: string; corpo: string; gerado_por_ia: boolean; created_at: string }
 interface ChatMsg { role: "user" | "ai"; content: string; time: string }
 interface DashTotais { os_abertas: number; os_urgentes: number; saldo: number; total_receitas: number; total_despesas: number; alertas_ativos: number; nivel_medio_agua: number }
-interface Dashboard { ordens_servico: OrdemServico[]; sensores: Sensor[]; alertas_publicos: Alerta[]; receitas: Receita[]; despesas: Despesa[]; comunicados: Comunicado[]; totais: DashTotais }
+interface CondominioInfo { id: string; nome: string; cidade: string; unidades: number; moradores: number; sindico_nome: string }
+interface Dashboard { ordens_servico: OrdemServico[]; sensores: Sensor[]; alertas_publicos: Alerta[]; receitas: Receita[]; despesas: Despesa[]; comunicados: Comunicado[]; totais: DashTotais; condominios: CondominioInfo[] }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 const fmtBRL = (v: number) => "R$" + Math.round(v).toLocaleString("pt-BR");
@@ -244,16 +245,18 @@ textarea.fc:focus{outline:none;border-color:rgba(99,102,241,.5)}
 .ob-hero-logo{font-size:48px;margin-bottom:12px;position:relative}
 .ob-hero-title{font-size:26px;font-weight:800;color:#fff;margin-bottom:6px;position:relative}
 .ob-hero-sub{font-size:14px;color:rgba(255,255,255,.75);position:relative}
-.ob-steps{display:flex;align-items:center;justify-content:center;gap:0;padding:20px 40px;border-bottom:1px solid var(--card-border)}
-.ob-step{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569;font-weight:500}
-.ob-step.active{color:#A5B4FC}
-.ob-step.done{color:#10B981}
-.ob-step-num{width:24px;height:24px;border-radius:50%;border:1px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
-.ob-step.active .ob-step-num{background:rgba(99,102,241,.2);border-color:var(--indigo)}
-.ob-step.done .ob-step-num{background:rgba(16,185,129,.2);border-color:var(--green)}
-.ob-sep{width:24px;height:1px;background:var(--card-border);flex-shrink:0;margin:0 4px}
-.ob-body{padding:32px 40px}
-.ob-footer{padding:20px 40px;border-top:1px solid var(--card-border);display:flex;align-items:center;justify-content:space-between}
+.ob-stepper{display:flex;align-items:flex-start;justify-content:center;padding:18px 20px 14px;border-bottom:1px solid var(--card-border);overflow-x:auto;gap:0}
+.ob-stepper-item{display:flex;flex-direction:column;align-items:center;position:relative;flex:1;min-width:48px}
+.ob-stepper-dot{width:30px;height:30px;border-radius:50%;border:2px solid #334155;background:rgba(30,41,59,.8);color:#475569;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;flex-shrink:0;position:relative;z-index:1}
+.ob-stepper-dot.active{border-color:#6366F1;background:rgba(99,102,241,.25);color:#A5B4FC;box-shadow:0 0 0 4px rgba(99,102,241,.12)}
+.ob-stepper-dot.done{border-color:#10B981;background:rgba(16,185,129,.2);color:#10B981}
+.ob-stepper-label{font-size:10px;font-weight:500;color:#334155;margin-top:5px;text-align:center;white-space:nowrap}
+.ob-stepper-label.active{color:#A5B4FC}
+.ob-stepper-label.done{color:#10B981}
+.ob-stepper-line{position:absolute;top:15px;left:calc(50% + 18px);right:calc(-50% + 18px);height:2px;background:#1E293B;z-index:0}
+.ob-stepper-line.done{background:#10B981}
+.ob-body{padding:28px 36px}
+.ob-footer{padding:18px 36px;border-top:1px solid var(--card-border);display:flex;align-items:center;justify-content:space-between}
 .btn-ob-back{padding:10px 20px;border-radius:10px;border:1px solid var(--card-border);background:transparent;color:#64748B;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:all .15s}
 .btn-ob-back:hover{background:rgba(255,255,255,.06);color:#E2E8F0}
 .btn-ob-next{padding:10px 24px;border-radius:10px;background:var(--grad);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .15s}
@@ -269,8 +272,9 @@ textarea.fc:focus{outline:none;border-color:rgba(99,102,241,.5)}
 .ob-confirm-label{font-size:13px;color:#64748B}
 .ob-confirm-val{font-size:13px;font-weight:600}
 .ob-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.2);color:#A5B4FC}
-.ob-progress{height:3px;background:var(--card-border);border-radius:2px;margin-bottom:24px;overflow:hidden}
-.ob-progress-bar{height:100%;background:var(--grad);border-radius:2px;transition:width .3s ease}
+.ob-progress{height:3px;background:var(--card-border);border-radius:2px;margin:0 36px 0;overflow:hidden}
+.ob-progress-bar{height:100%;background:var(--grad);border-radius:2px;transition:width .4s cubic-bezier(.4,0,.2,1)}
+@keyframes spin{to{transform:rotate(360deg)}}
 .topbar-sep{width:1px;height:20px;background:var(--card-border);margin:0 4px}
 .btn-reconfig{padding:5px 12px;border-radius:8px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.08);color:#F87171;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;font-family:inherit;display:flex;align-items:center;gap:5px}
 .btn-reconfig:hover{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.4)}
@@ -371,11 +375,15 @@ export default function App() {
   // Calendar
   const [calSel, setCalSel] = useState<number | null>(null);
 
-  // ── Onboarding Wizard ─────────────────────────────────────────────────────
+  // ── Onboarding Wizard (7 steps) ───────────────────────────────────────────
   const [obStep, setObStep] = useState(0);
   const [obLoading, setObLoading] = useState(false);
   const [obIsReset, setObIsReset] = useState(false);
-  const [obCondo, setObCondo] = useState({ nome: "", cidade: "", unidades: "84", moradores: "168", sindico_nome: "" });
+  // Step 1: Condomínio básico
+  const [obCondo, setObCondo] = useState({ nome: "", cidade: "", sindico_nome: "", sindico_email: "", sindico_tel: "" });
+  // Step 2: Infraestrutura
+  const [obInfra, setObInfra] = useState({ unidades: "84", moradores: "168", andares: "10", torres: "2", churrasqueira: true, salao: true, piscina: true, academia: false, playground: false, coworking: false });
+  // Step 3: Sensores IoT
   const [obSensors, setObSensors] = useState([
     { sensor_id: "sensor_cisterna", nome: "Cisterna Principal", local: "Subsolo", capacidade_litros: "20000", nivel_atual: "80" },
     { sensor_id: "sensor_torre_a", nome: "Caixa Torre A", local: "Telhado Torre A", capacidade_litros: "5000", nivel_atual: "75" },
@@ -383,7 +391,14 @@ export default function App() {
     { sensor_id: "sensor_piscina", nome: "Tanque Piscina", local: "Área da Piscina", capacidade_litros: "8000", nivel_atual: "85" },
     { sensor_id: "sensor_jardim", nome: "Reservatório Jardim", local: "Área Verde", capacidade_litros: "2000", nivel_atual: "60" },
   ]);
+  // Step 4: Financeiro
   const [obSaldo, setObSaldo] = useState("50000");
+  const [obTaxaMensal, setObTaxaMensal] = useState("648");
+  const [obVencimento, setObVencimento] = useState("10");
+  // Step 5: Alertas & MISP
+  const [obMisp, setObMisp] = useState({ bairro: "", misp_alertas: true, alert_agua_critico: true, alert_nova_os: true, alert_misp: true });
+  // Step 6: Síndico Virtual IA
+  const [obIA, setObIA] = useState({ persona: "formal", auto_com: false, greet: true, lang: "pt-BR" });
 
   // ── Toast ─────────────────────────────────────────────────────────────────
   const showToast = useCallback((msg: string, type = "info") => {
@@ -409,7 +424,8 @@ export default function App() {
         setCondId(d.condominios[0].id);
         // Pre-fill onboarding with existing condo data for reconfiguration
         const c = d.condominios[0];
-        setObCondo({ nome: c.nome || "", cidade: c.cidade || "", unidades: String(c.unidades || "84"), moradores: String(c.moradores || "168"), sindico_nome: c.sindico_nome || "" });
+        setObCondo({ nome: c.nome || "", cidade: c.cidade || "", sindico_nome: c.sindico_nome || "", sindico_email: "", sindico_tel: "" });
+        setObInfra(p => ({ ...p, unidades: String(c.unidades || "84"), moradores: String(c.moradores || "168") }));
       } else {
         // No condo configured — go to onboarding automatically
         setView("onboarding");
@@ -425,10 +441,19 @@ export default function App() {
     try {
       const payload = {
         nome: obCondo.nome, cidade: obCondo.cidade,
-        unidades: Number(obCondo.unidades), moradores: Number(obCondo.moradores),
         sindico_nome: obCondo.sindico_nome,
+        sindico_email: obCondo.sindico_email,
+        sindico_tel: obCondo.sindico_tel,
+        unidades: Number(obInfra.unidades), moradores: Number(obInfra.moradores),
+        andares: Number(obInfra.andares), torres: Number(obInfra.torres),
+        amenidades: Object.entries(obInfra).filter(([k, v]) => typeof v === "boolean" && v).map(([k]) => k),
         sensores: obSensors.map(s => ({ ...s, capacidade_litros: Number(s.capacidade_litros), nivel_atual: Number(s.nivel_atual) })),
         saldo_inicial: Number(obSaldo) || 0,
+        taxa_mensal: Number(obTaxaMensal) || 0,
+        vencimento_dia: Number(obVencimento) || 10,
+        bairro: obMisp.bairro,
+        ia_persona: obIA.persona,
+        ia_auto_com: obIA.auto_com,
         reset: obIsReset,
       };
       const r = await fetch("/api/onboarding", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -441,7 +466,7 @@ export default function App() {
       setObStep(0);
     } catch { showToast("Erro ao ativar ImobCore", "error"); }
     setObLoading(false);
-  }, [obCondo, obSensors, obSaldo, obIsReset, showToast, loadDashboard]);
+  }, [obCondo, obInfra, obSensors, obSaldo, obTaxaMensal, obVencimento, obMisp, obIA, obIsReset, showToast, loadDashboard]);
 
   // ── SSE ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -575,45 +600,119 @@ export default function App() {
   const takenDays = new Set([3, 8, 14, 20, 25]);
   const availDays = new Set([5, 6, 7, 10, 11, 12, 15, 17, 18, 19, 22, 24, 26, 27, 28]);
 
-  // ── Onboarding Wizard ─────────────────────────────────────────────────────
-  const OB_STEPS = ["Condomínio", "Sensores IoT", "Financeiro", "Ativação"];
+  // ── Onboarding Wizard (7 passos) ─────────────────────────────────────────
+  const OB_STEPS = [
+    { icon: "👋", label: "Boas-vindas" },
+    { icon: "🏢", label: "Condomínio" },
+    { icon: "🏗️", label: "Infraestrutura" },
+    { icon: "💧", label: "Sensores IoT" },
+    { icon: "💰", label: "Financeiro" },
+    { icon: "🤖", label: "Síndico IA" },
+    { icon: "🚀", label: "Ativação" },
+  ];
+
+  const obNextStep = () => {
+    if (obStep === 1 && !obCondo.nome.trim()) { showToast("Informe o nome do condomínio", "warn"); return; }
+    setObStep(s => Math.min(s + 1, OB_STEPS.length - 1));
+  };
+  const obPrevStep = () => setObStep(s => Math.max(s - 1, 0));
+
   const renderOnboarding = () => {
-    const progress = ((obStep) / (OB_STEPS.length - 1)) * 100;
+    const progress = (obStep / (OB_STEPS.length - 1)) * 100;
     const hasCondo = (dash?.condominios?.length ?? 0) > 0;
+
+    const ToggleChip = ({ label, val, set }: { label: string; val: boolean; set: (v: boolean) => void }) => (
+      <button onClick={() => set(!val)} style={{
+        padding: "5px 12px", borderRadius: 20, border: "1px solid",
+        borderColor: val ? "#6366F1" : "#334155",
+        background: val ? "rgba(99,102,241,.18)" : "rgba(30,41,59,.5)",
+        color: val ? "#A5B4FC" : "#64748B", fontSize: 12, cursor: "pointer",
+        transition: "all .15s",
+      }}>
+        {val ? "✓ " : ""}{label}
+      </button>
+    );
 
     return (
       <div className="ob-wrap" style={{ overflowY: "auto", marginTop: "var(--topbar-h)" }}>
         <div className="ob-card">
+
+          {/* ── Hero ── */}
           <div className="ob-hero">
-            <div className="ob-hero-logo">🏢</div>
+            <div className="ob-hero-logo">{OB_STEPS[obStep].icon}</div>
             <div className="ob-hero-title">
-              {obIsReset ? "Reconfigurar ImobCore" : hasCondo ? "Reconfigurar ImobCore" : "Configurar ImobCore"}
+              {obIsReset ? "Reconfigurar ImobCore" : hasCondo && obStep === 0 ? "Editar Configuração" : "Configurar ImobCore"}
             </div>
             <div className="ob-hero-sub">
-              {obIsReset ? "Dados atuais serão apagados e substituídos" : "Configure seu condomínio em minutos"}
+              {obIsReset ? "Dados atuais serão apagados e substituídos" : `Passo ${obStep + 1} de ${OB_STEPS.length} — ${OB_STEPS[obStep].label}`}
             </div>
           </div>
 
-          <div className="ob-steps">
+          {/* ── Stepper ── */}
+          <div className="ob-stepper">
             {OB_STEPS.map((s, i) => (
-              <div key={s} style={{ display: "flex", alignItems: "center" }}>
-                <div className={`ob-step ${i === obStep ? "active" : i < obStep ? "done" : ""}`}>
-                  <div className="ob-step-num">{i < obStep ? "✓" : i + 1}</div>
-                  <span style={{ display: window.innerWidth > 500 ? "inline" : "none" }}>{s}</span>
-                </div>
-                {i < OB_STEPS.length - 1 && <div className="ob-sep" />}
+              <div key={s.label} className="ob-stepper-item">
+                <button
+                  className={`ob-stepper-dot ${i === obStep ? "active" : i < obStep ? "done" : ""}`}
+                  onClick={() => { if (i < obStep || (i === obStep + 1 && (obStep !== 1 || obCondo.nome.trim()))) setObStep(i); }}
+                  title={s.label}
+                >
+                  {i < obStep ? "✓" : i + 1}
+                </button>
+                <span className={`ob-stepper-label ${i === obStep ? "active" : i < obStep ? "done" : ""}`}>{s.label}</span>
+                {i < OB_STEPS.length - 1 && <div className={`ob-stepper-line ${i < obStep ? "done" : ""}`} />}
               </div>
             ))}
           </div>
 
-          <div className="ob-body">
-            <div className="ob-progress"><div className="ob-progress-bar" style={{ width: progress + "%" }} /></div>
+          {/* ── Progress bar ── */}
+          <div className="ob-progress"><div className="ob-progress-bar" style={{ width: progress + "%" }} /></div>
 
-            {/* STEP 0: Condomínio */}
+          {/* ── Body ── */}
+          <div className="ob-body">
+
+            {/* ════ STEP 0: Boas-vindas ════ */}
             {obStep === 0 && (
-              <div style={{ animation: "fadeIn .2s ease" }}>
-                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>🏢 Dados do Condomínio</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Informações básicas do seu condomínio</div>
+              <div style={{ animation: "fadeIn .25s ease" }}>
+                <div style={{ textAlign: "center", padding: "8px 0 24px" }}>
+                  <div style={{ fontSize: 52, marginBottom: 12 }}>🏢</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, background: "linear-gradient(135deg,#6366F1,#38BDF8)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                    Bem-vindo ao ImobCore v2
+                  </div>
+                  <div style={{ fontSize: 14, color: "#94A3B8", maxWidth: 380, margin: "0 auto 24px" }}>
+                    Configure seu condomínio em 7 passos e ative o sistema completo de gestão inteligente.
+                  </div>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+                  {[
+                    ["🤖", "Síndico Virtual IA", "Claude AI integrado"],
+                    ["💧", "IoT Água", "Sensores em tempo real"],
+                    ["🔧", "Ordens de Serviço", "CRUD + SSE ao vivo"],
+                    ["💰", "Financeiro", "Receitas e despesas"],
+                    ["🚨", "MISP", "Alertas de segurança"],
+                    ["📢", "Comunicados", "Geração automática"],
+                  ].map(([ic, n, d]) => (
+                    <div key={n} style={{ background: "rgba(99,102,241,.07)", border: "1px solid rgba(99,102,241,.12)", borderRadius: 10, padding: "12px 10px", textAlign: "center" }}>
+                      <div style={{ fontSize: 22, marginBottom: 4 }}>{ic}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#C4B5FD" }}>{n}</div>
+                      <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>{d}</div>
+                    </div>
+                  ))}
+                </div>
+                {obIsReset && (
+                  <div style={{ padding: 12, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10, marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#F87171" }}>⚠️ Modo Reconfiguração ativo</div>
+                    <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>Todos os dados existentes serão apagados ao finalizar.</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ════ STEP 1: Condomínio ════ */}
+            {obStep === 1 && (
+              <div style={{ animation: "fadeIn .25s ease" }}>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🏢 Dados do Condomínio</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Informações básicas e responsável pela gestão</div>
                 <div className="form-group">
                   <label className="form-label">Nome do Condomínio *</label>
                   <input className="form-control" value={obCondo.nome} onChange={e => setObCondo(c => ({ ...c, nome: e.target.value }))} placeholder="Ex: Residencial Parque das Flores" autoFocus />
@@ -628,126 +727,215 @@ export default function App() {
                     <input className="form-control" value={obCondo.sindico_nome} onChange={e => setObCondo(c => ({ ...c, sindico_nome: e.target.value }))} placeholder="Ex: Ricardo Gestor" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Total de Unidades</label>
-                    <input className="form-control" type="number" value={obCondo.unidades} onChange={e => setObCondo(c => ({ ...c, unidades: e.target.value }))} placeholder="84" />
+                    <label className="form-label">E-mail do Síndico</label>
+                    <input className="form-control" type="email" value={obCondo.sindico_email} onChange={e => setObCondo(c => ({ ...c, sindico_email: e.target.value }))} placeholder="sindico@condo.com.br" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Total de Moradores</label>
-                    <input className="form-control" type="number" value={obCondo.moradores} onChange={e => setObCondo(c => ({ ...c, moradores: e.target.value }))} placeholder="168" />
+                    <label className="form-label">Telefone / WhatsApp</label>
+                    <input className="form-control" value={obCondo.sindico_tel} onChange={e => setObCondo(c => ({ ...c, sindico_tel: e.target.value }))} placeholder="(48) 99999-0000" />
                   </div>
                 </div>
               </div>
             )}
 
-            {/* STEP 1: Sensores IoT */}
-            {obStep === 1 && (
-              <div style={{ animation: "fadeIn .2s ease" }}>
-                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>💧 Sensores IoT de Água</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>Configure os 5 sensores do sistema</div>
-                <div className="ob-sensor-row" style={{ marginBottom: 4 }}>
-                  <div className="ob-sensor-hdr">Sensor ID</div>
-                  <div className="ob-sensor-hdr">Nome</div>
-                  <div className="ob-sensor-hdr">Local</div>
-                  <div className="ob-sensor-hdr">Cap. (L)</div>
-                  <div className="ob-sensor-hdr">Nível %</div>
-                </div>
-                {obSensors.map((s, i) => (
-                  <div key={i} className="ob-sensor-row">
-                    <input className="form-control" style={{ fontSize: 11, padding: "5px 8px" }} value={s.sensor_id}
-                      onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, sensor_id: e.target.value } : x))} />
-                    <input className="form-control" style={{ fontSize: 11, padding: "5px 8px" }} value={s.nome}
-                      onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, nome: e.target.value } : x))} />
-                    <input className="form-control" style={{ fontSize: 11, padding: "5px 8px" }} value={s.local}
-                      onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, local: e.target.value } : x))} />
-                    <input className="form-control" style={{ fontSize: 11, padding: "5px 8px" }} type="number" value={s.capacidade_litros}
-                      onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, capacidade_litros: e.target.value } : x))} />
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <input className="form-control" style={{ fontSize: 11, padding: "5px 8px" }} type="number" min="0" max="100" value={s.nivel_atual}
-                        onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, nivel_atual: e.target.value } : x))} />
-                    </div>
-                  </div>
-                ))}
-                <div style={{ fontSize: 11, color: "#475569", marginTop: 10 }}>💡 5 sensores pré-configurados. Ajuste conforme sua infraestrutura.</div>
-              </div>
-            )}
-
-            {/* STEP 2: Financeiro */}
+            {/* ════ STEP 2: Infraestrutura ════ */}
             {obStep === 2 && (
-              <div style={{ animation: "fadeIn .2s ease" }}>
-                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>💰 Saldo Inicial</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Configure o saldo inicial do condomínio</div>
-                <div className="form-group">
-                  <label className="form-label">Saldo Inicial do Fundo (R$)</label>
-                  <input className="form-control" type="number" value={obSaldo} onChange={e => setObSaldo(e.target.value)} placeholder="50000" />
-                  <div style={{ fontSize: 12, color: "#475569", marginTop: 6 }}>Será lançado como receita "Saldo inicial" no sistema financeiro.</div>
-                </div>
-                <div style={{ background: "rgba(99,102,241,.06)", border: "1px solid rgba(99,102,241,.15)", borderRadius: 12, padding: 16, marginTop: 8 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#A5B4FC", marginBottom: 6 }}>📋 Módulos que serão ativados</div>
+              <div style={{ animation: "fadeIn .25s ease" }}>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🏗️ Infraestrutura</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Estrutura física e áreas comuns do condomínio</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
                   {[
-                    ["🤖", "Síndico Virtual IA", "Chat inteligente com Claude AI"],
-                    ["💧", "IoT Água", "5 sensores de nível monitorados"],
-                    ["🔧", "Ordens de Serviço", "CRUD completo com SSE em tempo real"],
-                    ["💰", "Financeiro", "Receitas, despesas e saldo"],
-                    ["🚨", "MISP", "Alertas públicos de segurança"],
-                    ["📢", "Comunicados IA", "Geração automática de comunicados"],
-                  ].map(([ic, n, d]) => (
-                    <div key={n} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
-                      <span style={{ fontSize: 16, marginTop: 1 }}>{ic}</span>
-                      <div><div style={{ fontSize: 13, fontWeight: 500 }}>{n}</div><div style={{ fontSize: 11, color: "#475569" }}>{d}</div></div>
+                    ["Unidades", "unidades", "84"],
+                    ["Moradores", "moradores", "168"],
+                    ["Andares", "andares", "10"],
+                    ["Torres / Blocos", "torres", "2"],
+                  ].map(([lbl, key, ph]) => (
+                    <div className="form-group" key={key}>
+                      <label className="form-label">{lbl}</label>
+                      <input className="form-control" type="number" value={(obInfra as Record<string, unknown>)[key] as string}
+                        onChange={e => setObInfra(p => ({ ...p, [key]: e.target.value }))} placeholder={ph} />
                     </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "#94A3B8" }}>Áreas Comuns</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {([["churrasqueira", "🔥 Churrasqueira"], ["salao", "🎉 Salão de Festas"], ["piscina", "🏊 Piscina"], ["academia", "💪 Academia"], ["playground", "🛝 Playground"], ["coworking", "💻 Coworking"]] as [keyof typeof obInfra, string][]).map(([k, lbl]) => (
+                    <ToggleChip key={k} label={lbl} val={!!obInfra[k]} set={v => setObInfra(p => ({ ...p, [k]: v }))} />
                   ))}
                 </div>
               </div>
             )}
 
-            {/* STEP 3: Ativação */}
+            {/* ════ STEP 3: Sensores IoT ════ */}
             {obStep === 3 && (
-              <div style={{ animation: "fadeIn .2s ease" }}>
-                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>🚀 Resumo & Ativação</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Confirme os dados antes de ativar</div>
-                {[
-                  ["🏢 Condomínio", obCondo.nome || "–"],
-                  ["📍 Cidade", obCondo.cidade || "–"],
-                  ["👤 Síndico", obCondo.sindico_nome || "–"],
-                  ["🏠 Unidades", obCondo.unidades],
-                  ["👥 Moradores", obCondo.moradores],
-                  ["💧 Sensores IoT", `${obSensors.length} configurados`],
-                  ["💰 Saldo Inicial", `R$ ${Number(obSaldo || 0).toLocaleString("pt-BR")}`],
-                ].map(([l, v]) => (
-                  <div key={l as string} className="ob-confirm-row">
-                    <div className="ob-confirm-label">{l}</div>
-                    <div className="ob-confirm-val">{v as string}</div>
+              <div style={{ animation: "fadeIn .25s ease" }}>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>💧 Sensores IoT de Água</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 14 }}>Configure os 5 sensores de nível monitorados em tempo real</div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+                        {["#", "Sensor ID", "Nome", "Local", "Cap. (L)", "Nível %"].map(h => (
+                          <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "#64748B", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {obSensors.map((s, i) => (
+                        <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                          <td style={{ padding: "6px 8px", color: "#475569" }}>{i + 1}</td>
+                          {(["sensor_id", "nome", "local", "capacidade_litros", "nivel_atual"] as (keyof typeof s)[]).map(field => (
+                            <td key={field} style={{ padding: "4px 6px" }}>
+                              <input className="form-control" style={{ fontSize: 11, padding: "4px 7px", minWidth: field === "sensor_id" ? 110 : field === "nome" || field === "local" ? 120 : 60 }}
+                                type={field === "capacidade_litros" || field === "nivel_atual" ? "number" : "text"}
+                                min={field === "nivel_atual" ? "0" : undefined} max={field === "nivel_atual" ? "100" : undefined}
+                                value={s[field]}
+                                onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, [field]: e.target.value } : x))} />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <button onClick={() => setObSensors(arr => [...arr, { sensor_id: `sensor_${arr.length + 1}`, nome: "Novo Sensor", local: "–", capacidade_litros: "1000", nivel_atual: "50" }])}
+                  style={{ marginTop: 12, fontSize: 12, padding: "6px 14px", borderRadius: 8, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.2)", color: "#A5B4FC", cursor: "pointer" }}>
+                  + Adicionar sensor
+                </button>
+                <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>💡 Sensores pré-configurados — ajuste conforme sua infraestrutura.</div>
+              </div>
+            )}
+
+            {/* ════ STEP 4: Financeiro ════ */}
+            {obStep === 4 && (
+              <div style={{ animation: "fadeIn .25s ease" }}>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>💰 Configuração Financeira</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Defina o saldo inicial e a taxa condominial</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                  <div className="form-group" style={{ gridColumn: "1/-1" }}>
+                    <label className="form-label">Saldo Inicial do Fundo (R$)</label>
+                    <input className="form-control" type="number" value={obSaldo} onChange={e => setObSaldo(e.target.value)} placeholder="50000" />
+                    <div style={{ fontSize: 11, color: "#475569", marginTop: 5 }}>Lançado como "Saldo inicial" no financeiro.</div>
                   </div>
-                ))}
+                  <div className="form-group">
+                    <label className="form-label">Taxa Mensal / Unidade (R$)</label>
+                    <input className="form-control" type="number" value={obTaxaMensal} onChange={e => setObTaxaMensal(e.target.value)} placeholder="648" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Dia de Vencimento</label>
+                    <input className="form-control" type="number" min="1" max="28" value={obVencimento} onChange={e => setObVencimento(e.target.value)} placeholder="10" />
+                  </div>
+                </div>
+                <div style={{ background: "rgba(16,185,129,.05)", border: "1px solid rgba(16,185,129,.12)", borderRadius: 10, padding: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#6EE7B7", marginBottom: 6 }}>📊 Receita mensal estimada</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#10B981" }}>
+                    R$ {(Number(obTaxaMensal || 0) * Number(obInfra.unidades || 0)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{obInfra.unidades} unidades × R$ {Number(obTaxaMensal || 0).toLocaleString("pt-BR")}/mês</div>
+                </div>
+              </div>
+            )}
+
+            {/* ════ STEP 5: Síndico Virtual IA ════ */}
+            {obStep === 5 && (
+              <div style={{ animation: "fadeIn .25s ease" }}>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🤖 Síndico Virtual IA</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Configure o comportamento do assistente inteligente</div>
+
+                <div className="form-group" style={{ marginBottom: 18 }}>
+                  <label className="form-label">Tom de comunicação</label>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {[["formal", "👔 Formal"], ["amigavel", "😊 Amigável"], ["tecnico", "🔬 Técnico"], ["direto", "⚡ Direto"]].map(([v, l]) => (
+                      <button key={v} onClick={() => setObIA(p => ({ ...p, persona: v }))}
+                        style={{ padding: "8px 16px", borderRadius: 20, border: "1px solid", fontSize: 13, cursor: "pointer", transition: "all .15s",
+                          borderColor: obIA.persona === v ? "#6366F1" : "#334155",
+                          background: obIA.persona === v ? "rgba(99,102,241,.22)" : "rgba(30,41,59,.6)",
+                          color: obIA.persona === v ? "#A5B4FC" : "#64748B", fontWeight: obIA.persona === v ? 600 : 400 }}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "#94A3B8" }}>Automações</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {([
+                    ["greet", "🌅 Saudação automática ao abrir o chat"],
+                    ["auto_com", "📢 Gerar comunicados automáticos por IA"],
+                  ] as [keyof typeof obIA, string][]).map(([k, lbl]) => (
+                    <label key={k} style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+                      <div onClick={() => setObIA(p => ({ ...p, [k]: !p[k] }))} style={{ width: 42, height: 24, borderRadius: 12, background: obIA[k] ? "#6366F1" : "#334155", position: "relative", transition: "background .2s", flexShrink: 0 }}>
+                        <div style={{ position: "absolute", top: 3, left: obIA[k] ? 20 : 3, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left .2s" }} />
+                      </div>
+                      <span style={{ fontSize: 13, color: obIA[k] ? "#C4B5FD" : "#64748B" }}>{lbl}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div style={{ marginTop: 20, background: "rgba(99,102,241,.07)", border: "1px solid rgba(99,102,241,.12)", borderRadius: 10, padding: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#A5B4FC", marginBottom: 6 }}>🔑 Modelo de IA</div>
+                  <div style={{ fontSize: 13, color: "#C4B5FD", fontWeight: 700 }}>Claude claude-sonnet-4-6</div>
+                  <div style={{ fontSize: 11, color: "#475569", marginTop: 3 }}>Anthropic · Contexto longo · Português nativo</div>
+                </div>
+              </div>
+            )}
+
+            {/* ════ STEP 6: Ativação ════ */}
+            {obStep === 6 && (
+              <div style={{ animation: "fadeIn .25s ease" }}>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🚀 Revisão & Ativação</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Confirme todos os dados antes de ativar</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                  {[
+                    ["🏢", "Condomínio", obCondo.nome || "–"],
+                    ["📍", "Cidade", obCondo.cidade || "–"],
+                    ["👤", "Síndico", obCondo.sindico_nome || "–"],
+                    ["🏗️", "Torres / Andares", `${obInfra.torres} / ${obInfra.andares}`],
+                    ["🏠", "Unidades", obInfra.unidades],
+                    ["👥", "Moradores", obInfra.moradores],
+                    ["💧", "Sensores IoT", `${obSensors.length} configurados`],
+                    ["💰", "Saldo Inicial", `R$ ${Number(obSaldo || 0).toLocaleString("pt-BR")}`],
+                    ["📆", "Taxa Mensal", `R$ ${Number(obTaxaMensal || 0).toLocaleString("pt-BR")} — dia ${obVencimento}`],
+                    ["🤖", "IA Persona", obIA.persona],
+                  ].map(([ic, l, v]) => (
+                    <div key={l as string} className="ob-confirm-row" style={{ gridColumn: (l === "Taxa Mensal") ? "1/-1" : "auto" }}>
+                      <div className="ob-confirm-label">{ic} {l}</div>
+                      <div className="ob-confirm-val">{v as string}</div>
+                    </div>
+                  ))}
+                </div>
                 {obIsReset && (
-                  <div style={{ marginTop: 16, padding: 12, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10 }}>
+                  <div style={{ padding: 12, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10, marginBottom: 16 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "#F87171" }}>⚠️ Modo Reconfiguração</div>
                     <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>Todos os dados existentes (OSs, sensores, financeiro, comunicados) serão apagados e substituídos.</div>
                   </div>
                 )}
-                <button className="btn-ativar" onClick={ativarImobCore} disabled={obLoading} style={{ marginTop: 24 }}>
-                  {obLoading ? <><span style={{ animation: "pulse 1s infinite" }}>⏳</span> Ativando...</> : <><span>🚀</span> Ativar ImobCore</>}
+                <button className="btn-ativar" onClick={ativarImobCore} disabled={obLoading} style={{ marginTop: 8 }}>
+                  {obLoading
+                    ? <><span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⏳</span> Ativando ImobCore...</>
+                    : <><span>🚀</span> Ativar ImobCore</>}
                 </button>
               </div>
             )}
-          </div>
 
+          </div>{/* /ob-body */}
+
+          {/* ── Footer (navegação) ── */}
           <div className="ob-footer">
             <button className="btn-ob-back" onClick={() => {
               if (obStep === 0) { if (hasCondo) setView("gestor"); }
-              else setObStep(s => s - 1);
+              else obPrevStep();
             }}>
               {obStep === 0 ? (hasCondo ? "✕ Cancelar" : "") : "← Voltar"}
             </button>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <span style={{ fontSize: 12, color: "#334155" }}>{obStep + 1} / {OB_STEPS.length}</span>
               {obStep < OB_STEPS.length - 1 && (
-                <button className="btn-ob-next" onClick={() => { if (obStep === 0 && !obCondo.nome.trim()) { showToast("Informe o nome do condomínio", "warn"); return; } setObStep(s => s + 1); }}>
-                  Próximo →
-                </button>
+                <button className="btn-ob-next" onClick={obNextStep}>Próximo →</button>
               )}
             </div>
           </div>
+
         </div>
       </div>
     );
@@ -1024,7 +1212,7 @@ export default function App() {
               <div style={{ fontSize: 10, color: "#64748B", marginTop: 4 }}>Vence em 10/04/2026</div>
             </div>
             <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 8 }}>Histórico de Pagamentos</div>
-            {(dash?.receitas || []).concat(dash?.despesas?.slice(0, 2) || []).slice(0, 6).map((item, i) => (
+            {([...(dash?.receitas || []), ...(dash?.despesas?.slice(0, 2) || [])]).slice(0, 6).map((item, i) => (
               <div key={i} className="ph-fin-item">
                 <div>
                   <div className="ph-fin-label">{(item as Receita).descricao}</div>
