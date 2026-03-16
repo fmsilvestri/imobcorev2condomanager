@@ -44,8 +44,10 @@ Express API server with all ImobCore routes in `src/routes/imobcore.ts`:
 - `GET /api/dashboard` — full dashboard data from Supabase
 - `POST /api/sindico/chat` — AI chat (Claude)
 - `POST /api/sindico/comunicado` — AI-generated communications
-- `GET/POST /api/os` — OS (work orders) CRUD
-- `PUT /api/os/:id` — Update OS status
+- `GET /api/os` — List OS with optional filters (status, categoria, prioridade, search)
+- `POST /api/os` — Create OS with auto-numbering (max+1) or manual number + responsavel field
+- `PUT /api/os/:id` — Update OS (any field) + broadcasts SSE
+- `DELETE /api/os/:id` — Delete OS + broadcasts SSE
 - `GET /api/sensores` — IoT water sensor data
 - `GET /api/misp` — MISP public alerts
 - `GET /api/financeiro` — Financial data

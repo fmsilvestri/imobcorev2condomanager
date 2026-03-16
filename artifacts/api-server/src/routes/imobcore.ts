@@ -269,39 +269,58 @@ router.post("/sindico/comunicado", async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/os - Listar OSs
-router.get("/os", async (_req: Request, res: Response) => {
-  const { data, error } = await supabase
-    .from("ordens_servico")
-    .select("*")
-    .order("created_at", { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+// GET /api/os - Listar OSs (com filtros opcionais)
+router.get("/os", async (req: Request, res: Response) => {
+  try {
+    const { status, categoria, prioridade, search } = req.query as Record<string, string>;
+    let q = supabase.from("ordens_servico").select("*").order("created_at", { ascending: false });
+    if (status && status !== "todos") q = q.eq("status", status);
+    if (categoria && categoria !== "todos") q = q.eq("categoria", categoria);
+    if (prioridade && prioridade !== "todos") q = q.eq("prioridade", prioridade);
+    if (search) q = q.ilike("titulo", `%${search}%`);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 // POST /api/os - Criar OS
 router.post("/os", async (req: Request, res: Response) => {
   try {
-    const { condominio_id, titulo, descricao, categoria, prioridade, unidade } = req.body as {
+    const { condominio_id, titulo, descricao, categoria, prioridade, unidade, responsavel } = req.body as {
       condominio_id?: string;
       titulo: string;
       descricao?: string;
       categoria: string;
       prioridade: string;
       unidade?: string;
+      responsavel?: string;
     };
 
     const { data: cond } = await supabase.from("condominios").select("id").limit(1).single();
+
+    // Auto-numeração: pega o maior numero existente e incrementa
+    const { data: lastOs } = await supabase
+      .from("ordens_servico")
+      .select("numero")
+      .order("numero", { ascending: false })
+      .limit(1)
+      .single();
+    const nextNumero = ((lastOs?.numero as number) || 0) + 1;
 
     const { data, error } = await supabase
       .from("ordens_servico")
       .insert({
         condominio_id: condominio_id || cond?.id,
+        numero: nextNumero,
         titulo,
         descricao,
         categoria,
         prioridade: prioridade || "media",
         unidade,
+        responsavel,
         status: "aberta",
       })
       .select()
@@ -332,6 +351,19 @@ router.put("/os/:id", async (req: Request, res: Response) => {
     if (error) return res.status(500).json({ error: error.message });
     broadcast("os_atualizada", data);
     res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// DELETE /api/os/:id - Excluir OS
+router.delete("/os/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabase.from("ordens_servico").delete().eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    broadcast("os_excluida", { id });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

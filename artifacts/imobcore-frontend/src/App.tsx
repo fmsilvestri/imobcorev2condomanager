@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import QRCode from "qrcode";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; created_at: string }
+interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; responsavel?: string; updated_at?: string; created_at: string }
 interface Sensor { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; nivel_atual: number; volume_litros: number }
 interface Alerta { id: string; origem: string; titulo: string; descricao?: string; tipo: string; nivel: string; cidade: string; bairro: string }
 interface Receita { id: string; descricao: string; valor: number; categoria: string; status: string }
@@ -356,9 +356,16 @@ export default function App() {
   const [mobileHistory, setMobileHistory] = useState<{ role: string; content: string }[]>([]);
   const [tokenInfo, setTokenInfo] = useState("");
 
-  // OS form
+  // OS module
+  const OS_BLANK = { numero: "", titulo: "", descricao: "", categoria: "hidraulica", prioridade: "media", unidade: "", responsavel: "" };
+  const [osModal, setOsModal] = useState<"criar" | "editar" | null>(null);
+  const [osForm, setOsForm] = useState({ ...OS_BLANK });
+  const [osEditId, setOsEditId] = useState<string | null>(null);
+  const [osViewMode, setOsViewMode] = useState<"tabela" | "cards">("tabela");
+  const [osFilter, setOsFilter] = useState({ status: "todos", categoria: "todos", prioridade: "todos" });
+  const [osSearch, setOsSearch] = useState("");
+  const [osDeleteId, setOsDeleteId] = useState<string | null>(null);
   const [osFormOpen, setOsFormOpen] = useState(false);
-  const [osForm, setOsForm] = useState({ titulo: "", descricao: "", categoria: "hidraulica", prioridade: "media", unidade: "" });
 
   // Comunicado
   const [comTema, setComTema] = useState("");
@@ -584,20 +591,75 @@ export default function App() {
   };
 
   // ── OS ────────────────────────────────────────────────────────────────────
+  const osFiltered = (list: OrdemServico[]) => list.filter(o => {
+    if (osFilter.status !== "todos" && o.status !== osFilter.status) return false;
+    if (osFilter.categoria !== "todos" && o.categoria !== osFilter.categoria) return false;
+    if (osFilter.prioridade !== "todos" && o.prioridade !== osFilter.prioridade) return false;
+    if (osSearch && !o.titulo.toLowerCase().includes(osSearch.toLowerCase()) &&
+        !(o.unidade || "").toLowerCase().includes(osSearch.toLowerCase()) &&
+        !(o.responsavel || "").toLowerCase().includes(osSearch.toLowerCase())) return false;
+    return true;
+  });
+
+  const openCriarOS = () => {
+    setOsForm({ ...OS_BLANK });
+    setOsEditId(null);
+    setOsModal("criar");
+  };
+
+  const openEditarOS = (o: OrdemServico) => {
+    setOsForm({
+      numero: String(o.numero ?? ""),
+      titulo: o.titulo,
+      descricao: o.descricao || "",
+      categoria: o.categoria,
+      prioridade: o.prioridade,
+      unidade: o.unidade || "",
+      responsavel: o.responsavel || "",
+    });
+    setOsEditId(o.id);
+    setOsModal("editar");
+  };
+
   const criarOS = async () => {
     if (!osForm.titulo.trim()) { showToast("Informe o título", "warn"); return; }
-    await fetch("/api/os", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...osForm, condominio_id: condId }) });
-    showToast("✅ OS criada", "success");
-    setOsForm({ titulo: "", descricao: "", categoria: "hidraulica", prioridade: "media", unidade: "" });
-    setOsFormOpen(false);
+    const payload: Record<string, unknown> = { ...osForm, condominio_id: condId };
+    if (osForm.numero) payload.numero = Number(osForm.numero);
+    await fetch("/api/os", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    showToast("✅ OS criada!", "success");
+    setOsModal(null);
     ringBell();
     loadDashboard();
   };
-  const updateOS = async (id: string, status: string) => {
-    await fetch(`/api/os/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
-    showToast("OS atualizada", "success");
+
+  const salvarEditOS = async () => {
+    if (!osEditId) return;
+    if (!osForm.titulo.trim()) { showToast("Informe o título", "warn"); return; }
+    const payload: Record<string, unknown> = {
+      titulo: osForm.titulo, descricao: osForm.descricao, categoria: osForm.categoria,
+      prioridade: osForm.prioridade, unidade: osForm.unidade, responsavel: osForm.responsavel,
+    };
+    if (osForm.numero) payload.numero = Number(osForm.numero);
+    await fetch(`/api/os/${osEditId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    showToast("✅ OS atualizada", "success");
+    setOsModal(null);
     loadDashboard();
   };
+
+  const updateOSStatus = async (id: string, status: string) => {
+    await fetch(`/api/os/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+    showToast(`OS → ${status.replace("_", " ")}`, "success");
+    loadDashboard();
+  };
+
+  const deleteOS = async (id: string) => {
+    await fetch(`/api/os/${id}`, { method: "DELETE" });
+    showToast("OS excluída", "info");
+    setOsDeleteId(null);
+    loadDashboard();
+  };
+
+  const updateOS = updateOSStatus;
 
   // ── Comunicado ────────────────────────────────────────────────────────────
   const gerarComunicado = async () => {
@@ -2664,55 +2726,252 @@ export default function App() {
 
           {/* PANEL: OS */}
           <div className={`panel ${panel === "operacao" ? "active" : ""}`}>
-            <div className="card">
-              <div className="card-title">🔧 Ordens de Serviço
-                <button className="btn btn-primary btn-sm" onClick={() => setOsFormOpen(o => !o)} style={{ marginLeft: "auto" }}>+ Nova OS</button>
-              </div>
-              <div className={`os-form ${osFormOpen ? "open" : ""}`}>
-                <div className="form-row">
-                  <div className="form-group"><label className="form-label">Título *</label>
-                    <input className="form-control" value={osForm.titulo} onChange={e => setOsForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Título" /></div>
-                  <div className="form-group"><label className="form-label">Prioridade</label>
-                    <select className="form-control" value={osForm.prioridade} onChange={e => setOsForm(f => ({ ...f, prioridade: e.target.value }))}>
-                      {["baixa", "media", "alta", "urgente"].map(v => <option key={v} value={v}>{v}</option>)}
-                    </select></div>
-                </div>
-                <div className="form-row">
-                  <div className="form-group"><label className="form-label">Unidade</label>
-                    <input className="form-control" value={osForm.unidade} onChange={e => setOsForm(f => ({ ...f, unidade: e.target.value }))} placeholder="Ex: Apto 101" /></div>
-                  <div className="form-group"><label className="form-label">Categoria</label>
-                    <select className="form-control" value={osForm.categoria} onChange={e => setOsForm(f => ({ ...f, categoria: e.target.value }))}>
-                      {["hidraulica", "eletrica", "estrutural", "limpeza", "seguranca", "equipamento", "outros"].map(v => <option key={v} value={v}>{v}</option>)}
-                    </select></div>
-                </div>
-                <div className="form-group"><label className="form-label">Descrição</label>
-                  <textarea className="fc" value={osForm.descricao} onChange={e => setOsForm(f => ({ ...f, descricao: e.target.value }))} rows={2} placeholder="Descreva o problema..." /></div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn btn-primary" onClick={criarOS}>✓ Criar OS</button>
-                  <button className="btn btn-ghost" onClick={() => setOsFormOpen(false)}>Cancelar</button>
-                </div>
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th style={{ width: 60 }}>#</th><th>Título</th><th style={{ width: 100 }}>Prioridade</th><th style={{ width: 90 }}>Status</th><th style={{ width: 80 }}>Unidade</th><th style={{ width: 160 }}>Ações</th></tr></thead>
-                  <tbody>
-                    {(dash?.ordens_servico || []).slice(0, 20).map(o => (
-                      <tr key={o.id}>
-                        <td><span style={{ color: "#475569" }}>#{o.numero || "?"}</span></td>
-                        <td>{o.titulo}</td>
-                        <td><span className={`pill ${priPill(o.prioridade)}`}>{o.prioridade}</span></td>
-                        <td><span className={`pill ${stsPill(o.status)}`}>{o.status.replace("_", " ")}</span></td>
-                        <td style={{ fontSize: 11, color: "#64748B" }}>{o.unidade || "–"}</td>
-                        <td>
-                          {o.status === "aberta" && <button className="btn btn-sm btn-success" onClick={() => updateOS(o.id, "em_andamento")} style={{ marginRight: 4 }}>Iniciar</button>}
-                          {o.status !== "fechada" && <button className="btn btn-sm btn-danger" onClick={() => updateOS(o.id, "fechada")}>Fechar</button>}
-                        </td>
-                      </tr>
+            {(() => {
+              const allOs = dash?.ordens_servico || [];
+              const displayed = osFiltered(allOs);
+              const stats = {
+                total: allOs.length,
+                abertas: allOs.filter(o => o.status === "aberta").length,
+                andamento: allOs.filter(o => o.status === "em_andamento").length,
+                concluidas: allOs.filter(o => o.status === "fechada").length,
+                urgentes: allOs.filter(o => o.prioridade === "urgente" && o.status !== "fechada").length,
+              };
+              const catIcon: Record<string, string> = { hidraulica: "💧", eletrica: "⚡", estrutural: "🏗️", limpeza: "🧹", seguranca: "🔒", equipamento: "⚙️", outros: "📋" };
+              const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "–";
+
+              return (
+                <>
+                  {/* ── Stats Bar ── */}
+                  <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                    {[
+                      { label: "Total", val: stats.total, color: "#94A3B8" },
+                      { label: "Abertas", val: stats.abertas, color: "#F59E0B" },
+                      { label: "Em andamento", val: stats.andamento, color: "#06B6D4" },
+                      { label: "Concluídas", val: stats.concluidas, color: "#10B981" },
+                      { label: "🔴 Urgentes", val: stats.urgentes, color: "#EF4444" },
+                    ].map(s => (
+                      <div key={s.label} style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 10, padding: "8px 14px", minWidth: 90, textAlign: "center" }}>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.val}</div>
+                        <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>{s.label}</div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                    <button onClick={openCriarOS} style={{ marginLeft: "auto", padding: "0 18px", background: "linear-gradient(135deg,#6366F1,#818CF8)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", letterSpacing: ".02em" }}>
+                      + Nova OS
+                    </button>
+                  </div>
+
+                  {/* ── Toolbar ── */}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                    <input
+                      placeholder="🔍 Buscar por título, unidade, responsável..."
+                      value={osSearch} onChange={e => setOsSearch(e.target.value)}
+                      style={{ flex: 1, minWidth: 200, padding: "7px 12px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, color: "#F1F5F9", fontSize: 12, fontFamily: "inherit", outline: "none" }}
+                    />
+                    {(["status","categoria","prioridade"] as const).map(key => (
+                      <select key={key} value={osFilter[key]} onChange={e => setOsFilter(f => ({ ...f, [key]: e.target.value }))}
+                        style={{ padding: "7px 10px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, color: "#94A3B8", fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>
+                        <option value="todos">Todos {key === "status" ? "status" : key === "categoria" ? "categorias" : "prioridades"}</option>
+                        {key === "status" && ["aberta","em_andamento","fechada"].map(v => <option key={v} value={v}>{v.replace("_"," ")}</option>)}
+                        {key === "categoria" && ["hidraulica","eletrica","estrutural","limpeza","seguranca","equipamento","outros"].map(v => <option key={v} value={v}>{v}</option>)}
+                        {key === "prioridade" && ["baixa","media","alta","urgente"].map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    ))}
+                    <div style={{ display: "flex", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, overflow: "hidden" }}>
+                      {(["tabela","cards"] as const).map(m => (
+                        <button key={m} onClick={() => setOsViewMode(m)}
+                          style={{ padding: "7px 12px", background: osViewMode === m ? "rgba(99,102,241,.3)" : "transparent", border: "none", color: osViewMode === m ? "#A5B4FC" : "#475569", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+                          {m === "tabela" ? "☰" : "⊞"}
+                        </button>
+                      ))}
+                    </div>
+                    {(osSearch || osFilter.status !== "todos" || osFilter.categoria !== "todos" || osFilter.prioridade !== "todos") && (
+                      <button onClick={() => { setOsSearch(""); setOsFilter({ status: "todos", categoria: "todos", prioridade: "todos" }); }}
+                        style={{ padding: "7px 10px", background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 8, color: "#FCA5A5", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                        ✕ Limpar filtros
+                      </button>
+                    )}
+                  </div>
+
+                  {/* ── Resultados ── */}
+                  {displayed.length === 0 ? (
+                    <div style={{ textAlign: "center", padding: "48px 0", color: "#334155" }}>
+                      <div style={{ fontSize: 36, marginBottom: 10 }}>{allOs.length === 0 ? "✅" : "🔍"}</div>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>{allOs.length === 0 ? "Nenhuma OS cadastrada" : "Nenhuma OS encontrada"}</div>
+                      <div style={{ fontSize: 12, marginTop: 4 }}>{allOs.length === 0 ? "Crie a primeira ordem de serviço" : "Tente ajustar os filtros"}</div>
+                      {allOs.length === 0 && <button onClick={openCriarOS} style={{ marginTop: 16, padding: "9px 20px", background: "rgba(99,102,241,.15)", border: "1px solid rgba(99,102,241,.25)", borderRadius: 9, color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>+ Nova OS</button>}
+                    </div>
+                  ) : osViewMode === "tabela" ? (
+                    /* ── Tabela ── */
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th style={{ width: 70 }}>#</th>
+                            <th>Título</th>
+                            <th style={{ width: 90 }}>Cat.</th>
+                            <th style={{ width: 90 }}>Prioridade</th>
+                            <th style={{ width: 100 }}>Status</th>
+                            <th style={{ width: 80 }}>Unidade</th>
+                            <th style={{ width: 100 }}>Responsável</th>
+                            <th style={{ width: 80 }}>Data</th>
+                            <th style={{ width: 140 }}>Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {displayed.map(o => (
+                            <tr key={o.id} style={{ cursor: "pointer" }} onClick={() => openEditarOS(o)}>
+                              <td><span style={{ fontFamily: "monospace", fontSize: 11, color: "#6366F1", fontWeight: 700 }}>OS-{String(o.numero || "?").padStart(3, "0")}</span></td>
+                              <td>
+                                <div style={{ fontWeight: 500, fontSize: 13 }}>{o.titulo}</div>
+                                {o.descricao && <div style={{ fontSize: 10, color: "#475569", marginTop: 1, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.descricao}</div>}
+                              </td>
+                              <td><span style={{ fontSize: 12 }}>{catIcon[o.categoria] || "📋"} <span style={{ fontSize: 10, color: "#64748B" }}>{o.categoria}</span></span></td>
+                              <td><span className={`pill ${priPill(o.prioridade)}`}>{o.prioridade}</span></td>
+                              <td><span className={`pill ${stsPill(o.status)}`}>{o.status.replace("_", " ")}</span></td>
+                              <td style={{ fontSize: 11, color: "#64748B" }}>{o.unidade || "–"}</td>
+                              <td style={{ fontSize: 11, color: "#64748B" }}>{o.responsavel || "–"}</td>
+                              <td style={{ fontSize: 10, color: "#475569" }}>{fmtDate(o.created_at)}</td>
+                              <td onClick={e => e.stopPropagation()}>
+                                <div style={{ display: "flex", gap: 4 }}>
+                                  {o.status === "aberta" && <button className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "em_andamento")}>▶</button>}
+                                  {o.status === "em_andamento" && <button className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "fechada")}>✓</button>}
+                                  {o.status !== "aberta" && o.status !== "em_andamento" && <button className="btn btn-sm" style={{ background: "rgba(100,116,139,.15)", color: "#94A3B8" }} onClick={() => updateOSStatus(o.id, "aberta")}>↺</button>}
+                                  <button className="btn btn-sm" style={{ background: "rgba(99,102,241,.12)", color: "#A5B4FC" }} onClick={() => openEditarOS(o)}>✏️</button>
+                                  <button className="btn btn-sm btn-danger" onClick={() => setOsDeleteId(o.id)}>🗑</button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    /* ── Cards ── */
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+                      {displayed.map(o => (
+                        <div key={o.id} onClick={() => openEditarOS(o)}
+                          style={{ background: "rgba(255,255,255,.03)", border: `1px solid ${o.prioridade === "urgente" ? "rgba(239,68,68,.3)" : "rgba(255,255,255,.07)"}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", transition: "border-color .15s" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                            <span style={{ fontFamily: "monospace", fontSize: 10, color: "#6366F1", fontWeight: 700 }}>OS-{String(o.numero || "?").padStart(3, "0")}</span>
+                            <div style={{ display: "flex", gap: 4 }}>
+                              <span className={`pill ${priPill(o.prioridade)}`} style={{ fontSize: 9 }}>{o.prioridade}</span>
+                              <span className={`pill ${stsPill(o.status)}`} style={{ fontSize: 9 }}>{o.status.replace("_"," ")}</span>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{o.titulo}</div>
+                          {o.descricao && <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, lineHeight: 1.5 }}>{o.descricao.slice(0, 80)}{o.descricao.length > 80 ? "…" : ""}</div>}
+                          <div style={{ display: "flex", gap: 8, fontSize: 10, color: "#64748B", marginBottom: 10 }}>
+                            <span>{catIcon[o.categoria] || "📋"} {o.categoria}</span>
+                            {o.unidade && <span>🏠 {o.unidade}</span>}
+                            {o.responsavel && <span>👤 {o.responsavel}</span>}
+                          </div>
+                          <div style={{ display: "flex", gap: 4, justifyContent: "space-between", alignItems: "center" }}>
+                            <span style={{ fontSize: 10, color: "#334155" }}>{fmtDate(o.created_at)}</span>
+                            <div style={{ display: "flex", gap: 4 }} onClick={e => e.stopPropagation()}>
+                              {o.status === "aberta" && <button className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "em_andamento")}>Iniciar</button>}
+                              {o.status === "em_andamento" && <button className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "fechada")}>Concluir</button>}
+                              <button className="btn btn-sm btn-danger" onClick={() => setOsDeleteId(o.id)}>🗑</button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* ── Modal Criar/Editar ── */}
+                  {osModal && (
+                    <div onClick={() => setOsModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 900, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+                      <div onClick={e => e.stopPropagation()} style={{ background: "#0F172A", border: "1px solid rgba(99,102,241,.25)", borderRadius: 18, padding: "28px 28px 24px", width: "100%", maxWidth: 560 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: "#F1F5F9" }}>{osModal === "criar" ? "🔧 Nova Ordem de Serviço" : "✏️ Editar OS"}</div>
+                          <button onClick={() => setOsModal(null)} style={{ background: "none", border: "none", color: "#475569", fontSize: 18, cursor: "pointer", padding: "0 4px" }}>✕</button>
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                          <div className="form-group" style={{ gridColumn: "1/-1" }}>
+                            <label className="form-label">Título *</label>
+                            <input className="form-control" value={osForm.titulo} onChange={e => setOsForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Ex: Vazamento no teto do Apto 302" autoFocus />
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">Nº OS</label>
+                            <input className="form-control" type="number" min="1" value={osForm.numero} onChange={e => setOsForm(f => ({ ...f, numero: e.target.value }))} placeholder="Auto" style={{ fontFamily: "monospace" }} />
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">Prioridade</label>
+                            <select className="form-control" value={osForm.prioridade} onChange={e => setOsForm(f => ({ ...f, prioridade: e.target.value }))}>
+                              {[["baixa","🟢 Baixa"],["media","🔵 Média"],["alta","🟡 Alta"],["urgente","🔴 Urgente"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                            </select>
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">Categoria</label>
+                            <select className="form-control" value={osForm.categoria} onChange={e => setOsForm(f => ({ ...f, categoria: e.target.value }))}>
+                              {[["hidraulica","💧 Hidráulica"],["eletrica","⚡ Elétrica"],["estrutural","🏗️ Estrutural"],["limpeza","🧹 Limpeza"],["seguranca","🔒 Segurança"],["equipamento","⚙️ Equipamento"],["outros","📋 Outros"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                            </select>
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">Unidade</label>
+                            <input className="form-control" value={osForm.unidade} onChange={e => setOsForm(f => ({ ...f, unidade: e.target.value }))} placeholder="Ex: Apto 101, Área comum" />
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">Responsável</label>
+                            <input className="form-control" value={osForm.responsavel} onChange={e => setOsForm(f => ({ ...f, responsavel: e.target.value }))} placeholder="Ex: João Manutenção" />
+                          </div>
+                          <div className="form-group" style={{ gridColumn: "1/-1" }}>
+                            <label className="form-label">Descrição</label>
+                            <textarea className="fc" value={osForm.descricao} onChange={e => setOsForm(f => ({ ...f, descricao: e.target.value }))} rows={3} placeholder="Descreva o problema detalhadamente..." style={{ width: "100%", resize: "vertical" }} />
+                          </div>
+                          {osModal === "editar" && (
+                            <div className="form-group">
+                              <label className="form-label">Status</label>
+                              <select className="form-control" value={osForm.prioridade} onChange={() => {}}>
+                                <option>— Mudar status abaixo —</option>
+                              </select>
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                          {osModal === "editar" && (
+                            <>
+                              {(dash?.ordens_servico || []).find(o => o.id === osEditId)?.status !== "fechada" && (
+                                <>
+                                  {(dash?.ordens_servico || []).find(o => o.id === osEditId)?.status === "aberta" && (
+                                    <button onClick={() => { updateOSStatus(osEditId!, "em_andamento"); setOsModal(null); }} style={{ padding: "9px 16px", borderRadius: 9, background: "rgba(6,182,212,.15)", border: "1px solid rgba(6,182,212,.25)", color: "#67E8F9", cursor: "pointer", fontFamily: "inherit", fontSize: 12 }}>▶ Iniciar</button>
+                                  )}
+                                  {(dash?.ordens_servico || []).find(o => o.id === osEditId)?.status === "em_andamento" && (
+                                    <button onClick={() => { updateOSStatus(osEditId!, "fechada"); setOsModal(null); }} style={{ padding: "9px 16px", borderRadius: 9, background: "rgba(16,185,129,.15)", border: "1px solid rgba(16,185,129,.25)", color: "#6EE7B7", cursor: "pointer", fontFamily: "inherit", fontSize: 12 }}>✓ Concluir</button>
+                                  )}
+                                </>
+                              )}
+                              <button onClick={() => setOsDeleteId(osEditId!)} style={{ padding: "9px 14px", borderRadius: 9, background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.2)", color: "#FCA5A5", cursor: "pointer", fontFamily: "inherit", fontSize: 12 }}>🗑 Excluir</button>
+                            </>
+                          )}
+                          <button onClick={() => setOsModal(null)} style={{ padding: "9px 16px", borderRadius: 9, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: "#64748B", cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>Cancelar</button>
+                          <button onClick={osModal === "criar" ? criarOS : salvarEditOS} style={{ padding: "9px 20px", borderRadius: 9, background: "linear-gradient(135deg,#6366F1,#818CF8)", border: "none", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>
+                            {osModal === "criar" ? "✓ Criar OS" : "💾 Salvar alterações"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Confirm Delete ── */}
+                  {osDeleteId && (
+                    <div onClick={() => setOsDeleteId(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.65)", zIndex: 910, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div onClick={e => e.stopPropagation()} style={{ background: "#0F172A", border: "1px solid rgba(239,68,68,.3)", borderRadius: 16, padding: "28px 32px", maxWidth: 360, textAlign: "center" }}>
+                        <div style={{ fontSize: 32, marginBottom: 10 }}>🗑️</div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: "#F1F5F9", marginBottom: 6 }}>Excluir Ordem de Serviço?</div>
+                        <div style={{ fontSize: 12, color: "#64748B", marginBottom: 20 }}>Esta ação não pode ser desfeita.</div>
+                        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                          <button onClick={() => setOsDeleteId(null)} style={{ padding: "9px 20px", borderRadius: 9, background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", color: "#94A3B8", cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>Cancelar</button>
+                          <button onClick={() => deleteOS(osDeleteId)} style={{ padding: "9px 20px", borderRadius: 9, background: "rgba(239,68,68,.15)", border: "1px solid rgba(239,68,68,.3)", color: "#FCA5A5", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>Excluir</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* PANEL: FINANCEIRO */}
