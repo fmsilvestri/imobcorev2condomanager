@@ -453,6 +453,54 @@ router.post("/condominios", async (req: Request, res: Response) => {
   }
 });
 
+// PATCH /api/condominios/:id — atualizar estrutura/infra (wizard step 2)
+router.patch("/condominios/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { torres_config, torres, andares, unidades } = req.body as {
+    torres_config?: unknown[]; torres?: number; andares?: number; unidades?: number;
+  };
+
+  if (!id) return res.status(400).json({ error: "ID do condomínio é obrigatório" });
+
+  // Try with torres_config JSONB column first; fallback to base columns only
+  const fullPayload: Record<string, unknown> = {};
+  if (torres_config !== undefined) fullPayload["torres_config"] = torres_config;
+  if (torres !== undefined) fullPayload["torres"] = torres;
+  if (andares !== undefined) fullPayload["andares"] = andares;
+  if (unidades !== undefined) fullPayload["unidades"] = unidades;
+
+  // Fallback payload uses only columns guaranteed to exist in base schema
+  const safePayload: Record<string, unknown> = {};
+  if (unidades !== undefined) safePayload["unidades"] = unidades;
+
+  const isSchemaErr = (msg?: string) =>
+    msg?.includes("does not exist") || msg?.includes("schema cache");
+
+  try {
+    // Attempt 1: full payload (requires all new columns via migration)
+    const { data, error } = await supabase.from("condominios").update(fullPayload).eq("id", id).select().single();
+    if (isSchemaErr(error?.message)) {
+      // Attempt 2: intermediate payload without torres_config (torres + andares only)
+      const midPayload: Record<string, unknown> = { ...safePayload };
+      if (torres !== undefined) midPayload["torres"] = torres;
+      if (andares !== undefined) midPayload["andares"] = andares;
+      const { data: d2, error: e2 } = await supabase.from("condominios").update(midPayload).eq("id", id).select().single();
+      if (isSchemaErr(e2?.message)) {
+        // Attempt 3: safest fallback — only guaranteed base columns
+        const { data: d3, error: e3 } = await supabase.from("condominios").update(safePayload).eq("id", id).select().single();
+        if (e3) return res.status(500).json({ error: e3.message });
+        return res.json({ ok: true, condominio: d3, note: "Run migration to add torres/andares/torres_config columns" });
+      }
+      if (e2) return res.status(500).json({ error: e2.message });
+      return res.json({ ok: true, condominio: d2, note: "torres_config column missing — run migration" });
+    }
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true, condominio: data });
+  } catch (e: unknown) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // POST /api/onboarding - Configurar condomínio do zero
 router.post("/onboarding", async (req: Request, res: Response) => {
   const {

@@ -382,7 +382,11 @@ export default function App() {
   // Step 1: Condomínio básico
   const [obCondo, setObCondo] = useState({ nome: "", cnpj: "", endereco: "", cidade: "", estado: "SC", sindico_nome: "", sindico_email: "", sindico_tel: "", unidades: "84" });
   const [obSavedCondoId, setObSavedCondoId] = useState<string | null>(null);
-  // Step 2: Infraestrutura
+  // Step 2: Estrutura (torres/blocos)
+  const [obTorres, setObTorres] = useState([
+    { nome: "Torre A", andares: 4, unidades_por_andar: 4 },
+    { nome: "Torre B", andares: 4, unidades_por_andar: 4 },
+  ]);
   const [obInfra, setObInfra] = useState({ moradores: "168", andares: "10", torres: "2", churrasqueira: true, salao: true, piscina: true, academia: false, playground: false, coworking: false });
   // Step 3: Sensores IoT
   const [obSensors, setObSensors] = useState([
@@ -448,7 +452,9 @@ export default function App() {
         sindico_tel: obCondo.sindico_tel,
         condominio_id: obSavedCondoId || undefined,
         unidades: Number(obCondo.unidades), moradores: Number(obInfra.moradores),
-        andares: Number(obInfra.andares), torres: Number(obInfra.torres),
+        andares: Math.max(...obTorres.map(t => t.andares), Number(obInfra.andares) || 1),
+        torres: obTorres.length || Number(obInfra.torres),
+        torres_config: obTorres,
         amenidades: Object.entries(obInfra).filter(([k, v]) => typeof v === "boolean" && v).map(([k]) => k),
         sensores: obSensors.map(s => ({ ...s, capacidade_litros: Number(s.capacidade_litros), nivel_atual: Number(s.nivel_atual) })),
         saldo_inicial: Number(obSaldo) || 0,
@@ -615,14 +621,12 @@ export default function App() {
   ];
 
   const obNextStep = useCallback(async () => {
-    // Validations per step
+    // ── Step 1: Condomínio ────────────────────────────────────────────────────
     if (obStep === 1) {
       if (!obCondo.nome.trim()) { showToast("Nome do condomínio é obrigatório", "warn"); return; }
       if (!obCondo.sindico_nome.trim()) { showToast("Nome do síndico é obrigatório", "warn"); return; }
       if (!obCondo.sindico_email.trim()) { showToast("E-mail do síndico é obrigatório", "warn"); return; }
       if (!obCondo.unidades || Number(obCondo.unidades) < 1) { showToast("Total de unidades é obrigatório", "warn"); return; }
-
-      // Save to Supabase via POST /api/condominios
       setObLoading(true);
       try {
         const payload = {
@@ -640,8 +644,35 @@ export default function App() {
       } catch { showToast("Erro ao salvar condomínio", "error"); setObLoading(false); return; }
       setObLoading(false);
     }
+
+    // ── Step 2: Estrutura ─────────────────────────────────────────────────────
+    if (obStep === 2) {
+      if (obTorres.length === 0) { showToast("Adicione pelo menos um bloco/torre", "warn"); return; }
+      const invalid = obTorres.find(t => !t.nome.trim() || t.andares < 1 || t.unidades_por_andar < 1);
+      if (invalid) { showToast("Preencha nome, andares e unidades de cada bloco", "warn"); return; }
+      // Save structure to Supabase if condo already persisted
+      if (obSavedCondoId) {
+        setObLoading(true);
+        try {
+          const totalUnits = obTorres.reduce((s, t) => s + t.andares * t.unidades_por_andar, 0);
+          const r = await fetch(`/api/condominios/${obSavedCondoId}`, {
+            method: "PATCH", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              torres_config: obTorres,
+              torres: obTorres.length,
+              andares: Math.max(...obTorres.map(t => t.andares)),
+              unidades: totalUnits,
+            }),
+          });
+          if (r.ok) showToast("🏗️ Estrutura salva!", "success");
+          else showToast("Estrutura salva localmente (Supabase pendente)", "info");
+        } catch { showToast("Estrutura salva localmente", "info"); }
+        setObLoading(false);
+      }
+    }
+
     setObStep(s => Math.min(s + 1, OB_STEPS.length - 1));
-  }, [obStep, obCondo, obSavedCondoId, showToast]);
+  }, [obStep, obCondo, obSavedCondoId, obTorres, showToast]);
 
   const obPrevStep = () => setObStep(s => Math.max(s - 1, 0));
 
@@ -663,7 +694,7 @@ export default function App() {
 
     return (
       <div className="ob-wrap" style={{ overflowY: "auto", marginTop: "var(--topbar-h)" }}>
-        <div className="ob-card" style={{ maxWidth: obStep === 1 ? 920 : undefined }}>
+        <div className="ob-card" style={{ maxWidth: (obStep === 1 || obStep === 2) ? 960 : undefined }}>
 
           {/* ── Hero ── */}
           <div className="ob-hero">
@@ -916,32 +947,151 @@ export default function App() {
               </div>
             )}
 
-            {/* ════ STEP 2: Infraestrutura ════ */}
-            {obStep === 2 && (
-              <div style={{ animation: "fadeIn .25s ease" }}>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🏗️ Infraestrutura</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Estrutura física e áreas comuns do condomínio</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
-                  {[
-                    ["Moradores", "moradores", "168"],
-                    ["Andares", "andares", "10"],
-                    ["Torres / Blocos", "torres", "2"],
-                  ].map(([lbl, key, ph]) => (
-                    <div className="form-group" key={key}>
-                      <label className="form-label">{lbl}</label>
-                      <input className="form-control" type="number" value={(obInfra as Record<string, unknown>)[key] as string}
-                        onChange={e => setObInfra(p => ({ ...p, [key]: e.target.value }))} placeholder={ph} />
+            {/* ════ STEP 2: Estrutura do Condomínio ════ */}
+            {obStep === 2 && (() => {
+              // Generate unit list for a torre in BLOCO+NÚMERO format
+              const genUnits = (t: { nome: string; andares: number; unidades_por_andar: number }): string[] => {
+                const words = t.nome.trim().split(/\s+/);
+                const prefix = words[words.length - 1].slice(0, 2).toUpperCase();
+                const units: string[] = [];
+                for (let f = 1; f <= t.andares; f++)
+                  for (let u = 1; u <= t.unidades_por_andar; u++)
+                    units.push(`${prefix}${f}${String(u).padStart(2, "0")}`);
+                return units;
+              };
+              const totalUnits = obTorres.reduce((s, t) => s + t.andares * t.unidades_por_andar, 0);
+              const BLOCO_COLORS = ["#6366F1","#14B8A6","#F59E0B","#EF4444","#A855F7","#3B82F6","#10B981","#F97316","#EC4899","#8B5CF6"];
+
+              return (
+                <div style={{ animation: "fadeIn .25s ease" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>🏗️ Estrutura do Condomínio</div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontSize: 11, color: "#64748B" }}>{obTorres.length} bloco(s) · {totalUnits} unidades total</span>
+                      {obTorres.length < 10 && (
+                        <button onClick={() => setObTorres(ts => [...ts, { nome: `Torre ${String.fromCharCode(65 + ts.length)}`, andares: 4, unidades_por_andar: 4 }])}
+                          style={{ padding: "4px 12px", borderRadius: 8, border: "1px solid rgba(99,102,241,.4)", background: "rgba(99,102,241,.1)", color: "#A5B4FC", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
+                          + Adicionar Bloco
+                        </button>
+                      )}
                     </div>
-                  ))}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748B", marginBottom: 16 }}>Configure torres/blocos — as unidades são geradas automaticamente no formato BLOCO+NÚMERO</div>
+
+                  {/* ── Layout: configurador (esquerda) + preview (direita) ── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20, alignItems: "start" }}>
+
+                    {/* Coluna esquerda: cards de torres */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {obTorres.map((torre, idx) => {
+                        const color = BLOCO_COLORS[idx % BLOCO_COLORS.length];
+                        const unitCount = torre.andares * torre.unidades_por_andar;
+                        return (
+                          <div key={idx} style={{ background: "rgba(255,255,255,.03)", border: `1px solid ${color}33`, borderRadius: 14, padding: "14px 16px", position: "relative" }}>
+                            {/* Color stripe */}
+                            <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: color, borderRadius: "14px 0 0 14px" }} />
+
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                              <div style={{ width: 28, height: 28, borderRadius: 8, background: color + "22", border: `1px solid ${color}55`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>🏢</div>
+                              <div style={{ flex: 1 }}>
+                                <input value={torre.nome}
+                                  onChange={e => setObTorres(ts => ts.map((t, i) => i === idx ? { ...t, nome: e.target.value } : t))}
+                                  style={{ background: "transparent", border: "none", color: "#F1F5F9", fontSize: 13, fontWeight: 700, fontFamily: "inherit", width: "100%", outline: "none" }}
+                                  placeholder="Nome do bloco" />
+                              </div>
+                              <span style={{ fontSize: 11, color: "#64748B", flexShrink: 0 }}>{unitCount} unid.</span>
+                              {obTorres.length > 1 && (
+                                <button onClick={() => setObTorres(ts => ts.filter((_, i) => i !== idx))}
+                                  style={{ background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.2)", color: "#F87171", borderRadius: 6, width: 24, height: 24, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "inherit" }}>
+                                  ×
+                                </button>
+                              )}
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                              <div>
+                                <div style={{ fontSize: 10, color: "#475569", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em" }}>Andares</div>
+                                <input type="number" min="1" max="50" value={torre.andares}
+                                  onChange={e => setObTorres(ts => ts.map((t, i) => i === idx ? { ...t, andares: Math.max(1, Number(e.target.value)) } : t))}
+                                  style={{ width: "100%", padding: "6px 8px", background: "rgba(0,0,0,.3)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, color: "#E2E8F0", fontSize: 13, fontFamily: "inherit" }} />
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 10, color: "#475569", marginBottom: 4, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em" }}>Unid./Andar</div>
+                                <input type="number" min="1" max="20" value={torre.unidades_por_andar}
+                                  onChange={e => setObTorres(ts => ts.map((t, i) => i === idx ? { ...t, unidades_por_andar: Math.max(1, Number(e.target.value)) } : t))}
+                                  style={{ width: "100%", padding: "6px 8px", background: "rgba(0,0,0,.3)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, color: "#E2E8F0", fontSize: 13, fontFamily: "inherit" }} />
+                              </div>
+                              <div style={{ display: "flex", alignItems: "flex-end" }}>
+                                <div style={{ padding: "6px 10px", background: color + "15", border: `1px solid ${color}33`, borderRadius: 8, fontSize: 11, color, width: "100%", textAlign: "center" }}>
+                                  {unitCount} unid. total
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* Áreas Comuns */}
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 8 }}>🌳 Áreas Comuns</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                          {([["churrasqueira","🔥 Churrasqueira"],["salao","🎉 Salão de Festas"],["piscina","🏊 Piscina"],["academia","💪 Academia"],["playground","🛝 Playground"],["coworking","💻 Coworking"]] as [keyof typeof obInfra, string][]).map(([k, lbl]) => (
+                            <ToggleChip key={k} label={lbl} val={!!obInfra[k]} set={v => setObInfra(p => ({ ...p, [k]: v }))} />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Coluna direita: preview visual de unidades */}
+                    <div style={{ position: "sticky", top: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
+                        Preview · Unidades geradas
+                      </div>
+                      <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 16, maxHeight: 480, overflowY: "auto" }}>
+                        {obTorres.length === 0 ? (
+                          <div style={{ textAlign: "center", color: "#334155", fontSize: 12, padding: "20px 0" }}>Nenhum bloco configurado</div>
+                        ) : obTorres.map((torre, idx) => {
+                          const color = BLOCO_COLORS[idx % BLOCO_COLORS.length];
+                          const units = genUnits(torre);
+                          // Group by floor
+                          const floors: string[][] = [];
+                          for (let f = 0; f < torre.andares; f++)
+                            floors.push(units.slice(f * torre.unidades_por_andar, (f + 1) * torre.unidades_por_andar));
+                          return (
+                            <div key={idx} style={{ marginBottom: 14 }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: color }} />
+                                {torre.nome} — {units.length} unidades
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                {[...floors].reverse().map((row, fi) => (
+                                  <div key={fi} style={{ display: "flex", gap: 3, alignItems: "center" }}>
+                                    <span style={{ fontSize: 9, color: "#334155", width: 20, textAlign: "right", flexShrink: 0 }}>
+                                      {torre.andares - fi}°
+                                    </span>
+                                    <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+                                      {row.map(unit => (
+                                        <div key={unit} style={{ padding: "2px 5px", borderRadius: 4, background: color + "18", border: `1px solid ${color}35`, color, fontSize: 9, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
+                                          {unit}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.05)", fontSize: 11, color: "#10B981", fontWeight: 600, textAlign: "center" }}>
+                          ✓ {totalUnits} unidades · {obTorres.length} bloco(s)
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "#94A3B8" }}>Áreas Comuns</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {([["churrasqueira", "🔥 Churrasqueira"], ["salao", "🎉 Salão de Festas"], ["piscina", "🏊 Piscina"], ["academia", "💪 Academia"], ["playground", "🛝 Playground"], ["coworking", "💻 Coworking"]] as [keyof typeof obInfra, string][]).map(([k, lbl]) => (
-                    <ToggleChip key={k} label={lbl} val={!!obInfra[k]} set={v => setObInfra(p => ({ ...p, [k]: v }))} />
-                  ))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* ════ STEP 3: Sensores IoT ════ */}
             {obStep === 3 && (
@@ -1113,7 +1263,7 @@ export default function App() {
               <span style={{ fontSize: 12, color: "#334155" }}>{obStep + 1} / {OB_STEPS.length}</span>
               {obStep > 0 && obStep < OB_STEPS.length - 1 && (
                 <button className="btn-ob-next" onClick={obNextStep} disabled={obLoading}>
-                  {obLoading && obStep === 1 ? "💾 Salvando..." : obStep === 1 ? "💾 Salvar e continuar →" : "Próximo →"}
+                  {obLoading ? "💾 Salvando..." : obStep === 1 ? "💾 Salvar e continuar →" : obStep === 2 ? "🏗️ Salvar estrutura →" : "Próximo →"}
                 </button>
               )}
             </div>
