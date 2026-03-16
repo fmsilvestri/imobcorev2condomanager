@@ -388,6 +388,33 @@ export default function App() {
   const [mantAiResult, setMantAiResult] = useState<string>("");
   const [mantMapHover, setMantMapHover] = useState<string|null>(null);
   const [mantPlanMonth, setMantPlanMonth] = useState(5); // index in MANUT_SCHEDULE (current=Mar/26)
+  // ── Água state ─────────────────────────────────────────────────────────────
+  const [aguaTab, setAguaTab] = useState<"reservatorios"|"leituras"|"hidrometro"|"historico"|"fornecedora"|"alertas">("reservatorios");
+  const [aguaNovoResModal, setAguaNovoResModal] = useState(false);
+  const [aguaNovoResForm, setAguaNovoResForm] = useState({ nome:"", local:"", capacidade:"", mac:"" });
+  const [aguaNovaLeitModal, setAguaNovaLeitModal] = useState(false);
+  const [aguaNovaLeitForm, setAguaNovaLeitForm] = useState({ reservatorio:"Bloco A", nivel:"", distancia:"", obs:"" });
+  const [aguaLeituras, setAguaLeituras] = useState([
+    { id:"l1",  res:"Bloco A", nivel:45, volume:22500, dist:55,  data:"08/02/2026", hora:"19:37:30", fonte:"IoT" },
+    { id:"l2",  res:"Bloco A", nivel:48, volume:24000, dist:51,  data:"08/02/2026", hora:"09:12:00", fonte:"IoT" },
+    { id:"l3",  res:"Bloco A", nivel:52, volume:26000, dist:48,  data:"07/02/2026", hora:"19:30:00", fonte:"IoT" },
+    { id:"l4",  res:"Bloco A", nivel:55, volume:27500, dist:45,  data:"07/02/2026", hora:"09:05:00", fonte:"IoT" },
+    { id:"l5",  res:"Bloco A", nivel:58, volume:29000, dist:42,  data:"06/02/2026", hora:"18:55:00", fonte:"IoT" },
+    { id:"l6",  res:"Bloco A", nivel:50, volume:25000, dist:50,  data:"06/02/2026", hora:"09:00:00", fonte:"IoT" },
+    { id:"l7",  res:"Bloco A", nivel:42, volume:21000, dist:58,  data:"05/02/2026", hora:"19:45:00", fonte:"IoT" },
+    { id:"l8",  res:"Bloco A", nivel:38, volume:19000, dist:62,  data:"05/02/2026", hora:"09:15:00", fonte:"IoT" },
+    { id:"l9",  res:"Bloco A", nivel:35, volume:17500, dist:65,  data:"04/02/2026", hora:"20:00:00", fonte:"IoT" },
+    { id:"l10", res:"Bloco A", nivel:60, volume:30000, dist:40,  data:"04/02/2026", hora:"09:30:00", fonte:"Manual" },
+    { id:"l11", res:"Bloco A", nivel:65, volume:32500, dist:35,  data:"03/02/2026", hora:"10:00:00", fonte:"Manual" },
+  ]);
+  const [aguaHidroLeituras] = useState([
+    { id:"h1", mes:"Jan/26", m3:142, custo:497, data:"31/01/2026" },
+    { id:"h2", mes:"Fev/26", m3:138, custo:483, data:"28/02/2026" },
+    { id:"h3", mes:"Mar/26", m3:145, custo:507, data:"15/03/2026" },
+    { id:"h4", mes:"Out/25", m3:130, custo:455, data:"31/10/2025" },
+    { id:"h5", mes:"Nov/25", m3:135, custo:472, data:"30/11/2025" },
+    { id:"h6", mes:"Dez/25", m3:150, custo:525, data:"31/12/2025" },
+  ]);
   // ── Energia state ──────────────────────────────────────────────────────────
   const [energiaTab, setEnergiaTab] = useState<"ocorrencias"|"consumo"|"equipamentos"|"solar"|"graficos"|"fornecedora"|"alertas">("ocorrencias");
   const [energiaAno, setEnergiaAno] = useState(2026);
@@ -2703,7 +2730,7 @@ export default function App() {
             <span className="sb-icon">💰</span> Financeiro
           </div>
           <div className={`sb-item ${panel === "iot" ? "active" : ""}`} onClick={() => setPanel("iot")}>
-            <span className="sb-icon">💧</span> Água IoT
+            <span className="sb-icon">💧</span> Água & Reservatórios
           </div>
           <div className={`sb-item ${panel === "misp" ? "active" : ""}`} onClick={() => setPanel("misp")}>
             <span className="sb-icon">🚨</span> MISP<span className="sb-badge">{t?.alertas_ativos || 0}</span>
@@ -3301,14 +3328,451 @@ export default function App() {
           </div>
 
           {/* PANEL: IoT */}
-          <div className={`panel ${panel === "iot" ? "active" : ""} card`}>
-            <div className="card-title">💧 Sensores de Água – IoT em Tempo Real
-              <span style={{ marginLeft: "auto", fontSize: 11, color: "#475569" }}>↻ 10s</span>
-            </div>
-            <div className="sensor-grid">
-              {(dash?.sensores || []).map(s => <SensorRing key={s.id} sensor={s} />)}
-            </div>
-          </div>
+          {/* PANEL: ÁGUA & RESERVATÓRIOS */}
+          {panel === "iot" && (() => {
+            // ── Demo reservoir ─────────────────────────────────────────
+            const sensores = dash?.sensores || [];
+            const nivelMedioSensores = sensores.length
+              ? Math.round(sensores.reduce((s, x) => s + x.nivel_atual, 0) / sensores.length)
+              : 45;
+            const volTotal = sensores.length
+              ? sensores.reduce((s, x) => s + x.volume_litros, 0)
+              : 22500;
+            const CAPACIDADE = 50000;
+            const autonomia = volTotal > 0 ? Math.round(volTotal / 4500) : 5;
+            const ultimaLeit = aguaLeituras[0];
+
+            const tabDef: [typeof aguaTab, string, string, string][] = [
+              ["reservatorios", "🗂️", `Reservatórios (1)`,   "#3B82F6"],
+              ["leituras",      "📋", `Leituras (${aguaLeituras.length})`, "#06B6D4"],
+              ["hidrometro",    "🔵", "Hidrômetro (1)",       "#6366F1"],
+              ["historico",     "📊", "Histórico",            "#10B981"],
+              ["fornecedora",   "🏢", "Fornecedora",          "#F59E0B"],
+              ["alertas",       "🔔", "Alertas Inteligentes", "#EF4444"],
+            ];
+
+            const tabBtn = (id: typeof aguaTab, icon: string, label: string, col: string) => (
+              <button key={id} onClick={() => setAguaTab(id)} style={{
+                display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6,
+                padding:"14px 16px", borderRadius:10, cursor:"pointer", minWidth:110, border:"none",
+                background: aguaTab === id ? "#3B82F6" : "rgba(255,255,255,.03)",
+                color: aguaTab === id ? "#fff" : col,
+                fontWeight: aguaTab === id ? 800 : 500, fontSize:11, transition:"all .15s",
+                outline: aguaTab !== id ? "1px solid rgba(255,255,255,.07)" : "none",
+              }}>
+                <span style={{ fontSize:22 }}>{icon}</span>
+                <span style={{ textAlign:"center", lineHeight:1.3 }}>{label}</span>
+              </button>
+            );
+
+            return (
+              <div style={{ padding:20 }}>
+                {/* ── Header ── */}
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+                  <div>
+                    <div style={{ fontSize:22, fontWeight:800, marginBottom:2 }}>💧 Água & Reservatórios</div>
+                    <div style={{ fontSize:12, color:"#475569" }}>Monitoramento de níveis e qualidade da água</div>
+                  </div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <button onClick={()=>setAguaNovoResModal(true)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 14px", color:"#E2E8F0", fontSize:12, cursor:"pointer" }}>
+                      + Novo Reservatório
+                    </button>
+                    <button onClick={()=>setAguaNovaLeitModal(true)} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 16px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                      + Nova Leitura
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── KPI Cards ── */}
+                <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" }}>
+                  {[
+                    { label:"Nível Médio",         val:`${nivelMedioSensores}%`,                    icon:"💧", bg:"rgba(59,130,246,.1)",  border:"rgba(59,130,246,.2)" },
+                    { label:"Volume Disponível",   val:`${(volTotal/1000).toFixed(0)}k L`,            icon:"💧", bg:"rgba(6,182,212,.08)",  border:"rgba(6,182,212,.2)" },
+                    { label:"Autonomia Estimada",  val:`${autonomia} dias`,                           icon:"🕐", bg:"rgba(16,185,129,.08)", border:"rgba(16,185,129,.2)" },
+                    { label:"Reservatórios",       val:`1 cadastrados`,                               icon:"🔵", bg:"rgba(168,85,247,.08)", border:"rgba(168,85,247,.2)" },
+                  ].map(k => (
+                    <div key={k.label} style={{ flex:1, minWidth:150, background:k.bg, border:`1px solid ${k.border}`, borderRadius:12, padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                      <div>
+                        <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
+                        <div style={{ fontSize:22, fontWeight:800 }}>{k.val}</div>
+                      </div>
+                      <div style={{ fontSize:24, opacity:0.6 }}>{k.icon}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Webhook banner ── */}
+                <div style={{ background:"rgba(16,185,129,.06)", border:"1px solid rgba(16,185,129,.2)", borderRadius:10, padding:"10px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18, flexWrap:"wrap", gap:10 }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <span style={{ color:"#10B981", fontSize:16 }}>📡</span>
+                    <div>
+                      <div style={{ fontSize:12, fontWeight:700, color:"#10B981" }}>Webhook Sensor IoT</div>
+                      <div style={{ fontSize:10, color:"#475569" }}>Receba dados do sensor de nível em tempo real via HTTP</div>
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <code style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:6, padding:"4px 10px", fontSize:11, color:"#94A3B8" }}>/api/webhook/sensor</code>
+                    <button onClick={()=>setAguaTab("reservatorios")} style={{ background:"#3B82F6", border:"none", borderRadius:6, padding:"5px 12px", color:"#fff", fontSize:11, cursor:"pointer", fontWeight:600 }}>📊 Dashboard</button>
+                    <button onClick={()=>setAguaTab("leituras")} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:6, padding:"5px 12px", color:"#94A3B8", fontSize:11, cursor:"pointer" }}>📥 Inbox</button>
+                  </div>
+                </div>
+
+                {/* ── Tab bar ── */}
+                <div style={{ display:"flex", gap:8, marginBottom:20, overflowX:"auto", paddingBottom:4 }}>
+                  {tabDef.map(([id, icon, label, col]) => tabBtn(id, icon, label, col))}
+                </div>
+
+                {/* Modals */}
+                {aguaNovoResModal && (
+                  <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setAguaNovoResModal(false)}>
+                    <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:14, padding:28, width:440 }} onClick={e=>e.stopPropagation()}>
+                      <div style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>🗂️ Novo Reservatório</div>
+                      {[["Nome","text","nome","Ex: Bloco B"],["Local","text","local","Ex: Cobertura"],["Capacidade (L)","number","capacidade","Ex: 50000"],["ID Dispositivo (MAC)","text","mac","F8:83:87:00:00:00"]].map(([label,type,field,ph])=>(
+                        <div key={field} style={{ marginBottom:12 }}>
+                          <div style={{ fontSize:11, color:"#475569", marginBottom:4 }}>{label}</div>
+                          <input type={type} value={(aguaNovoResForm as any)[field]} onChange={e=>setAguaNovoResForm(f=>({...f,[field]:e.target.value}))} placeholder={ph} style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" }}/>
+                        </div>
+                      ))}
+                      <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:8 }}>
+                        <button onClick={()=>setAguaNovoResModal(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 16px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                        <button onClick={()=>{ setAguaNovoResForm({nome:"",local:"",capacidade:"",mac:""}); setAguaNovoResModal(false); }} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 20px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>Salvar</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {aguaNovaLeitModal && (
+                  <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setAguaNovaLeitModal(false)}>
+                    <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:14, padding:28, width:420 }} onClick={e=>e.stopPropagation()}>
+                      <div style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>📋 Nova Leitura</div>
+                      {[["Nível (%)","number","nivel","0–100"],["Distância sensor (cm)","number","distancia","Ex: 55"],["Observação","text","obs","Opcional"]].map(([label,type,field,ph])=>(
+                        <div key={field} style={{ marginBottom:12 }}>
+                          <div style={{ fontSize:11, color:"#475569", marginBottom:4 }}>{label}</div>
+                          <input type={type} value={(aguaNovaLeitForm as any)[field]} onChange={e=>setAguaNovaLeitForm(f=>({...f,[field]:e.target.value}))} placeholder={ph} style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" }}/>
+                        </div>
+                      ))}
+                      <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:8 }}>
+                        <button onClick={()=>setAguaNovaLeitModal(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 16px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                        <button onClick={()=>{
+                          if (!aguaNovaLeitForm.nivel) return;
+                          const now = new Date();
+                          const nv = Number(aguaNovaLeitForm.nivel);
+                          setAguaLeituras(prev=>[{
+                            id:`l${Date.now()}`, res:aguaNovaLeitForm.reservatorio, nivel:nv,
+                            volume:Math.round(nv/100*CAPACIDADE), dist:Number(aguaNovaLeitForm.distancia)||0,
+                            data:`${String(now.getDate()).padStart(2,"0")}/${String(now.getMonth()+1).padStart(2,"0")}/${now.getFullYear()}`,
+                            hora:`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`,
+                            fonte:"Manual",
+                          },...prev]);
+                          setAguaNovaLeitForm({reservatorio:"Bloco A",nivel:"",distancia:"",obs:""});
+                          setAguaNovaLeitModal(false);
+                        }} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 20px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>Salvar</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ════════════════════════════════════════════════════
+                    ABA: RESERVATÓRIOS
+                ════════════════════════════════════════════════════ */}
+                {aguaTab === "reservatorios" && (
+                  <div>
+                    {/* IoT Sensor Grid (existing) */}
+                    {sensores.length > 0 && (
+                      <div style={{ marginBottom:16 }}>
+                        <div style={{ fontSize:11, color:"#475569", fontWeight:600, marginBottom:10 }}>📡 SENSORES IoT EM TEMPO REAL <span style={{ color:"#334155", fontWeight:400 }}>↻ 10s</span></div>
+                        <div className="sensor-grid">
+                          {sensores.map(s => <SensorRing key={s.id} sensor={s} />)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Reservoir card matching the image */}
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(59,130,246,.25)", borderRadius:12, padding:"16px 20px", maxWidth:500 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+                        <div style={{ fontSize:15, fontWeight:800 }}>Bloco A</div>
+                        <div style={{ display:"flex", gap:6 }}>
+                          <span style={{ background:"rgba(16,185,129,.15)", color:"#10B981", border:"1px solid rgba(16,185,129,.3)", borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:700 }}>✅ IoT</span>
+                          <span style={{ background:"rgba(59,130,246,.15)", color:"#3B82F6", border:"1px solid rgba(59,130,246,.3)", borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:700 }}>{(CAPACIDADE/1000).toFixed(0)}k L</span>
+                        </div>
+                      </div>
+                      <div style={{ fontSize:11, color:"#475569", marginBottom:12, display:"flex", alignItems:"center", gap:4 }}>📍 Bloco A</div>
+                      <div style={{ fontSize:11, color:"#475569", marginBottom:14 }}>Capacidade: {CAPACIDADE.toLocaleString("pt-BR")} L</div>
+
+                      {[
+                        ["Protocolo",            "HTTPS POST"],
+                        ["Porta",                "443"],
+                        ["ID Dispositivo (MAC)", "F8:83:87:90:9F:78"],
+                        ["Ultima Leitura",       `${ultimaLeit?.nivel || 45}%`],
+                        ["Ultima Sinc.",         `${ultimaLeit?.data || "08/02/2026"}, ${ultimaLeit?.hora || "19:37:30"}`],
+                        ["Webhook",              "/api/webhook/sensor"],
+                        ["Cloudflare",           "https://imobcore1.fasil..."],
+                      ].map(([l,v])=>(
+                        <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:11 }}>
+                          <span style={{ color:"#475569" }}>{l}</span>
+                          <span style={{ color:l==="Ultima Leitura"?"#3B82F6":"#94A3B8", fontWeight:600, fontFamily:"monospace" }}>{v}</span>
+                        </div>
+                      ))}
+
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginTop:16, padding:"12px 0", borderTop:"1px solid rgba(255,255,255,.06)" }}>
+                        {[
+                          { label:"NÍVEL",     val:`${ultimaLeit?.nivel || 45}%`,                           color:"#3B82F6" },
+                          { label:"VOLUME",    val:`${(ultimaLeit?.volume || 22500).toLocaleString("pt-BR")}L`, color:"#06B6D4" },
+                          { label:"DISTÂNCIA", val:`${ultimaLeit?.dist || 55}cm`,                            color:"#A5B4FC" },
+                        ].map(k=>(
+                          <div key={k.label} style={{ textAlign:"center" }}>
+                            <div style={{ fontSize:9, color:"#475569", marginBottom:4, letterSpacing:1 }}>{k.label}</div>
+                            <div style={{ fontSize:18, fontWeight:800, color:k.color }}>{k.val}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ textAlign:"center", fontSize:9, color:"#334155", marginTop:4 }}>sensor_agua | {ultimaLeit?.data || "08/02/2026"}, {ultimaLeit?.hora || "19:37:30"}</div>
+
+                      {/* Nivel bar */}
+                      <div style={{ marginTop:12 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"#475569", marginBottom:4 }}>
+                          <span>Nível atual</span><span style={{ fontWeight:700, color:(ultimaLeit?.nivel||45)<30?"#EF4444":(ultimaLeit?.nivel||45)<50?"#F59E0B":"#10B981" }}>{ultimaLeit?.nivel||45}%</span>
+                        </div>
+                        <div style={{ height:8, background:"rgba(255,255,255,.06)", borderRadius:4 }}>
+                          <div style={{ width:`${ultimaLeit?.nivel||45}%`, height:"100%", background:(ultimaLeit?.nivel||45)<30?"#EF4444":(ultimaLeit?.nivel||45)<50?"#F59E0B":"#3B82F6", borderRadius:4, transition:"width .5s" }}/>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ════════════════════════════════════════════════════
+                    ABA: LEITURAS
+                ════════════════════════════════════════════════════ */}
+                {aguaTab === "leituras" && (
+                  <div>
+                    <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:14 }}>
+                      <button onClick={()=>setAguaNovaLeitModal(true)} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 16px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>+ Nova Leitura</button>
+                    </div>
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, overflow:"hidden" }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 80px 90px 80px 70px 60px", gap:0, padding:"10px 16px", borderBottom:"1px solid rgba(255,255,255,.08)", fontSize:10, color:"#475569", fontWeight:600, letterSpacing:.5 }}>
+                        <span>RESERVATÓRIO</span><span style={{ textAlign:"right" }}>NÍVEL</span><span style={{ textAlign:"right" }}>VOLUME</span><span style={{ textAlign:"right" }}>DISTÂNCIA</span><span style={{ textAlign:"center" }}>FONTE</span><span style={{ textAlign:"right" }}>DATA</span>
+                      </div>
+                      {aguaLeituras.map((l, i) => (
+                        <div key={l.id} style={{ display:"grid", gridTemplateColumns:"1fr 80px 90px 80px 70px 60px", gap:0, padding:"11px 16px", borderBottom: i<aguaLeituras.length-1?"1px solid rgba(255,255,255,.04)":"none", fontSize:12, alignItems:"center" }}>
+                          <div>
+                            <div style={{ fontWeight:600 }}>{l.res}</div>
+                            <div style={{ fontSize:10, color:"#475569" }}>{l.data}, {l.hora}</div>
+                          </div>
+                          <div style={{ textAlign:"right", fontWeight:700, color:l.nivel<30?"#EF4444":l.nivel<50?"#F59E0B":"#3B82F6" }}>{l.nivel}%</div>
+                          <div style={{ textAlign:"right", color:"#06B6D4", fontWeight:600 }}>{l.volume.toLocaleString("pt-BR")}L</div>
+                          <div style={{ textAlign:"right", color:"#A5B4FC" }}>{l.dist}cm</div>
+                          <div style={{ textAlign:"center" }}>
+                            <span style={{ background:l.fonte==="IoT"?"rgba(16,185,129,.15)":"rgba(99,102,241,.15)", color:l.fonte==="IoT"?"#10B981":"#A5B4FC", borderRadius:6, padding:"2px 7px", fontSize:10, fontWeight:700 }}>{l.fonte}</span>
+                          </div>
+                          <div style={{ textAlign:"right", fontSize:10, color:"#475569" }}>{l.data}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop:12, display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
+                      {[
+                        { label:"Média de Nível", val:`${Math.round(aguaLeituras.reduce((s,l)=>s+l.nivel,0)/aguaLeituras.length)}%`, color:"#3B82F6" },
+                        { label:"Maior Volume",   val:`${Math.max(...aguaLeituras.map(l=>l.volume)).toLocaleString("pt-BR")}L`, color:"#10B981" },
+                        { label:"Menor Nível",    val:`${Math.min(...aguaLeituras.map(l=>l.nivel))}%`, color:"#F59E0B" },
+                      ].map(k=>(
+                        <div key={k.label} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"12px 14px" }}>
+                          <div style={{ fontSize:10, color:"#475569", marginBottom:3 }}>{k.label}</div>
+                          <div style={{ fontSize:18, fontWeight:800, color:k.color }}>{k.val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ════════════════════════════════════════════════════
+                    ABA: HIDRÔMETRO
+                ════════════════════════════════════════════════════ */}
+                {aguaTab === "hidrometro" && (
+                  <div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:20 }}>
+                      <div style={{ background:"rgba(59,130,246,.08)", border:"1px solid rgba(59,130,246,.2)", borderRadius:12, padding:"20px" }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:8, fontWeight:600 }}>🔵 HIDRÔMETRO PRINCIPAL</div>
+                        {[
+                          ["Modelo",         "ZENNER MTK-I 1½\""],
+                          ["Número de série","HM-9847213"],
+                          ["Instalação",     "Jan/2022"],
+                          ["Leitura atual",  "3.421 m³"],
+                          ["Última leitura", "15/03/2026"],
+                          ["Tarifa CASAN",   "R$ 3,50/m³"],
+                        ].map(([l,v])=>(
+                          <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.05)", fontSize:12 }}>
+                            <span style={{ color:"#475569" }}>{l}</span>
+                            <span style={{ color:"#E2E8F0", fontWeight:600 }}>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"20px" }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:12, fontWeight:600 }}>📅 HISTÓRICO DE CONSUMO</div>
+                        {aguaHidroLeituras.map(h=>(
+                          <div key={h.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:12 }}>
+                            <div>
+                              <div style={{ fontWeight:600 }}>{h.mes}</div>
+                              <div style={{ fontSize:10, color:"#475569" }}>{h.data}</div>
+                            </div>
+                            <div style={{ textAlign:"right" }}>
+                              <div style={{ color:"#3B82F6", fontWeight:700 }}>{h.m3} m³</div>
+                              <div style={{ fontSize:10, color:"#475569" }}>R$ {h.custo}</div>
+                            </div>
+                          </div>
+                        ))}
+                        <div style={{ marginTop:12, padding:"8px 0", borderTop:"1px solid rgba(255,255,255,.06)", display:"flex", justifyContent:"space-between", fontSize:12 }}>
+                          <span style={{ color:"#475569" }}>Média mensal</span>
+                          <span style={{ color:"#10B981", fontWeight:700 }}>{Math.round(aguaHidroLeituras.reduce((s,h)=>s+h.m3,0)/aguaHidroLeituras.length)} m³</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Visual gauge */}
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px 20px" }}>
+                      <div style={{ fontSize:11, color:"#475569", fontWeight:600, marginBottom:14 }}>📊 CONSUMO MENSAL (m³)</div>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <BarChart data={aguaHidroLeituras.slice().reverse()} margin={{ top:4, right:10, bottom:4, left:0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" vertical={false}/>
+                          <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                          <YAxis tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false} width={40}/>
+                          <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} formatter={(v:number)=>[`${v} m³`,"Consumo"]}/>
+                          <Bar dataKey="m3" fill="#3B82F6" radius={[4,4,0,0]} name="Consumo (m³)"/>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+
+                {/* ════════════════════════════════════════════════════
+                    ABA: HISTÓRICO
+                ════════════════════════════════════════════════════ */}
+                {aguaTab === "historico" && (
+                  <div>
+                    <div style={{ fontSize:11, color:"#475569", marginBottom:10, fontWeight:600 }}>📈 EVOLUÇÃO DO NÍVEL — ÚLTIMAS LEITURAS</div>
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px", marginBottom:16 }}>
+                      <ResponsiveContainer width="100%" height={240}>
+                        <LineChart data={[...aguaLeituras].reverse().map(l=>({ nome:`${l.data.slice(0,5)} ${l.hora.slice(0,5)}`, nivel:l.nivel, volume:l.volume/1000 }))} margin={{ top:4, right:10, bottom:4, left:0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)"/>
+                          <XAxis dataKey="nome" tick={{ fontSize:8, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                          <YAxis yAxisId="left" tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} width={35} tickFormatter={(v:number)=>`${v}%`}/>
+                          <YAxis yAxisId="right" orientation="right" tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} width={40} tickFormatter={(v:number)=>`${v}k`}/>
+                          <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }}/>
+                          <Legend wrapperStyle={{ fontSize:10 }}/>
+                          <Line yAxisId="left" type="monotone" dataKey="nivel" stroke="#3B82F6" strokeWidth={2} dot={{ r:3 }} name="Nível (%)"/>
+                          <Line yAxisId="right" type="monotone" dataKey="volume" stroke="#06B6D4" strokeWidth={2} dot={{ r:3 }} name="Volume (kL)"/>
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
+                      {[
+                        { label:"Nível Máximo",  val:`${Math.max(...aguaLeituras.map(l=>l.nivel))}%`,                                          color:"#10B981" },
+                        { label:"Nível Mínimo",  val:`${Math.min(...aguaLeituras.map(l=>l.nivel))}%`,                                          color:"#EF4444" },
+                        { label:"Nível Médio",   val:`${Math.round(aguaLeituras.reduce((s,l)=>s+l.nivel,0)/aguaLeituras.length)}%`,            color:"#3B82F6" },
+                        { label:"Vol. Médio",    val:`${(Math.round(aguaLeituras.reduce((s,l)=>s+l.volume,0)/aguaLeituras.length)/1000).toFixed(1)}k L`, color:"#06B6D4" },
+                      ].map(k=>(
+                        <div key={k.label} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"12px 14px" }}>
+                          <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
+                          <div style={{ fontSize:20, fontWeight:800, color:k.color }}>{k.val}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ════════════════════════════════════════════════════
+                    ABA: FORNECEDORA
+                ════════════════════════════════════════════════════ */}
+                {aguaTab === "fornecedora" && (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"18px 20px" }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#3B82F6", marginBottom:14 }}>🏢 DADOS DA CONCESSIONÁRIA</div>
+                      {[
+                        ["Nome",         "CASAN – Cia. Catarinense de Águas e Saneamento"],
+                        ["CNPJ",         "82.508.433/0001-17"],
+                        ["Sede",         "Florianópolis – SC"],
+                        ["Telefone",     "(48) 3331-2000"],
+                        ["Emergência",   "0800 644 0195 (24h)"],
+                        ["Site",         "casan.com.br"],
+                        ["Número conta", "CA-48219-3"],
+                        ["Vencimento",   "Todo dia 15"],
+                      ].map(([l,v])=>(
+                        <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:12 }}>
+                          <span style={{ color:"#475569" }}>{l}</span>
+                          <span style={{ color:"#E2E8F0", fontWeight:600, maxWidth:"55%", textAlign:"right", fontSize:11 }}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"18px 20px", marginBottom:12 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#10B981", marginBottom:14 }}>💰 TARIFAS VIGENTES</div>
+                        {[
+                          ["Tarifa básica (0–10 m³)",  "R$ 35,00 (fixo)"],
+                          ["Tarifa residencial",        "R$ 3,50/m³"],
+                          ["Tarifa comercial (Bloco)","R$ 5,80/m³"],
+                          ["Esgoto (% sobre água)",   "80%"],
+                          ["Taxa saneamento",          "R$ 12,00/mês"],
+                        ].map(([l,v])=>(
+                          <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:12 }}>
+                            <span style={{ color:"#475569" }}>{l}</span>
+                            <span style={{ color:"#10B981", fontWeight:700 }}>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px 20px" }}>
+                        <div style={{ fontSize:11, color:"#F59E0B", fontWeight:700, marginBottom:10 }}>📅 ÚLTIMAS FATURAS</div>
+                        {aguaHidroLeituras.slice(0,4).map(h=>(
+                          <div key={h.id} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:12 }}>
+                            <span style={{ color:"#94A3B8" }}>{h.mes}</span>
+                            <div style={{ textAlign:"right" }}>
+                              <span style={{ color:"#F59E0B", fontWeight:700 }}>R$ {h.custo}</span>
+                              <span style={{ color:"#475569", marginLeft:8, fontSize:10 }}>{h.m3}m³</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ════════════════════════════════════════════════════
+                    ABA: ALERTAS INTELIGENTES
+                ════════════════════════════════════════════════════ */}
+                {aguaTab === "alertas" && (
+                  <div>
+                    <div style={{ fontSize:12, color:"#475569", marginBottom:16 }}>Alertas gerados automaticamente com base no nível dos reservatórios, consumo e padrões históricos.</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                      {[
+                        { nivel:"alto",  icone:"⚠️", titulo:"Nível crítico detectado em 04/02/2026", desc:"Reservatório Bloco A atingiu 35% (< 40%). Avalie reposição ou redução de consumo.", acao:"Ver histórico", abaAlvo:"historico" as typeof aguaTab },
+                        { nivel:"medio", icone:"📈", titulo:"Consumo acima da média em Março",       desc:"Mar/26 apresenta consumo 5% acima de Fev/26. Possível vazamento ou uso excessivo.", acao:"Ver hidrômetro", abaAlvo:"hidrometro" as typeof aguaTab },
+                        { nivel:"medio", icone:"🔧", titulo:"Revisão preventiva do hidrômetro",      desc:"Último calibração há mais de 12 meses. Agende visita técnica com a CASAN.", acao:null, abaAlvo:null },
+                        { nivel:"baixo", icone:"💧", titulo:"Nível estável nos últimos 7 dias",      desc:"Nível médio de 48% — dentro do parâmetro ideal (40–70%).", acao:null, abaAlvo:null },
+                        { nivel:"baixo", icone:"✅", titulo:"Última sincronização IoT OK",            desc:"Sensor F8:83:87:90:9F:78 sincronizando normalmente a cada 10 segundos.", acao:"Ver reservatórios", abaAlvo:"reservatorios" as typeof aguaTab },
+                      ].map((a,i)=>{
+                        const nc = { alto:"#EF4444", medio:"#F59E0B", baixo:"#10B981" }[a.nivel] || "#475569";
+                        return (
+                          <div key={i} style={{ background:"rgba(255,255,255,.02)", border:`1px solid ${nc}22`, borderRadius:12, padding:"14px 18px", display:"flex", gap:14, alignItems:"flex-start" }}>
+                            <div style={{ width:40, height:40, borderRadius:"50%", background:`${nc}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{a.icone}</div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
+                                <div style={{ fontSize:13, fontWeight:700 }}>{a.titulo}</div>
+                                <span style={{ background:`${nc}18`, color:nc, border:`1px solid ${nc}33`, borderRadius:12, padding:"2px 8px", fontSize:10, fontWeight:700, whiteSpace:"nowrap" }}>{a.nivel}</span>
+                              </div>
+                              <div style={{ fontSize:12, color:"#64748B", lineHeight:1.5 }}>{a.desc}</div>
+                              {a.acao && a.abaAlvo && (
+                                <div style={{ marginTop:8 }}>
+                                  <span style={{ fontSize:11, color:"#3B82F6", cursor:"pointer", textDecoration:"underline" }} onClick={()=>setAguaTab(a.abaAlvo!)}>{a.acao} →</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* PANEL: MISP */}
           <div className={`panel ${panel === "misp" ? "active" : ""} card`}>
