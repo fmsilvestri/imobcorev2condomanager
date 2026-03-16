@@ -9,13 +9,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const useDirectKey = !!process.env.ANTHROPIC_API_KEY;
-const anthropic = new Anthropic({
-  apiKey: useDirectKey
-    ? process.env.ANTHROPIC_API_KEY!
-    : (process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || ""),
-  ...(useDirectKey ? {} : { baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL }),
-});
+// Prefer user's direct ANTHROPIC_API_KEY; fall back to Replit AI integration
+const directKey = process.env.ANTHROPIC_API_KEY?.startsWith("sk-ant-") ? process.env.ANTHROPIC_API_KEY : null;
+const anthropic = directKey
+  ? new Anthropic({ apiKey: directKey })
+  : new Anthropic({
+      apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || "",
+      baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+    });
 
 // SSE clients set
 const sseClients = new Set<Response>();
