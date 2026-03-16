@@ -380,9 +380,10 @@ export default function App() {
   const [obLoading, setObLoading] = useState(false);
   const [obIsReset, setObIsReset] = useState(false);
   // Step 1: Condomínio básico
-  const [obCondo, setObCondo] = useState({ nome: "", cidade: "", sindico_nome: "", sindico_email: "", sindico_tel: "" });
+  const [obCondo, setObCondo] = useState({ nome: "", cnpj: "", endereco: "", cidade: "", estado: "SC", sindico_nome: "", sindico_email: "", sindico_tel: "", unidades: "84" });
+  const [obSavedCondoId, setObSavedCondoId] = useState<string | null>(null);
   // Step 2: Infraestrutura
-  const [obInfra, setObInfra] = useState({ unidades: "84", moradores: "168", andares: "10", torres: "2", churrasqueira: true, salao: true, piscina: true, academia: false, playground: false, coworking: false });
+  const [obInfra, setObInfra] = useState({ moradores: "168", andares: "10", torres: "2", churrasqueira: true, salao: true, piscina: true, academia: false, playground: false, coworking: false });
   // Step 3: Sensores IoT
   const [obSensors, setObSensors] = useState([
     { sensor_id: "sensor_cisterna", nome: "Cisterna Principal", local: "Subsolo", capacidade_litros: "20000", nivel_atual: "80" },
@@ -424,8 +425,9 @@ export default function App() {
         setCondId(d.condominios[0].id);
         // Pre-fill onboarding with existing condo data for reconfiguration
         const c = d.condominios[0];
-        setObCondo({ nome: c.nome || "", cidade: c.cidade || "", sindico_nome: c.sindico_nome || "", sindico_email: "", sindico_tel: "" });
-        setObInfra(p => ({ ...p, unidades: String(c.unidades || "84"), moradores: String(c.moradores || "168") }));
+        setObCondo({ nome: c.nome || "", cnpj: "", endereco: "", cidade: c.cidade || "", estado: "SC", sindico_nome: c.sindico_nome || "", sindico_email: "", sindico_tel: "", unidades: String(c.unidades || "84") });
+        setObSavedCondoId(c.id);
+        setObInfra(p => ({ ...p, moradores: String(c.moradores || "168") }));
       } else {
         // No condo configured — go to onboarding automatically
         setView("onboarding");
@@ -444,7 +446,8 @@ export default function App() {
         sindico_nome: obCondo.sindico_nome,
         sindico_email: obCondo.sindico_email,
         sindico_tel: obCondo.sindico_tel,
-        unidades: Number(obInfra.unidades), moradores: Number(obInfra.moradores),
+        condominio_id: obSavedCondoId || undefined,
+        unidades: Number(obCondo.unidades), moradores: Number(obInfra.moradores),
         andares: Number(obInfra.andares), torres: Number(obInfra.torres),
         amenidades: Object.entries(obInfra).filter(([k, v]) => typeof v === "boolean" && v).map(([k]) => k),
         sensores: obSensors.map(s => ({ ...s, capacidade_litros: Number(s.capacidade_litros), nivel_atual: Number(s.nivel_atual) })),
@@ -466,7 +469,7 @@ export default function App() {
       setObStep(0);
     } catch { showToast("Erro ao ativar ImobCore", "error"); }
     setObLoading(false);
-  }, [obCondo, obInfra, obSensors, obSaldo, obTaxaMensal, obVencimento, obMisp, obIA, obIsReset, showToast, loadDashboard]);
+  }, [obCondo, obInfra, obSensors, obSaldo, obTaxaMensal, obVencimento, obMisp, obIA, obIsReset, obSavedCondoId, showToast, loadDashboard]);
 
   // ── SSE ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -611,10 +614,35 @@ export default function App() {
     { icon: "🚀", label: "Ativação" },
   ];
 
-  const obNextStep = () => {
-    if (obStep === 1 && !obCondo.nome.trim()) { showToast("Informe o nome do condomínio", "warn"); return; }
+  const obNextStep = useCallback(async () => {
+    // Validations per step
+    if (obStep === 1) {
+      if (!obCondo.nome.trim()) { showToast("Nome do condomínio é obrigatório", "warn"); return; }
+      if (!obCondo.sindico_nome.trim()) { showToast("Nome do síndico é obrigatório", "warn"); return; }
+      if (!obCondo.sindico_email.trim()) { showToast("E-mail do síndico é obrigatório", "warn"); return; }
+      if (!obCondo.unidades || Number(obCondo.unidades) < 1) { showToast("Total de unidades é obrigatório", "warn"); return; }
+
+      // Save to Supabase via POST /api/condominios
+      setObLoading(true);
+      try {
+        const payload = {
+          id: obSavedCondoId || undefined,
+          nome: obCondo.nome, cnpj: obCondo.cnpj, endereco: obCondo.endereco,
+          cidade: obCondo.cidade, estado: obCondo.estado,
+          sindico_nome: obCondo.sindico_nome, sindico_email: obCondo.sindico_email,
+          sindico_tel: obCondo.sindico_tel, unidades: Number(obCondo.unidades),
+        };
+        const r = await fetch("/api/condominios", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        const res = await r.json();
+        if (!r.ok) { showToast("Erro ao salvar: " + res.error, "error"); setObLoading(false); return; }
+        setObSavedCondoId(res.condominio?.id || null);
+        showToast("✅ Condomínio salvo!", "success");
+      } catch { showToast("Erro ao salvar condomínio", "error"); setObLoading(false); return; }
+      setObLoading(false);
+    }
     setObStep(s => Math.min(s + 1, OB_STEPS.length - 1));
-  };
+  }, [obStep, obCondo, obSavedCondoId, showToast]);
+
   const obPrevStep = () => setObStep(s => Math.max(s - 1, 0));
 
   const renderOnboarding = () => {
@@ -635,7 +663,7 @@ export default function App() {
 
     return (
       <div className="ob-wrap" style={{ overflowY: "auto", marginTop: "var(--topbar-h)" }}>
-        <div className="ob-card">
+        <div className="ob-card" style={{ maxWidth: obStep === 1 ? 920 : undefined }}>
 
           {/* ── Hero ── */}
           <div className="ob-hero">
@@ -743,31 +771,148 @@ export default function App() {
 
             {/* ════ STEP 1: Condomínio ════ */}
             {obStep === 1 && (
-              <div style={{ animation: "fadeIn .25s ease" }}>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🏢 Dados do Condomínio</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Informações básicas e responsável pela gestão</div>
-                <div className="form-group">
-                  <label className="form-label">Nome do Condomínio *</label>
-                  <input className="form-control" value={obCondo.nome} onChange={e => setObCondo(c => ({ ...c, nome: e.target.value }))} placeholder="Ex: Residencial Parque das Flores" autoFocus />
+              <div style={{ animation: "fadeIn .25s ease", display: "grid", gridTemplateColumns: "1fr 300px", gap: 24, alignItems: "start" }}>
+
+                {/* ── Formulário ── */}
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 2 }}>🏢 Dados do Condomínio</div>
+                  <div style={{ fontSize: 12, color: "#64748B", marginBottom: 16 }}>Campos com * são obrigatórios</div>
+
+                  <div className="form-group">
+                    <label className="form-label">Nome do Condomínio *</label>
+                    <input className="form-control" value={obCondo.nome} autoFocus
+                      onChange={e => setObCondo(c => ({ ...c, nome: e.target.value }))}
+                      placeholder="Ex: Residencial Parque das Flores" />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div className="form-group">
+                      <label className="form-label">CNPJ</label>
+                      <input className="form-control" value={obCondo.cnpj}
+                        onChange={e => setObCondo(c => ({ ...c, cnpj: e.target.value }))}
+                        placeholder="00.000.000/0001-00" />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Total de Unidades *</label>
+                      <input className="form-control" type="number" min="1" value={obCondo.unidades}
+                        onChange={e => setObCondo(c => ({ ...c, unidades: e.target.value }))}
+                        placeholder="84" />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Endereço Completo</label>
+                    <input className="form-control" value={obCondo.endereco}
+                      onChange={e => setObCondo(c => ({ ...c, endereco: e.target.value }))}
+                      placeholder="Rua das Flores, 123 — Bairro Jardim" />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: 10 }}>
+                    <div className="form-group">
+                      <label className="form-label">Cidade</label>
+                      <input className="form-control" value={obCondo.cidade}
+                        onChange={e => setObCondo(c => ({ ...c, cidade: e.target.value }))}
+                        placeholder="Florianópolis" />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Estado</label>
+                      <input className="form-control" value={obCondo.estado} maxLength={2}
+                        onChange={e => setObCondo(c => ({ ...c, estado: e.target.value.toUpperCase() }))}
+                        placeholder="SC" style={{ textTransform: "uppercase" }} />
+                    </div>
+                  </div>
+
+                  <div style={{ height: 1, background: "rgba(255,255,255,.06)", margin: "12px 0" }} />
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 10 }}>👤 Responsável pela Gestão</div>
+
+                  <div className="form-group">
+                    <label className="form-label">Nome do Síndico *</label>
+                    <input className="form-control" value={obCondo.sindico_nome}
+                      onChange={e => setObCondo(c => ({ ...c, sindico_nome: e.target.value }))}
+                      placeholder="Ex: Ricardo Gestor" />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div className="form-group">
+                      <label className="form-label">E-mail *</label>
+                      <input className="form-control" type="email" value={obCondo.sindico_email}
+                        onChange={e => setObCondo(c => ({ ...c, sindico_email: e.target.value }))}
+                        placeholder="sindico@condo.com.br" />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Telefone / WhatsApp</label>
+                      <input className="form-control" value={obCondo.sindico_tel}
+                        onChange={e => setObCondo(c => ({ ...c, sindico_tel: e.target.value }))}
+                        placeholder="(48) 99999-0000" />
+                    </div>
+                  </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                  <div className="form-group">
-                    <label className="form-label">Cidade</label>
-                    <input className="form-control" value={obCondo.cidade} onChange={e => setObCondo(c => ({ ...c, cidade: e.target.value }))} placeholder="Ex: Florianópolis" />
+
+                {/* ── Preview Card (live) ── */}
+                <div style={{ position: "sticky", top: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
+                    Preview em tempo real
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Nome do Síndico</label>
-                    <input className="form-control" value={obCondo.sindico_nome} onChange={e => setObCondo(c => ({ ...c, sindico_nome: e.target.value }))} placeholder="Ex: Ricardo Gestor" />
+                  <div style={{ background: "linear-gradient(135deg,rgba(99,102,241,.15),rgba(56,189,248,.1))", border: "1px solid rgba(99,102,241,.25)", borderRadius: 16, padding: "20px 16px", minHeight: 280 }}>
+                    {/* Building icon */}
+                    <div style={{ fontSize: 36, marginBottom: 10, textAlign: "center" }}>🏢</div>
+
+                    {/* Name */}
+                    <div style={{ fontSize: 14, fontWeight: 800, color: obCondo.nome ? "#F1F5F9" : "#334155", textAlign: "center", marginBottom: 4, minHeight: 20, wordBreak: "break-word" }}>
+                      {obCondo.nome || "Nome do Condomínio"}
+                    </div>
+
+                    {/* Cidade/Estado */}
+                    {(obCondo.cidade || obCondo.estado) && (
+                      <div style={{ fontSize: 11, color: "#64748B", textAlign: "center", marginBottom: 12 }}>
+                        📍 {[obCondo.cidade, obCondo.estado].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
+
+                    {/* Divider */}
+                    <div style={{ height: 1, background: "rgba(255,255,255,.07)", margin: "10px 0" }} />
+
+                    {/* Details */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {[
+                        ["🏠", "Unidades", obCondo.unidades ? `${obCondo.unidades} unidades` : "–"],
+                        ["👤", "Síndico", obCondo.sindico_nome || "–"],
+                        obCondo.sindico_email ? ["✉️", "E-mail", obCondo.sindico_email] : null,
+                        obCondo.sindico_tel ? ["📞", "Telefone", obCondo.sindico_tel] : null,
+                        obCondo.cnpj ? ["🏛️", "CNPJ", obCondo.cnpj] : null,
+                        obCondo.endereco ? ["📌", "End.", obCondo.endereco] : null,
+                      ].filter(Boolean).map((row) => {
+                        const [ic, lbl, val] = row as string[];
+                        return (
+                          <div key={lbl} style={{ display: "flex", gap: 6, alignItems: "flex-start", fontSize: 11 }}>
+                            <span style={{ flexShrink: 0 }}>{ic}</span>
+                            <span style={{ color: "#64748B", flexShrink: 0 }}>{lbl}:</span>
+                            <span style={{ color: "#CBD5E1", fontWeight: 500, wordBreak: "break-all" }}>{val}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Status badge */}
+                    <div style={{ marginTop: 14, textAlign: "center" }}>
+                      {obCondo.nome && obCondo.sindico_nome && obCondo.sindico_email && obCondo.unidades ? (
+                        <span style={{ fontSize: 10, padding: "4px 10px", borderRadius: 20, background: "rgba(16,185,129,.15)", border: "1px solid rgba(16,185,129,.3)", color: "#6EE7B7" }}>
+                          ✓ Pronto para salvar
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: 10, padding: "4px 10px", borderRadius: 20, background: "rgba(100,116,139,.1)", border: "1px solid rgba(100,116,139,.2)", color: "#475569" }}>
+                          Preencha os campos obrigatórios
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">E-mail do Síndico</label>
-                    <input className="form-control" type="email" value={obCondo.sindico_email} onChange={e => setObCondo(c => ({ ...c, sindico_email: e.target.value }))} placeholder="sindico@condo.com.br" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Telefone / WhatsApp</label>
-                    <input className="form-control" value={obCondo.sindico_tel} onChange={e => setObCondo(c => ({ ...c, sindico_tel: e.target.value }))} placeholder="(48) 99999-0000" />
-                  </div>
+                  {obSavedCondoId && (
+                    <div style={{ marginTop: 8, fontSize: 11, color: "#10B981", textAlign: "center" }}>
+                      ✅ Salvo no Supabase
+                    </div>
+                  )}
                 </div>
+
               </div>
             )}
 
@@ -778,7 +923,6 @@ export default function App() {
                 <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Estrutura física e áreas comuns do condomínio</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20 }}>
                   {[
-                    ["Unidades", "unidades", "84"],
                     ["Moradores", "moradores", "168"],
                     ["Andares", "andares", "10"],
                     ["Torres / Blocos", "torres", "2"],
@@ -862,9 +1006,9 @@ export default function App() {
                 <div style={{ background: "rgba(16,185,129,.05)", border: "1px solid rgba(16,185,129,.12)", borderRadius: 10, padding: 14 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: "#6EE7B7", marginBottom: 6 }}>📊 Receita mensal estimada</div>
                   <div style={{ fontSize: 20, fontWeight: 800, color: "#10B981" }}>
-                    R$ {(Number(obTaxaMensal || 0) * Number(obInfra.unidades || 0)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    R$ {(Number(obTaxaMensal || 0) * Number(obCondo.unidades || 0)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                   </div>
-                  <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{obInfra.unidades} unidades × R$ {Number(obTaxaMensal || 0).toLocaleString("pt-BR")}/mês</div>
+                  <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{obCondo.unidades} unidades × R$ {Number(obTaxaMensal || 0).toLocaleString("pt-BR")}/mês</div>
                 </div>
               </div>
             )}
@@ -923,9 +1067,9 @@ export default function App() {
                     ["🏢", "Condomínio", obCondo.nome || "–"],
                     ["📍", "Cidade", obCondo.cidade || "–"],
                     ["👤", "Síndico", obCondo.sindico_nome || "–"],
-                    ["🏗️", "Torres / Andares", `${obInfra.torres} / ${obInfra.andares}`],
-                    ["🏠", "Unidades", obInfra.unidades],
+                    ["🏠", "Unidades", obCondo.unidades],
                     ["👥", "Moradores", obInfra.moradores],
+                    ["🏗️", "Torres / Andares", `${obInfra.torres} / ${obInfra.andares}`],
                     ["💧", "Sensores IoT", `${obSensors.length} configurados`],
                     ["💰", "Saldo Inicial", `R$ ${Number(obSaldo || 0).toLocaleString("pt-BR")}`],
                     ["📆", "Taxa Mensal", `R$ ${Number(obTaxaMensal || 0).toLocaleString("pt-BR")} — dia ${obVencimento}`],
@@ -968,7 +1112,9 @@ export default function App() {
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <span style={{ fontSize: 12, color: "#334155" }}>{obStep + 1} / {OB_STEPS.length}</span>
               {obStep > 0 && obStep < OB_STEPS.length - 1 && (
-                <button className="btn-ob-next" onClick={obNextStep}>Próximo →</button>
+                <button className="btn-ob-next" onClick={obNextStep} disabled={obLoading}>
+                  {obLoading && obStep === 1 ? "💾 Salvando..." : obStep === 1 ? "💾 Salvar e continuar →" : "Próximo →"}
+                </button>
               )}
             </div>
           </div>

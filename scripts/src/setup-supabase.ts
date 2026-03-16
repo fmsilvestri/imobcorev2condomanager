@@ -29,17 +29,44 @@ async function run() {
     process.exit(1);
   }
 
-  console.log("✅ Tables detected! Seeding demo data...\n");
+  console.log("✅ Tables detected! Running migrations...\n");
+  await runMigrations();
   await seedData();
+}
+
+async function runMigrations() {
+  const migrations = [
+    "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS cnpj TEXT",
+    "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS endereco TEXT",
+    "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'SC'",
+    "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_email TEXT",
+    "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_tel TEXT",
+  ];
+  // Check if migration needed
+  const { error } = await supabase.from("condominios").select("cnpj, endereco, estado, sindico_email, sindico_tel").limit(1);
+  if (!error) { console.log("✅ Schema up-to-date (migration columns exist)\n"); return; }
+
+  console.log("⚠️  Schema needs migration. Please run the following SQL in your Supabase SQL Editor:");
+  console.log(`   https://supabase.com/dashboard/project/${url.split("//")[1].split(".")[0]}/sql/new\n`);
+  migrations.forEach(m => console.log("   " + m + ";"));
+  console.log();
 }
 
 function printSQL() {
   const sql = `
 CREATE TABLE IF NOT EXISTS condominios (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  nome TEXT NOT NULL, cidade TEXT, unidades INT DEFAULT 0,
-  moradores INT DEFAULT 0, sindico_nome TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+  nome TEXT NOT NULL, cnpj TEXT, endereco TEXT, cidade TEXT, estado TEXT DEFAULT 'SC',
+  unidades INT DEFAULT 0, moradores INT DEFAULT 0,
+  sindico_nome TEXT, sindico_email TEXT, sindico_tel TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- Migration for existing installs:
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS cnpj TEXT;
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS endereco TEXT;
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'SC';
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_email TEXT;
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_tel TEXT;
 CREATE TABLE IF NOT EXISTS ordens_servico (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   condominio_id UUID, numero SERIAL, titulo TEXT NOT NULL,

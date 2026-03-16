@@ -401,6 +401,58 @@ router.get("/comunicados", async (_req: Request, res: Response) => {
   res.json(data);
 });
 
+// POST /api/condominios — criar ou actualizar condomínio (wizard step 1)
+router.post("/condominios", async (req: Request, res: Response) => {
+  const { id, nome, cnpj, endereco, cidade, estado, sindico_nome, sindico_email, sindico_tel, unidades } = req.body as {
+    id?: string; nome: string; cnpj?: string; endereco?: string; cidade?: string; estado?: string;
+    sindico_nome?: string; sindico_email?: string; sindico_tel?: string; unidades?: number;
+  };
+
+  if (!nome?.trim()) return res.status(400).json({ error: "Nome é obrigatório" });
+  if (!sindico_nome?.trim()) return res.status(400).json({ error: "Nome do síndico é obrigatório" });
+  if (!sindico_email?.trim()) return res.status(400).json({ error: "E-mail do síndico é obrigatório" });
+  if (!unidades || unidades < 1) return res.status(400).json({ error: "Total de unidades é obrigatório" });
+
+  // Build payload — try full schema first, fallback to base columns
+  const fullPayload: Record<string, unknown> = {
+    nome: nome.trim(), cnpj: cnpj || null, endereco: endereco || null,
+    cidade: cidade || "", estado: estado || "SC",
+    sindico_nome: sindico_nome || "", sindico_email: sindico_email || "",
+    sindico_tel: sindico_tel || "", unidades: Number(unidades) || 0,
+  };
+
+  const basePayload: Record<string, unknown> = {
+    nome: nome.trim(), cidade: cidade || "", estado: estado || "SC",
+    sindico_nome: sindico_nome || "", unidades: Number(unidades) || 0,
+  };
+
+  try {
+    let result;
+    if (id) {
+      // Update existing
+      const { data, error } = await supabase.from("condominios").update(fullPayload).eq("id", id).select().single();
+      if (error?.message.includes("does not exist")) {
+        const { data: d2, error: e2 } = await supabase.from("condominios").update(basePayload).eq("id", id).select().single();
+        if (e2) return res.status(500).json({ error: e2.message });
+        result = d2;
+      } else if (error) return res.status(500).json({ error: error.message });
+      else result = data;
+    } else {
+      // Insert new
+      const { data, error } = await supabase.from("condominios").insert(fullPayload).select().single();
+      if (error?.message.includes("does not exist")) {
+        const { data: d2, error: e2 } = await supabase.from("condominios").insert(basePayload).select().single();
+        if (e2) return res.status(500).json({ error: e2.message });
+        result = d2;
+      } else if (error) return res.status(500).json({ error: error.message });
+      else result = data;
+    }
+    res.json({ ok: true, condominio: result });
+  } catch (e: unknown) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // POST /api/onboarding - Configurar condomínio do zero
 router.post("/onboarding", async (req: Request, res: Response) => {
   const {
