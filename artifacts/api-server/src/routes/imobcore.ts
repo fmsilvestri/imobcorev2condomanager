@@ -60,8 +60,12 @@ router.get("/stream", (req: Request, res: Response) => {
 // GET /api/dashboard
 router.get("/dashboard", async (_req: Request, res: Response) => {
   try {
+    // Resolve primary condominio first (oldest created = main demo condo)
+    const { data: condominios } = await supabase.from("condominios").select("*").order("created_at", { ascending: true });
+    const primaryCondo = (condominios || [])[0];
+    const primaryId = primaryCondo?.id;
+
     const [
-      { data: condominios },
       { data: os },
       { data: sensores },
       { data: alertas },
@@ -69,13 +73,22 @@ router.get("/dashboard", async (_req: Request, res: Response) => {
       { data: despesas },
       { data: comunicados },
     ] = await Promise.all([
-      supabase.from("condominios").select("*"),
-      supabase.from("ordens_servico").select("*").order("created_at", { ascending: false }),
-      supabase.from("sensores").select("*"),
+      primaryId
+        ? supabase.from("ordens_servico").select("*").eq("condominio_id", primaryId).order("created_at", { ascending: false })
+        : supabase.from("ordens_servico").select("*").order("created_at", { ascending: false }),
+      primaryId
+        ? supabase.from("sensores").select("*").eq("condominio_id", primaryId)
+        : supabase.from("sensores").select("*"),
       supabase.from("alertas_publicos").select("*").eq("ativo", true),
-      supabase.from("financeiro_receitas").select("*"),
-      supabase.from("financeiro_despesas").select("*"),
-      supabase.from("comunicados").select("*").order("created_at", { ascending: false }),
+      primaryId
+        ? supabase.from("financeiro_receitas").select("*").eq("condominio_id", primaryId).order("created_at", { ascending: true })
+        : supabase.from("financeiro_receitas").select("*").order("created_at", { ascending: true }),
+      primaryId
+        ? supabase.from("financeiro_despesas").select("*").eq("condominio_id", primaryId).order("created_at", { ascending: true })
+        : supabase.from("financeiro_despesas").select("*").order("created_at", { ascending: true }),
+      primaryId
+        ? supabase.from("comunicados").select("*").eq("condominio_id", primaryId).order("created_at", { ascending: false })
+        : supabase.from("comunicados").select("*").order("created_at", { ascending: false }),
     ]);
 
     const totalReceitas = (receitas || []).reduce((s: number, r: { valor: number }) => s + Number(r.valor), 0);
