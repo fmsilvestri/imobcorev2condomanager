@@ -9,9 +9,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const useDirectKey = !!process.env.ANTHROPIC_API_KEY;
 const anthropic = new Anthropic({
-  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY!,
-  baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+  apiKey: useDirectKey
+    ? process.env.ANTHROPIC_API_KEY!
+    : (process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || ""),
+  ...(useDirectKey ? {} : { baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL }),
 });
 
 // SSE clients set
