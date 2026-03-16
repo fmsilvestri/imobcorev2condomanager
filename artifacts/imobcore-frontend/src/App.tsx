@@ -325,6 +325,45 @@ function TypingIndicator() {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Manutenção – Dados Demo ───────────────────────────────────────────────────
+interface Equipamento {
+  id: string; nome: string; categoria: string; catIcon: string; local: string;
+  fabricante: string; modelo: string; serie: string; dataInstalacao: string;
+  vidaUtilAnos: number; instaladoHa: number; consumoKwh: number; horasDia: number;
+  status: "operacional" | "atencao" | "manutencao" | "inativo";
+  proxManutencao: string; ultimaManutencao: string; custoManutencao: number;
+  descricao: string;
+}
+const EQUIP_DEMO: Equipamento[] = [
+  { id:"eq1", nome:"Elevador Torre A", categoria:"elevador", catIcon:"🛗", local:"Torre A – Poço", fabricante:"OTIS", modelo:"Gen2 MRL", serie:"OT-2021-0841", dataInstalacao:"2021-03-15", vidaUtilAnos:20, instaladoHa:4, consumoKwh:5.2, horasDia:12, status:"operacional", proxManutencao:"2026-04-10", ultimaManutencao:"2026-01-10", custoManutencao:2400, descricao:"Elevador sem casa de máquinas, 10 paradas." },
+  { id:"eq2", nome:"Elevador Torre B", categoria:"elevador", catIcon:"🛗", local:"Torre B – Poço", fabricante:"ThyssenKrupp", modelo:"Evolution 200", serie:"TK-2019-3312", dataInstalacao:"2019-08-20", vidaUtilAnos:20, instaladoHa:6, consumoKwh:5.8, horasDia:10, status:"manutencao", proxManutencao:"2026-03-28", ultimaManutencao:"2025-12-20", custoManutencao:2400, descricao:"Em manutenção corretiva – cabo de tração." },
+  { id:"eq3", nome:"Bomba Piscina Principal", categoria:"piscina", catIcon:"🏊", local:"Casa de Bombas – Piscina", fabricante:"Pentair", modelo:"SuperFlo VS", serie:"PNT-2022-0115", dataInstalacao:"2022-01-10", vidaUtilAnos:10, instaladoHa:3, consumoKwh:1.1, horasDia:8, status:"operacional", proxManutencao:"2026-06-01", ultimaManutencao:"2025-12-01", custoManutencao:800, descricao:"Bomba de velocidade variável 1.5CV." },
+  { id:"eq4", nome:"Bomba Cisterna Principal", categoria:"hidraulico", catIcon:"💧", local:"Subsolo – Cisterna", fabricante:"Schneider", modelo:"BCC-2000", serie:"SCH-2020-7743", dataInstalacao:"2020-05-18", vidaUtilAnos:12, instaladoHa:5, consumoKwh:2.2, horasDia:6, status:"atencao", proxManutencao:"2026-04-05", ultimaManutencao:"2025-10-05", custoManutencao:1200, descricao:"Vibração elevada detectada. Verificar rolamentos." },
+  { id:"eq5", nome:"Caixa d'Água Torre A", categoria:"hidraulico", catIcon:"🪣", local:"Telhado Torre A", fabricante:"Eternit", modelo:"Fortlev 5000L", serie:"ET-2018-9901", dataInstalacao:"2018-09-01", vidaUtilAnos:15, instaladoHa:7, consumoKwh:0, horasDia:0, status:"operacional", proxManutencao:"2026-09-01", ultimaManutencao:"2025-09-01", custoManutencao:400, descricao:"Limpeza semestral programada." },
+  { id:"eq6", nome:"Caixa d'Água Torre B", categoria:"hidraulico", catIcon:"🪣", local:"Telhado Torre B", fabricante:"Eternit", modelo:"Fortlev 5000L", serie:"ET-2018-9902", dataInstalacao:"2018-09-01", vidaUtilAnos:15, instaladoHa:7, consumoKwh:0, horasDia:0, status:"operacional", proxManutencao:"2026-09-01", ultimaManutencao:"2025-09-01", custoManutencao:400, descricao:"Limpeza semestral programada." },
+  { id:"eq7", nome:"Sistema CFTV – 12 câmeras", categoria:"seguranca", catIcon:"📷", local:"Várias áreas comuns", fabricante:"Hikvision", modelo:"DS-2CD2T47G2", serie:"HK-2023-0044", dataInstalacao:"2023-06-12", vidaUtilAnos:8, instaladoHa:2, consumoKwh:0.08, horasDia:24, status:"operacional", proxManutencao:"2026-12-12", ultimaManutencao:"2025-12-12", custoManutencao:600, descricao:"12 câmeras IP 4MP com visão noturna." },
+  { id:"eq8", nome:"Gerador de Emergência", categoria:"eletrico", catIcon:"⚡", local:"Garagem – Subsolo", fabricante:"Stemac", modelo:"GTA 45", serie:"ST-2020-1122", dataInstalacao:"2020-11-30", vidaUtilAnos:15, instaladoHa:5, consumoKwh:30, horasDia:0, status:"operacional", proxManutencao:"2026-05-30", ultimaManutencao:"2025-11-30", custoManutencao:1800, descricao:"45 kVA diesel. Teste mensal obrigatório." },
+  { id:"eq9", nome:"Portão Garagem Bloco A", categoria:"eletrico", catIcon:"🚗", local:"Acesso Garagem A", fabricante:"PPA", modelo:"DZ Turbo", serie:"PPA-2021-5510", dataInstalacao:"2021-07-22", vidaUtilAnos:10, instaladoHa:4, consumoKwh:0.4, horasDia:10, status:"operacional", proxManutencao:"2026-07-22", ultimaManutencao:"2025-07-22", custoManutencao:350, descricao:"Motor deslizante 1/3 HP." },
+  { id:"eq10", nome:"Portão Garagem Bloco B", categoria:"eletrico", catIcon:"🚗", local:"Acesso Garagem B", fabricante:"PPA", modelo:"DZ Turbo", serie:"PPA-2021-5511", dataInstalacao:"2021-07-22", vidaUtilAnos:10, instaladoHa:4, consumoKwh:0.4, horasDia:10, status:"inativo", proxManutencao:"2026-03-20", ultimaManutencao:"2025-06-15", custoManutencao:350, descricao:"Motor queimado – peça em pedido." },
+  { id:"eq11", nome:"Central de Incêndio", categoria:"seguranca", catIcon:"🔥", local:"Térreo – Hall", fabricante:"ADEMCO", modelo:"Vista 128", serie:"AD-2019-8832", dataInstalacao:"2019-03-10", vidaUtilAnos:12, instaladoHa:7, consumoKwh:0.1, horasDia:24, status:"operacional", proxManutencao:"2026-03-10", ultimaManutencao:"2025-09-10", custoManutencao:900, descricao:"Central endereçável 128 zonas. Vistoria semestral." },
+  { id:"eq12", nome:"Aquecedor Solar – Cobertura", categoria:"eletrico", catIcon:"☀️", local:"Cobertura", fabricante:"Heliotek", modelo:"TS-30", serie:"HT-2020-3301", dataInstalacao:"2020-04-05", vidaUtilAnos:15, instaladoHa:5, consumoKwh:1.5, horasDia:6, status:"atencao", proxManutencao:"2026-04-05", ultimaManutencao:"2025-10-05", custoManutencao:700, descricao:"30 coletores – eficiência reduzida (incrustação)." },
+];
+
+const MANUT_SCHEDULE: { mes: string; items: { equip: string; tipo: "preventiva"|"corretiva"; custo: number }[] }[] = [
+  { mes:"Out/25", items:[{ equip:"Elevador Torre A", tipo:"preventiva", custo:2400 },{ equip:"Bomba Piscina", tipo:"preventiva", custo:800 }] },
+  { mes:"Nov/25", items:[{ equip:"CFTV", tipo:"preventiva", custo:600 },{ equip:"Gerador", tipo:"preventiva", custo:1800 }] },
+  { mes:"Dez/25", items:[{ equip:"Caixa Torre A", tipo:"preventiva", custo:400 },{ equip:"Caixa Torre B", tipo:"preventiva", custo:400 },{ equip:"Central Incêndio", tipo:"preventiva", custo:900 }] },
+  { mes:"Jan/26", items:[{ equip:"Elevador Torre A", tipo:"preventiva", custo:2400 },{ equip:"Bomba Cisterna", tipo:"corretiva", custo:1200 }] },
+  { mes:"Fev/26", items:[{ equip:"Portão A", tipo:"preventiva", custo:350 },{ equip:"Aquecedor Solar", tipo:"corretiva", custo:700 }] },
+  { mes:"Mar/26", items:[{ equip:"Elevador Torre B", tipo:"corretiva", custo:3800 },{ equip:"Portão B", tipo:"corretiva", custo:1200 },{ equip:"Central Incêndio", tipo:"preventiva", custo:900 }] },
+  { mes:"Abr/26", items:[{ equip:"Elevador Torre A", tipo:"preventiva", custo:2400 },{ equip:"Bomba Cisterna", tipo:"preventiva", custo:1200 },{ equip:"Aquecedor Solar", tipo:"preventiva", custo:700 }] },
+  { mes:"Mai/26", items:[{ equip:"Gerador", tipo:"preventiva", custo:1800 },{ equip:"Bomba Piscina", tipo:"preventiva", custo:800 }] },
+  { mes:"Jun/26", items:[{ equip:"Caixa Torre A", tipo:"preventiva", custo:400 },{ equip:"Caixa Torre B", tipo:"preventiva", custo:400 },{ equip:"CFTV", tipo:"preventiva", custo:600 }] },
+  { mes:"Jul/26", items:[{ equip:"Portão A", tipo:"preventiva", custo:350 },{ equip:"Elevador Torre A", tipo:"preventiva", custo:2400 }] },
+  { mes:"Ago/26", items:[{ equip:"Bomba Piscina", tipo:"preventiva", custo:800 }] },
+  { mes:"Set/26", items:[{ equip:"Caixa Torre A", tipo:"preventiva", custo:400 },{ equip:"Caixa Torre B", tipo:"preventiva", custo:400 },{ equip:"Gerador", tipo:"preventiva", custo:1800 }] },
+];
+
 export default function App() {
   const [view, setView] = useState<"gestor" | "sindico" | "morador" | "onboarding">("gestor");
   const [panel, setPanel] = useState("sv-chat");
@@ -338,6 +377,17 @@ export default function App() {
   const toastIdRef = useRef(0);
   const [bellCount, setBellCount] = useState(0);
   const [bellShake, setBellShake] = useState(false);
+  // ── Manutenção state ────────────────────────────────────────────────────
+  const [mantTab, setMantTab] = useState<"equip"|"mapa"|"plano"|"os"|"qr"|"ia">("equip");
+  const [mantSearch, setMantSearch] = useState("");
+  const [mantCatFilter, setMantCatFilter] = useState("todos");
+  const [mantStatusFilter, setMantStatusFilter] = useState("todos");
+  const [mantSelEquip, setMantSelEquip] = useState<Equipamento | null>(null);
+  const [qrUrls, setQrUrls] = useState<Record<string,string>>({});
+  const [mantAiLoading, setMantAiLoading] = useState(false);
+  const [mantAiResult, setMantAiResult] = useState<string>("");
+  const [mantMapHover, setMantMapHover] = useState<string|null>(null);
+  const [mantPlanMonth, setMantPlanMonth] = useState(5); // index in MANUT_SCHEDULE (current=Mar/26)
 
   // Sub-screen navigation
   const [sindicoScreen, setSindicoScreen] = useState<string | null>(null);
@@ -562,6 +612,24 @@ export default function App() {
     ).then(urls => { if (!cancelled) setObSensorQRs(urls); });
     return () => { cancelled = true; };
   }, [obSensors, obHasSensors]);
+
+  // ── QR codes para equipamentos ─────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      EQUIP_DEMO.map(eq =>
+        QRCode.toDataURL(`EQUIP|${eq.id}|${eq.nome}|${eq.serie}|${eq.categoria}`, {
+          width: 160, margin: 1, color: { dark: "#6366F1", light: "#0F172A" }
+        })
+      )
+    ).then(urls => {
+      if (cancelled) return;
+      const map: Record<string, string> = {};
+      EQUIP_DEMO.forEach((eq, i) => { map[eq.id] = urls[i]; });
+      setQrUrls(map);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // ── Chat ──────────────────────────────────────────────────────────────────
   const sendChat = async (
@@ -2625,6 +2693,10 @@ export default function App() {
           <div className={`sb-item ${panel === "misp" ? "active" : ""}`} onClick={() => setPanel("misp")}>
             <span className="sb-icon">🚨</span> MISP<span className="sb-badge">{t?.alertas_ativos || 0}</span>
           </div>
+          <div className={`sb-item ${panel === "manutencao" ? "active" : ""}`} onClick={() => setPanel("manutencao")}>
+            <span className="sb-icon">🏗️</span> Manutenção
+            <span className="sb-badge" style={{ background: EQUIP_DEMO.filter(e=>e.status==="manutencao"||e.status==="atencao").length>0?"#EF4444":"#1e293b" }}>{EQUIP_DEMO.filter(e=>e.status==="manutencao"||e.status==="atencao").length}</span>
+          </div>
           <div className="sb-label">Sistema</div>
           <div className={`sb-item ${panel === "supabase" ? "active" : ""}`} onClick={() => setPanel("supabase")}>
             <span className="sb-icon">🗄️</span> SSE Live Log
@@ -3242,6 +3314,547 @@ export default function App() {
               );
             })}
           </div>
+
+          {/* PANEL: MANUTENÇÃO */}
+          {panel === "manutencao" && (() => {
+            // ── helpers ────────────────────────────────────────────────
+            const stColor = { operacional:"#10B981", atencao:"#F59E0B", manutencao:"#EF4444", inativo:"#475569" } as const;
+            const stLabel = { operacional:"Operacional", atencao:"Atenção", manutencao:"Em Manutenção", inativo:"Inativo" } as const;
+            const vidaPct = (e: Equipamento) => Math.min(100, Math.round((e.instaladoHa / e.vidaUtilAnos) * 100));
+            const vidaColor = (p: number) => p < 50 ? "#10B981" : p < 75 ? "#F59E0B" : "#EF4444";
+
+            // ── Aba 1: filtros ──────────────────────────────────────────
+            const cats = ["todos", ...Array.from(new Set(EQUIP_DEMO.map(e => e.categoria)))];
+            const filtered = EQUIP_DEMO.filter(e => {
+              const q = mantSearch.toLowerCase();
+              const matchQ = !q || e.nome.toLowerCase().includes(q) || e.local.toLowerCase().includes(q) || e.fabricante.toLowerCase().includes(q);
+              const matchC = mantCatFilter === "todos" || e.categoria === mantCatFilter;
+              const matchS = mantStatusFilter === "todos" || e.status === mantStatusFilter;
+              return matchQ && matchC && matchS;
+            });
+
+            // ── Aba 3: dados para chart ─────────────────────────────────
+            const schedCostData = MANUT_SCHEDULE.map(m => ({
+              mes: m.mes,
+              Preventiva: m.items.filter(i => i.tipo === "preventiva").reduce((s, i) => s + i.custo, 0),
+              Corretiva: m.items.filter(i => i.tipo === "corretiva").reduce((s, i) => s + i.custo, 0),
+            }));
+            const currMonthIdx = mantPlanMonth;
+            const currSched = MANUT_SCHEDULE[currMonthIdx];
+
+            // ── Aba 6: dados para charts ────────────────────────────────
+            const catCounts: Record<string,{count:number;custo:number}> = {};
+            EQUIP_DEMO.forEach(e => {
+              catCounts[e.categoria] = catCounts[e.categoria] || { count:0, custo:0 };
+              catCounts[e.categoria].count++;
+              catCounts[e.categoria].custo += e.custoManutencao;
+            });
+            const pieDat = Object.entries(catCounts).map(([name,v]) => ({ name, value: v.count, custo: v.custo }));
+            const PC = ["#6366F1","#06B6D4","#10B981","#F59E0B","#EF4444","#A855F7","#EC4899","#14B8A6"];
+
+            const falhasData = [
+              { mes:"Out/25", falhas:1 },{ mes:"Nov/25", falhas:0 },{ mes:"Dez/25", falhas:2 },
+              { mes:"Jan/26", falhas:1 },{ mes:"Feb/26", falhas:2 },{ mes:"Mar/26", falhas:3 },
+            ];
+
+            // Score saúde equipamentos
+            const nOp = EQUIP_DEMO.filter(e=>e.status==="operacional").length;
+            const nAt = EQUIP_DEMO.filter(e=>e.status==="atencao").length;
+            const nMt = EQUIP_DEMO.filter(e=>e.status==="manutencao").length;
+            const nIn = EQUIP_DEMO.filter(e=>e.status==="inativo").length;
+            const scoreEquip = Math.round(((nOp*100 + nAt*60 + nMt*30 + nIn*0) / EQUIP_DEMO.length));
+            const scoreEquipColor = scoreEquip >= 80 ? "#10B981" : scoreEquip >= 60 ? "#F59E0B" : "#EF4444";
+            const scoreEquipLabel = scoreEquip >= 80 ? "Excelente" : scoreEquip >= 60 ? "Bom" : "Crítico";
+
+            // Mapa pins positions (SVG 500×340)
+            const mapPins = [
+              { id:"eq1", x:120, y:80,  label:"Elev A" },
+              { id:"eq2", x:380, y:80,  label:"Elev B" },
+              { id:"eq3", x:250, y:280, label:"Bomba P" },
+              { id:"eq4", x:250, y:310, label:"Cisterna" },
+              { id:"eq5", x:100, y:30,  label:"CxÁ A" },
+              { id:"eq6", x:400, y:30,  label:"CxÁ B" },
+              { id:"eq7", x:250, y:170, label:"CFTV" },
+              { id:"eq8", x:80,  y:290, label:"Gerador" },
+              { id:"eq9", x:60,  y:230, label:"Portão A" },
+              { id:"eq10",x:440, y:230, label:"Portão B" },
+              { id:"eq11",x:250, y:40,  label:"Incêndio" },
+              { id:"eq12",x:250, y:10,  label:"Solar" },
+            ];
+
+            const tabStyle = (t: string) => ({
+              padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", borderRadius: 8,
+              background: mantTab === t ? "rgba(99,102,241,.25)" : "transparent",
+              color: mantTab === t ? "#A5B4FC" : "#475569",
+              border: mantTab === t ? "1px solid rgba(99,102,241,.3)" : "1px solid transparent",
+              transition: "all .15s",
+            });
+
+            return (
+              <div style={{ padding: 20 }}>
+                {/* Header */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                  <div>
+                    <div style={{ fontSize:20, fontWeight:800 }}>🏗️ Gestão da Manutenção</div>
+                    <div style={{ fontSize:12, color:"#475569", marginTop:2 }}>
+                      {EQUIP_DEMO.length} equipamentos · {nOp} operacionais · {nAt} atenção · {nMt} em manutenção · {nIn} inativos
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <span style={{ background:scoreEquipColor+"22", color:scoreEquipColor, borderRadius:20, padding:"4px 12px", fontSize:12, fontWeight:700, border:`1px solid ${scoreEquipColor}44` }}>
+                      Score {scoreEquip}/100 · {scoreEquipLabel}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tab Bar */}
+                <div style={{ display:"flex", gap:6, marginBottom:20, flexWrap:"wrap" }}>
+                  {([["equip","📋 Equipamentos"],["mapa","🗺️ Mapa"],["plano","📅 Plano"],["os","🔧 OS Integrado"],["qr","📱 QR Codes"],["ia","🤖 Dashboard IA"]] as [typeof mantTab, string][]).map(([k,l]) => (
+                    <button key={k} style={tabStyle(k)} onClick={() => setMantTab(k)}>{l}</button>
+                  ))}
+                </div>
+
+                {/* ── ABA 1: EQUIPAMENTOS ─────────────────────────────── */}
+                {mantTab === "equip" && (
+                  <div>
+                    {/* Filters */}
+                    <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+                      <input value={mantSearch} onChange={e=>setMantSearch(e.target.value)}
+                        placeholder="🔍 Buscar equipamento..." style={{ flex:1, minWidth:180, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 12px", color:"#fff", fontSize:12 }} />
+                      <select value={mantCatFilter} onChange={e=>setMantCatFilter(e.target.value)} style={{ background:"#1e293b", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 10px", color:"#94A3B8", fontSize:12 }}>
+                        {cats.map(c => <option key={c} value={c}>{c === "todos" ? "Todas categorias" : c}</option>)}
+                      </select>
+                      <select value={mantStatusFilter} onChange={e=>setMantStatusFilter(e.target.value)} style={{ background:"#1e293b", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 10px", color:"#94A3B8", fontSize:12 }}>
+                        {["todos","operacional","atencao","manutencao","inativo"].map(s => <option key={s} value={s}>{s==="todos"?"Todos status":stLabel[s as keyof typeof stLabel]||s}</option>)}
+                      </select>
+                      <span style={{ fontSize:11, color:"#475569", alignSelf:"center" }}>{filtered.length} resultado{filtered.length!==1?"s":""}</span>
+                    </div>
+
+                    {/* Detail modal */}
+                    {mantSelEquip && (
+                      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setMantSelEquip(null)}>
+                        <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:16, padding:28, width:500, maxHeight:"80vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
+                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:16 }}>
+                            <div style={{ fontSize:18, fontWeight:800 }}>{mantSelEquip.catIcon} {mantSelEquip.nome}</div>
+                            <button onClick={()=>setMantSelEquip(null)} style={{ background:"none", border:"none", color:"#475569", fontSize:20, cursor:"pointer" }}>✕</button>
+                          </div>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+                            {[["Categoria", mantSelEquip.categoria],["Local", mantSelEquip.local],["Fabricante", mantSelEquip.fabricante],["Modelo", mantSelEquip.modelo],["Nº Série", mantSelEquip.serie],["Instalado em", mantSelEquip.dataInstalacao],["Vida útil", `${mantSelEquip.vidaUtilAnos} anos`],["Instalado há", `${mantSelEquip.instaladoHa} anos`],["Consumo", mantSelEquip.consumoKwh ? `${mantSelEquip.consumoKwh} kWh` : "—"],["Horas/dia", mantSelEquip.horasDia ? `${mantSelEquip.horasDia}h` : "—"],["Última manut.", mantSelEquip.ultimaManutencao],["Próxima manut.", mantSelEquip.proxManutencao]].map(([l,v]) => (
+                              <div key={l} style={{ background:"rgba(255,255,255,.03)", borderRadius:8, padding:"8px 12px" }}>
+                                <div style={{ fontSize:10, color:"#475569" }}>{l}</div>
+                                <div style={{ fontSize:13, fontWeight:600, marginTop:2 }}>{v}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ background:"rgba(255,255,255,.03)", borderRadius:8, padding:"10px 14px", marginBottom:12 }}>
+                            <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>Descrição</div>
+                            <div style={{ fontSize:13, lineHeight:1.6 }}>{mantSelEquip.descricao}</div>
+                          </div>
+                          <div style={{ marginBottom:12 }}>
+                            <div style={{ fontSize:10, color:"#475569", marginBottom:6 }}>Vida Útil Consumida</div>
+                            <div style={{ height:10, background:"rgba(255,255,255,.06)", borderRadius:5 }}>
+                              <div style={{ width:`${vidaPct(mantSelEquip)}%`, height:"100%", background:vidaColor(vidaPct(mantSelEquip)), borderRadius:5, transition:"width .5s" }} />
+                            </div>
+                            <div style={{ fontSize:10, color:"#475569", marginTop:4 }}>{vidaPct(mantSelEquip)}% consumido · {mantSelEquip.vidaUtilAnos - mantSelEquip.instaladoHa} anos restantes</div>
+                          </div>
+                          <div style={{ fontSize:10, color:"#475569" }}>Custo manutenção/ciclo: <span style={{ color:"#F59E0B", fontWeight:700 }}>{fmtBRLFull(mantSelEquip.custoManutencao)}</span></div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Table */}
+                    <div style={{ overflowX:"auto" }}>
+                      <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
+                        <thead>
+                          <tr style={{ borderBottom:"1px solid rgba(255,255,255,.08)" }}>
+                            {["#","Equipamento","Categoria","Local","Status","Vida Útil","Fabricante","Próx. Manut.","Ação"].map(h => (
+                              <th key={h} style={{ padding:"8px 10px", textAlign:"left", color:"#475569", fontWeight:600, fontSize:11, whiteSpace:"nowrap" }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.map((e, i) => (
+                            <tr key={e.id} style={{ borderBottom:"1px solid rgba(255,255,255,.04)", transition:"background .1s" }}
+                              onMouseEnter={ev=>(ev.currentTarget.style.background="rgba(255,255,255,.03)")}
+                              onMouseLeave={ev=>(ev.currentTarget.style.background="")}>
+                              <td style={{ padding:"10px 10px", color:"#475569" }}>{i+1}</td>
+                              <td style={{ padding:"10px 10px", fontWeight:600 }}>{e.catIcon} {e.nome}</td>
+                              <td style={{ padding:"10px 10px", color:"#94A3B8" }}>{e.categoria}</td>
+                              <td style={{ padding:"10px 10px", color:"#64748B", maxWidth:130 }}>{e.local}</td>
+                              <td style={{ padding:"10px 10px" }}>
+                                <span style={{ background:stColor[e.status]+"22", color:stColor[e.status], border:`1px solid ${stColor[e.status]}44`, borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:700, whiteSpace:"nowrap" }}>
+                                  {stLabel[e.status]}
+                                </span>
+                              </td>
+                              <td style={{ padding:"10px 10px", minWidth:100 }}>
+                                <div style={{ height:6, background:"rgba(255,255,255,.06)", borderRadius:3 }}>
+                                  <div style={{ width:`${vidaPct(e)}%`, height:"100%", background:vidaColor(vidaPct(e)), borderRadius:3 }} />
+                                </div>
+                                <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{vidaPct(e)}%</div>
+                              </td>
+                              <td style={{ padding:"10px 10px", color:"#64748B" }}>{e.fabricante}</td>
+                              <td style={{ padding:"10px 10px", color:"#64748B", whiteSpace:"nowrap" }}>{e.proxManutencao}</td>
+                              <td style={{ padding:"10px 10px" }}>
+                                <button onClick={()=>setMantSelEquip(e)} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:6, padding:"4px 10px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>Ver</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {filtered.length === 0 && <div style={{ textAlign:"center", color:"#334155", padding:30, fontSize:13 }}>Nenhum equipamento encontrado</div>}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── ABA 2: MAPA ─────────────────────────────────────── */}
+                {mantTab === "mapa" && (
+                  <div>
+                    <div style={{ fontSize:12, color:"#475569", marginBottom:14 }}>Clique em um pin para ver detalhes do equipamento</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 200px", gap:16 }}>
+                      {/* SVG Floor Plan */}
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.08)", borderRadius:12, padding:12, position:"relative" }}>
+                        <svg viewBox="0 0 500 340" style={{ width:"100%", maxHeight:380 }}>
+                          {/* Ground */}
+                          <rect x="0" y="0" width="500" height="340" fill="#0F172A" rx="8" />
+                          {/* Torre A */}
+                          <rect x="30" y="60" width="180" height="220" fill="rgba(99,102,241,.06)" stroke="rgba(99,102,241,.3)" strokeWidth="1.5" rx="4"/>
+                          <text x="120" y="185" textAnchor="middle" fill="#475569" fontSize="12" fontWeight="bold">TORRE A</text>
+                          {/* Torre B */}
+                          <rect x="290" y="60" width="180" height="220" fill="rgba(6,182,212,.06)" stroke="rgba(6,182,212,.3)" strokeWidth="1.5" rx="4"/>
+                          <text x="380" y="185" textAnchor="middle" fill="#475569" fontSize="12" fontWeight="bold">TORRE B</text>
+                          {/* Área Central */}
+                          <rect x="195" y="100" width="110" height="180" fill="rgba(16,185,129,.04)" stroke="rgba(16,185,129,.2)" strokeWidth="1" rx="4"/>
+                          <text x="250" y="200" textAnchor="middle" fill="#334155" fontSize="9">ÁREA COMUM</text>
+                          {/* Piscina */}
+                          <ellipse cx="250" cy="270" rx="50" ry="30" fill="rgba(6,182,212,.1)" stroke="rgba(6,182,212,.4)" strokeWidth="1"/>
+                          <text x="250" y="275" textAnchor="middle" fill="#475569" fontSize="9">PISCINA</text>
+                          {/* Garagem */}
+                          <rect x="30" y="290" width="440" height="40" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.06)" strokeWidth="1" rx="4"/>
+                          <text x="250" y="315" textAnchor="middle" fill="#334155" fontSize="9">GARAGEM / SUBSOLO</text>
+                          {/* Cobertura linha */}
+                          <line x1="30" y1="55" x2="470" y2="55" stroke="rgba(255,255,255,.06)" strokeWidth="1" strokeDasharray="4 3"/>
+                          <text x="250" y="50" textAnchor="middle" fill="#334155" fontSize="8">COBERTURA</text>
+
+                          {/* PINS */}
+                          {mapPins.map(pin => {
+                            const eq = EQUIP_DEMO.find(e => e.id === pin.id)!;
+                            const col = stColor[eq.status];
+                            const isHov = mantMapHover === pin.id;
+                            return (
+                              <g key={pin.id} style={{ cursor:"pointer" }} onClick={() => setMantSelEquip(eq)} onMouseEnter={()=>setMantMapHover(pin.id)} onMouseLeave={()=>setMantMapHover(null)}>
+                                <circle cx={pin.x} cy={pin.y} r={isHov ? 14 : 10} fill={col+"33"} stroke={col} strokeWidth="2" style={{ transition:"all .15s" }}/>
+                                <text x={pin.x} y={pin.y+4} textAnchor="middle" fill={col} fontSize="10">●</text>
+                                {isHov && (
+                                  <g>
+                                    <rect x={pin.x-55} y={pin.y-52} width="110" height="46" fill="#0F172A" stroke={col} strokeWidth="1" rx="5"/>
+                                    <text x={pin.x} y={pin.y-36} textAnchor="middle" fill="#fff" fontSize="9" fontWeight="bold">{eq.nome.slice(0,18)}</text>
+                                    <text x={pin.x} y={pin.y-23} textAnchor="middle" fill={col} fontSize="8">{stLabel[eq.status]}</text>
+                                    <text x={pin.x} y={pin.y-12} textAnchor="middle" fill="#475569" fontSize="7">Manut: {eq.proxManutencao}</text>
+                                  </g>
+                                )}
+                                <text x={pin.x} y={pin.y+23} textAnchor="middle" fill="#475569" fontSize="7">{pin.label}</text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+                      </div>
+
+                      {/* Legenda + Contadores */}
+                      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", marginBottom:4 }}>LEGENDA</div>
+                        {(["operacional","atencao","manutencao","inativo"] as const).map(s => (
+                          <div key={s} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12 }}>
+                            <div style={{ width:12, height:12, borderRadius:"50%", background:stColor[s], flexShrink:0 }}/>
+                            <span style={{ color:"#94A3B8" }}>{stLabel[s]}</span>
+                            <span style={{ marginLeft:"auto", color:stColor[s], fontWeight:700 }}>
+                              {EQUIP_DEMO.filter(e=>e.status===s).length}
+                            </span>
+                          </div>
+                        ))}
+                        <div style={{ height:1, background:"rgba(255,255,255,.06)", margin:"8px 0" }}/>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", marginBottom:4 }}>POR ÁREA</div>
+                        {[["Torre A",["eq1","eq5","eq9"]],["Torre B",["eq2","eq6","eq10"]],["Subsolo",["eq4","eq8"]],["Cobertura",["eq5","eq6","eq12"]],["Comum",["eq3","eq7","eq11"]]].map(([area, ids]) => (
+                          <div key={area as string} style={{ fontSize:11, display:"flex", justifyContent:"space-between", color:"#64748B" }}>
+                            <span>{area as string}</span>
+                            <span style={{ color:"#94A3B8" }}>{(ids as string[]).length}</span>
+                          </div>
+                        ))}
+                        <div style={{ height:1, background:"rgba(255,255,255,.06)", margin:"8px 0" }}/>
+                        <div style={{ fontSize:10, color:"#475569" }}>Clique em qualquer pin para ver detalhes completos do equipamento.</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── ABA 3: PLANO DE MANUTENÇÃO ────────────────────────── */}
+                {mantTab === "plano" && (
+                  <div>
+                    {/* Alertas vencidos */}
+                    {EQUIP_DEMO.filter(e => e.proxManutencao <= new Date().toISOString().slice(0,10)).length > 0 && (
+                      <div style={{ background:"rgba(239,68,68,.08)", border:"1px solid rgba(239,68,68,.2)", borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:12 }}>
+                        🔴 <strong>{EQUIP_DEMO.filter(e=>e.proxManutencao<=new Date().toISOString().slice(0,10)).length} manutenção(ões) vencida(s):</strong>{" "}
+                        {EQUIP_DEMO.filter(e=>e.proxManutencao<=new Date().toISOString().slice(0,10)).map(e=>e.nome).join(", ")}
+                      </div>
+                    )}
+
+                    {/* Calendário 12 meses */}
+                    <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", marginBottom:10 }}>📅 CALENDÁRIO DE MANUTENÇÃO – 12 MESES</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:20 }}>
+                      {MANUT_SCHEDULE.map((m, i) => {
+                        const total = m.items.reduce((s,it)=>s+it.custo, 0);
+                        const hasCorr = m.items.some(it=>it.tipo==="corretiva");
+                        const isCurr = i === currMonthIdx;
+                        return (
+                          <div key={m.mes} onClick={()=>setMantPlanMonth(i)} style={{ background: isCurr ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.02)", border: isCurr ? "1px solid rgba(99,102,241,.3)" : "1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"10px 12px", cursor:"pointer", transition:"all .15s" }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                              <span style={{ fontSize:12, fontWeight:isCurr?800:600, color:isCurr?"#A5B4FC":"#94A3B8" }}>{m.mes}</span>
+                              {hasCorr && <span style={{ background:"rgba(239,68,68,.15)", color:"#EF4444", fontSize:9, borderRadius:4, padding:"1px 5px" }}>CORR</span>}
+                            </div>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:4 }}>{m.items.length} serviço{m.items.length!==1?"s":""}</div>
+                            <div style={{ fontSize:13, fontWeight:700, color: hasCorr?"#EF4444":"#10B981" }}>{fmtBRLFull(total)}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Detalhe mês selecionado */}
+                    {currSched && (
+                      <div style={{ background:"rgba(99,102,241,.05)", border:"1px solid rgba(99,102,241,.15)", borderRadius:12, padding:"14px 16px", marginBottom:20 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#A5B4FC", marginBottom:10 }}>📋 {currSched.mes} — Detalhamento</div>
+                        {currSched.items.map((item,i) => (
+                          <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:12 }}>
+                            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                              <span style={{ background:item.tipo==="preventiva"?"rgba(16,185,129,.15)":"rgba(239,68,68,.15)", color:item.tipo==="preventiva"?"#10B981":"#EF4444", fontSize:9, borderRadius:4, padding:"2px 6px", fontWeight:700 }}>{item.tipo.toUpperCase()}</span>
+                              {item.equip}
+                            </div>
+                            <span style={{ color:"#F59E0B", fontWeight:600 }}>{fmtBRLFull(item.custo)}</span>
+                          </div>
+                        ))}
+                        <div style={{ display:"flex", justifyContent:"flex-end", marginTop:8, fontSize:13, fontWeight:700, color:"#F59E0B" }}>
+                          Total: {fmtBRLFull(currSched.items.reduce((s,i)=>s+i.custo,0))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gráfico de custo mensal */}
+                    <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", marginBottom:10 }}>📊 CUSTO DE MANUTENÇÃO – 12 MESES (Preventiva vs Corretiva)</div>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <LineChart data={schedCostData} margin={{ top:4, right:10, bottom:4, left:0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
+                        <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                        <YAxis tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false} tickFormatter={(v:number)=>v>=1000?`${(v/1000).toFixed(1)}k`:`${v}`} width={45}/>
+                        <Tooltip formatter={(v:number)=>fmtBRLFull(v)} contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }}/>
+                        <Legend wrapperStyle={{ fontSize:10, color:"#475569" }}/>
+                        <Line type="monotone" dataKey="Preventiva" stroke="#10B981" strokeWidth={2} dot={{ r:3 }}/>
+                        <Line type="monotone" dataKey="Corretiva" stroke="#EF4444" strokeWidth={2} dot={{ r:3 }}/>
+                      </LineChart>
+                    </ResponsiveContainer>
+                    <div style={{ fontSize:10, color:"#475569", marginTop:8 }}>
+                      Total preventivo 12m: {fmtBRLFull(schedCostData.reduce((s,m)=>s+m.Preventiva,0))} · Total corretivo: {fmtBRLFull(schedCostData.reduce((s,m)=>s+m.Corretiva,0))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── ABA 4: OS INTEGRADO ───────────────────────────────── */}
+                {mantTab === "os" && (
+                  <div>
+                    {/* MTTR / MTBF KPIs */}
+                    <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap" }}>
+                      {[
+                        { label:"MTTR", val:"4.2 dias", desc:"Tempo médio de reparo", color:"#06B6D4" },
+                        { label:"MTBF", val:"38 dias", desc:"Tempo médio entre falhas", color:"#10B981" },
+                        { label:"Disponibilidade", val:"89%", desc:"Equipamentos operacionais", color:"#A5B4FC" },
+                        { label:"OS Abertas (equip.)", val:`${(dash?.ordens_servico||[]).filter(o=>o.status==="aberta").length}`, desc:"OSs vinculadas a equipamentos", color:"#F59E0B" },
+                      ].map(k => (
+                        <div key={k.label} style={{ flex:1, minWidth:150, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"12px 16px" }}>
+                          <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
+                          <div style={{ fontSize:22, fontWeight:800, color:k.color }}>{k.val}</div>
+                          <div style={{ fontSize:10, color:"#334155", marginTop:2 }}>{k.desc}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Associação equip → OS */}
+                    <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", marginBottom:10 }}>🔗 HISTÓRICO DE OS POR EQUIPAMENTO</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                      {EQUIP_DEMO.filter(e=>e.status!=="operacional").map(e => (
+                        <div key={e.id} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"12px 14px" }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                            <div style={{ fontWeight:600, fontSize:13 }}>{e.catIcon} {e.nome}</div>
+                            <span style={{ background:stColor[e.status]+"22", color:stColor[e.status], fontSize:10, borderRadius:12, padding:"2px 8px", border:`1px solid ${stColor[e.status]}44` }}>{stLabel[e.status]}</span>
+                          </div>
+                          <div style={{ fontSize:11, color:"#475569" }}>Local: {e.local} · Última OS: {e.ultimaManutencao} · Próxima: {e.proxManutencao}</div>
+                          <div style={{ fontSize:11, color:"#64748B", marginTop:4 }}>{e.descricao}</div>
+                          <button onClick={()=>setPanel("operacao")} style={{ marginTop:8, background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)", borderRadius:6, padding:"4px 12px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>
+                            Ver OSs no módulo de OS →
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Todas as OSs recentes */}
+                    <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", margin:"20px 0 10px" }}>📋 OSs RECENTES DO SISTEMA</div>
+                    {(dash?.ordens_servico||[]).slice(0,8).map(os => (
+                      <div key={os.id} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:12 }}>
+                        <div>
+                          <span style={{ color:"#475569", marginRight:6 }}>#{os.numero}</span>
+                          <span style={{ fontWeight:600 }}>{os.titulo}</span>
+                        </div>
+                        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                          <span style={{ color:"#64748B" }}>{os.categoria}</span>
+                          <span style={{ background:os.status==="aberta"?"rgba(239,68,68,.15)":os.status==="concluida"?"rgba(16,185,129,.15)":"rgba(245,158,11,.15)", color:os.status==="aberta"?"#EF4444":os.status==="concluida"?"#10B981":"#F59E0B", fontSize:10, borderRadius:10, padding:"2px 8px" }}>{os.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                    {(dash?.ordens_servico||[]).length === 0 && <div style={{ color:"#334155", fontSize:12 }}>Nenhuma OS no sistema.</div>}
+                  </div>
+                )}
+
+                {/* ── ABA 5: QR CODES ───────────────────────────────────── */}
+                {mantTab === "qr" && (
+                  <div>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                      <div style={{ fontSize:12, color:"#475569" }}>Escaneie o QR com o celular para identificar o equipamento in-loco.</div>
+                      <button onClick={()=>window.print()} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:8, padding:"7px 14px", color:"#A5B4FC", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                        🖨️ Imprimir todos
+                      </button>
+                    </div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(170px,1fr))", gap:12 }}>
+                      {EQUIP_DEMO.map(eq => (
+                        <div key={eq.id} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:14, display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
+                          {qrUrls[eq.id]
+                            ? <img src={qrUrls[eq.id]} alt={eq.nome} style={{ width:130, height:130, borderRadius:8 }}/>
+                            : <div style={{ width:130, height:130, background:"rgba(255,255,255,.04)", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", color:"#334155", fontSize:12 }}>Gerando...</div>
+                          }
+                          <div style={{ textAlign:"center" }}>
+                            <div style={{ fontSize:11, fontWeight:700, lineHeight:1.3 }}>{eq.catIcon} {eq.nome}</div>
+                            <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{eq.categoria}</div>
+                            <div style={{ fontSize:9, color:"#334155", fontFamily:"monospace", marginTop:2 }}>{eq.serie}</div>
+                            <div style={{ fontSize:9, color:"#334155", marginTop:2 }}>{eq.local}</div>
+                          </div>
+                          <span style={{ background:stColor[eq.status]+"22", color:stColor[eq.status], fontSize:9, borderRadius:10, padding:"2px 8px", border:`1px solid ${stColor[eq.status]}44` }}>{stLabel[eq.status]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── ABA 6: DASHBOARD IA ───────────────────────────────── */}
+                {mantTab === "ia" && (
+                  <div>
+                    {/* KPIs */}
+                    <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap" }}>
+                      {[
+                        { label:"Equipamentos", val:EQUIP_DEMO.length, color:"#A5B4FC", icon:"🏗️" },
+                        { label:"Operacionais", val:nOp, color:"#10B981", icon:"✅" },
+                        { label:"Em Atenção/Manutenção", val:nAt+nMt, color:"#F59E0B", icon:"⚠️" },
+                        { label:"Custo Anual Est.", val:fmtBRLFull(EQUIP_DEMO.reduce((s,e)=>s+e.custoManutencao*2,0)), color:"#06B6D4", icon:"💰" },
+                      ].map(k => (
+                        <div key={k.label} style={{ flex:1, minWidth:160, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"12px 16px" }}>
+                          <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.icon} {k.label.toUpperCase()}</div>
+                          <div style={{ fontSize:22, fontWeight:800, color:k.color }}>{k.val}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Score saúde */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
+                      <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"16px 20px" }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:10 }}>💚 SAÚDE DOS EQUIPAMENTOS</div>
+                        <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+                          <div style={{ position:"relative", width:72, height:72 }}>
+                            <svg viewBox="0 0 36 36" style={{ width:72, height:72, transform:"rotate(-90deg)" }}>
+                              <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="3"/>
+                              <circle cx="18" cy="18" r="15.9" fill="none" stroke={scoreEquipColor} strokeWidth="3" strokeDasharray={`${scoreEquip} ${100-scoreEquip}`} strokeLinecap="round"/>
+                            </svg>
+                            <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                              <div style={{ fontSize:16, fontWeight:800, color:scoreEquipColor }}>{scoreEquip}</div>
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize:20, fontWeight:800, color:scoreEquipColor }}>{scoreEquipLabel}</div>
+                            <div style={{ fontSize:10, color:"#475569", marginTop:4, lineHeight:1.6 }}>
+                              {nOp} operacionais · {nAt} atenção<br/>{nMt} manutenção · {nIn} inativos
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Pizza por categoria */}
+                      <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"16px" }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:6 }}>🍩 EQUIPAMENTOS POR CATEGORIA</div>
+                        <ResponsiveContainer width="100%" height={130}>
+                          <PieChart>
+                            <Pie data={pieDat} cx="50%" cy="50%" innerRadius={35} outerRadius={58} paddingAngle={3} dataKey="value">
+                              {pieDat.map((_,i) => <Cell key={i} fill={PC[i%PC.length]}/>)}
+                            </Pie>
+                            <Tooltip formatter={(v:number,_:string,e:any)=>[`${v} equip. · ${fmtBRLFull(e.payload?.custo)}/ciclo`,e.payload?.name]} contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }}/>
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div style={{ display:"flex", flexWrap:"wrap", gap:"4px 12px" }}>
+                          {pieDat.map((d,i)=>(
+                            <div key={d.name} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10 }}>
+                              <div style={{ width:8, height:8, borderRadius:2, background:PC[i%PC.length] }}/>
+                              <span style={{ color:"#94A3B8" }}>{d.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Gráfico falhas mensais */}
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"14px 16px", marginBottom:20 }}>
+                      <div style={{ fontSize:11, color:"#475569", marginBottom:10 }}>📉 FALHAS E CORRETIVAS – ÚLTIMOS 6 MESES</div>
+                      <ResponsiveContainer width="100%" height={160}>
+                        <LineChart data={falhasData} margin={{ top:4, right:10, bottom:4, left:0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)"/>
+                          <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                          <YAxis tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false} allowDecimals={false} width={30}/>
+                          <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }}/>
+                          <Line type="monotone" dataKey="falhas" stroke="#EF4444" strokeWidth={2} dot={{ r:4, fill:"#EF4444" }} name="Falhas"/>
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Análise IA */}
+                    <div style={{ background:"rgba(99,102,241,.04)", border:"1px solid rgba(99,102,241,.15)", borderRadius:12, padding:"16px 20px" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#A5B4FC" }}>🤖 Diagnóstico IA – Síndico Virtual</div>
+                        <button
+                          disabled={mantAiLoading}
+                          onClick={async () => {
+                            setMantAiLoading(true);
+                            setMantAiResult("");
+                            const resumo = `Condomínio: Residencial Parque das Flores. Equipamentos: ${EQUIP_DEMO.length} total, ${nOp} operacionais, ${nAt} em atenção, ${nMt} em manutenção, ${nIn} inativos. Score de saúde: ${scoreEquip}/100. Equipamentos críticos: ${EQUIP_DEMO.filter(e=>e.status!=="operacional").map(e=>e.nome+" ("+e.status+": "+e.descricao+")").join("; ")}. Custo de manutenção anual estimado: R$ ${EQUIP_DEMO.reduce((s,e)=>s+e.custoManutencao*2,0).toLocaleString("pt-BR")}. MTTR: 4.2 dias. MTBF: 38 dias. Disponibilidade: 89%.`;
+                            try {
+                              const r = await fetch("/api/sindico/chat", {
+                                method:"POST",
+                                headers:{"Content-Type":"application/json"},
+                                body:JSON.stringify({ message:`Analise o estado dos equipamentos e manutenção do condomínio. ${resumo} Forneça: 1) diagnóstico dos equipamentos críticos 2) recomendações prioritárias 3) score de saúde explicado 4) previsão de riscos. Seja específico e técnico.`, history:[] })
+                              });
+                              const d = await r.json();
+                              setMantAiResult(d.response || d.error || "Sem resposta");
+                            } catch { setMantAiResult("Erro ao conectar com IA."); }
+                            setMantAiLoading(false);
+                          }}
+                          style={{ background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.4)", borderRadius:8, padding:"8px 16px", color:"#A5B4FC", fontSize:12, cursor:mantAiLoading?"not-allowed":"pointer", fontWeight:600, opacity:mantAiLoading?0.6:1 }}>
+                          {mantAiLoading ? "⏳ Analisando..." : "🔍 Analisar com IA"}
+                        </button>
+                      </div>
+                      {mantAiResult && (
+                        <div style={{ background:"rgba(255,255,255,.03)", borderRadius:10, padding:"14px 16px", fontSize:12, lineHeight:1.8, color:"#E2E8F0", whiteSpace:"pre-wrap" }}>
+                          {mantAiResult}
+                        </div>
+                      )}
+                      {!mantAiResult && !mantAiLoading && (
+                        <div style={{ fontSize:12, color:"#334155" }}>Clique em "Analisar com IA" para receber um diagnóstico completo dos equipamentos com recomendações do Síndico Virtual.</div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* PANEL: SSE LOG */}
           <div className={`panel ${panel === "supabase" ? "active" : ""} card`}>
