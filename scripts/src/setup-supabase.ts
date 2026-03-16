@@ -35,20 +35,42 @@ async function run() {
 }
 
 async function runMigrations() {
-  const migrations = [
-    "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS cnpj TEXT",
-    "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS endereco TEXT",
-    "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'SC'",
-    "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_email TEXT",
-    "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_tel TEXT",
-  ];
-  // Check if migration needed
-  const { error } = await supabase.from("condominios").select("cnpj, endereco, estado, sindico_email, sindico_tel").limit(1);
-  if (!error) { console.log("✅ Schema up-to-date (migration columns exist)\n"); return; }
+  const projectId = url.split("//")[1].split(".")[0];
+  const sqlEditorUrl = `https://supabase.com/dashboard/project/${projectId}/sql/new`;
 
-  console.log("⚠️  Schema needs migration. Please run the following SQL in your Supabase SQL Editor:");
-  console.log(`   https://supabase.com/dashboard/project/${url.split("//")[1].split(".")[0]}/sql/new\n`);
-  migrations.forEach(m => console.log("   " + m + ";"));
+  // ── Migration 1: condominios extra columns ─────────────────────────────
+  const { error: m1Err } = await supabase.from("condominios").select("cnpj, endereco, estado, sindico_email, sindico_tel").limit(1);
+  if (m1Err) {
+    console.log("⚠️  Migration 1 needed (condominios columns). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    [
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS cnpj TEXT",
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS endereco TEXT",
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'SC'",
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_email TEXT",
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_tel TEXT",
+    ].forEach(m => console.log("   " + m + ";"));
+    console.log();
+  } else {
+    console.log("✅ Migration 1 (condominios): OK");
+  }
+
+  // ── Migration 2: ordens_servico → responsavel + numero + unique ────────
+  const { error: m2Err } = await supabase.from("ordens_servico").select("responsavel, numero").limit(1);
+  if (m2Err) {
+    console.log("\n⚠️  Migration 2 needed (ordens_servico columns). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    [
+      "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS responsavel TEXT",
+      "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS numero INTEGER",
+      "ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+      "CREATE UNIQUE INDEX IF NOT EXISTS uq_os_numero_condo ON ordens_servico (condominio_id, numero) WHERE numero IS NOT NULL",
+    ].forEach(m => console.log("   " + m + ";"));
+    console.log();
+  } else {
+    console.log("✅ Migration 2 (ordens_servico responsavel+numero): OK");
+  }
+
   console.log();
 }
 
@@ -69,11 +91,16 @@ ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_email TEXT;
 ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_tel TEXT;
 CREATE TABLE IF NOT EXISTS ordens_servico (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  condominio_id UUID, numero SERIAL, titulo TEXT NOT NULL,
+  condominio_id UUID, numero INTEGER, titulo TEXT NOT NULL,
   descricao TEXT, categoria TEXT, status TEXT DEFAULT 'aberta',
-  prioridade TEXT DEFAULT 'media', unidade TEXT,
+  prioridade TEXT DEFAULT 'media', unidade TEXT, responsavel TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS uq_os_numero_condo ON ordens_servico (condominio_id, numero) WHERE numero IS NOT NULL;
+-- Migration for existing installs:
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS responsavel TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS numero INTEGER;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 CREATE TABLE IF NOT EXISTS sensores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   condominio_id UUID, sensor_id TEXT UNIQUE, nome TEXT, local TEXT,

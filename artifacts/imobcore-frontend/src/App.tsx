@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import QRCode from "qrcode";
+import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; responsavel?: string; updated_at?: string; created_at: string }
 interface Sensor { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; nivel_atual: number; volume_litros: number }
 interface Alerta { id: string; origem: string; titulo: string; descricao?: string; tipo: string; nivel: string; cidade: string; bairro: string }
-interface Receita { id: string; descricao: string; valor: number; categoria: string; status: string }
-interface Despesa { id: string; descricao: string; valor: number; categoria: string; fornecedor?: string }
+interface Receita { id: string; descricao: string; valor: number; categoria: string; status: string; created_at?: string }
+interface Despesa { id: string; descricao: string; valor: number; categoria: string; fornecedor?: string; created_at?: string }
 interface Comunicado { id: string; titulo: string; corpo: string; gerado_por_ia: boolean; created_at: string }
 interface ChatMsg { role: "user" | "ai"; content: string; time: string }
 interface DashTotais { os_abertas: number; os_urgentes: number; saldo: number; total_receitas: number; total_despesas: number; alertas_ativos: number; nivel_medio_agua: number }
@@ -2975,33 +2976,238 @@ export default function App() {
           </div>
 
           {/* PANEL: FINANCEIRO */}
-          <div className={`panel ${panel === "financeiro" ? "active" : ""} card`}>
-            <div className="card-title">💰 Financeiro</div>
-            <div className="fin-kpi-row">
-              {[{ label: "Saldo", val: fmtBRLFull(t?.saldo || 0), color: "var(--green)" }, { label: "Receitas", val: fmtBRLFull(t?.total_receitas || 0), color: "var(--cyan)" }, { label: "Despesas", val: fmtBRLFull(t?.total_despesas || 0), color: "var(--red)" }].map(k => (
-                <div key={k.label} className="fin-kpi"><div className="fin-kpi-label">{k.label}</div><div className="fin-kpi-val" style={{ color: k.color }}>{k.val}</div></div>
-              ))}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <div className="card-title">📈 Receitas</div>
-                {(dash?.receitas || []).map(r => (
-                  <div key={r.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
-                    <div><div style={{ fontSize: 13 }}>{r.descricao}</div><div style={{ fontSize: 11, color: "#475569" }}>{r.categoria}</div></div>
-                    <div style={{ color: "var(--green)", fontWeight: 600, fontSize: 13 }}>{fmtBRLFull(r.valor)}</div>
+          <div className={`panel ${panel === "financeiro" ? "active" : ""}`}>
+            {(() => {
+              const receitas = dash?.receitas || [];
+              const despesas = dash?.despesas || [];
+              const saldo = t?.saldo || 0;
+              const totalRec = t?.total_receitas || 0;
+              const totalDesp = t?.total_despesas || 0;
+              const resultado = totalRec - totalDesp;
+
+              // ── Inadimplência: receitas não pagas ──────────────────────
+              const inadimplentes = receitas.filter(r => r.status && !["pago","paga","recebido","recebida","confirmado","confirmada"].includes(r.status.toLowerCase()));
+              const vlrInad = inadimplentes.reduce((s, r) => s + r.valor, 0);
+              const txInad = totalRec > 0 ? Math.round((vlrInad / totalRec) * 100) : 0;
+
+              // ── Score de Saúde Financeira (0–100) ─────────────────────
+              // Critérios: saldo positivo (30), resultado positivo (25), inadimplência baixa (25), reserva suficiente (20)
+              const scoreSaldo = saldo > 0 ? Math.min(30, Math.round((Math.min(saldo, 100000) / 100000) * 30)) : 0;
+              const scoreResult = resultado >= 0 ? 25 : Math.max(0, 25 + Math.round((resultado / (totalRec || 1)) * 25));
+              const scoreInad = txInad <= 5 ? 25 : txInad <= 15 ? 15 : txInad <= 30 ? 8 : 0;
+              const scoreReserva = saldo >= totalDesp * 3 ? 20 : saldo >= totalDesp ? 12 : saldo > 0 ? 6 : 0;
+              const score = Math.min(100, scoreSaldo + scoreResult + scoreInad + scoreReserva);
+              const scoreColor = score >= 80 ? "#10B981" : score >= 60 ? "#F59E0B" : score >= 40 ? "#F97316" : "#EF4444";
+              const scoreLabel = score >= 80 ? "Excelente" : score >= 60 ? "Bom" : score >= 40 ? "Regular" : "Crítico";
+
+              // ── Donut: despesas por categoria ──────────────────────────
+              const despCat: Record<string, number> = {};
+              despesas.forEach(d => { despCat[d.categoria || "outros"] = (despCat[d.categoria || "outros"] || 0) + d.valor; });
+              const pieData = Object.entries(despCat).map(([name, value]) => ({ name, value: Math.round(value) })).sort((a, b) => b.value - a.value);
+              const PIE_COLORS = ["#6366F1","#06B6D4","#10B981","#F59E0B","#EF4444","#A855F7","#EC4899","#14B8A6"];
+
+              // ── Fluxo de caixa mês a mês ───────────────────────────────
+              const now2 = new Date();
+              const monthsMap: Record<string, { rec: number; desp: number }> = {};
+              const getMonth = (d?: string) => {
+                if (!d) return null;
+                const dt = new Date(d);
+                return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+              };
+              // Seed last 6 months
+              for (let i = 5; i >= 0; i--) {
+                const dt = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
+                const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+                monthsMap[key] = { rec: 0, desp: 0 };
+              }
+              receitas.forEach(r => { const m = getMonth(r.created_at); if (m && monthsMap[m]) monthsMap[m].rec += r.valor; });
+              despesas.forEach(d => { const m = getMonth(d.created_at); if (m && monthsMap[m]) monthsMap[m].desp += d.valor; });
+              const lineData = Object.entries(monthsMap).map(([mes, v]) => ({
+                mes: mes.slice(5) + "/" + mes.slice(2, 4),
+                Receitas: Math.round(v.rec),
+                Despesas: Math.round(v.desp),
+                Resultado: Math.round(v.rec - v.desp),
+              }));
+
+              // ── Projeção 3 meses (baseado na média dos últimos 3 meses) ─
+              const last3 = lineData.slice(-3);
+              const avgRec = last3.length ? last3.reduce((s, m) => s + m.Receitas, 0) / last3.length : 0;
+              const avgDesp = last3.length ? last3.reduce((s, m) => s + m.Despesas, 0) / last3.length : 0;
+              const projData = [];
+              let saldoProj = saldo;
+              for (let i = 1; i <= 3; i++) {
+                const d = new Date(now2.getFullYear(), now2.getMonth() + i, 1);
+                const label = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(2)} ▸`;
+                saldoProj += avgRec - avgDesp;
+                projData.push({ mes: label, SaldoProjetado: Math.round(saldoProj), Receitas: Math.round(avgRec), Despesas: Math.round(avgDesp) });
+              }
+
+              const fmtK = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v}`;
+
+              return (
+                <>
+                  {/* ── KPI Cards ── */}
+                  <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+                    {[
+                      { label: "Saldo em Caixa", val: fmtBRLFull(saldo), color: saldo >= 0 ? "#10B981" : "#EF4444", icon: "💰" },
+                      { label: "Receitas (total)", val: fmtBRLFull(totalRec), color: "#06B6D4", icon: "📈" },
+                      { label: "Despesas (total)", val: fmtBRLFull(totalDesp), color: "#EF4444", icon: "📉" },
+                      { label: "Resultado", val: fmtBRLFull(resultado), color: resultado >= 0 ? "#10B981" : "#EF4444", icon: resultado >= 0 ? "✅" : "⚠️" },
+                    ].map(k => (
+                      <div key={k.label} style={{ flex: 1, minWidth: 160, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "12px 16px" }}>
+                        <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>{k.icon} {k.label.toUpperCase()}</div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: k.color }}>{k.val}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              <div>
-                <div className="card-title">📉 Despesas</div>
-                {(dash?.despesas || []).map(d => (
-                  <div key={d.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
-                    <div><div style={{ fontSize: 13 }}>{d.descricao}</div><div style={{ fontSize: 11, color: "#475569" }}>{d.fornecedor || d.categoria}</div></div>
-                    <div style={{ color: "var(--red)", fontWeight: 600, fontSize: 13 }}>-{fmtBRLFull(d.valor)}</div>
+
+                  {/* ── Score + Inadimplência ── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                    {/* Score */}
+                    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px 20px" }}>
+                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 10 }}>💚 SAÚDE FINANCEIRA</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                        <div style={{ position: "relative", width: 72, height: 72 }}>
+                          <svg viewBox="0 0 36 36" style={{ width: 72, height: 72, transform: "rotate(-90deg)" }}>
+                            <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="3" />
+                            <circle cx="18" cy="18" r="15.9" fill="none" stroke={scoreColor} strokeWidth="3"
+                              strokeDasharray={`${score} ${100 - score}`} strokeLinecap="round" />
+                          </svg>
+                          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                            <div style={{ fontSize: 16, fontWeight: 800, color: scoreColor }}>{score}</div>
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: scoreColor }}>{scoreLabel}</div>
+                          <div style={{ fontSize: 10, color: "#475569", marginTop: 4, lineHeight: 1.6 }}>
+                            Saldo: {scoreSaldo}/30 · Resultado: {scoreResult}/25<br/>
+                            Inadimpl.: {scoreInad}/25 · Reserva: {scoreReserva}/20
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Inadimplência */}
+                    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px 20px" }}>
+                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 10 }}>⚠️ INADIMPLÊNCIA</div>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                        <div style={{ fontSize: 28, fontWeight: 800, color: txInad <= 5 ? "#10B981" : txInad <= 15 ? "#F59E0B" : "#EF4444" }}>{txInad}%</div>
+                        <div style={{ fontSize: 11, color: "#475569" }}>{inadimplentes.length} lançamento(s) pendentes</div>
+                      </div>
+                      <div style={{ height: 6, background: "rgba(255,255,255,.06)", borderRadius: 3, marginBottom: 8 }}>
+                        <div style={{ width: `${Math.min(txInad, 100)}%`, height: "100%", background: txInad <= 5 ? "#10B981" : txInad <= 15 ? "#F59E0B" : "#EF4444", borderRadius: 3, transition: "width .4s" }} />
+                      </div>
+                      <div style={{ fontSize: 10, color: "#475569" }}>
+                        {txInad <= 5 ? "✅ Excelente — abaixo de 5%" : txInad <= 15 ? "🟡 Atenção — entre 5% e 15%" : "🔴 Crítico — acima de 15%"}
+                        {vlrInad > 0 && ` · ${fmtBRLFull(vlrInad)} em aberto`}
+                      </div>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </div>
+
+                  {/* ── Charts row ── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 12, marginBottom: 16 }}>
+                    {/* Donut: despesas por categoria */}
+                    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px" }}>
+                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 12 }}>🍩 DESPESAS POR CATEGORIA</div>
+                      {pieData.length === 0 ? (
+                        <div style={{ textAlign: "center", padding: 20, color: "#334155", fontSize: 12 }}>Nenhuma despesa registrada</div>
+                      ) : (
+                        <>
+                          <ResponsiveContainer width="100%" height={160}>
+                            <PieChart>
+                              <Pie data={pieData} cx="50%" cy="50%" innerRadius={44} outerRadius={70} paddingAngle={3} dataKey="value">
+                                {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                              </Pie>
+                              <Tooltip formatter={(v: number) => fmtBRLFull(v)} contentStyle={{ background: "#0F172A", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, fontSize: 11 }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {pieData.slice(0, 5).map((d, i) => (
+                              <div key={d.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                  <div style={{ width: 8, height: 8, borderRadius: 2, background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                                  <span style={{ color: "#94A3B8" }}>{d.name}</span>
+                                </div>
+                                <span style={{ color: "#64748B" }}>{fmtK(d.value)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Line: fluxo de caixa */}
+                    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px" }}>
+                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 12 }}>📊 FLUXO DE CAIXA — ÚLTIMOS 6 MESES</div>
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={lineData} margin={{ top: 4, right: 10, bottom: 4, left: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
+                          <XAxis dataKey="mes" tick={{ fontSize: 10, fill: "#475569" }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 10, fill: "#475569" }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={50} />
+                          <Tooltip formatter={(v: number) => fmtBRLFull(v)} contentStyle={{ background: "#0F172A", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, fontSize: 11 }} />
+                          <Legend wrapperStyle={{ fontSize: 10, color: "#475569" }} />
+                          <Line type="monotone" dataKey="Receitas" stroke="#06B6D4" strokeWidth={2} dot={{ r: 3, fill: "#06B6D4" }} />
+                          <Line type="monotone" dataKey="Despesas" stroke="#EF4444" strokeWidth={2} dot={{ r: 3, fill: "#EF4444" }} />
+                          <Line type="monotone" dataKey="Resultado" stroke="#10B981" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2, fill: "#10B981" }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* ── Projeção 3 meses ── */}
+                  <div style={{ background: "rgba(99,102,241,.04)", border: "1px solid rgba(99,102,241,.15)", borderRadius: 12, padding: "16px", marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, color: "#6366F1", marginBottom: 12 }}>🔮 PROJEÇÃO — PRÓXIMOS 3 MESES (baseado na média dos últimos 3 meses)</div>
+                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                      {projData.map((p, i) => (
+                        <div key={i} style={{ flex: 1, minWidth: 160, background: "rgba(255,255,255,.02)", borderRadius: 10, padding: "12px 14px", border: "1px solid rgba(255,255,255,.05)" }}>
+                          <div style={{ fontSize: 10, color: "#6366F1", fontWeight: 700, marginBottom: 6 }}>{p.mes}</div>
+                          <div style={{ fontSize: 11, color: "#06B6D4", marginBottom: 2 }}>📈 Rec. prev. {fmtBRLFull(p.Receitas)}</div>
+                          <div style={{ fontSize: 11, color: "#EF4444", marginBottom: 6 }}>📉 Desp. prev. {fmtBRLFull(p.Despesas)}</div>
+                          <div style={{ height: 1, background: "rgba(255,255,255,.06)", marginBottom: 6 }} />
+                          <div style={{ fontSize: 14, fontWeight: 700, color: p.SaldoProjetado >= 0 ? "#10B981" : "#EF4444" }}>
+                            {p.SaldoProjetado >= 0 ? "✅" : "⚠️"} Saldo proj. {fmtBRLFull(p.SaldoProjetado)}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#334155", marginTop: 10 }}>
+                      Média usada: receitas {fmtBRLFull(Math.round(avgRec))}/mês · despesas {fmtBRLFull(Math.round(avgDesp))}/mês
+                      {avgRec === 0 && avgDesp === 0 && " · Adicione lançamentos com data para gerar projeção precisa"}
+                    </div>
+                  </div>
+
+                  {/* ── Lançamentos lado a lado ── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 12, padding: "14px 16px" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#06B6D4", marginBottom: 10 }}>📈 RECEITAS ({receitas.length})</div>
+                      {receitas.length === 0 && <div style={{ color: "#334155", fontSize: 12, textAlign: "center", padding: 16 }}>Nenhuma receita registrada</div>}
+                      {receitas.map(r => (
+                        <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                          <div>
+                            <div style={{ fontSize: 12 }}>{r.descricao}</div>
+                            <div style={{ fontSize: 10, color: "#475569", marginTop: 1 }}>{r.categoria} · <span style={{ color: ["pago","paga","recebido","recebida"].includes((r.status||"").toLowerCase()) ? "#10B981" : "#F59E0B" }}>{r.status}</span></div>
+                          </div>
+                          <div style={{ color: "#06B6D4", fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" }}>{fmtBRLFull(r.valor)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 12, padding: "14px 16px" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#EF4444", marginBottom: 10 }}>📉 DESPESAS ({despesas.length})</div>
+                      {despesas.length === 0 && <div style={{ color: "#334155", fontSize: 12, textAlign: "center", padding: 16 }}>Nenhuma despesa registrada</div>}
+                      {despesas.map(d => (
+                        <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                          <div>
+                            <div style={{ fontSize: 12 }}>{d.descricao}</div>
+                            <div style={{ fontSize: 10, color: "#475569", marginTop: 1 }}>{d.fornecedor || d.categoria}</div>
+                          </div>
+                          <div style={{ color: "#EF4444", fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" }}>-{fmtBRLFull(d.valor)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* PANEL: IoT */}
