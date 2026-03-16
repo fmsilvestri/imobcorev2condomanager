@@ -1,0 +1,1621 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ImobCore v2 – Gestão de Condomínios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Inter',sans-serif;background:#070B12;color:#E2E8F0;overflow:hidden}
+:root{
+  --bg:#070B12;--card-bg:rgba(255,255,255,.04);--card-border:rgba(255,255,255,.08);
+  --grad:linear-gradient(135deg,#6366F1,#7C3AED,#A855F7);
+  --grad-teal:linear-gradient(135deg,#0D9488,#14B8A6,#2DD4BF);
+  --indigo:#6366F1;--violet:#7C3AED;--purple:#A855F7;
+  --teal:#14B8A6;--red:#EF4444;--amber:#F59E0B;--green:#10B981;--blue:#3B82F6;--cyan:#06B6D4;
+  --sidebar-w:220px;--ai-panel-w:340px;--topbar-h:52px;
+}
+/* Scrollbars */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:2px}
+
+/* TOPBAR */
+#topbar{
+  position:fixed;top:0;left:0;right:0;z-index:1000;
+  height:var(--topbar-h);background:rgba(7,11,18,.95);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--card-border);
+  display:flex;align-items:center;gap:12px;padding:0 16px;
+}
+#topbar .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:15px;letter-spacing:-.3px;margin-right:8px}
+#topbar .logo span{font-size:18px}
+.view-btns{display:flex;gap:4px}
+.view-btn{
+  padding:5px 12px;border-radius:8px;border:1px solid var(--card-border);
+  background:transparent;color:#94A3B8;font-size:12px;font-weight:500;cursor:pointer;
+  transition:all .2s;font-family:inherit;
+}
+.view-btn.active{background:var(--grad);border-color:transparent;color:#fff}
+.view-btn:hover:not(.active){background:rgba(255,255,255,.06);color:#E2E8F0}
+#realtime-badge{
+  display:flex;align-items:center;gap:6px;margin-left:auto;
+  padding:4px 10px;border-radius:20px;background:rgba(16,185,129,.1);
+  border:1px solid rgba(16,185,129,.2);font-size:11px;color:#10B981;font-weight:500;
+}
+#realtime-badge .dot{width:7px;height:7px;border-radius:50%;background:#10B981}
+#realtime-badge .dot.pulse{animation:pulse 2s infinite}
+#realtime-badge.offline{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.2);color:#EF4444}
+#realtime-badge.offline .dot{background:#EF4444;animation:none}
+#clock-display{font-size:12px;color:#64748B;font-variant-numeric:tabular-nums;margin-left:8px}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+
+/* VIEWS */
+.view{display:none;height:calc(100vh - var(--topbar-h));margin-top:var(--topbar-h)}
+.view.active{display:flex}
+
+/* ============================================================
+   VIEW 1 – PAINEL GESTOR
+   ============================================================ */
+#view-gestor{flex-direction:row}
+
+/* SIDEBAR */
+#sidebar{
+  width:var(--sidebar-w);min-width:var(--sidebar-w);height:100%;
+  background:rgba(8,12,20,.98);border-right:1px solid var(--card-border);
+  overflow-y:auto;padding:12px 0;
+}
+.sb-section{margin-bottom:4px}
+.sb-label{font-size:10px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.08em;padding:8px 16px 4px}
+.sb-item{
+  display:flex;align-items:center;gap:10px;padding:8px 16px;cursor:pointer;
+  font-size:13px;color:#94A3B8;transition:all .15s;position:relative;
+}
+.sb-item:hover{color:#E2E8F0;background:rgba(255,255,255,.04)}
+.sb-item.active{color:#fff;background:rgba(99,102,241,.12)}
+.sb-item.active::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:2px;background:var(--indigo);border-radius:0 2px 2px 0}
+.sb-icon{font-size:15px;width:20px;text-align:center}
+.sb-badge{
+  margin-left:auto;padding:1px 7px;border-radius:10px;
+  background:var(--red);color:#fff;font-size:10px;font-weight:600;
+}
+.sb-badge.blue{background:var(--blue)}
+
+/* MAIN AREA */
+#main-area{flex:1;overflow-y:auto;padding:16px}
+
+/* KPI row */
+.kpi-row{display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+.kpi-card{
+  flex:1;min-width:140px;padding:14px 16px;
+  background:var(--card-bg);border:1px solid var(--card-border);border-radius:12px;
+}
+.kpi-label{font-size:11px;color:#64748B;font-weight:500;margin-bottom:4px}
+.kpi-value{font-size:22px;font-weight:700;line-height:1}
+.kpi-sub{font-size:11px;color:#475569;margin-top:4px}
+.kpi-red .kpi-value{color:var(--red)}
+.kpi-green .kpi-value{color:var(--green)}
+.kpi-cyan .kpi-value{color:var(--cyan)}
+.kpi-amber .kpi-value{color:var(--amber)}
+.kpi-purple .kpi-value{color:var(--purple)}
+
+/* PANELS */
+.panel{display:none;animation:fadeIn .2s ease}
+.panel.active{display:block}
+
+/* Chat panel */
+.chat-chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chip{
+  padding:5px 12px;border-radius:20px;border:1px solid var(--card-border);
+  background:rgba(255,255,255,.04);color:#94A3B8;font-size:12px;cursor:pointer;
+  transition:all .15s;font-family:inherit;
+}
+.chip:hover{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3);color:var(--indigo)}
+.chat-area{
+  height:340px;overflow-y:auto;padding:12px;
+  background:rgba(0,0,0,.2);border:1px solid var(--card-border);border-radius:12px;
+  display:flex;flex-direction:column;gap:10px;margin-bottom:10px;
+}
+.msg{display:flex;flex-direction:column;max-width:88%;animation:fadeIn .2s ease}
+.msg.user{align-self:flex-end;align-items:flex-end}
+.msg.ai{align-self:flex-start;align-items:flex-start}
+.msg-bubble{
+  padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.5;
+  white-space:pre-wrap;word-break:break-word;
+}
+.msg.ai .msg-bubble{
+  background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.2);color:#C7D2FE;
+}
+.msg.user .msg-bubble{
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#E2E8F0;
+}
+.msg-time{font-size:10px;color:#475569;margin-top:2px}
+.chat-input-row{display:flex;gap:8px}
+.chat-input{
+  flex:1;padding:10px 14px;background:rgba(0,0,0,.3);border:1px solid var(--card-border);
+  border-radius:10px;color:#E2E8F0;font-size:13px;font-family:inherit;resize:none;
+  transition:border-color .15s;
+}
+.chat-input:focus{outline:none;border-color:rgba(99,102,241,.5)}
+.btn-send{
+  padding:10px 16px;background:var(--grad);border:none;border-radius:10px;
+  color:#fff;font-weight:600;font-size:13px;cursor:pointer;transition:opacity .15s;font-family:inherit;
+}
+.btn-send:hover{opacity:.85}
+.btn-send:disabled{opacity:.4;cursor:not-allowed}
+
+.typing{display:flex;gap:4px;align-items:center;padding:10px 14px}
+.typing-dot{width:7px;height:7px;border-radius:50%;background:var(--indigo);animation:blink 1.2s infinite}
+.typing-dot:nth-child(2){animation-delay:.2s}
+.typing-dot:nth-child(3){animation-delay:.4s}
+
+/* Status badge */
+.status-badge{
+  display:inline-flex;align-items:center;gap:5px;padding:2px 8px;
+  border-radius:10px;font-size:11px;font-weight:500;
+}
+.badge-online{background:rgba(16,185,129,.1);color:#10B981;border:1px solid rgba(16,185,129,.2)}
+.badge-offline{background:rgba(239,68,68,.1);color:#EF4444;border:1px solid rgba(239,68,68,.2)}
+
+/* OS Table */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{
+  padding:8px 12px;text-align:left;font-size:11px;font-weight:600;
+  color:#475569;text-transform:uppercase;letter-spacing:.06em;
+  border-bottom:1px solid var(--card-border);
+}
+tbody td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.03);color:#CBD5E1}
+tbody tr:hover td{background:rgba(255,255,255,.02)}
+
+/* Pills */
+.pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:500}
+.pill-red{background:rgba(239,68,68,.15);color:#F87171;border:1px solid rgba(239,68,68,.2)}
+.pill-amber{background:rgba(245,158,11,.15);color:#FCD34D;border:1px solid rgba(245,158,11,.2)}
+.pill-green{background:rgba(16,185,129,.15);color:#34D399;border:1px solid rgba(16,185,129,.2)}
+.pill-blue{background:rgba(59,130,246,.15);color:#93C5FD;border:1px solid rgba(59,130,246,.2)}
+.pill-cyan{background:rgba(6,182,212,.15);color:#67E8F9;border:1px solid rgba(6,182,212,.2)}
+.pill-purple{background:rgba(168,85,247,.15);color:#D8B4FE;border:1px solid rgba(168,85,247,.2)}
+.pill-gray{background:rgba(100,116,139,.15);color:#94A3B8;border:1px solid rgba(100,116,139,.2)}
+
+/* Card */
+.card{
+  background:var(--card-bg);border:1px solid var(--card-border);
+  border-radius:16px;padding:16px;margin-bottom:12px;
+}
+.card-title{font-size:13px;font-weight:600;color:#94A3B8;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+
+/* Btn */
+.btn{
+  padding:8px 16px;border-radius:8px;border:none;cursor:pointer;
+  font-size:13px;font-weight:500;font-family:inherit;transition:all .15s;
+}
+.btn-primary{background:var(--grad);color:#fff}
+.btn-primary:hover{opacity:.85}
+.btn-sm{padding:5px 10px;font-size:12px;border-radius:6px}
+.btn-ghost{background:rgba(255,255,255,.06);color:#94A3B8;border:1px solid var(--card-border)}
+.btn-ghost:hover{background:rgba(255,255,255,.1);color:#E2E8F0}
+.btn-danger{background:rgba(239,68,68,.15);color:#F87171;border:1px solid rgba(239,68,68,.2)}
+.btn-danger:hover{background:rgba(239,68,68,.25)}
+.btn-success{background:rgba(16,185,129,.15);color:#34D399;border:1px solid rgba(16,185,129,.2)}
+.btn-success:hover{background:rgba(16,185,129,.25)}
+
+/* Form */
+.form-group{margin-bottom:12px}
+.form-label{font-size:12px;color:#64748B;margin-bottom:4px;display:block;font-weight:500}
+.form-control{
+  width:100%;padding:8px 12px;background:rgba(0,0,0,.3);border:1px solid var(--card-border);
+  border-radius:8px;color:#E2E8F0;font-size:13px;font-family:inherit;
+}
+.form-control:focus{outline:none;border-color:rgba(99,102,241,.5)}
+select.form-control option{background:#0D1220}
+
+/* IoT Sensor Ring */
+.sensor-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.sensor-card{
+  background:var(--card-bg);border:1px solid var(--card-border);border-radius:12px;
+  padding:16px;text-align:center;
+}
+.sensor-ring-wrap{position:relative;width:90px;height:90px;margin:0 auto 10px}
+.sensor-ring-wrap svg{width:90px;height:90px;transform:rotate(-135deg)}
+.ring-bg{fill:none;stroke:rgba(255,255,255,.06);stroke-width:8;stroke-linecap:round}
+.ring-fg{fill:none;stroke-width:8;stroke-linecap:round;transition:stroke-dashoffset .5s ease,stroke .5s ease}
+.ring-label{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-size:16px;font-weight:700;line-height:1;
+}
+.sensor-name{font-size:12px;font-weight:600;color:#CBD5E1;margin-bottom:2px}
+.sensor-sub{font-size:11px;color:#475569}
+
+/* AI FIXED PANEL */
+#ai-panel{
+  width:var(--ai-panel-w);min-width:var(--ai-panel-w);height:100%;
+  background:rgba(8,10,20,.98);border-left:1px solid var(--card-border);
+  display:flex;flex-direction:column;
+}
+#ai-panel-header{
+  padding:12px 14px;border-bottom:1px solid var(--card-border);
+  display:flex;align-items:center;justify-content:space-between;
+}
+#ai-panel-header .title{font-size:13px;font-weight:600}
+.ctx-pills{display:flex;flex-wrap:wrap;gap:4px;padding:8px 14px;border-bottom:1px solid var(--card-border)}
+.ctx-pill{
+  font-size:10px;padding:2px 7px;border-radius:8px;font-weight:500;
+  background:rgba(99,102,241,.1);color:#A5B4FC;border:1px solid rgba(99,102,241,.2);
+}
+#ai-panel-msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+#ai-panel-input{padding:10px;border-top:1px solid var(--card-border)}
+#ai-panel-input textarea{
+  width:100%;padding:8px 10px;background:rgba(0,0,0,.3);border:1px solid var(--card-border);
+  border-radius:8px;color:#E2E8F0;font-size:12px;font-family:inherit;resize:none;height:60px;
+}
+#ai-panel-input textarea:focus{outline:none;border-color:rgba(99,102,241,.5)}
+#ai-panel-input .send-row{display:flex;justify-content:flex-end;margin-top:4px}
+
+/* Supabase log */
+#supabase-log{
+  height:400px;overflow-y:auto;padding:10px;
+  font-family:'Courier New',monospace;font-size:11px;
+  background:rgba(0,0,0,.4);border-radius:8px;border:1px solid var(--card-border);
+}
+.log-entry{padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03);color:#64748B}
+.log-entry .log-time{color:#334155;margin-right:8px}
+.log-entry .log-event{font-weight:600}
+.log-event-sse{color:#10B981}
+.log-event-os{color:#6366F1}
+.log-event-sensor{color:#06B6D4}
+.log-event-chat{color:#A855F7}
+.log-event-comunicado{color:#F59E0B}
+.log-event-alerta{color:#EF4444}
+
+/* ALERTA banner */
+.alert-banner{
+  display:none;padding:10px 14px;border-radius:10px;margin-bottom:12px;
+  background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);
+  color:#F87171;font-size:13px;font-weight:500;
+  animation:pulse 2s infinite;
+}
+.alert-banner.active{display:flex;align-items:center;gap:8px}
+
+/* TOAST */
+#toast-container{
+  position:fixed;bottom:24px;right:24px;z-index:9999;
+  display:flex;flex-direction:column;gap:8px;
+}
+.toast{
+  padding:10px 16px;border-radius:10px;background:#1E293B;border:1px solid var(--card-border);
+  color:#E2E8F0;font-size:13px;max-width:320px;
+  animation:slideIn .2s ease;box-shadow:0 8px 32px rgba(0,0,0,.4);
+}
+.toast.success{border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.1);color:#34D399}
+.toast.error{border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.1);color:#F87171}
+.toast.info{border-color:rgba(99,102,241,.3);background:rgba(99,102,241,.1);color:#A5B4FC}
+.toast.warn{border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.1);color:#FCD34D}
+
+/* ============================================================
+   VIEW 2 – APP SÍNDICO (PHONE FRAME)
+   ============================================================ */
+#view-sindico{
+  flex:1;justify-content:center;align-items:center;background:#070B12;
+  overflow:hidden;
+}
+.phone-frame{
+  width:375px;border-radius:48px;background:#000;
+  box-shadow:0 0 0 2px #1a1a2e, 0 0 0 8px #0a0a1a, 0 30px 80px rgba(0,0,0,.8),
+             0 0 60px rgba(99,102,241,.15), inset 0 0 0 1px rgba(255,255,255,.05);
+  position:relative;overflow:hidden;height:780px;
+}
+.phone-inner{
+  background:#0D1220;height:100%;border-radius:48px;overflow:hidden;
+  display:flex;flex-direction:column;position:relative;
+}
+.phone-notch{
+  position:absolute;top:0;left:50%;transform:translateX(-50%);
+  width:120px;height:30px;background:#000;border-radius:0 0 20px 20px;z-index:100;
+}
+.phone-status{
+  height:44px;display:flex;align-items:center;padding:0 24px;
+  justify-content:space-between;font-size:12px;font-weight:600;padding-top:6px;
+  position:relative;z-index:10;
+}
+.phone-content{flex:1;overflow-y:auto;overflow-x:hidden}
+.phone-bottom-nav{
+  height:64px;background:rgba(13,18,32,.98);border-top:1px solid var(--card-border);
+  display:flex;align-items:center;justify-content:space-around;padding:0 8px;
+  flex-shrink:0;
+}
+.nav-item{
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+  font-size:10px;color:#475569;cursor:pointer;flex:1;padding:8px 4px;
+  transition:color .15s;
+}
+.nav-item.active{color:var(--indigo)}
+.nav-item span{font-size:20px}
+.nav-fab{
+  width:54px;height:54px;border-radius:50%;
+  background:var(--grad);border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;box-shadow:0 4px 20px rgba(99,102,241,.5);
+  margin-top:-18px;flex-shrink:0;transition:transform .15s;
+}
+.nav-fab:hover{transform:scale(1.05)}
+
+/* Phone Header */
+.phone-header{
+  padding:8px 16px 10px;display:flex;align-items:center;justify-content:space-between;
+}
+.phone-avatar{
+  width:40px;height:40px;border-radius:50%;
+  background:var(--grad);display:flex;align-items:center;justify-content:center;
+  font-size:16px;font-weight:700;color:#fff;flex-shrink:0;
+}
+.phone-avatar.teal{background:var(--grad-teal)}
+.phone-user-info{flex:1;margin-left:10px}
+.phone-user-name{font-size:14px;font-weight:700}
+.phone-user-sub{font-size:11px;color:#475569}
+.phone-bell{
+  width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.06);
+  border:1px solid var(--card-border);display:flex;align-items:center;justify-content:center;
+  font-size:16px;cursor:pointer;position:relative;
+}
+.bell-badge{
+  position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:50%;
+  background:var(--red);color:#fff;font-size:9px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;border:2px solid #0D1220;
+}
+
+/* Phone cards */
+.ph-card{
+  margin:0 12px 10px;padding:14px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;
+}
+.ph-card.grad-card{background:var(--grad);border:none}
+.ph-card.grad-card-teal{background:var(--grad-teal);border:none}
+.ph-card.critical{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);animation:pulse 2s infinite}
+.ph-card-title{font-size:12px;font-weight:600;color:#94A3B8;margin-bottom:10px}
+.ph-card.grad-card .ph-card-title,.ph-card.grad-card-teal .ph-card-title{color:rgba(255,255,255,.8)}
+
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px;margin-bottom:10px}
+.module-card{
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;padding:14px 12px;cursor:pointer;transition:all .15s;
+}
+.module-card:hover{background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.2)}
+.module-card-icon{font-size:22px;margin-bottom:6px}
+.module-card-title{font-size:12px;font-weight:600;color:#CBD5E1;margin-bottom:2px}
+.module-card-sub{font-size:10px;color:#475569}
+.module-card-val{font-size:18px;font-weight:700;margin-top:4px}
+.sparkline{width:80px;height:20px}
+
+/* Phone modal */
+.phone-modal{
+  position:absolute;inset:0;background:#0D1220;z-index:200;
+  display:flex;flex-direction:column;border-radius:48px;overflow:hidden;
+  animation:fadeIn .15s ease;
+}
+.phone-modal.hidden{display:none}
+.modal-header{
+  padding:16px 16px 10px;display:flex;align-items:center;gap:10px;
+  border-bottom:1px solid var(--card-border);flex-shrink:0;
+}
+.modal-back{
+  width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.06);
+  border:none;color:#E2E8F0;font-size:16px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+.modal-title{font-size:14px;font-weight:700;flex:1}
+.modal-msgs{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px}
+.modal-input-area{padding:10px;border-top:1px solid var(--card-border);flex-shrink:0}
+.modal-chips{display:flex;gap:5px;overflow-x:auto;margin-bottom:8px;padding-bottom:4px}
+.modal-chips::-webkit-scrollbar{height:0}
+
+/* ============================================================
+   VIEW 3 – APP MORADOR
+   ============================================================ */
+#view-morador{
+  flex:1;justify-content:center;align-items:center;background:#070B12;
+}
+.morador-phone .phone-inner{background:#0a1520}
+.morador-phone .ph-card.grad-card{background:var(--grad-teal)}
+
+.services-list{padding:0 12px;margin-bottom:10px}
+.service-item{
+  display:flex;align-items:center;gap:12px;padding:11px 12px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);
+  border-radius:12px;margin-bottom:6px;cursor:pointer;transition:all .15s;
+}
+.service-item:hover{background:rgba(20,184,166,.06);border-color:rgba(20,184,166,.2)}
+.service-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.service-icon.teal{background:rgba(20,184,166,.15)}
+.service-icon.blue{background:rgba(59,130,246,.15)}
+.service-icon.amber{background:rgba(245,158,11,.15)}
+.service-icon.green{background:rgba(16,185,129,.15)}
+.service-icon.purple{background:rgba(168,85,247,.15)}
+.service-name{flex:1;font-size:13px;font-weight:500}
+.service-count{
+  padding:2px 8px;border-radius:10px;background:rgba(20,184,166,.15);
+  color:var(--teal);font-size:11px;font-weight:600;
+}
+
+/* Morador bottom nav */
+.morador-nav .nav-item.active{color:var(--teal)}
+.morador-nav .nav-fab{background:var(--grad-teal);box-shadow:0 4px 20px rgba(20,184,166,.5)}
+
+/* Section header */
+.sec-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 12px;margin-bottom:8px;
+}
+.sec-title{font-size:13px;font-weight:700}
+.sec-link{font-size:11px;color:var(--indigo);cursor:pointer}
+.sec-link.teal{color:var(--teal)}
+
+/* Financeiro cards */
+.fin-kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.fin-kpi{
+  background:rgba(255,255,255,.04);border:1px solid var(--card-border);border-radius:10px;
+  padding:12px;text-align:center;
+}
+.fin-kpi-label{font-size:10px;color:#64748B;margin-bottom:4px}
+.fin-kpi-val{font-size:16px;font-weight:700}
+
+/* MISP alert card */
+.misp-card{
+  background:var(--card-bg);border:1px solid var(--card-border);border-radius:12px;
+  padding:14px;margin-bottom:8px;
+}
+.misp-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px}
+.misp-title{font-size:13px;font-weight:600}
+.misp-desc{font-size:12px;color:#64748B;margin-bottom:8px}
+.misp-footer{display:flex;gap:6px;flex-wrap:wrap}
+
+/* Comunicado card */
+.comunicado-preview{
+  background:rgba(255,255,255,.04);border:1px solid var(--card-border);border-radius:10px;
+  padding:12px;margin-bottom:8px;
+}
+.comunicado-titulo{font-size:13px;font-weight:600;margin-bottom:4px}
+.comunicado-corpo{font-size:12px;color:#64748B;line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.comunicado-meta{font-size:10px;color:#334155;margin-top:6px;display:flex;align-items:center;gap:6px}
+
+.textarea-full{
+  width:100%;padding:10px 12px;background:rgba(0,0,0,.3);border:1px solid var(--card-border);
+  border-radius:10px;color:#E2E8F0;font-size:13px;font-family:inherit;resize:none;
+}
+.textarea-full:focus{outline:none;border-color:rgba(99,102,241,.5)}
+
+/* OS Form */
+.os-form{display:none;background:rgba(0,0,0,.2);border:1px solid var(--card-border);border-radius:12px;padding:14px;margin-bottom:14px}
+.os-form.open{display:block;animation:fadeIn .2s ease}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* Responsive helpers */
+@media(max-width:1100px){
+  #ai-panel{display:none}
+  #main-area{flex:1}
+}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div id="topbar">
+  <div class="logo"><span>🤖</span> ImobCore <span style="font-size:11px;color:#6366F1;font-weight:600;background:rgba(99,102,241,.1);padding:2px 6px;border-radius:4px">v2</span></div>
+  <div class="view-btns">
+    <button class="view-btn active" onclick="switchView('gestor')">⚡ Painel Gestor</button>
+    <button class="view-btn" onclick="switchView('sindico')">📱 App Síndico</button>
+    <button class="view-btn" onclick="switchView('morador')">🏠 App Morador</button>
+  </div>
+  <div id="realtime-badge">
+    <div class="dot" id="sse-dot"></div>
+    <span id="sse-label">Conectando...</span>
+  </div>
+  <div id="clock-display">--:--</div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toast-container"></div>
+
+<!-- ====================================================
+     VIEW 1 – PAINEL GESTOR
+     ==================================================== -->
+<div class="view active" id="view-gestor">
+
+  <!-- SIDEBAR -->
+  <div id="sidebar">
+    <div class="sb-section">
+      <div class="sb-label">Síndico Virtual</div>
+      <div class="sb-item active" onclick="showPanel('sv-chat',this)" id="sb-sv-chat">
+        <span class="sb-icon">💬</span> Chat IA
+      </div>
+      <div class="sb-item" onclick="showPanel('sv-insights',this)">
+        <span class="sb-icon">💡</span> Insights
+      </div>
+      <div class="sb-item" onclick="showPanel('sv-comunicados',this)">
+        <span class="sb-icon">📢</span> Comunicados
+      </div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Módulos</div>
+      <div class="sb-item" onclick="showPanel('operacao',this)">
+        <span class="sb-icon">🔧</span> Ordens de Serviço
+        <span class="sb-badge" id="os-badge">0</span>
+      </div>
+      <div class="sb-item" onclick="showPanel('financeiro',this)">
+        <span class="sb-icon">💰</span> Financeiro
+      </div>
+      <div class="sb-item" onclick="showPanel('iot',this)">
+        <span class="sb-icon">💧</span> Água IoT
+      </div>
+      <div class="sb-item" onclick="showPanel('misp',this)">
+        <span class="sb-icon">🚨</span> MISP
+        <span class="sb-badge" id="misp-badge">0</span>
+      </div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-label">Sistema</div>
+      <div class="sb-item" onclick="showPanel('supabase',this)">
+        <span class="sb-icon">🗄️</span> Supabase Live Log
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN AREA -->
+  <div id="main-area">
+
+    <!-- KPI ROW -->
+    <div class="kpi-row">
+      <div class="kpi-card kpi-red">
+        <div class="kpi-label">OSs Abertas</div>
+        <div class="kpi-value" id="kpi-os">0</div>
+        <div class="kpi-sub" id="kpi-os-sub">0 urgentes</div>
+      </div>
+      <div class="kpi-card kpi-green">
+        <div class="kpi-label">Saldo Financeiro</div>
+        <div class="kpi-value" id="kpi-saldo">R$0</div>
+        <div class="kpi-sub" id="kpi-saldo-sub">em caixa</div>
+      </div>
+      <div class="kpi-card kpi-cyan">
+        <div class="kpi-label">Água Média</div>
+        <div class="kpi-value" id="kpi-agua">0%</div>
+        <div class="kpi-sub">nível médio</div>
+      </div>
+      <div class="kpi-card kpi-amber">
+        <div class="kpi-label">Alertas MISP</div>
+        <div class="kpi-value" id="kpi-alertas">0</div>
+        <div class="kpi-sub">ativos</div>
+      </div>
+      <div class="kpi-card kpi-purple">
+        <div class="kpi-label">Score Cond.</div>
+        <div class="kpi-value">847</div>
+        <div class="kpi-sub">excelente</div>
+      </div>
+    </div>
+
+    <!-- PANEL: SÍNDICO CHAT -->
+    <div class="panel active card" id="panel-sv-chat">
+      <div class="card-title">
+        🤖 Síndico Virtual IA
+        <span id="desk-ai-status" class="status-badge badge-offline">● offline</span>
+        <span style="margin-left:auto;font-size:11px;color:#475569" id="desk-token-count"></span>
+      </div>
+      <div class="chat-chips">
+        <button class="chip" onclick="sendDeskMsg('Faça um resumo executivo do condomínio agora')">📊 Resumo executivo</button>
+        <button class="chip" onclick="sendDeskMsg('Quais são as OSs urgentes pendentes?')">🔴 OSs urgentes</button>
+        <button class="chip" onclick="sendDeskMsg('Como está a situação da água e os sensores IoT?')">💧 Água + CASAN</button>
+        <button class="chip" onclick="sendDeskMsg('Faça uma análise financeira completa do condomínio')">💰 Análise financeira</button>
+        <button class="chip" onclick="sendDeskMsg('Como podemos melhorar o score do condomínio?')">⭐ Melhorar score</button>
+      </div>
+      <div class="chat-area" id="desk-chat-area"></div>
+      <div class="chat-input-row">
+        <textarea class="chat-input" id="desk-chat-input" placeholder="Digite sua mensagem..." rows="2"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendDeskMsg()}"></textarea>
+        <button class="btn-send" onclick="sendDeskMsg()" id="desk-send-btn">Enviar</button>
+      </div>
+    </div>
+
+    <!-- PANEL: INSIGHTS -->
+    <div class="panel card" id="panel-sv-insights">
+      <div class="card-title">💡 Insights do Condomínio</div>
+      <div id="insights-content">
+        <div style="color:#475569;font-size:13px;text-align:center;padding:40px">
+          Clique em "Gerar Insights" para análise automática via IA
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="generateInsights()" style="margin-top:12px">🔮 Gerar Insights IA</button>
+    </div>
+
+    <!-- PANEL: COMUNICADOS -->
+    <div class="panel card" id="panel-sv-comunicados">
+      <div class="card-title">📢 Comunicados</div>
+      <div class="form-group">
+        <label class="form-label">Tema do comunicado</label>
+        <input class="form-control" id="comunicado-tema" placeholder="Ex: Manutenção do elevador na próxima segunda-feira...">
+      </div>
+      <button class="btn btn-primary" onclick="gerarComunicado()" id="btn-gerar-com" style="margin-bottom:16px">
+        ✨ Gerar via IA
+      </button>
+      <div id="comunicado-preview" style="display:none" class="comunicado-preview">
+        <div class="comunicado-titulo" id="com-preview-titulo"></div>
+        <div class="comunicado-corpo" style="-webkit-line-clamp:unset;overflow:visible" id="com-preview-corpo"></div>
+      </div>
+      <div style="border-top:1px solid var(--card-border);padding-top:14px;margin-top:4px">
+        <div class="card-title" style="margin-bottom:10px">📋 Histórico</div>
+        <div id="comunicados-list"></div>
+      </div>
+    </div>
+
+    <!-- PANEL: OPERAÇÃO OSs -->
+    <div class="panel" id="panel-operacao">
+      <div class="card">
+        <div class="card-title" style="margin-bottom:10px">
+          🔧 Ordens de Serviço
+          <button class="btn btn-primary btn-sm" onclick="toggleOsForm()" style="margin-left:auto">+ Nova OS</button>
+        </div>
+        <div class="os-form" id="os-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Título *</label>
+              <input class="form-control" id="os-titulo" placeholder="Título da OS">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Prioridade</label>
+              <select class="form-control" id="os-prioridade">
+                <option value="baixa">Baixa</option>
+                <option value="media" selected>Média</option>
+                <option value="alta">Alta</option>
+                <option value="urgente">Urgente</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Unidade</label>
+              <input class="form-control" id="os-unidade" placeholder="Ex: Apto 101, Área comum">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Categoria</label>
+              <select class="form-control" id="os-categoria">
+                <option value="hidraulica">Hidráulica</option>
+                <option value="eletrica">Elétrica</option>
+                <option value="estrutural">Estrutural</option>
+                <option value="limpeza">Limpeza</option>
+                <option value="seguranca">Segurança</option>
+                <option value="equipamento">Equipamento</option>
+                <option value="outros">Outros</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Descrição</label>
+            <textarea class="form-control" id="os-descricao" rows="2" placeholder="Descreva o problema..."></textarea>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="criarOS()">✓ Criar OS</button>
+            <button class="btn btn-ghost" onclick="toggleOsForm()">Cancelar</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:70px">#</th>
+                <th>Título</th>
+                <th style="width:100px">Prioridade</th>
+                <th style="width:90px">Status</th>
+                <th style="width:80px">Unidade</th>
+                <th style="width:180px">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="os-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL: FINANCEIRO -->
+    <div class="panel card" id="panel-financeiro">
+      <div class="card-title">💰 Financeiro</div>
+      <div class="fin-kpi-row">
+        <div class="fin-kpi">
+          <div class="fin-kpi-label">Saldo</div>
+          <div class="fin-kpi-val" id="fin-saldo" style="color:var(--green)">R$0</div>
+        </div>
+        <div class="fin-kpi">
+          <div class="fin-kpi-label">Receitas</div>
+          <div class="fin-kpi-val" id="fin-receitas" style="color:var(--cyan)">R$0</div>
+        </div>
+        <div class="fin-kpi">
+          <div class="fin-kpi-label">Despesas</div>
+          <div class="fin-kpi-val" id="fin-despesas" style="color:var(--red)">R$0</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div class="card-title">📈 Receitas</div>
+          <div id="fin-receitas-list"></div>
+        </div>
+        <div>
+          <div class="card-title">📉 Despesas</div>
+          <div id="fin-despesas-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL: IoT -->
+    <div class="panel card" id="panel-iot">
+      <div class="card-title">💧 Sensores de Água – IoT em Tempo Real</div>
+      <div class="sensor-grid" id="sensor-grid"></div>
+    </div>
+
+    <!-- PANEL: MISP -->
+    <div class="panel card" id="panel-misp">
+      <div class="card-title">🚨 Alertas Públicos – MISP</div>
+      <div id="misp-list"></div>
+    </div>
+
+    <!-- PANEL: SUPABASE LOG -->
+    <div class="panel card" id="panel-supabase">
+      <div class="card-title">🗄️ Supabase Live Log – Eventos SSE em Tempo Real</div>
+      <div id="supabase-log"></div>
+    </div>
+  </div><!-- /main-area -->
+
+  <!-- AI FIXED PANEL (right) -->
+  <div id="ai-panel">
+    <div id="ai-panel-header">
+      <div class="title">🤖 Síndico Virtual</div>
+      <span class="status-badge badge-offline" id="side-ai-status">● offline</span>
+    </div>
+    <div class="ctx-pills">
+      <span class="ctx-pill">OSs</span>
+      <span class="ctx-pill">IoT</span>
+      <span class="ctx-pill">MISP</span>
+      <span class="ctx-pill">Financeiro</span>
+    </div>
+    <div id="ai-panel-msgs"></div>
+    <div id="ai-panel-input">
+      <textarea id="side-chat-input" placeholder="Pergunte ao Síndico IA..."
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendSideMsg()}"></textarea>
+      <div class="send-row">
+        <button class="btn-send btn-sm" onclick="sendSideMsg()" id="side-send-btn">Enviar</button>
+      </div>
+    </div>
+  </div>
+</div><!-- /view-gestor -->
+
+<!-- ====================================================
+     VIEW 2 – APP SÍNDICO
+     ==================================================== -->
+<div class="view" id="view-sindico">
+  <div class="phone-frame">
+    <div class="phone-inner">
+      <div class="phone-notch"></div>
+
+      <!-- Status bar -->
+      <div class="phone-status" style="color:#E2E8F0">
+        <span id="phone-time-sindico">09:41</span>
+        <span>📶 5G 🔋</span>
+      </div>
+
+      <!-- Header -->
+      <div class="phone-header">
+        <div class="phone-avatar">R</div>
+        <div class="phone-user-info">
+          <div class="phone-user-name">Ricardo Gestor</div>
+          <div class="phone-user-sub">Síndico – Res. Parque das Flores</div>
+        </div>
+        <div class="phone-bell">
+          🔔<div class="bell-badge" id="phone-bell-badge">0</div>
+        </div>
+      </div>
+
+      <!-- Alert banner -->
+      <div id="phone-alert-banner" class="ph-card critical" style="margin:0 12px 8px;display:none">
+        <div style="font-size:12px;font-weight:700;color:#F87171;margin-bottom:4px">⚠️ ATENÇÃO URGENTE</div>
+        <div id="phone-alert-text" style="font-size:11px;color:#FCA5A5"></div>
+      </div>
+
+      <div class="phone-content" id="sindico-phone-content">
+        <!-- Síndico Virtual Card -->
+        <div class="ph-card grad-card" style="cursor:pointer" onclick="openSindicoModal()">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+            <div>
+              <div style="font-size:11px;color:rgba(255,255,255,.7);margin-bottom:2px">SÍNDICO VIRTUAL IA</div>
+              <div style="font-size:16px;font-weight:700">Falar com IA</div>
+            </div>
+            <span style="font-size:28px">🤖</span>
+          </div>
+          <div id="phone-ia-preview" style="font-size:11px;color:rgba(255,255,255,.8);line-height:1.4">
+            Analisando situação do condomínio...
+          </div>
+          <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+            <span style="background:rgba(255,255,255,.2);border-radius:6px;padding:3px 8px;font-size:10px">Nova OS</span>
+            <span style="background:rgba(255,255,255,.2);border-radius:6px;padding:3px 8px;font-size:10px">Reservar</span>
+            <span style="background:rgba(255,255,255,.2);border-radius:6px;padding:3px 8px;font-size:10px">Comunicado</span>
+            <span style="background:rgba(255,255,255,.2);border-radius:6px;padding:3px 8px;font-size:10px">Boleto</span>
+            <span style="background:rgba(255,255,255,.2);border-radius:6px;padding:3px 8px;font-size:10px">Visitante</span>
+          </div>
+        </div>
+
+        <!-- Gestão header -->
+        <div class="sec-header">
+          <div class="sec-title">Gestão do Condomínio</div>
+          <div class="sec-link">Ver todos</div>
+        </div>
+
+        <!-- 2-column module grid -->
+        <div class="grid-2">
+          <div class="module-card" onclick="showPanel('financeiro',null);switchView('gestor')">
+            <div class="module-card-icon">💰</div>
+            <div class="module-card-title">Finanças</div>
+            <div class="module-card-sub">Saldo atual</div>
+            <div class="module-card-val" id="phone-fin-saldo" style="color:var(--green)">R$0</div>
+            <svg class="sparkline" viewBox="0 0 80 20">
+              <polyline points="0,15 15,12 30,8 45,10 60,5 75,3 80,4" fill="none" stroke="#10B981" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="module-card" onclick="openSindicoModal()">
+            <div class="module-card-icon">📋</div>
+            <div class="module-card-title">Planejamento</div>
+            <div class="module-card-sub">OSs abertas</div>
+            <div class="module-card-val" id="phone-os-count" style="color:var(--amber)">0</div>
+            <svg class="sparkline" viewBox="0 0 80 20">
+              <polyline points="0,18 15,15 30,16 45,10 60,12 75,8 80,7" fill="none" stroke="#F59E0B" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="module-card" onclick="showPanel('iot',null);switchView('gestor')">
+            <div class="module-card-icon">💧</div>
+            <div class="module-card-title">Água IoT</div>
+            <div class="module-card-sub">Nível médio</div>
+            <div class="module-card-val" id="phone-agua-nivel" style="color:var(--cyan)">0%</div>
+            <svg class="sparkline" viewBox="0 0 80 20">
+              <polyline points="0,8 15,9 30,7 45,11 60,9 75,8 80,10" fill="none" stroke="#06B6D4" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="module-card" onclick="showPanel('misp',null);switchView('gestor')">
+            <div class="module-card-icon">🚨</div>
+            <div class="module-card-title">MISP</div>
+            <div class="module-card-sub">Alertas ativos</div>
+            <div class="module-card-val" id="phone-misp-count" style="color:var(--red)">0</div>
+            <svg class="sparkline" viewBox="0 0 80 20">
+              <polyline points="0,18 20,18 20,5 40,5 40,18 60,18 60,10 80,10" fill="none" stroke="#EF4444" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="module-card" onclick="openSindicoModal()">
+            <div class="module-card-icon">🤖</div>
+            <div class="module-card-title">Síndico Virtual</div>
+            <div class="module-card-sub">IA ativa</div>
+            <div class="module-card-val" style="color:var(--purple)">847</div>
+          </div>
+          <div class="module-card" onclick="showPanel('supabase',null);switchView('gestor')">
+            <div class="module-card-icon">📡</div>
+            <div class="module-card-title">Monitor IoT</div>
+            <div class="module-card-sub">Eventos SSE</div>
+            <div class="module-card-val" id="phone-sse-count" style="color:var(--green)">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom nav -->
+      <div class="phone-bottom-nav">
+        <div class="nav-item active"><span>🏠</span>Início</div>
+        <div class="nav-item" id="nav-alertas-sindico"><span>🚨</span>Alertas</div>
+        <button class="nav-fab" onclick="openSindicoModal()">🤖</button>
+        <div class="nav-item"><span>🤖</span>Inteligência</div>
+        <div class="nav-item"><span>👤</span>Usuário</div>
+      </div>
+
+      <!-- Síndico Chat Modal -->
+      <div class="phone-modal hidden" id="sindico-modal">
+        <div class="phone-notch"></div>
+        <div style="height:44px;flex-shrink:0"></div>
+        <div class="modal-header">
+          <button class="modal-back" onclick="closeSindicoModal()">←</button>
+          <div class="modal-title">🤖 Síndico Virtual IA</div>
+          <span class="status-badge badge-offline" id="mobile-ai-status">● offline</span>
+        </div>
+        <div class="modal-chips">
+          <button class="chip" onclick="sendMobileMsg('Resumo do condomínio')">📊 Resumo</button>
+          <button class="chip" onclick="sendMobileMsg('OSs urgentes pendentes')">🔴 Urgentes</button>
+          <button class="chip" onclick="sendMobileMsg('Situação da água e sensores')">💧 Água</button>
+          <button class="chip" onclick="sendMobileMsg('Alertas MISP ativos')">🚨 MISP</button>
+          <button class="chip" onclick="sendMobileMsg('Análise financeira')">💰 Financeiro</button>
+        </div>
+        <div class="modal-msgs" id="mobile-chat-area"></div>
+        <div class="modal-input-area">
+          <textarea class="textarea-full" id="mobile-chat-input" placeholder="Digite sua mensagem..." rows="2"
+            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMobileMsg()}"></textarea>
+          <div style="display:flex;justify-content:flex-end;margin-top:6px">
+            <button class="btn-send" onclick="sendMobileMsg()" id="mobile-send-btn">Enviar</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /phone-inner -->
+  </div><!-- /phone-frame -->
+</div><!-- /view-sindico -->
+
+<!-- ====================================================
+     VIEW 3 – APP MORADOR
+     ==================================================== -->
+<div class="view" id="view-morador">
+  <div class="phone-frame morador-phone">
+    <div class="phone-inner">
+      <div class="phone-notch"></div>
+      <div class="phone-status" style="color:#E2E8F0">
+        <span id="phone-time-morador">09:41</span>
+        <span>📶 4G 🔋</span>
+      </div>
+
+      <div class="phone-header">
+        <div class="phone-avatar teal">A</div>
+        <div class="phone-user-info">
+          <div class="phone-user-name">Ana Silva</div>
+          <div class="phone-user-sub">Apto 204 – Torre A</div>
+        </div>
+        <div class="phone-bell">🔔<div class="bell-badge" id="morador-bell-badge">0</div></div>
+      </div>
+
+      <div class="phone-content">
+        <!-- Comunicado card -->
+        <div class="ph-card grad-card-teal" style="position:relative">
+          <div style="font-size:11px;color:rgba(255,255,255,.75);margin-bottom:4px">📢 COMUNICADO RECENTE</div>
+          <div id="morador-comunicado-titulo" style="font-size:13px;font-weight:700;margin-bottom:4px">Carregando...</div>
+          <div id="morador-comunicado-corpo" style="font-size:11px;color:rgba(255,255,255,.8);line-height:1.4;
+            display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">–</div>
+          <div id="morador-comunicado-data" style="font-size:10px;color:rgba(255,255,255,.5);margin-top:6px">–</div>
+        </div>
+
+        <!-- Status cards row -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px;margin-bottom:10px">
+          <div class="ph-card" style="margin:0;text-align:center">
+            <div style="font-size:10px;color:#475569;margin-bottom:4px">💧 Água</div>
+            <div id="morador-agua" style="font-size:22px;font-weight:700;color:var(--cyan)">–%</div>
+            <div style="font-size:10px;color:#475569">nível médio</div>
+          </div>
+          <div class="ph-card" style="margin:0;text-align:center">
+            <div style="font-size:10px;color:#475569;margin-bottom:4px">🚨 MISP</div>
+            <div id="morador-misp" style="font-size:22px;font-weight:700;color:var(--amber)">0</div>
+            <div style="font-size:10px;color:#475569">alertas ativos</div>
+          </div>
+        </div>
+
+        <!-- Services -->
+        <div class="sec-header">
+          <div class="sec-title">Serviços do Condomínio</div>
+        </div>
+        <div class="services-list">
+          <div class="service-item">
+            <div class="service-icon teal">📋</div>
+            <div class="service-name">Ocorrências</div>
+            <span class="service-count" id="morador-os-count">0</span>
+          </div>
+          <div class="service-item">
+            <div class="service-icon blue">📅</div>
+            <div class="service-name">Reservar Espaço</div>
+            <span class="service-count" style="background:rgba(59,130,246,.15);color:var(--blue)">3 disp.</span>
+          </div>
+          <div class="service-item">
+            <div class="service-icon amber">💳</div>
+            <div class="service-name">Boletos</div>
+            <span class="service-count" style="background:rgba(245,158,11,.15);color:var(--amber)">1 venc.</span>
+          </div>
+          <div class="service-item">
+            <div class="service-icon green">🚗</div>
+            <div class="service-name">Autorizar Visitante</div>
+            <span class="service-count" style="background:rgba(16,185,129,.15);color:var(--green)">✓</span>
+          </div>
+          <div class="service-item">
+            <div class="service-icon purple">📦</div>
+            <div class="service-name">Encomendas</div>
+            <span class="service-count" style="background:rgba(168,85,247,.15);color:var(--purple)">2 aguard.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom nav -->
+      <div class="phone-bottom-nav morador-nav">
+        <div class="nav-item active"><span>🏠</span>Início</div>
+        <div class="nav-item"><span>🚨</span>Alertas</div>
+        <button class="nav-fab">➕</button>
+        <div class="nav-item"><span>💬</span>Chat</div>
+        <div class="nav-item"><span>👤</span>Perfil</div>
+      </div>
+    </div>
+  </div>
+</div><!-- /view-morador -->
+
+<script>
+'use strict';
+
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  dashboard: null,
+  condId: null,
+  deskHistory: [],
+  sideHistory: [],
+  mobileHistory: [],
+  sseEventCount: 0,
+  sseBusy: false,
+};
+
+// ============================================================
+// UTILS
+// ============================================================
+function fmtBRL(v){
+  return 'R$'+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0});
+}
+function fmtBRLFull(v){
+  return 'R$'+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:2});
+}
+function fmtDate(iso){
+  return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+function fmtTime(){
+  return new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+
+// TOAST
+function showToast(msg, type='info'){
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast '+type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity .3s';setTimeout(()=>t.remove(),300)},3500);
+}
+
+// ADD SSE LOG
+function addLog(event, data){
+  const log = document.getElementById('supabase-log');
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  const evClass = {
+    'connected':'sse','nova_os':'os','os_atualizada':'os',
+    'sensor_update':'sensor','alerta_sensor':'alerta',
+    'sindico_chat':'chat','novo_comunicado':'comunicado',
+  }[event] || 'sse';
+  entry.innerHTML = `<span class="log-time">${new Date().toLocaleTimeString('pt-BR')}</span><span class="log-event log-event-${evClass}">${event}</span> <span style="color:#475569">${JSON.stringify(data).substring(0,80)}</span>`;
+  log.insertBefore(entry, log.firstChild);
+  if(log.children.length > 200) log.removeChild(log.lastChild);
+  state.sseEventCount++;
+  const el = document.getElementById('phone-sse-count');
+  if(el) el.textContent = state.sseEventCount;
+}
+
+// ============================================================
+// CLOCK
+// ============================================================
+function updateClock(){
+  const t = fmtTime();
+  document.getElementById('clock-display').textContent = t;
+  const ps = document.getElementById('phone-time-sindico');
+  const pm = document.getElementById('phone-time-morador');
+  if(ps) ps.textContent = t;
+  if(pm) pm.textContent = t;
+}
+updateClock();
+setInterval(updateClock, 30000);
+
+// ============================================================
+// VIEW SWITCHING
+// ============================================================
+function switchView(name){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.view-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+  const idx = {gestor:0,sindico:1,morador:2}[name];
+  document.querySelectorAll('.view-btn')[idx].classList.add('active');
+}
+
+// ============================================================
+// SIDEBAR PANEL SWITCHING
+// ============================================================
+function showPanel(name, el){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  const panel = document.getElementById('panel-'+name);
+  if(panel) panel.classList.add('active');
+  document.querySelectorAll('.sb-item').forEach(s=>s.classList.remove('active'));
+  if(el) el.classList.add('active');
+}
+
+// ============================================================
+// SSE CONNECTION
+// ============================================================
+function connectSSE(){
+  const badge = document.getElementById('realtime-badge');
+  const dot = document.getElementById('sse-dot');
+  const label = document.getElementById('sse-label');
+
+  const es = new EventSource('/api/stream');
+
+  es.addEventListener('connected', ()=>{
+    badge.classList.remove('offline');
+    dot.classList.add('pulse');
+    label.textContent = 'Realtime Ativo';
+    const statuses = ['desk-ai-status','side-ai-status','mobile-ai-status'];
+    statuses.forEach(id=>{
+      const el = document.getElementById(id);
+      if(el){el.className='status-badge badge-online';el.textContent='● online';}
+    });
+    addLog('connected',{status:'ok'});
+    showToast('✅ SSE conectado – Realtime ativo','success');
+  });
+
+  const events = ['nova_os','os_atualizada','sensor_update','alerta_sensor','sindico_chat','novo_comunicado'];
+  events.forEach(evt=>{
+    es.addEventListener(evt, e=>{
+      const data = JSON.parse(e.data);
+      addLog(evt, data);
+      loadDashboard();
+      if(evt==='alerta_sensor') showToast('⚠️ '+data.message,'warn');
+      if(evt==='nova_os') showToast('🔧 Nova OS criada','info');
+      if(evt==='novo_comunicado') showToast('📢 Novo comunicado gerado','info');
+    });
+  });
+
+  es.onerror = ()=>{
+    badge.classList.add('offline');
+    dot.classList.remove('pulse');
+    label.textContent = 'Desconectado';
+    ['desk-ai-status','side-ai-status','mobile-ai-status'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el){el.className='status-badge badge-offline';el.textContent='● offline';}
+    });
+    setTimeout(connectSSE, 5000);
+  };
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+async function loadDashboard(){
+  try {
+    const r = await fetch('/api/dashboard');
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    state.dashboard = d;
+    if(d.condominios && d.condominios[0]) state.condId = d.condominios[0].id;
+    renderDashboard(d);
+  } catch(e){
+    console.error('dashboard error:',e);
+  }
+}
+
+function renderDashboard(d){
+  const t = d.totais || {};
+
+  // KPIs
+  setText('kpi-os', t.os_abertas||0);
+  setText('kpi-os-sub', (t.os_urgentes||0)+' urgentes');
+  setText('kpi-saldo', fmtBRL(t.saldo||0));
+  document.getElementById('kpi-saldo').style.color = (t.saldo||0)>=0?'var(--green)':'var(--red)';
+  setText('kpi-agua', (t.nivel_medio_agua||0)+'%');
+  setText('kpi-alertas', t.alertas_ativos||0);
+
+  // BADGES
+  setText('os-badge', t.os_abertas||0);
+  setText('misp-badge', t.alertas_ativos||0);
+
+  // OS TABLE
+  renderOsTable(d.ordens_servico||[]);
+
+  // SENSORS
+  renderSensors(d.sensores||[]);
+
+  // MISP
+  renderMisp(d.alertas_publicos||[]);
+
+  // FINANCEIRO
+  renderFinanceiro(d.receitas||[], d.despesas||[], t);
+
+  // COMUNICADOS
+  renderComunicados(d.comunicados||[]);
+
+  // PHONE KPIs
+  setText('phone-fin-saldo', fmtBRL(t.saldo||0));
+  setText('phone-os-count', t.os_abertas||0);
+  setText('phone-agua-nivel', (t.nivel_medio_agua||0)+'%');
+  setText('phone-misp-count', t.alertas_ativos||0);
+
+  // MORADOR
+  setText('morador-agua', (t.nivel_medio_agua||0)+'%');
+  setText('morador-misp', t.alertas_ativos||0);
+  setText('morador-os-count', t.os_abertas||0);
+
+  // BELL BADGES
+  const urgentes = (d.ordens_servico||[]).filter(o=>o.prioridade==='urgente'&&o.status==='aberta').length;
+  const totalAlert = urgentes + (t.alertas_ativos||0);
+  setText('phone-bell-badge', totalAlert);
+  setText('morador-bell-badge', t.alertas_ativos||0);
+
+  // Urgent alert banner
+  const urgOS = (d.ordens_servico||[]).find(o=>o.prioridade==='urgente'&&o.status==='aberta');
+  const bannerEl = document.getElementById('phone-alert-banner');
+  const bannerText = document.getElementById('phone-alert-text');
+  if(urgOS && bannerEl){
+    bannerEl.style.display='block';
+    bannerText.textContent = 'OS #'+urgOS.numero+': '+urgOS.titulo+' – Unidade '+urgOS.unidade;
+  }
+
+  // Morador comunicado
+  if(d.comunicados && d.comunicados[0]){
+    const c = d.comunicados[0];
+    setText('morador-comunicado-titulo', c.titulo||'Sem título');
+    setText('morador-comunicado-corpo', c.corpo||'');
+    setText('morador-comunicado-data', fmtDate(c.created_at));
+    setText('morador-bell-badge', t.alertas_ativos||0);
+  }
+}
+
+function setText(id, val){
+  const el = document.getElementById(id);
+  if(el) el.textContent = val;
+}
+
+function renderOsTable(os){
+  const tbody = document.getElementById('os-tbody');
+  if(!tbody) return;
+  tbody.innerHTML = os.slice(0,20).map(o=>{
+    const pri = {urgente:'pill-red',alta:'pill-amber',media:'pill-blue',baixa:'pill-gray'}[o.prioridade]||'pill-gray';
+    const sts = {aberta:'pill-amber',em_andamento:'pill-cyan',fechada:'pill-green'}[o.status]||'pill-gray';
+    return `<tr>
+      <td><span style="color:#475569">#${o.numero||'?'}</span></td>
+      <td>${escHtml(o.titulo)}</td>
+      <td><span class="pill ${pri}">${o.prioridade||'–'}</span></td>
+      <td><span class="pill ${sts}">${(o.status||'–').replace('_',' ')}</span></td>
+      <td style="font-size:11px;color:#64748B">${o.unidade||'–'}</td>
+      <td>
+        ${o.status==='aberta'?`<button class="btn btn-sm btn-success" onclick="updateOS('${o.id}','em_andamento')">Iniciar</button> `:''}
+        ${o.status!=='fechada'?`<button class="btn btn-sm btn-danger" onclick="updateOS('${o.id}','fechada')">Fechar</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSensors(sensors){
+  const grid = document.getElementById('sensor-grid');
+  if(!grid) return;
+  grid.innerHTML = sensors.map(s=>{
+    const pct = Math.min(100, Math.max(0, Number(s.nivel_atual)||0));
+    const color = pct>=60?'#10B981':pct>=30?'#F59E0B':'#EF4444';
+    // SVG arc: circumference of circle with r=36, 270° = 3/4 of 2π*36 = ~169.6
+    const R = 36, C = 2*Math.PI*R, arc = C*0.75;
+    const filled = arc*(pct/100);
+    const gap = arc - filled;
+    return `<div class="sensor-card">
+      <div class="sensor-ring-wrap">
+        <svg viewBox="0 0 90 90">
+          <circle class="ring-bg" cx="45" cy="45" r="${R}" stroke-dasharray="${arc} ${C-arc}" stroke-dashoffset="0"/>
+          <circle class="ring-fg" cx="45" cy="45" r="${R}" stroke="${color}"
+            stroke-dasharray="${filled} ${gap + (C-arc)}" stroke-dashoffset="0"/>
+        </svg>
+        <div class="ring-label" style="color:${color}">${pct}%</div>
+      </div>
+      <div class="sensor-name">${escHtml(s.nome||s.sensor_id)}</div>
+      <div class="sensor-sub">${escHtml(s.local||'')}</div>
+      <div class="sensor-sub" style="margin-top:2px;color:#334155">${Number(s.volume_litros||0).toFixed(0)}L / ${Number(s.capacidade_litros||0).toFixed(0)}L</div>
+    </div>`;
+  }).join('');
+}
+
+function renderMisp(alertas){
+  const list = document.getElementById('misp-list');
+  if(!list) return;
+  if(!alertas.length){list.innerHTML='<div style="color:#475569;font-size:13px;text-align:center;padding:20px">Nenhum alerta ativo</div>';return;}
+  list.innerHTML = alertas.map(a=>{
+    const col = {alto:'pill-red',medio:'pill-amber',baixo:'pill-green'}[a.nivel]||'pill-gray';
+    return `<div class="misp-card">
+      <div class="misp-header">
+        <div class="misp-title">${escHtml(a.titulo||'Alerta')}</div>
+        <span class="pill ${col}">${a.nivel||'–'}</span>
+      </div>
+      <div class="misp-desc">${escHtml(a.descricao||'')}</div>
+      <div class="misp-footer">
+        <span class="pill pill-gray">${escHtml(a.tipo||'–')}</span>
+        <span class="pill pill-gray">${escHtml(a.cidade||'')} – ${escHtml(a.bairro||'')}</span>
+        <span class="pill pill-blue">${escHtml(a.origem||'MISP')}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderFinanceiro(receitas, despesas, t){
+  // Gestor
+  setText('fin-saldo', fmtBRLFull(t.saldo||0));
+  setText('fin-receitas', fmtBRLFull(t.total_receitas||0));
+  setText('fin-despesas', fmtBRLFull(t.total_despesas||0));
+  const rl = document.getElementById('fin-receitas-list');
+  if(rl) rl.innerHTML = receitas.slice(0,8).map(r=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+      <div>
+        <div style="font-size:13px;color:#CBD5E1">${escHtml(r.descricao)}</div>
+        <div style="font-size:11px;color:#475569">${escHtml(r.categoria||'')}</div>
+      </div>
+      <div style="color:var(--green);font-weight:600;font-size:13px">${fmtBRLFull(r.valor)}</div>
+    </div>`).join('');
+  const dl = document.getElementById('fin-despesas-list');
+  if(dl) dl.innerHTML = despesas.slice(0,8).map(d=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)">
+      <div>
+        <div style="font-size:13px;color:#CBD5E1">${escHtml(d.descricao)}</div>
+        <div style="font-size:11px;color:#475569">${escHtml(d.fornecedor||d.categoria||'')}</div>
+      </div>
+      <div style="color:var(--red);font-weight:600;font-size:13px">-${fmtBRLFull(d.valor)}</div>
+    </div>`).join('');
+}
+
+function renderComunicados(comunicados){
+  const list = document.getElementById('comunicados-list');
+  if(!list) return;
+  list.innerHTML = comunicados.slice(0,5).map(c=>`
+    <div class="comunicado-preview">
+      <div class="comunicado-titulo">${escHtml(c.titulo||'Sem título')}</div>
+      <div class="comunicado-corpo">${escHtml(c.corpo||'')}</div>
+      <div class="comunicado-meta">
+        ${c.gerado_por_ia?'<span style="color:var(--purple)">✨ IA</span>':''}
+        <span>${fmtDate(c.created_at)}</span>
+      </div>
+    </div>`).join('') || '<div style="color:#475569;font-size:13px">Nenhum comunicado</div>';
+}
+
+function escHtml(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
+// OS CRUD
+// ============================================================
+function toggleOsForm(){
+  const f = document.getElementById('os-form');
+  f.classList.toggle('open');
+}
+
+async function criarOS(){
+  const titulo = document.getElementById('os-titulo').value.trim();
+  if(!titulo){showToast('Informe o título da OS','warn');return;}
+  try {
+    const r = await fetch('/api/os',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        titulo,
+        descricao:document.getElementById('os-descricao').value,
+        categoria:document.getElementById('os-categoria').value,
+        prioridade:document.getElementById('os-prioridade').value,
+        unidade:document.getElementById('os-unidade').value,
+        condominio_id:state.condId,
+      })
+    });
+    if(!r.ok) throw new Error(await r.text());
+    showToast('✅ OS criada com sucesso','success');
+    document.getElementById('os-titulo').value='';
+    document.getElementById('os-descricao').value='';
+    document.getElementById('os-unidade').value='';
+    toggleOsForm();
+    loadDashboard();
+  } catch(e){showToast('Erro: '+e.message,'error');}
+}
+
+async function updateOS(id, status){
+  try {
+    await fetch(`/api/os/${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    showToast('OS atualizada','success');
+    loadDashboard();
+  } catch(e){showToast('Erro','error');}
+}
+
+// ============================================================
+// CHAT HELPER
+// ============================================================
+function appendMsg(areaId, role, content){
+  const area = document.getElementById(areaId);
+  if(!area) return;
+  const div = document.createElement('div');
+  div.className = 'msg '+role;
+  div.innerHTML = `<div class="msg-bubble">${escHtml(content)}</div><div class="msg-time">${fmtTime()}</div>`;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+}
+
+function showTyping(areaId){
+  const area = document.getElementById(areaId);
+  if(!area) return;
+  const t = document.createElement('div');
+  t.className = 'msg ai';
+  t.id = areaId+'-typing';
+  t.innerHTML = '<div class="msg-bubble typing"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+  area.appendChild(t);
+  area.scrollTop = area.scrollHeight;
+}
+
+function hideTyping(areaId){
+  const t = document.getElementById(areaId+'-typing');
+  if(t) t.remove();
+}
+
+async function callSindicoChat(message, history){
+  const r = await fetch('/api/sindico/chat',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message,history,condominio_id:state.condId})
+  });
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
+
+// ============================================================
+// DESK CHAT (Painel Gestor)
+// ============================================================
+async function sendDeskMsg(preset){
+  const input = document.getElementById('desk-chat-input');
+  const msg = preset || input.value.trim();
+  if(!msg) return;
+  input.value = '';
+  appendMsg('desk-chat-area','user',msg);
+  state.deskHistory.push({role:'user',content:msg});
+  document.getElementById('desk-send-btn').disabled = true;
+  showTyping('desk-chat-area');
+  // Mirror to side panel
+  appendMsg('ai-panel-msgs','user',msg);
+  try {
+    const res = await callSindicoChat(msg, state.deskHistory.slice(-10));
+    hideTyping('desk-chat-area');
+    appendMsg('desk-chat-area','ai',res.reply);
+    appendMsg('ai-panel-msgs','ai',res.reply);
+    state.deskHistory.push({role:'assistant',content:res.reply});
+    state.sideHistory = [...state.deskHistory];
+    setText('desk-token-count',`${res.tokens?.input||0}↑ ${res.tokens?.output||0}↓`);
+  } catch(e){
+    hideTyping('desk-chat-area');
+    appendMsg('desk-chat-area','ai','❌ Erro ao contactar o Síndico IA. Verifique as credenciais.');
+    showToast('Erro na IA: '+e.message,'error');
+  }
+  document.getElementById('desk-send-btn').disabled = false;
+}
+
+// ============================================================
+// SIDE PANEL CHAT
+// ============================================================
+async function sendSideMsg(){
+  const input = document.getElementById('side-chat-input');
+  const msg = input.value.trim();
+  if(!msg) return;
+  input.value='';
+  appendMsg('ai-panel-msgs','user',msg);
+  appendMsg('desk-chat-area','user',msg);
+  state.sideHistory.push({role:'user',content:msg});
+  document.getElementById('side-send-btn').disabled=true;
+  showTyping('ai-panel-msgs');
+  try {
+    const res = await callSindicoChat(msg, state.sideHistory.slice(-10));
+    hideTyping('ai-panel-msgs');
+    appendMsg('ai-panel-msgs','ai',res.reply);
+    appendMsg('desk-chat-area','ai',res.reply);
+    state.sideHistory.push({role:'assistant',content:res.reply});
+    state.deskHistory = [...state.sideHistory];
+  } catch(e){
+    hideTyping('ai-panel-msgs');
+    appendMsg('ai-panel-msgs','ai','❌ Erro ao contactar a IA.');
+  }
+  document.getElementById('side-send-btn').disabled=false;
+}
+
+// ============================================================
+// MOBILE CHAT (App Síndico)
+// ============================================================
+function openSindicoModal(){
+  document.getElementById('sindico-modal').classList.remove('hidden');
+}
+function closeSindicoModal(){
+  document.getElementById('sindico-modal').classList.add('hidden');
+}
+
+async function sendMobileMsg(preset){
+  const input = document.getElementById('mobile-chat-input');
+  const msg = preset || input.value.trim();
+  if(!msg) return;
+  input.value='';
+  appendMsg('mobile-chat-area','user',msg);
+  state.mobileHistory.push({role:'user',content:msg});
+  document.getElementById('mobile-send-btn').disabled=true;
+  showTyping('mobile-chat-area');
+  try {
+    const res = await callSindicoChat(msg, state.mobileHistory.slice(-10));
+    hideTyping('mobile-chat-area');
+    appendMsg('mobile-chat-area','ai',res.reply);
+    state.mobileHistory.push({role:'assistant',content:res.reply});
+    // Update preview in phone card
+    const pv = document.getElementById('phone-ia-preview');
+    if(pv) pv.textContent = res.reply.substring(0,120)+'...';
+  } catch(e){
+    hideTyping('mobile-chat-area');
+    appendMsg('mobile-chat-area','ai','❌ Erro na IA.');
+  }
+  document.getElementById('mobile-send-btn').disabled=false;
+}
+
+// ============================================================
+// COMUNICADOS
+// ============================================================
+async function gerarComunicado(){
+  const tema = document.getElementById('comunicado-tema').value.trim();
+  if(!tema){showToast('Informe o tema do comunicado','warn');return;}
+  const btn = document.getElementById('btn-gerar-com');
+  btn.disabled=true; btn.textContent='✨ Gerando...';
+  try {
+    const r = await fetch('/api/sindico/comunicado',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tema,condominio_id:state.condId})
+    });
+    const com = await r.json();
+    document.getElementById('comunicado-preview').style.display='block';
+    setText('com-preview-titulo', com.titulo||'');
+    setText('com-preview-corpo', com.corpo||'');
+    showToast('✅ Comunicado gerado via IA','success');
+    loadDashboard();
+  } catch(e){showToast('Erro: '+e.message,'error');}
+  btn.disabled=false; btn.textContent='✨ Gerar via IA';
+}
+
+// ============================================================
+// INSIGHTS
+// ============================================================
+async function generateInsights(){
+  const ic = document.getElementById('insights-content');
+  ic.innerHTML='<div style="color:#94A3B8;text-align:center;padding:20px">🔮 Gerando insights via IA...</div>';
+  try {
+    const res = await callSindicoChat(
+      'Gere uma análise executiva completa do condomínio com insights sobre: situação financeira, ordens de serviço, qualidade da água, alertas de segurança e recomendações de melhoria. Use emojis e formatação clara.',
+      []
+    );
+    ic.innerHTML = `<div style="font-size:13px;line-height:1.6;color:#CBD5E1;white-space:pre-wrap">${escHtml(res.reply)}</div>`;
+  } catch(e){
+    ic.innerHTML='<div style="color:var(--red);font-size:13px">Erro ao gerar insights.</div>';
+  }
+}
+
+// ============================================================
+// AUTO INIT
+// ============================================================
+async function init(){
+  connectSSE();
+  await loadDashboard();
+  // Auto-greet after 1s
+  setTimeout(async ()=>{
+    if(!state.dashboard) return;
+    const d = state.dashboard;
+    const urgentes = (d.ordens_servico||[]).filter(o=>o.prioridade==='urgente'&&o.status==='aberta').length;
+    const msg = `Bom dia! Analise a situação atual do condomínio: ${urgentes} OS(s) urgentes, alertas MISP ativos e sensores IoT. Dê um status executivo.`;
+    try {
+      appendMsg('desk-chat-area','user','📋 Análise automática de abertura...');
+      appendMsg('ai-panel-msgs','user','📋 Análise automática de abertura...');
+      state.deskHistory.push({role:'user',content:msg});
+      showTyping('desk-chat-area');
+      const res = await callSindicoChat(msg,[]);
+      hideTyping('desk-chat-area');
+      appendMsg('desk-chat-area','ai',res.reply);
+      appendMsg('ai-panel-msgs','ai',res.reply);
+      state.deskHistory.push({role:'assistant',content:res.reply});
+      state.sideHistory = [...state.deskHistory];
+      // Update phone preview
+      const pv = document.getElementById('phone-ia-preview');
+      if(pv) pv.textContent = res.reply.substring(0,120)+'...';
+    } catch(e){
+      hideTyping('desk-chat-area');
+      console.error('auto-greet error:',e);
+    }
+  },1500);
+}
+
+init();
+</script>
+</body>
+</html>
