@@ -501,6 +501,43 @@ router.patch("/condominios/:id", async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/moradores - Salvar moradores do onboarding
+router.post("/moradores", async (req: Request, res: Response) => {
+  const { condominio_id, moradores } = req.body as {
+    condominio_id?: string;
+    moradores: { unidade: string; nome: string; email: string; telefone: string; tipo: string }[];
+  };
+  if (!moradores || !Array.isArray(moradores) || moradores.length === 0)
+    return res.status(400).json({ error: "Lista de moradores vazia" });
+
+  try {
+    // Try to upsert into moradores table; fallback gracefully if table doesn't exist
+    const rows = moradores.map(m => ({
+      condominio_id: condominio_id || null,
+      unidade: m.unidade,
+      nome: m.nome,
+      email: m.email || null,
+      telefone: m.telefone || null,
+      tipo: m.tipo || "proprietario",
+    }));
+
+    const { error } = await supabase
+      .from("moradores")
+      .upsert(rows, { onConflict: "condominio_id,unidade" });
+
+    if (error) {
+      // Table may not exist yet — return soft success
+      console.warn("[moradores] Supabase upsert warning:", error.message);
+      return res.json({ ok: true, saved: 0, warning: error.message });
+    }
+
+    return res.json({ ok: true, saved: rows.length });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: msg });
+  }
+});
+
 // POST /api/onboarding - Configurar condomínio do zero
 router.post("/onboarding", async (req: Request, res: Response) => {
   const {

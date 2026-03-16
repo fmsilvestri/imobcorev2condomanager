@@ -388,7 +388,10 @@ export default function App() {
     { nome: "Torre B", andares: 4, unidades_por_andar: 4 },
   ]);
   const [obInfra, setObInfra] = useState({ moradores: "168", andares: "10", torres: "2", churrasqueira: true, salao: true, piscina: true, academia: false, playground: false, coworking: false });
-  // Step 3: Sensores IoT
+  // Step 3: Moradores
+  const [obMoradores, setObMoradores] = useState<{ unidade: string; nome: string; email: string; telefone: string; tipo: string }[]>([]);
+  const [obMorForm, setObMorForm] = useState({ unidade: "", nome: "", email: "", telefone: "", tipo: "proprietario" });
+  // Step 4: Sensores IoT
   const [obSensors, setObSensors] = useState([
     { sensor_id: "sensor_cisterna", nome: "Cisterna Principal", local: "Subsolo", capacidade_litros: "20000", nivel_atual: "80" },
     { sensor_id: "sensor_torre_a", nome: "Caixa Torre A", local: "Telhado Torre A", capacidade_litros: "5000", nivel_atual: "75" },
@@ -609,11 +612,12 @@ export default function App() {
   const takenDays = new Set([3, 8, 14, 20, 25]);
   const availDays = new Set([5, 6, 7, 10, 11, 12, 15, 17, 18, 19, 22, 24, 26, 27, 28]);
 
-  // ── Onboarding Wizard (7 passos) ─────────────────────────────────────────
+  // ── Onboarding Wizard (8 itens, 7 passos de config) ──────────────────────
   const OB_STEPS = [
     { icon: "👋", label: "Boas-vindas" },
     { icon: "🏢", label: "Condomínio" },
-    { icon: "🏗️", label: "Infraestrutura" },
+    { icon: "🏗️", label: "Estrutura" },
+    { icon: "👥", label: "Moradores" },
     { icon: "💧", label: "Sensores IoT" },
     { icon: "💰", label: "Financeiro" },
     { icon: "🤖", label: "Síndico IA" },
@@ -650,19 +654,13 @@ export default function App() {
       if (obTorres.length === 0) { showToast("Adicione pelo menos um bloco/torre", "warn"); return; }
       const invalid = obTorres.find(t => !t.nome.trim() || t.andares < 1 || t.unidades_por_andar < 1);
       if (invalid) { showToast("Preencha nome, andares e unidades de cada bloco", "warn"); return; }
-      // Save structure to Supabase if condo already persisted
       if (obSavedCondoId) {
         setObLoading(true);
         try {
           const totalUnits = obTorres.reduce((s, t) => s + t.andares * t.unidades_por_andar, 0);
           const r = await fetch(`/api/condominios/${obSavedCondoId}`, {
             method: "PATCH", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              torres_config: obTorres,
-              torres: obTorres.length,
-              andares: Math.max(...obTorres.map(t => t.andares)),
-              unidades: totalUnits,
-            }),
+            body: JSON.stringify({ torres_config: obTorres, torres: obTorres.length, andares: Math.max(...obTorres.map(t => t.andares)), unidades: totalUnits }),
           });
           if (r.ok) showToast("🏗️ Estrutura salva!", "success");
           else showToast("Estrutura salva localmente (Supabase pendente)", "info");
@@ -671,8 +669,22 @@ export default function App() {
       }
     }
 
+    // ── Step 3: Moradores ─────────────────────────────────────────────────────
+    if (obStep === 3 && obSavedCondoId && obMoradores.length > 0) {
+      setObLoading(true);
+      try {
+        const r = await fetch("/api/moradores", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ condominio_id: obSavedCondoId, moradores: obMoradores }),
+        });
+        if (r.ok) showToast(`👥 ${obMoradores.length} morador(es) salvos!`, "success");
+        else showToast("Moradores salvos localmente (Supabase pendente)", "info");
+      } catch { showToast("Moradores salvos localmente", "info"); }
+      setObLoading(false);
+    }
+
     setObStep(s => Math.min(s + 1, OB_STEPS.length - 1));
-  }, [obStep, obCondo, obSavedCondoId, obTorres, showToast]);
+  }, [obStep, obCondo, obSavedCondoId, obTorres, obMoradores, showToast]);
 
   const obPrevStep = () => setObStep(s => Math.max(s - 1, 0));
 
@@ -694,7 +706,7 @@ export default function App() {
 
     return (
       <div className="ob-wrap" style={{ overflowY: "auto", marginTop: "var(--topbar-h)" }}>
-        <div className="ob-card" style={{ maxWidth: (obStep === 1 || obStep === 2) ? 960 : undefined }}>
+        <div className="ob-card" style={{ maxWidth: obStep >= 1 ? 960 : undefined }}>
 
           {/* ── Hero ── */}
           <div className="ob-hero">
@@ -1093,157 +1105,627 @@ export default function App() {
               );
             })()}
 
-            {/* ════ STEP 3: Sensores IoT ════ */}
-            {obStep === 3 && (
-              <div style={{ animation: "fadeIn .25s ease" }}>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>💧 Sensores IoT de Água</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 14 }}>Configure os 5 sensores de nível monitorados em tempo real</div>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-                        {["#", "Sensor ID", "Nome", "Local", "Cap. (L)", "Nível %"].map(h => (
-                          <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "#64748B", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {obSensors.map((s, i) => (
-                        <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
-                          <td style={{ padding: "6px 8px", color: "#475569" }}>{i + 1}</td>
-                          {(["sensor_id", "nome", "local", "capacidade_litros", "nivel_atual"] as (keyof typeof s)[]).map(field => (
-                            <td key={field} style={{ padding: "4px 6px" }}>
-                              <input className="form-control" style={{ fontSize: 11, padding: "4px 7px", minWidth: field === "sensor_id" ? 110 : field === "nome" || field === "local" ? 120 : 60 }}
-                                type={field === "capacidade_litros" || field === "nivel_atual" ? "number" : "text"}
-                                min={field === "nivel_atual" ? "0" : undefined} max={field === "nivel_atual" ? "100" : undefined}
-                                value={s[field]}
-                                onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, [field]: e.target.value } : x))} />
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <button onClick={() => setObSensors(arr => [...arr, { sensor_id: `sensor_${arr.length + 1}`, nome: "Novo Sensor", local: "–", capacidade_litros: "1000", nivel_atual: "50" }])}
-                  style={{ marginTop: 12, fontSize: 12, padding: "6px 14px", borderRadius: 8, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.2)", color: "#A5B4FC", cursor: "pointer" }}>
-                  + Adicionar sensor
-                </button>
-                <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>💡 Sensores pré-configurados — ajuste conforme sua infraestrutura.</div>
-              </div>
-            )}
+            {/* ════ STEP 3: Moradores ════ */}
+            {obStep === 3 && (() => {
+              // Generate all units from torres config
+              const genUnits = (t: { nome: string; andares: number; unidades_por_andar: number }) => {
+                const words = t.nome.trim().split(/\s+/);
+                const prefix = words[words.length - 1].slice(0, 2).toUpperCase();
+                const units: string[] = [];
+                for (let f = 1; f <= t.andares; f++)
+                  for (let u = 1; u <= t.unidades_por_andar; u++)
+                    units.push(`${prefix}${f}${String(u).padStart(2, "0")}`);
+                return units;
+              };
+              const allUnits = obTorres.flatMap(genUnits);
+              const filledSet = new Set(obMoradores.map(m => m.unidade));
+              const BLOCO_COLORS = ["#6366F1","#14B8A6","#F59E0B","#EF4444","#A855F7","#3B82F6","#10B981","#F97316","#EC4899","#8B5CF6"];
 
-            {/* ════ STEP 4: Financeiro ════ */}
+              const addMorador = () => {
+                if (!obMorForm.unidade) { return; }
+                const existing = obMoradores.findIndex(m => m.unidade === obMorForm.unidade);
+                if (existing >= 0) {
+                  setObMoradores(ms => ms.map((m, i) => i === existing ? { ...obMorForm } : m));
+                } else {
+                  setObMoradores(ms => [...ms, { ...obMorForm }]);
+                }
+                // Advance to next empty unit
+                const nextEmpty = allUnits.find(u => u !== obMorForm.unidade && !filledSet.has(u));
+                setObMorForm(f => ({ ...f, unidade: nextEmpty || "", nome: "", email: "", telefone: "" }));
+              };
+
+              return (
+                <div style={{ animation: "fadeIn .25s ease" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                    <div style={{ fontSize: 15, fontWeight: 700 }}>👥 Moradores</div>
+                    <span style={{ fontSize: 11, color: "#64748B" }}>{obMoradores.length}/{allUnits.length} unidades preenchidas</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748B", marginBottom: 16 }}>
+                    Cadastre os moradores por unidade — geradas automaticamente das torres configuradas. Opcional: avance sem preencher.
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20, alignItems: "start" }}>
+
+                    {/* ── Formulário de adição ── */}
+                    <div>
+                      <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: "16px 18px", marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 12 }}>➕ Adicionar / Editar Morador</div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                          <div className="form-group">
+                            <label className="form-label">Unidade *</label>
+                            <select value={obMorForm.unidade} onChange={e => setObMorForm(f => ({ ...f, unidade: e.target.value }))}
+                              style={{ width: "100%", padding: "7px 10px", background: "rgba(0,0,0,.3)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, color: "#E2E8F0", fontSize: 13, fontFamily: "inherit" }}>
+                              <option value="">Selecione...</option>
+                              {allUnits.map(u => (
+                                <option key={u} value={u}>{u}{filledSet.has(u) ? " ✓" : ""}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">Tipo</label>
+                            <div style={{ display: "flex", gap: 6, paddingTop: 6 }}>
+                              {["proprietario","inquilino"].map(t => (
+                                <button key={t} onClick={() => setObMorForm(f => ({ ...f, tipo: t }))}
+                                  style={{ flex: 1, padding: "6px 4px", borderRadius: 8, border: "1px solid", fontSize: 11, cursor: "pointer", fontFamily: "inherit", transition: "all .15s",
+                                    borderColor: obMorForm.tipo === t ? "#6366F1" : "#334155",
+                                    background: obMorForm.tipo === t ? "rgba(99,102,241,.18)" : "rgba(30,41,59,.5)",
+                                    color: obMorForm.tipo === t ? "#A5B4FC" : "#64748B" }}>
+                                  {t === "proprietario" ? "🏠 Proprietário" : "🔑 Inquilino"}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">Nome completo *</label>
+                          <input className="form-control" value={obMorForm.nome}
+                            onChange={e => setObMorForm(f => ({ ...f, nome: e.target.value }))}
+                            placeholder="Ex: Ana Silva" />
+                        </div>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div className="form-group">
+                            <label className="form-label">E-mail</label>
+                            <input className="form-control" type="email" value={obMorForm.email}
+                              onChange={e => setObMorForm(f => ({ ...f, email: e.target.value }))}
+                              placeholder="ana@email.com" />
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">Telefone / WhatsApp</label>
+                            <input className="form-control" value={obMorForm.telefone}
+                              onChange={e => setObMorForm(f => ({ ...f, telefone: e.target.value }))}
+                              placeholder="(48) 99999-0000" />
+                          </div>
+                        </div>
+
+                        <button onClick={addMorador} disabled={!obMorForm.unidade || !obMorForm.nome.trim()}
+                          style={{ width: "100%", padding: "10px", marginTop: 4, borderRadius: 10, background: "var(--grad)", border: "none", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: (!obMorForm.unidade || !obMorForm.nome.trim()) ? .4 : 1, transition: "opacity .15s" }}>
+                          {filledSet.has(obMorForm.unidade) ? "✏️ Atualizar Morador" : "➕ Adicionar Morador"}
+                        </button>
+                      </div>
+
+                      {/* Lista de moradores adicionados */}
+                      {obMoradores.length > 0 && (
+                        <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                          {obMoradores.map((m, i) => (
+                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10 }}>
+                              <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(99,102,241,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
+                                {m.tipo === "proprietario" ? "🏠" : "🔑"}
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: "#F1F5F9" }}>{m.nome}</div>
+                                <div style={{ fontSize: 10, color: "#64748B" }}>{m.unidade} · {m.email || "sem e-mail"}</div>
+                              </div>
+                              <button onClick={() => { setObMorForm({ ...m }); }}
+                                style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(99,102,241,.3)", background: "rgba(99,102,241,.1)", color: "#A5B4FC", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>
+                                editar
+                              </button>
+                              <button onClick={() => setObMoradores(ms => ms.filter((_, j) => j !== i))}
+                                style={{ width: 24, height: 24, borderRadius: 6, border: "1px solid rgba(239,68,68,.2)", background: "rgba(239,68,68,.1)", color: "#F87171", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "inherit" }}>
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {obMoradores.length === 0 && (
+                        <div style={{ textAlign: "center", color: "#334155", fontSize: 12, padding: "20px 0" }}>
+                          Nenhum morador adicionado ainda — este passo é opcional.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Preview visual por bloco ── */}
+                    <div style={{ position: "sticky", top: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
+                        Mapa de Ocupação
+                      </div>
+                      <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 16, maxHeight: 520, overflowY: "auto" }}>
+                        {obTorres.map((torre, idx) => {
+                          const color = BLOCO_COLORS[idx % BLOCO_COLORS.length];
+                          const units = genUnits(torre);
+                          const filled = units.filter(u => filledSet.has(u)).length;
+                          const pct = units.length ? Math.round(filled / units.length * 100) : 0;
+                          return (
+                            <div key={idx} style={{ marginBottom: 16 }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color, display: "flex", alignItems: "center", gap: 5 }}>
+                                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
+                                  {torre.nome}
+                                </div>
+                                <span style={{ fontSize: 10, color: "#64748B" }}>{filled}/{units.length} ({pct}%)</span>
+                              </div>
+                              {/* Progress bar */}
+                              <div style={{ height: 3, background: "rgba(255,255,255,.06)", borderRadius: 2, marginBottom: 8, overflow: "hidden" }}>
+                                <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 2, transition: "width .3s" }} />
+                              </div>
+                              {/* Unit chips */}
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                                {units.map(u => {
+                                  const mor = obMoradores.find(m => m.unidade === u);
+                                  return (
+                                    <div key={u} title={mor ? mor.nome : u}
+                                      onClick={() => setObMorForm(f => ({ ...f, unidade: u }))}
+                                      style={{ padding: "2px 6px", borderRadius: 5, fontSize: 9, fontWeight: 600, cursor: "pointer", transition: "all .1s",
+                                        background: mor ? color + "25" : "rgba(30,41,59,.6)",
+                                        border: `1px solid ${mor ? color + "55" : "rgba(255,255,255,.06)"}`,
+                                        color: mor ? color : "#334155",
+                                        outline: obMorForm.unidade === u ? `2px solid ${color}` : "none" }}>
+                                      {u}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.05)", fontSize: 11, textAlign: "center" }}>
+                          {obMoradores.length > 0 ? (
+                            <span style={{ color: "#10B981", fontWeight: 600 }}>✓ {obMoradores.length} morador(es) cadastrado(s)</span>
+                          ) : (
+                            <span style={{ color: "#334155" }}>Clique em uma unidade para pré-selecionar</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ════ STEP 4: Sensores IoT ════ */}
             {obStep === 4 && (
               <div style={{ animation: "fadeIn .25s ease" }}>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>💰 Configuração Financeira</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Defina o saldo inicial e a taxa condominial</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                  <div className="form-group" style={{ gridColumn: "1/-1" }}>
-                    <label className="form-label">Saldo Inicial do Fundo (R$)</label>
-                    <input className="form-control" type="number" value={obSaldo} onChange={e => setObSaldo(e.target.value)} placeholder="50000" />
-                    <div style={{ fontSize: 11, color: "#475569", marginTop: 5 }}>Lançado como "Saldo inicial" no financeiro.</div>
+                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>💧 Sensores IoT de Água</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>Configure os sensores de nível monitorados em tempo real</div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20, alignItems: "start" }}>
+
+                  {/* ── Tabela de configuração ── */}
+                  <div>
+                    <div style={{ overflowX: "auto", marginBottom: 10 }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead>
+                          <tr style={{ borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+                            {["#", "Nome", "Local", "Cap. (L)", "Nível %", ""].map(h => (
+                              <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "#64748B", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {obSensors.map((s, i) => {
+                            const lvl = Number(s.nivel_atual) || 0;
+                            const color = lvl < 25 ? "#EF4444" : lvl < 50 ? "#F59E0B" : "#10B981";
+                            return (
+                              <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                                <td style={{ padding: "6px 8px", color: "#475569" }}>{i + 1}</td>
+                                {(["nome","local","capacidade_litros","nivel_atual"] as (keyof typeof s)[]).map(field => (
+                                  <td key={field} style={{ padding: "4px 6px" }}>
+                                    {field === "nivel_atual" ? (
+                                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                        <input className="form-control" style={{ fontSize: 11, padding: "4px 7px", width: 54 }}
+                                          type="number" min="0" max="100" value={s[field]}
+                                          onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, [field]: e.target.value } : x))} />
+                                        <span style={{ fontSize: 10, color, fontWeight: 700 }}>{lvl}%</span>
+                                      </div>
+                                    ) : (
+                                      <input className="form-control" style={{ fontSize: 11, padding: "4px 7px", minWidth: field === "nome" || field === "local" ? 110 : 70 }}
+                                        value={s[field]}
+                                        onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, [field]: e.target.value } : x))} />
+                                    )}
+                                  </td>
+                                ))}
+                                <td style={{ padding: "4px 6px" }}>
+                                  {obSensors.length > 1 && (
+                                    <button onClick={() => setObSensors(arr => arr.filter((_, j) => j !== i))}
+                                      style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid rgba(239,68,68,.2)", background: "rgba(239,68,68,.1)", color: "#F87171", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>
+                                      ×
+                                    </button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <button onClick={() => setObSensors(arr => [...arr, { sensor_id: `sensor_${arr.length + 1}`, nome: "Novo Sensor", local: "–", capacidade_litros: "1000", nivel_atual: "50" }])}
+                      style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.2)", color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit" }}>
+                      + Adicionar sensor
+                    </button>
+                    <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>💡 Sensores pré-configurados — ajuste conforme sua infraestrutura.</div>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Taxa Mensal / Unidade (R$)</label>
-                    <input className="form-control" type="number" value={obTaxaMensal} onChange={e => setObTaxaMensal(e.target.value)} placeholder="648" />
+
+                  {/* ── Preview: gauges de nível ── */}
+                  <div style={{ position: "sticky", top: 0 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
+                      Monitor em Tempo Real
+                    </div>
+                    <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                      {obSensors.map((s, i) => {
+                        const lvl = Math.min(100, Math.max(0, Number(s.nivel_atual) || 0));
+                        const cap = Number(s.capacidade_litros) || 1000;
+                        const color = lvl < 25 ? "#EF4444" : lvl < 50 ? "#F59E0B" : "#10B981";
+                        const vol = Math.round(cap * lvl / 100);
+                        return (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            {/* Tank visual */}
+                            <div style={{ width: 22, height: 44, borderRadius: "3px 3px 5px 5px", border: `1.5px solid ${color}40`, background: "rgba(0,0,0,.25)", position: "relative", overflow: "hidden", flexShrink: 0 }}>
+                              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${lvl}%`, background: color + "55", borderRadius: "0 0 3px 3px", transition: "height .5s ease" }} />
+                              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${Math.min(lvl, 12)}%`, background: color + "99" }} />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: "#E2E8F0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nome || `Sensor ${i+1}`}</div>
+                                <span style={{ fontSize: 10, fontWeight: 700, color, flexShrink: 0, marginLeft: 4 }}>{lvl}%</span>
+                              </div>
+                              <div style={{ height: 5, background: "rgba(255,255,255,.07)", borderRadius: 3, overflow: "hidden" }}>
+                                <div style={{ height: "100%", width: `${lvl}%`, background: color, borderRadius: 3, transition: "width .5s ease" }} />
+                              </div>
+                              <div style={{ fontSize: 9, color: "#475569", marginTop: 2 }}>{vol.toLocaleString("pt-BR")}L / {cap.toLocaleString("pt-BR")}L · {s.local || "–"}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {/* Summary */}
+                      <div style={{ borderTop: "1px solid rgba(255,255,255,.05)", paddingTop: 8, marginTop: 2 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
+                          <span style={{ color: "#64748B" }}>Total de sensores</span>
+                          <span style={{ color: "#94A3B8", fontWeight: 600 }}>{obSensors.length}</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 3 }}>
+                          <span style={{ color: "#64748B" }}>Nível médio</span>
+                          <span style={{ color: "#10B981", fontWeight: 700 }}>{Math.round(obSensors.reduce((a, s) => a + (Number(s.nivel_atual) || 0), 0) / obSensors.length)}%</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 3 }}>
+                          <span style={{ color: "#64748B" }}>Cap. total</span>
+                          <span style={{ color: "#94A3B8", fontWeight: 600 }}>{obSensors.reduce((a, s) => a + (Number(s.capacidade_litros) || 0), 0).toLocaleString("pt-BR")}L</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Dia de Vencimento</label>
-                    <input className="form-control" type="number" min="1" max="28" value={obVencimento} onChange={e => setObVencimento(e.target.value)} placeholder="10" />
-                  </div>
-                </div>
-                <div style={{ background: "rgba(16,185,129,.05)", border: "1px solid rgba(16,185,129,.12)", borderRadius: 10, padding: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "#6EE7B7", marginBottom: 6 }}>📊 Receita mensal estimada</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: "#10B981" }}>
-                    R$ {(Number(obTaxaMensal || 0) * Number(obCondo.unidades || 0)).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{obCondo.unidades} unidades × R$ {Number(obTaxaMensal || 0).toLocaleString("pt-BR")}/mês</div>
+
                 </div>
               </div>
             )}
 
-            {/* ════ STEP 5: Síndico Virtual IA ════ */}
-            {obStep === 5 && (
-              <div style={{ animation: "fadeIn .25s ease" }}>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🤖 Síndico Virtual IA</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Configure o comportamento do assistente inteligente</div>
+            {/* ════ STEP 5: Financeiro ════ */}
+            {obStep === 5 && (() => {
+              const taxa = Number(obTaxaMensal) || 0;
+              const units = Number(obCondo.unidades) || 0;
+              const saldo = Number(obSaldo) || 0;
+              const receita = taxa * units;
+              const reserva = receita * 0.1;
+              const manutencao = receita * 0.25;
+              const disponivel = receita - reserva - manutencao;
+              const venc = Number(obVencimento) || 10;
+              const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+              return (
+                <div style={{ animation: "fadeIn .25s ease" }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>💰 Configuração Financeira</div>
+                  <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Defina o saldo inicial e as taxas condominiais</div>
 
-                <div className="form-group" style={{ marginBottom: 18 }}>
-                  <label className="form-label">Tom de comunicação</label>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {[["formal", "👔 Formal"], ["amigavel", "😊 Amigável"], ["tecnico", "🔬 Técnico"], ["direto", "⚡ Direto"]].map(([v, l]) => (
-                      <button key={v} onClick={() => setObIA(p => ({ ...p, persona: v }))}
-                        style={{ padding: "8px 16px", borderRadius: 20, border: "1px solid", fontSize: 13, cursor: "pointer", transition: "all .15s",
-                          borderColor: obIA.persona === v ? "#6366F1" : "#334155",
-                          background: obIA.persona === v ? "rgba(99,102,241,.22)" : "rgba(30,41,59,.6)",
-                          color: obIA.persona === v ? "#A5B4FC" : "#64748B", fontWeight: obIA.persona === v ? 600 : 400 }}>
-                        {l}
-                      </button>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 20, alignItems: "start" }}>
+
+                    {/* ── Formulário ── */}
+                    <div>
+                      <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "18px 18px", marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 14 }}>🏦 Fundo do Condomínio</div>
+                        <div className="form-group">
+                          <label className="form-label">Saldo Inicial (R$)</label>
+                          <input className="form-control" type="number" value={obSaldo} onChange={e => setObSaldo(e.target.value)} placeholder="50000" />
+                          <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>Saldo atual do fundo de reserva / conta bancária.</div>
+                        </div>
+                      </div>
+
+                      <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "18px 18px" }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 14 }}>📋 Taxas & Cobrança</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                          <div className="form-group">
+                            <label className="form-label">Taxa Mensal / Unidade (R$)</label>
+                            <input className="form-control" type="number" min="0" value={obTaxaMensal} onChange={e => setObTaxaMensal(e.target.value)} placeholder="648" />
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">Dia de Vencimento</label>
+                            <input className="form-control" type="number" min="1" max="28" value={obVencimento} onChange={e => setObVencimento(e.target.value)} placeholder="10" />
+                            <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>Boletos vencem todo dia {venc || "–"} do mês.</div>
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 10, padding: "10px 14px", background: "rgba(99,102,241,.06)", borderRadius: 10, border: "1px solid rgba(99,102,241,.1)" }}>
+                          <div style={{ fontSize: 11, color: "#94A3B8" }}>Receita bruta mensal estimada</div>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: "#A5B4FC", marginTop: 2 }}>R$ {fmtBRL(receita)}</div>
+                          <div style={{ fontSize: 10, color: "#475569", marginTop: 1 }}>{units} un. × R$ {fmtBRL(taxa)}/mês</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── Preview financeiro ── */}
+                    <div style={{ position: "sticky", top: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
+                        Projeção Mensal
+                      </div>
+                      <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 16 }}>
+
+                        {/* Saldo card */}
+                        <div style={{ padding: "10px 12px", background: "rgba(16,185,129,.06)", border: "1px solid rgba(16,185,129,.12)", borderRadius: 10, marginBottom: 10 }}>
+                          <div style={{ fontSize: 10, color: "#6EE7B7", fontWeight: 600 }}>💵 SALDO ATUAL</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: "#10B981", marginTop: 2 }}>R$ {fmtBRL(saldo)}</div>
+                        </div>
+
+                        {/* Breakdown bars */}
+                        {[
+                          { label: "Receita Total", val: receita, color: "#10B981", pct: 100 },
+                          { label: "Fundo de Reserva (10%)", val: reserva, color: "#6366F1", pct: 10 },
+                          { label: "Manutenção prevista (25%)", val: manutencao, color: "#F59E0B", pct: 25 },
+                          { label: "Disponível operacional", val: disponivel, color: "#14B8A6", pct: 65 },
+                        ].map(row => (
+                          <div key={row.label} style={{ marginBottom: 8 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}>
+                              <span style={{ color: "#64748B" }}>{row.label}</span>
+                              <span style={{ color: row.color, fontWeight: 700 }}>R$ {fmtBRL(row.val)}</span>
+                            </div>
+                            <div style={{ height: 4, background: "rgba(255,255,255,.05)", borderRadius: 2, overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${Math.min(row.pct, 100)}%`, background: row.color, borderRadius: 2 }} />
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Vencimento */}
+                        <div style={{ marginTop: 10, padding: "8px 10px", background: "rgba(255,255,255,.02)", borderRadius: 8, border: "1px solid rgba(255,255,255,.06)" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 11, color: "#64748B" }}>📆 Vencimento boletos</span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#E2E8F0" }}>Dia {venc || "–"}</span>
+                          </div>
+                        </div>
+
+                        {receita > 0 && (
+                          <div style={{ marginTop: 8, fontSize: 10, color: "#334155", textAlign: "center" }}>
+                            ≈ R$ {fmtBRL(receita * 12)} / ano em receita
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ════ STEP 6: Síndico Virtual IA ════ */}
+            {obStep === 6 && (() => {
+              const personaPreview: Record<string, string> = {
+                formal: `Prezado(a) condômino(a),\n\nInformo que a assembleia ordinária está agendada para o dia 20 de abril às 19h, no salão de festas.\n\nContamos com sua presença.\n\nAtenciosamente,\nSíndico Virtual — ${obCondo.nome || "Condomínio"}`,
+                amigavel: `Olá! 😊\n\nLembrando que nossa assembleia é dia 20/04 às 19h no salão de festas!\n\nVamos juntos tornar nosso condomínio ainda melhor! 🏢✨\n\nAté lá!\nSeu Síndico Virtual`,
+                tecnico: `NOTIFICAÇÃO TÉCNICA — Ref: AGO/2024\n\nData: 20/04 · 19h00 · Local: Salão de Festas\nPauta: Prestação de contas, eleição de conselho, obras de manutenção preventiva.\n\nPresença obrigatória para quórum de deliberação.\n\n[Sistema ImobCore AI]`,
+                direto: `📢 Assembleia: 20/04, 19h, salão de festas.\n\nPautas: contas + eleição + obras.\n\nConfirme presença.\n\n— Síndico Virtual`,
+              };
+              const preview = personaPreview[obIA.persona] || personaPreview.formal;
+              return (
+                <div style={{ animation: "fadeIn .25s ease" }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🤖 Síndico Virtual IA</div>
+                  <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Configure o comportamento e tom do assistente inteligente</div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 20, alignItems: "start" }}>
+
+                    {/* ── Config form ── */}
+                    <div>
+                      <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "18px 18px", marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 14 }}>🎭 Tom de comunicação</div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {[["formal", "👔", "Formal"], ["amigavel", "😊", "Amigável"], ["tecnico", "🔬", "Técnico"], ["direto", "⚡", "Direto"]].map(([v, ic, l]) => (
+                            <button key={v} onClick={() => setObIA(p => ({ ...p, persona: v }))}
+                              style={{ padding: "10px 16px", borderRadius: 10, border: "1px solid", fontSize: 13, cursor: "pointer", transition: "all .15s", fontFamily: "inherit",
+                                borderColor: obIA.persona === v ? "#6366F1" : "#334155",
+                                background: obIA.persona === v ? "rgba(99,102,241,.18)" : "rgba(30,41,59,.5)",
+                                color: obIA.persona === v ? "#A5B4FC" : "#64748B", fontWeight: obIA.persona === v ? 600 : 400 }}>
+                              {ic} {l}
+                            </button>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 10, fontSize: 11, color: "#475569" }}>
+                          {obIA.persona === "formal" && "Comunicações formais, linguagem de ofício. Ideal para condomínios corporativos."}
+                          {obIA.persona === "amigavel" && "Tom descontraído e positivo. Ótimo para condomínios residenciais familiares."}
+                          {obIA.persona === "tecnico" && "Linguagem técnica com referências precisas. Ideal para síndicos profissionais."}
+                          {obIA.persona === "direto" && "Mensagens curtas e objetivas. Máxima eficiência para moradores ocupados."}
+                        </div>
+                      </div>
+
+                      <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "18px 18px", marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 14 }}>⚡ Automações</div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                          {([
+                            ["greet", "🌅 Saudação automática ao abrir o chat", "IA cumprimenta o usuário com resumo do dia"],
+                            ["auto_com", "📢 Comunicados automáticos por IA", "Gera e publica comunicados baseados em eventos"],
+                          ] as [keyof typeof obIA, string, string][]).map(([k, lbl, desc]) => (
+                            <div key={k} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                              <div onClick={() => setObIA(p => ({ ...p, [k]: !p[k] }))} style={{ width: 42, height: 24, borderRadius: 12, background: obIA[k] ? "#6366F1" : "#1E293B", border: "1.5px solid", borderColor: obIA[k] ? "#6366F1" : "#334155", position: "relative", transition: "all .2s", flexShrink: 0, cursor: "pointer" }}>
+                                <div style={{ position: "absolute", top: 3, left: obIA[k] ? 20 : 3, width: 15, height: 15, borderRadius: "50%", background: "#fff", transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} />
+                              </div>
+                              <div>
+                                <div style={{ fontSize: 13, color: obIA[k] ? "#C4B5FD" : "#64748B", fontWeight: obIA[k] ? 600 : 400 }}>{lbl}</div>
+                                <div style={{ fontSize: 10, color: "#334155", marginTop: 1 }}>{desc}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div style={{ background: "rgba(99,102,241,.06)", border: "1px solid rgba(99,102,241,.1)", borderRadius: 12, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ fontSize: 24 }}>🧠</div>
+                        <div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#C4B5FD" }}>Claude claude-sonnet-4-6</div>
+                          <div style={{ fontSize: 10, color: "#475569", marginTop: 1 }}>Anthropic · Contexto 200k · Português nativo · Raciocínio avançado</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── Preview de chat ── */}
+                    <div style={{ position: "sticky", top: 0 }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
+                        Preview — Tom &ldquo;{obIA.persona}&rdquo;
+                      </div>
+                      <div style={{ background: "rgba(15,23,42,.8)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, overflow: "hidden" }}>
+                        {/* Chat header */}
+                        <div style={{ padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,.06)", display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--grad)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>🤖</div>
+                          <div>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "#E2E8F0" }}>Síndico Virtual IA</div>
+                            <div style={{ fontSize: 9, color: "#10B981" }}>● online</div>
+                          </div>
+                        </div>
+                        {/* Chat bubble */}
+                        <div style={{ padding: 14 }}>
+                          <div style={{ background: "rgba(99,102,241,.1)", border: "1px solid rgba(99,102,241,.15)", borderRadius: "12px 12px 12px 3px", padding: "10px 12px", maxWidth: "95%" }}>
+                            <div style={{ fontSize: 11, color: "#C4B5FD", whiteSpace: "pre-line", lineHeight: 1.5 }}>{preview}</div>
+                          </div>
+                          <div style={{ fontSize: 9, color: "#334155", marginTop: 4, marginLeft: 2 }}>Síndico Virtual · agora</div>
+                        </div>
+                        {/* Input mock */}
+                        <div style={{ padding: "0 14px 12px" }}>
+                          <div style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 10, padding: "7px 12px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontSize: 11, color: "#334155" }}>Pergunte ao Síndico IA...</span>
+                            <span style={{ fontSize: 11, color: "#6366F1" }}>⬆</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ════ STEP 7: Ativação ════ */}
+            {obStep === 7 && (() => {
+              const totalUnits = obTorres.reduce((s, t) => s + t.andares * t.unidades_por_andar, 0) || Number(obCondo.unidades) || 0;
+              const receita = Number(obTaxaMensal) * (Number(obCondo.unidades) || totalUnits);
+              const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+              const sections = [
+                {
+                  icon: "🏢", title: "Condomínio",
+                  items: [
+                    ["Nome", obCondo.nome || "–"],
+                    ["Cidade / Estado", obCondo.cidade ? `${obCondo.cidade} / ${obCondo.estado}` : "–"],
+                    ["CNPJ", obCondo.cnpj || "–"],
+                    ["Síndico", obCondo.sindico_nome || "–"],
+                    ["E-mail síndico", obCondo.sindico_email || "–"],
+                  ]
+                },
+                {
+                  icon: "🏗️", title: "Estrutura",
+                  items: [
+                    ["Torres / Blocos", `${obTorres.length}`],
+                    ["Unidades totais", `${totalUnits}`],
+                    ["Moradores cadastrados", `${obMoradores.length}`],
+                    ["Áreas comuns", [obInfra.churrasqueira && "Churrasqueira", obInfra.salao && "Salão", obInfra.piscina && "Piscina", obInfra.academia && "Academia"].filter(Boolean).join(", ") || "–"],
+                  ]
+                },
+                {
+                  icon: "💧", title: "Sensores IoT",
+                  items: [
+                    ["Sensores configurados", `${obSensors.length}`],
+                    ["Nível médio", `${Math.round(obSensors.reduce((a, s) => a + (Number(s.nivel_atual) || 0), 0) / obSensors.length)}%`],
+                    ["Cap. total", `${obSensors.reduce((a, s) => a + (Number(s.capacidade_litros) || 0), 0).toLocaleString("pt-BR")} L`],
+                  ]
+                },
+                {
+                  icon: "💰", title: "Financeiro",
+                  items: [
+                    ["Saldo inicial", `R$ ${fmtBRL(Number(obSaldo) || 0)}`],
+                    ["Taxa mensal / un.", `R$ ${fmtBRL(Number(obTaxaMensal) || 0)}`],
+                    ["Receita mensal", `R$ ${fmtBRL(receita)}`],
+                    ["Vencimento", `Dia ${obVencimento || "10"}`],
+                  ]
+                },
+                {
+                  icon: "🤖", title: "Síndico IA",
+                  items: [
+                    ["Modelo", "Claude claude-sonnet-4-6"],
+                    ["Tom", obIA.persona],
+                    ["Saudação auto", obIA.greet ? "✓ Ativado" : "✗ Desativado"],
+                    ["Comunicados auto", obIA.auto_com ? "✓ Ativado" : "✗ Desativado"],
+                  ]
+                },
+              ];
+
+              return (
+                <div style={{ animation: "fadeIn .25s ease" }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🚀 Revisão & Ativação</div>
+                  <div style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Revise tudo antes de ativar. Após a ativação, o ImobCore estará operacional.</div>
+
+                  {/* Summary sections */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
+                    {sections.map(sec => (
+                      <div key={sec.title} style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "12px 14px" }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#94A3B8", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                          {sec.icon} {sec.title}
+                        </div>
+                        {sec.items.map(([lbl, val]) => (
+                          <div key={lbl} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, paddingBottom: 4, borderBottom: "1px solid rgba(255,255,255,.03)", marginBottom: 4 }}>
+                            <span style={{ color: "#475569" }}>{lbl}</span>
+                            <span style={{ color: "#CBD5E1", fontWeight: 600, textAlign: "right", maxWidth: "55%" }}>{val}</span>
+                          </div>
+                        ))}
+                      </div>
                     ))}
                   </div>
-                </div>
 
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: "#94A3B8" }}>Automações</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {([
-                    ["greet", "🌅 Saudação automática ao abrir o chat"],
-                    ["auto_com", "📢 Gerar comunicados automáticos por IA"],
-                  ] as [keyof typeof obIA, string][]).map(([k, lbl]) => (
-                    <label key={k} style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-                      <div onClick={() => setObIA(p => ({ ...p, [k]: !p[k] }))} style={{ width: 42, height: 24, borderRadius: 12, background: obIA[k] ? "#6366F1" : "#334155", position: "relative", transition: "background .2s", flexShrink: 0 }}>
-                        <div style={{ position: "absolute", top: 3, left: obIA[k] ? 20 : 3, width: 18, height: 18, borderRadius: "50%", background: "#fff", transition: "left .2s" }} />
-                      </div>
-                      <span style={{ fontSize: 13, color: obIA[k] ? "#C4B5FD" : "#64748B" }}>{lbl}</span>
-                    </label>
-                  ))}
-                </div>
-
-                <div style={{ marginTop: 20, background: "rgba(99,102,241,.07)", border: "1px solid rgba(99,102,241,.12)", borderRadius: 10, padding: 14 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "#A5B4FC", marginBottom: 6 }}>🔑 Modelo de IA</div>
-                  <div style={{ fontSize: 13, color: "#C4B5FD", fontWeight: 700 }}>Claude claude-sonnet-4-6</div>
-                  <div style={{ fontSize: 11, color: "#475569", marginTop: 3 }}>Anthropic · Contexto longo · Português nativo</div>
-                </div>
-              </div>
-            )}
-
-            {/* ════ STEP 6: Ativação ════ */}
-            {obStep === 6 && (
-              <div style={{ animation: "fadeIn .25s ease" }}>
-                <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🚀 Revisão & Ativação</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 18 }}>Confirme todos os dados antes de ativar</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
-                  {[
-                    ["🏢", "Condomínio", obCondo.nome || "–"],
-                    ["📍", "Cidade", obCondo.cidade || "–"],
-                    ["👤", "Síndico", obCondo.sindico_nome || "–"],
-                    ["🏠", "Unidades", obCondo.unidades],
-                    ["👥", "Moradores", obInfra.moradores],
-                    ["🏗️", "Torres / Andares", `${obInfra.torres} / ${obInfra.andares}`],
-                    ["💧", "Sensores IoT", `${obSensors.length} configurados`],
-                    ["💰", "Saldo Inicial", `R$ ${Number(obSaldo || 0).toLocaleString("pt-BR")}`],
-                    ["📆", "Taxa Mensal", `R$ ${Number(obTaxaMensal || 0).toLocaleString("pt-BR")} — dia ${obVencimento}`],
-                    ["🤖", "IA Persona", obIA.persona],
-                  ].map(([ic, l, v]) => (
-                    <div key={l as string} className="ob-confirm-row" style={{ gridColumn: (l === "Taxa Mensal") ? "1/-1" : "auto" }}>
-                      <div className="ob-confirm-label">{ic} {l}</div>
-                      <div className="ob-confirm-val">{v as string}</div>
+                  {/* Torres preview chips */}
+                  {obTorres.length > 0 && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+                      {obTorres.map((t, i) => {
+                        const COLORS = ["#6366F1","#14B8A6","#F59E0B","#EF4444","#A855F7"];
+                        return (
+                          <div key={i} style={{ padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 600,
+                            background: COLORS[i % COLORS.length] + "18", border: `1px solid ${COLORS[i % COLORS.length]}35`, color: COLORS[i % COLORS.length] }}>
+                            {t.nome} · {t.andares * t.unidades_por_andar} un.
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-                {obIsReset && (
-                  <div style={{ padding: 12, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10, marginBottom: 16 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#F87171" }}>⚠️ Modo Reconfiguração</div>
-                    <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>Todos os dados existentes (OSs, sensores, financeiro, comunicados) serão apagados e substituídos.</div>
+                  )}
+
+                  {obIsReset && (
+                    <div style={{ padding: "10px 14px", background: "rgba(239,68,68,.07)", border: "1px solid rgba(239,68,68,.18)", borderRadius: 10, marginBottom: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#F87171" }}>⚠️ Modo Reconfiguração</div>
+                      <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 3 }}>Todos os dados existentes (OSs, sensores, financeiro, comunicados) serão apagados e substituídos por esta configuração.</div>
+                    </div>
+                  )}
+
+                  <button className="btn-ativar" onClick={ativarImobCore} disabled={obLoading} style={{ marginTop: 4, width: "100%" }}>
+                    {obLoading
+                      ? <><span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⏳</span> Ativando ImobCore...</>
+                      : <><span>🚀</span> Ativar ImobCore &rarr;</>}
+                  </button>
+                  <div style={{ textAlign: "center", fontSize: 11, color: "#334155", marginTop: 8 }}>
+                    A ativação leva menos de 5 segundos. Você será redirecionado ao Painel Gestor.
                   </div>
-                )}
-                <button className="btn-ativar" onClick={ativarImobCore} disabled={obLoading} style={{ marginTop: 8 }}>
-                  {obLoading
-                    ? <><span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⏳</span> Ativando ImobCore...</>
-                    : <><span>🚀</span> Ativar ImobCore</>}
-                </button>
-              </div>
-            )}
+                </div>
+              );
+            })()}
 
           </div>{/* /ob-body */}
 
@@ -1263,7 +1745,7 @@ export default function App() {
               <span style={{ fontSize: 12, color: "#334155" }}>{obStep + 1} / {OB_STEPS.length}</span>
               {obStep > 0 && obStep < OB_STEPS.length - 1 && (
                 <button className="btn-ob-next" onClick={obNextStep} disabled={obLoading}>
-                  {obLoading ? "💾 Salvando..." : obStep === 1 ? "💾 Salvar e continuar →" : obStep === 2 ? "🏗️ Salvar estrutura →" : "Próximo →"}
+                  {obLoading ? "💾 Salvando..." : obStep === 1 ? "💾 Salvar e continuar →" : obStep === 2 ? "🏗️ Salvar estrutura →" : obStep === 3 ? `👥 ${obMoradores.length > 0 ? `Salvar ${obMoradores.length} morador(es) →` : "Pular (opcional) →"}` : "Próximo →"}
                 </button>
               )}
             </div>

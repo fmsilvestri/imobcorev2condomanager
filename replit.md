@@ -24,10 +24,19 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ## Artifacts
 
 ### `artifacts/imobcore-frontend` (port 21216, path `/`)
-React + Vite frontend with 3 views:
+React + Vite frontend with 4 views:
 - **Painel Gestor**: Full dashboard with sidebar, KPI cards, AI chat, OS CRUD, financials, IoT water sensors, MISP alerts, SSE log
 - **App Síndico**: Phone mockup for the building manager with AI chat modal
 - **App Morador**: Phone mockup for residents showing communicados, services, status
+- **Onboarding Wizard** (8 steps, all implemented):
+  - Step 0: Boas-vindas
+  - Step 1: Condomínio (form + live preview card, CNPJ, endereço, síndico, POST /api/condominios)
+  - Step 2: Estrutura (torre/bloco builder, color stripes, unit grid, PATCH /api/condominios/:id)
+  - Step 3: Moradores (unit picker from torres, occupation map, POST /api/moradores, optional)
+  - Step 4: Sensores IoT (table + live tank gauges with level colors and summary)
+  - Step 5: Financeiro (saldo inicial + taxa mensal + projeção mensal ao vivo com breakdown bars)
+  - Step 6: Síndico IA (tom selector + automações + live chat preview per persona)
+  - Step 7: Ativação (5-section review grid + torres chips + POST /api/onboarding)
 
 ### `artifacts/api-server` (port 8080, path `/api`)
 Express API server with all ImobCore routes in `src/routes/imobcore.ts`:
@@ -40,6 +49,10 @@ Express API server with all ImobCore routes in `src/routes/imobcore.ts`:
 - `GET /api/sensores` — IoT water sensor data
 - `GET /api/misp` — MISP public alerts
 - `GET /api/financeiro` — Financial data
+- `POST /api/moradores` — Save residents from onboarding (upsert by condominio_id + unidade)
+- `POST /api/condominios` — Create/upsert condo (onboarding Step 1)
+- `PATCH /api/condominios/:id` — Update condo structure (onboarding Step 2)
+- `POST /api/onboarding` — Full activation (Step 7)
 
 ## Database (Supabase)
 
