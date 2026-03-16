@@ -391,6 +391,9 @@ export default function App() {
   // Step 3: Moradores
   const [obMoradores, setObMoradores] = useState<{ unidade: string; nome: string; email: string; telefone: string; tipo: string }[]>([]);
   const [obMorForm, setObMorForm] = useState({ unidade: "", nome: "", email: "", telefone: "", tipo: "proprietario" });
+  const [obMorTab, setObMorTab] = useState<"manual" | "csv">("manual");
+  const [obCsvPreview, setObCsvPreview] = useState<{ unidade: string; nome: string; email: string; telefone: string; tipo: string }[]>([]);
+  const [obCsvError, setObCsvError] = useState("");
   // Step 4: Sensores IoT
   const [obSensors, setObSensors] = useState([
     { sensor_id: "sensor_cisterna", nome: "Cisterna Principal", local: "Subsolo", capacidade_litros: "20000", nivel_atual: "80" },
@@ -785,22 +788,55 @@ export default function App() {
 
                 {/* CTA — varia se já existe condomínio */}
                 {hasCondo ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                    <div style={{ fontSize: 12, color: "#64748B", textAlign: "center", marginBottom: 2 }}>
-                      ✅ Condomínio já configurado — o que deseja fazer?
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {/* Condo summary card */}
+                    <div style={{ background: "rgba(99,102,241,.06)", border: "1px solid rgba(99,102,241,.15)", borderRadius: 14, padding: "14px 16px", display: "flex", alignItems: "center", gap: 14 }}>
+                      <div style={{ width: 42, height: 42, borderRadius: 10, background: "rgba(99,102,241,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>🏢</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "#E2E8F0", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {dash?.condominios?.[0]?.nome || "Condomínio configurado"}
+                        </div>
+                        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                          {dash?.condominios?.[0]?.cidade && (
+                            <span style={{ fontSize: 11, color: "#64748B" }}>📍 {dash.condominios[0].cidade}</span>
+                          )}
+                          {dash?.condominios?.[0]?.unidades && (
+                            <span style={{ fontSize: 11, color: "#64748B" }}>🏠 {dash.condominios[0].unidades} unidades</span>
+                          )}
+                          {dash?.condominios?.[0]?.sindico_nome && (
+                            <span style={{ fontSize: 11, color: "#64748B" }}>👤 {dash.condominios[0].sindico_nome}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: "#10B981", background: "rgba(16,185,129,.1)", border: "1px solid rgba(16,185,129,.2)", borderRadius: 20, padding: "3px 8px", flexShrink: 0 }}>
+                        ✓ Ativo
+                      </div>
                     </div>
+
+                    <div style={{ fontSize: 12, color: "#64748B", textAlign: "center" }}>O que deseja fazer?</div>
+
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <button className="btn-ob-next" style={{ padding: "14px 10px", fontSize: 14, borderRadius: 12 }} onClick={() => setObStep(1)}>
-                        ▶ Continuar configuração
+                      <button className="btn-ob-next" style={{ padding: "14px 10px", fontSize: 14, borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}
+                        onClick={() => { setObIsReset(false); setObStep(1); }}>
+                        <span style={{ fontSize: 20 }}>▶</span>
+                        <span>Continuar configuração</span>
+                        <span style={{ fontSize: 10, opacity: .7, fontWeight: 400 }}>Editar sem apagar dados</span>
                       </button>
                       <button onClick={() => { setObIsReset(true); setObStep(1); }}
-                        style={{ padding: "14px 10px", fontSize: 14, borderRadius: 12, border: "1px solid rgba(239,68,68,.3)", background: "rgba(239,68,68,.08)", color: "#F87171", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .15s" }}>
-                        🔄 Reconfigurar
+                        style={{ padding: "14px 10px", fontSize: 14, borderRadius: 12, border: "1px solid rgba(239,68,68,.3)", background: "rgba(239,68,68,.07)", color: "#F87171", fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all .15s", display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <span style={{ fontSize: 20 }}>🔄</span>
+                        <span>Reconfigurar</span>
+                        <span style={{ fontSize: 10, opacity: .7, fontWeight: 400 }}>Apaga todos os dados</span>
                       </button>
                     </div>
+
                     {obIsReset && (
-                      <div style={{ padding: "10px 14px", background: "rgba(239,68,68,.07)", border: "1px solid rgba(239,68,68,.18)", borderRadius: 10, fontSize: 12, color: "#F87171" }}>
-                        ⚠️ Modo Reconfiguração ativo — todos os dados serão apagados ao finalizar.
+                      <div style={{ padding: "10px 14px", background: "rgba(239,68,68,.07)", border: "1px solid rgba(239,68,68,.18)", borderRadius: 10, fontSize: 12, color: "#F87171", display: "flex", gap: 8, alignItems: "flex-start" }}>
+                        <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
+                        <div>
+                          <div style={{ fontWeight: 600, marginBottom: 2 }}>Modo Reconfiguração ativo</div>
+                          <div style={{ opacity: .8 }}>Todos os dados existentes (OSs, sensores, financeiro, comunicados) serão apagados ao finalizar.</div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1107,7 +1143,6 @@ export default function App() {
 
             {/* ════ STEP 3: Moradores ════ */}
             {obStep === 3 && (() => {
-              // Generate all units from torres config
               const genUnits = (t: { nome: string; andares: number; unidades_por_andar: number }) => {
                 const words = t.nome.trim().split(/\s+/);
                 const prefix = words[words.length - 1].slice(0, 2).toUpperCase();
@@ -1122,157 +1157,260 @@ export default function App() {
               const BLOCO_COLORS = ["#6366F1","#14B8A6","#F59E0B","#EF4444","#A855F7","#3B82F6","#10B981","#F97316","#EC4899","#8B5CF6"];
 
               const addMorador = () => {
-                if (!obMorForm.unidade) { return; }
+                if (!obMorForm.unidade) return;
                 const existing = obMoradores.findIndex(m => m.unidade === obMorForm.unidade);
                 if (existing >= 0) {
                   setObMoradores(ms => ms.map((m, i) => i === existing ? { ...obMorForm } : m));
                 } else {
                   setObMoradores(ms => [...ms, { ...obMorForm }]);
                 }
-                // Advance to next empty unit
                 const nextEmpty = allUnits.find(u => u !== obMorForm.unidade && !filledSet.has(u));
                 setObMorForm(f => ({ ...f, unidade: nextEmpty || "", nome: "", email: "", telefone: "" }));
+              };
+
+              const downloadTemplate = () => {
+                const header = "unidade,nome,email,telefone,tipo";
+                const examples = allUnits.slice(0, 3).map((u, i) => {
+                  const names = ["Ana Silva","Carlos Souza","Maria Lima"];
+                  return `${u},${names[i] || "Morador Exemplo"},morador${i+1}@email.com,(48) 9${i}999-000${i},proprietario`;
+                }).join("\n");
+                const csv = header + "\n" + examples;
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a"); a.href = url; a.download = "moradores_template.csv"; a.click();
+                URL.revokeObjectURL(url);
+              };
+
+              const parseCsv = (text: string) => {
+                setObCsvError("");
+                const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+                if (lines.length < 2) { setObCsvError("CSV deve ter ao menos uma linha de dados após o cabeçalho."); return; }
+                const header = lines[0].toLowerCase().split(",").map(h => h.trim());
+                const idx = { unidade: header.indexOf("unidade"), nome: header.indexOf("nome"), email: header.indexOf("email"), telefone: header.indexOf("telefone"), tipo: header.indexOf("tipo") };
+                if (idx.unidade < 0 || idx.nome < 0) { setObCsvError("Colunas obrigatórias ausentes: 'unidade' e 'nome'."); return; }
+                const rows = lines.slice(1).map(line => {
+                  const cols = line.split(",").map(c => c.trim().replace(/^["']|["']$/g, ""));
+                  return {
+                    unidade: cols[idx.unidade] || "",
+                    nome: cols[idx.nome] || "",
+                    email: idx.email >= 0 ? (cols[idx.email] || "") : "",
+                    telefone: idx.telefone >= 0 ? (cols[idx.telefone] || "") : "",
+                    tipo: idx.tipo >= 0 ? (cols[idx.tipo] || "proprietario") : "proprietario",
+                  };
+                }).filter(r => r.unidade && r.nome);
+                if (rows.length === 0) { setObCsvError("Nenhuma linha válida encontrada no CSV."); return; }
+                setObCsvPreview(rows);
+              };
+
+              const importCsv = () => {
+                const merged = [...obMoradores];
+                obCsvPreview.forEach(r => {
+                  const ex = merged.findIndex(m => m.unidade === r.unidade);
+                  if (ex >= 0) merged[ex] = r; else merged.push(r);
+                });
+                setObMoradores(merged);
+                setObCsvPreview([]);
+                setObMorTab("manual");
+                showToast(`✅ ${obCsvPreview.length} morador(es) importado(s)!`, "success");
               };
 
               return (
                 <div style={{ animation: "fadeIn .25s ease" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                     <div style={{ fontSize: 15, fontWeight: 700 }}>👥 Moradores</div>
-                    <span style={{ fontSize: 11, color: "#64748B" }}>{obMoradores.length}/{allUnits.length} unidades preenchidas</span>
+                    <span style={{ fontSize: 11, color: "#64748B" }}>{obMoradores.length}/{allUnits.length} unidades preenchidas · <span style={{ color: "#475569" }}>opcional</span></span>
                   </div>
-                  <div style={{ fontSize: 12, color: "#64748B", marginBottom: 16 }}>
-                    Cadastre os moradores por unidade — geradas automaticamente das torres configuradas. Opcional: avance sem preencher.
+                  <div style={{ fontSize: 12, color: "#64748B", marginBottom: 14 }}>
+                    Cadastre os moradores por unidade — geradas automaticamente das torres configuradas.
                   </div>
 
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 20, alignItems: "start" }}>
+                  {/* ── Tab switcher ── */}
+                  <div style={{ display: "flex", gap: 4, marginBottom: 16, background: "rgba(0,0,0,.2)", borderRadius: 10, padding: 4, width: "fit-content" }}>
+                    {([["manual","✏️ Manual"],["csv","📄 Importar CSV"]] as [typeof obMorTab, string][]).map(([tab, lbl]) => (
+                      <button key={tab} onClick={() => { setObMorTab(tab); setObCsvPreview([]); setObCsvError(""); }}
+                        style={{ padding: "6px 18px", borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", border: "none", transition: "all .15s",
+                          background: obMorTab === tab ? "rgba(99,102,241,.25)" : "transparent",
+                          color: obMorTab === tab ? "#A5B4FC" : "#64748B",
+                          outline: obMorTab === tab ? "1px solid rgba(99,102,241,.3)" : "none" }}>
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
 
-                    {/* ── Formulário de adição ── */}
-                    <div>
-                      <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: "16px 18px", marginBottom: 12 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 12 }}>➕ Adicionar / Editar Morador</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20, alignItems: "start" }}>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                          <div className="form-group">
-                            <label className="form-label">Unidade *</label>
-                            <select value={obMorForm.unidade} onChange={e => setObMorForm(f => ({ ...f, unidade: e.target.value }))}
-                              style={{ width: "100%", padding: "7px 10px", background: "rgba(0,0,0,.3)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, color: "#E2E8F0", fontSize: 13, fontFamily: "inherit" }}>
-                              <option value="">Selecione...</option>
-                              {allUnits.map(u => (
-                                <option key={u} value={u}>{u}{filledSet.has(u) ? " ✓" : ""}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="form-group">
-                            <label className="form-label">Tipo</label>
-                            <div style={{ display: "flex", gap: 6, paddingTop: 6 }}>
-                              {["proprietario","inquilino"].map(t => (
-                                <button key={t} onClick={() => setObMorForm(f => ({ ...f, tipo: t }))}
-                                  style={{ flex: 1, padding: "6px 4px", borderRadius: 8, border: "1px solid", fontSize: 11, cursor: "pointer", fontFamily: "inherit", transition: "all .15s",
-                                    borderColor: obMorForm.tipo === t ? "#6366F1" : "#334155",
-                                    background: obMorForm.tipo === t ? "rgba(99,102,241,.18)" : "rgba(30,41,59,.5)",
-                                    color: obMorForm.tipo === t ? "#A5B4FC" : "#64748B" }}>
-                                  {t === "proprietario" ? "🏠 Proprietário" : "🔑 Inquilino"}
-                                </button>
-                              ))}
+                    {/* ── TAB: Manual ── */}
+                    {obMorTab === "manual" && (
+                      <div>
+                        <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 14, padding: "16px 18px", marginBottom: 12 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 12 }}>➕ Adicionar / Editar Morador</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                            <div className="form-group">
+                              <label className="form-label">Unidade *</label>
+                              <select value={obMorForm.unidade} onChange={e => setObMorForm(f => ({ ...f, unidade: e.target.value }))}
+                                style={{ width: "100%", padding: "7px 10px", background: "rgba(0,0,0,.3)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, color: "#E2E8F0", fontSize: 13, fontFamily: "inherit" }}>
+                                <option value="">Selecione...</option>
+                                {allUnits.map(u => <option key={u} value={u}>{u}{filledSet.has(u) ? " ✓" : ""}</option>)}
+                              </select>
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label">Tipo</label>
+                              <div style={{ display: "flex", gap: 6, paddingTop: 6 }}>
+                                {["proprietario","inquilino"].map(t => (
+                                  <button key={t} onClick={() => setObMorForm(f => ({ ...f, tipo: t }))}
+                                    style={{ flex: 1, padding: "6px 4px", borderRadius: 8, border: "1px solid", fontSize: 11, cursor: "pointer", fontFamily: "inherit", transition: "all .15s",
+                                      borderColor: obMorForm.tipo === t ? "#6366F1" : "#334155",
+                                      background: obMorForm.tipo === t ? "rgba(99,102,241,.18)" : "rgba(30,41,59,.5)",
+                                      color: obMorForm.tipo === t ? "#A5B4FC" : "#64748B" }}>
+                                    {t === "proprietario" ? "🏠 Prop." : "🔑 Inq."}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        </div>
-
-                        <div className="form-group">
-                          <label className="form-label">Nome completo *</label>
-                          <input className="form-control" value={obMorForm.nome}
-                            onChange={e => setObMorForm(f => ({ ...f, nome: e.target.value }))}
-                            placeholder="Ex: Ana Silva" />
-                        </div>
-
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                           <div className="form-group">
-                            <label className="form-label">E-mail</label>
-                            <input className="form-control" type="email" value={obMorForm.email}
-                              onChange={e => setObMorForm(f => ({ ...f, email: e.target.value }))}
-                              placeholder="ana@email.com" />
+                            <label className="form-label">Nome completo *</label>
+                            <input className="form-control" value={obMorForm.nome} onChange={e => setObMorForm(f => ({ ...f, nome: e.target.value }))} placeholder="Ex: Ana Silva" />
                           </div>
-                          <div className="form-group">
-                            <label className="form-label">Telefone / WhatsApp</label>
-                            <input className="form-control" value={obMorForm.telefone}
-                              onChange={e => setObMorForm(f => ({ ...f, telefone: e.target.value }))}
-                              placeholder="(48) 99999-0000" />
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                            <div className="form-group">
+                              <label className="form-label">E-mail</label>
+                              <input className="form-control" type="email" value={obMorForm.email} onChange={e => setObMorForm(f => ({ ...f, email: e.target.value }))} placeholder="ana@email.com" />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label">Telefone / WhatsApp</label>
+                              <input className="form-control" value={obMorForm.telefone} onChange={e => setObMorForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(48) 99999-0000" />
+                            </div>
                           </div>
+                          <button onClick={addMorador} disabled={!obMorForm.unidade || !obMorForm.nome.trim()}
+                            style={{ width: "100%", padding: "10px", marginTop: 4, borderRadius: 10, background: "var(--grad)", border: "none", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: (!obMorForm.unidade || !obMorForm.nome.trim()) ? .4 : 1, transition: "opacity .15s" }}>
+                            {filledSet.has(obMorForm.unidade) ? "✏️ Atualizar Morador" : "➕ Adicionar Morador"}
+                          </button>
                         </div>
-
-                        <button onClick={addMorador} disabled={!obMorForm.unidade || !obMorForm.nome.trim()}
-                          style={{ width: "100%", padding: "10px", marginTop: 4, borderRadius: 10, background: "var(--grad)", border: "none", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: (!obMorForm.unidade || !obMorForm.nome.trim()) ? .4 : 1, transition: "opacity .15s" }}>
-                          {filledSet.has(obMorForm.unidade) ? "✏️ Atualizar Morador" : "➕ Adicionar Morador"}
-                        </button>
+                        {obMoradores.length > 0 ? (
+                          <div style={{ maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+                            {obMoradores.map((m, i) => (
+                              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10 }}>
+                                <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(99,102,241,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>{m.tipo === "proprietario" ? "🏠" : "🔑"}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 600, color: "#F1F5F9" }}>{m.nome}</div>
+                                  <div style={{ fontSize: 10, color: "#64748B" }}>{m.unidade} · {m.email || "sem e-mail"}</div>
+                                </div>
+                                <button onClick={() => setObMorForm({ ...m })} style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(99,102,241,.3)", background: "rgba(99,102,241,.1)", color: "#A5B4FC", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>editar</button>
+                                <button onClick={() => setObMoradores(ms => ms.filter((_, j) => j !== i))} style={{ width: 22, height: 22, borderRadius: 6, border: "1px solid rgba(239,68,68,.2)", background: "rgba(239,68,68,.1)", color: "#F87171", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "inherit" }}>×</button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ textAlign: "center", color: "#334155", fontSize: 12, padding: "16px 0" }}>Nenhum morador ainda — este passo é opcional.</div>
+                        )}
                       </div>
+                    )}
 
-                      {/* Lista de moradores adicionados */}
-                      {obMoradores.length > 0 && (
-                        <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
-                          {obMoradores.map((m, i) => (
-                            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10 }}>
-                              <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(99,102,241,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, flexShrink: 0 }}>
-                                {m.tipo === "proprietario" ? "🏠" : "🔑"}
-                              </div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, fontWeight: 600, color: "#F1F5F9" }}>{m.nome}</div>
-                                <div style={{ fontSize: 10, color: "#64748B" }}>{m.unidade} · {m.email || "sem e-mail"}</div>
-                              </div>
-                              <button onClick={() => { setObMorForm({ ...m }); }}
-                                style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(99,102,241,.3)", background: "rgba(99,102,241,.1)", color: "#A5B4FC", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>
-                                editar
-                              </button>
-                              <button onClick={() => setObMoradores(ms => ms.filter((_, j) => j !== i))}
-                                style={{ width: 24, height: 24, borderRadius: 6, border: "1px solid rgba(239,68,68,.2)", background: "rgba(239,68,68,.1)", color: "#F87171", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "inherit" }}>
-                                ×
-                              </button>
+                    {/* ── TAB: CSV ── */}
+                    {obMorTab === "csv" && (
+                      <div>
+                        {/* Download template */}
+                        <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "14px 16px", marginBottom: 12 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 8 }}>1️⃣ Baixe o template</div>
+                          <div style={{ fontSize: 11, color: "#64748B", marginBottom: 10 }}>
+                            Planilha pré-preenchida com as unidades do seu condomínio (colunas: unidade, nome, email, telefone, tipo).
+                          </div>
+                          <button onClick={downloadTemplate}
+                            style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 16px", borderRadius: 9, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.22)", color: "#A5B4FC", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                            <span>⬇️</span> Baixar template CSV ({allUnits.length} unidades)
+                          </button>
+                        </div>
+
+                        {/* Upload CSV */}
+                        <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "14px 16px", marginBottom: 12 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 8 }}>2️⃣ Preencha e faça upload</div>
+                          <label style={{ display: "block", padding: "20px", border: "2px dashed rgba(99,102,241,.25)", borderRadius: 10, textAlign: "center", cursor: "pointer", transition: "border-color .2s" }}
+                            onDragOver={e => e.preventDefault()}
+                            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) { const r = new FileReader(); r.onload = ev => parseCsv(ev.target?.result as string); r.readAsText(f); } }}>
+                            <input type="file" accept=".csv,.txt" style={{ display: "none" }}
+                              onChange={e => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = ev => parseCsv(ev.target?.result as string); r.readAsText(f); } }} />
+                            <div style={{ fontSize: 24, marginBottom: 6 }}>📂</div>
+                            <div style={{ fontSize: 12, color: "#64748B" }}>Arraste o CSV aqui ou clique para selecionar</div>
+                            <div style={{ fontSize: 10, color: "#334155", marginTop: 4 }}>Formato: .csv · Codificação: UTF-8</div>
+                          </label>
+                          {obCsvError && (
+                            <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 8, fontSize: 11, color: "#F87171" }}>
+                              ⚠️ {obCsvError}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      )}
-                      {obMoradores.length === 0 && (
-                        <div style={{ textAlign: "center", color: "#334155", fontSize: 12, padding: "20px 0" }}>
-                          Nenhum morador adicionado ainda — este passo é opcional.
-                        </div>
-                      )}
-                    </div>
 
-                    {/* ── Preview visual por bloco ── */}
+                        {/* Preview table */}
+                        {obCsvPreview.length > 0 && (
+                          <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(16,185,129,.15)", borderRadius: 14, padding: "14px 16px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "#6EE7B7" }}>3️⃣ Preview — {obCsvPreview.length} moradores</div>
+                              <button onClick={() => setObCsvPreview([])} style={{ fontSize: 10, color: "#64748B", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>limpar</button>
+                            </div>
+                            <div style={{ maxHeight: 200, overflowY: "auto", marginBottom: 10 }}>
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                                <thead>
+                                  <tr style={{ borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+                                    {["Unidade","Nome","E-mail","Tipo"].map(h => <th key={h} style={{ padding: "4px 8px", textAlign: "left", color: "#64748B", fontWeight: 600 }}>{h}</th>)}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {obCsvPreview.map((r, i) => (
+                                    <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}>
+                                      <td style={{ padding: "4px 8px", color: "#A5B4FC", fontWeight: 600 }}>{r.unidade}</td>
+                                      <td style={{ padding: "4px 8px", color: "#E2E8F0" }}>{r.nome}</td>
+                                      <td style={{ padding: "4px 8px", color: "#64748B" }}>{r.email || "–"}</td>
+                                      <td style={{ padding: "4px 8px" }}>
+                                        <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: r.tipo === "proprietario" ? "rgba(99,102,241,.15)" : "rgba(245,158,11,.12)", color: r.tipo === "proprietario" ? "#A5B4FC" : "#FCD34D" }}>
+                                          {r.tipo === "proprietario" ? "🏠 Prop." : "🔑 Inq."}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            <button onClick={importCsv}
+                              style={{ width: "100%", padding: "10px", borderRadius: 10, background: "linear-gradient(135deg,#10B981,#059669)", border: "none", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
+                              ✅ Importar {obCsvPreview.length} morador(es)
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ── Mapa de ocupação (side panel, ambas as abas) ── */}
                     <div style={{ position: "sticky", top: 0 }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
-                        Mapa de Ocupação
-                      </div>
-                      <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 16, maxHeight: 520, overflowY: "auto" }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Mapa de Ocupação</div>
+                      <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 14, maxHeight: 500, overflowY: "auto" }}>
                         {obTorres.map((torre, idx) => {
                           const color = BLOCO_COLORS[idx % BLOCO_COLORS.length];
                           const units = genUnits(torre);
                           const filled = units.filter(u => filledSet.has(u)).length;
                           const pct = units.length ? Math.round(filled / units.length * 100) : 0;
                           return (
-                            <div key={idx} style={{ marginBottom: 16 }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                            <div key={idx} style={{ marginBottom: 14 }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
                                 <div style={{ fontSize: 11, fontWeight: 700, color, display: "flex", alignItems: "center", gap: 5 }}>
-                                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
-                                  {torre.nome}
+                                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: color, display: "inline-block" }} />{torre.nome}
                                 </div>
-                                <span style={{ fontSize: 10, color: "#64748B" }}>{filled}/{units.length} ({pct}%)</span>
+                                <span style={{ fontSize: 10, color: "#64748B" }}>{filled}/{units.length}</span>
                               </div>
-                              {/* Progress bar */}
-                              <div style={{ height: 3, background: "rgba(255,255,255,.06)", borderRadius: 2, marginBottom: 8, overflow: "hidden" }}>
+                              <div style={{ height: 3, background: "rgba(255,255,255,.06)", borderRadius: 2, marginBottom: 6, overflow: "hidden" }}>
                                 <div style={{ height: "100%", width: `${pct}%`, background: color, borderRadius: 2, transition: "width .3s" }} />
                               </div>
-                              {/* Unit chips */}
-                              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                              <div style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
                                 {units.map(u => {
                                   const mor = obMoradores.find(m => m.unidade === u);
                                   return (
                                     <div key={u} title={mor ? mor.nome : u}
-                                      onClick={() => setObMorForm(f => ({ ...f, unidade: u }))}
-                                      style={{ padding: "2px 6px", borderRadius: 5, fontSize: 9, fontWeight: 600, cursor: "pointer", transition: "all .1s",
-                                        background: mor ? color + "25" : "rgba(30,41,59,.6)",
-                                        border: `1px solid ${mor ? color + "55" : "rgba(255,255,255,.06)"}`,
+                                      onClick={() => { setObMorTab("manual"); setObMorForm(f => ({ ...f, unidade: u })); }}
+                                      style={{ padding: "2px 5px", borderRadius: 4, fontSize: 9, fontWeight: 600, cursor: "pointer", transition: "all .1s",
+                                        background: mor ? color + "22" : "rgba(30,41,59,.6)",
+                                        border: `1px solid ${mor ? color + "44" : "rgba(255,255,255,.05)"}`,
                                         color: mor ? color : "#334155",
-                                        outline: obMorForm.unidade === u ? `2px solid ${color}` : "none" }}>
+                                        outline: obMorForm.unidade === u && obMorTab === "manual" ? `2px solid ${color}` : "none" }}>
                                       {u}
                                     </div>
                                   );
@@ -1281,12 +1419,10 @@ export default function App() {
                             </div>
                           );
                         })}
-                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,.05)", fontSize: 11, textAlign: "center" }}>
-                          {obMoradores.length > 0 ? (
-                            <span style={{ color: "#10B981", fontWeight: 600 }}>✓ {obMoradores.length} morador(es) cadastrado(s)</span>
-                          ) : (
-                            <span style={{ color: "#334155" }}>Clique em uma unidade para pré-selecionar</span>
-                          )}
+                        <div style={{ borderTop: "1px solid rgba(255,255,255,.04)", paddingTop: 8, marginTop: 4, fontSize: 11, textAlign: "center" }}>
+                          {obMoradores.length > 0
+                            ? <span style={{ color: "#10B981", fontWeight: 600 }}>✓ {obMoradores.length} morador(es)</span>
+                            : <span style={{ color: "#334155" }}>Clique para pré-selecionar</span>}
                         </div>
                       </div>
                     </div>
