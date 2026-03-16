@@ -501,6 +501,35 @@ router.patch("/condominios/:id", async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/sensor - Salvar/upsert sensor individual
+router.post("/sensor", async (req: Request, res: Response) => {
+  const { condominio_id, sensor_id, nome, local, capacidade_litros, nivel_atual } = req.body as {
+    condominio_id?: string; sensor_id?: string; nome?: string;
+    local?: string; capacidade_litros?: number; nivel_atual?: number;
+  };
+  if (!sensor_id || !nome) return res.status(400).json({ error: "sensor_id e nome são obrigatórios" });
+  try {
+    const row = {
+      condominio_id: condominio_id || null,
+      sensor_id: sensor_id.trim(),
+      nome: nome.trim(),
+      local: local || "",
+      capacidade_litros: Number(capacidade_litros) || 5000,
+      nivel_atual: Math.min(100, Math.max(0, Number(nivel_atual) || 80)),
+      volume_litros: Math.round((Number(capacidade_litros) || 5000) * (Number(nivel_atual) || 80) / 100),
+    };
+    const { data, error } = await supabase.from("sensores").upsert(row, { onConflict: "sensor_id" }).select().single();
+    if (error) {
+      console.warn("[sensor] upsert warning:", error.message);
+      return res.json({ ok: true, sensor: row, warning: error.message });
+    }
+    return res.json({ ok: true, sensor: data });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: msg });
+  }
+});
+
 // POST /api/moradores - Salvar moradores do onboarding
 router.post("/moradores", async (req: Request, res: Response) => {
   const { condominio_id, moradores } = req.body as {

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import QRCode from "qrcode";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; created_at: string }
@@ -393,6 +394,8 @@ export default function App() {
   const [obMorForm, setObMorForm] = useState({ unidade: "", nome: "", email: "", telefone: "", tipo: "proprietario", cpf: "", nascimento: "", veiculos: "0" });
   const [obMorTab, setObMorTab] = useState<"manual" | "csv">("manual");
   const [obHasSensors, setObHasSensors] = useState<"sim" | "nao" | null>(null);
+  const [obSensorQRs, setObSensorQRs] = useState<string[]>([]);
+  const [obQRModal, setObQRModal] = useState<number | null>(null);
   const [obCsvPreview, setObCsvPreview] = useState<{ unidade: string; nome: string; email: string; telefone: string; tipo: string; cpf: string; nascimento: string; veiculos: string }[]>([]);
   const [obCsvError, setObCsvError] = useState("");
   // Step 4: Sensores IoT
@@ -537,6 +540,20 @@ export default function App() {
     setBellCount(urgentes + dash.totais.alertas_ativos);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [!!dash]);
+
+  // ── QR code generation for sensors ────────────────────────────────────────
+  useEffect(() => {
+    if (obHasSensors !== "sim" || obSensors.length === 0) { setObSensorQRs([]); return; }
+    let cancelled = false;
+    Promise.all(
+      obSensors.map(s =>
+        QRCode.toDataURL(`ImobCore|${s.sensor_id}|${s.nome}|${s.local}|${s.capacidade_litros}L`, {
+          width: 180, margin: 1, color: { dark: "#6366F1", light: "#0F172A" }
+        })
+      )
+    ).then(urls => { if (!cancelled) setObSensorQRs(urls); });
+    return () => { cancelled = true; };
+  }, [obSensors, obHasSensors]);
 
   // ── Chat ──────────────────────────────────────────────────────────────────
   const sendChat = async (
@@ -692,9 +709,22 @@ export default function App() {
       showToast("Selecione uma opção: Tenho sensores ou Não tenho sensores", "warn");
       return;
     }
+    if (obStep === 4 && obHasSensors === "sim" && obSensors.length > 0 && obSavedCondoId) {
+      setObLoading(true);
+      try {
+        await Promise.all(obSensors.map(s =>
+          fetch("/api/sensor", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ condominio_id: obSavedCondoId, ...s, capacidade_litros: Number(s.capacidade_litros), nivel_atual: Number(s.nivel_atual) }),
+          })
+        ));
+        showToast(`📡 ${obSensors.length} sensor(es) salvos!`, "success");
+      } catch { showToast("Sensores salvos localmente", "info"); }
+      setObLoading(false);
+    }
 
     setObStep(s => Math.min(s + 1, OB_STEPS.length - 1));
-  }, [obStep, obCondo, obSavedCondoId, obTorres, obMoradores, obHasSensors, showToast]);
+  }, [obStep, obCondo, obSavedCondoId, obTorres, obMoradores, obHasSensors, obSensors, showToast]);
 
   const obPrevStep = () => setObStep(s => Math.max(s - 1, 0));
 
@@ -1493,30 +1523,76 @@ export default function App() {
                   </div>
                 )}
 
-                {/* ── Opção B: sem sensores ── */}
-                {obHasSensors === "nao" && (
-                  <div>
-                    <div style={{ background: "rgba(20,184,166,.06)", border: "1px solid rgba(20,184,166,.18)", borderRadius: 16, padding: "32px 24px", textAlign: "center", marginBottom: 16 }}>
-                      <div style={{ fontSize: 40, marginBottom: 10 }}>🕐</div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: "#2DD4BF", marginBottom: 6 }}>Sem sensores por enquanto</div>
-                      <div style={{ fontSize: 12, color: "#64748B", lineHeight: 1.6, maxWidth: 360, margin: "0 auto" }}>
-                        O ImobCore funcionará normalmente. Quando você instalar os sensores físicos, volte a este passo para configurar o monitoramento em tempo real.
+                {/* ── Opção B: sem sensores — prévia em tempo real ── */}
+                {obHasSensors === "nao" && (() => {
+                  const totalUnits = obTorres.reduce((s, t) => s + t.andares * t.unidades_por_andar, 0) || Number(obCondo.unidades) || 0;
+                  const receita = (Number(obTaxaMensal) || 0) * totalUnits;
+                  const amenidades = [obInfra.churrasqueira && "Churrasqueira", obInfra.salao && "Salão", obInfra.piscina && "Piscina", obInfra.academia && "Academia"].filter(Boolean);
+                  return (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 16 }}>
+                      <div>
+                        <div style={{ background: "rgba(20,184,166,.06)", border: "1px solid rgba(20,184,166,.18)", borderRadius: 16, padding: "24px 20px", marginBottom: 12 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                            <span style={{ fontSize: 28 }}>🕐</span>
+                            <div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: "#2DD4BF" }}>Sem sensores por enquanto</div>
+                              <div style={{ fontSize: 11, color: "#64748B" }}>Monitoramento IoT será ativado após instalação física</div>
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {["💧 Nível de cisterna","📊 Alertas automáticos","📱 Push notification","🔔 Histórico"].map(f => (
+                              <span key={f} style={{ fontSize: 10, padding: "3px 8px", borderRadius: 20, background: "rgba(20,184,166,.1)", border: "1px solid rgba(20,184,166,.2)", color: "#5EEAD4" }}>{f}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <button onClick={() => { setObHasSensors(null); setObSensors([
+                          { sensor_id: "sensor_cisterna", nome: "Cisterna Principal", local: "Subsolo", capacidade_litros: "20000", nivel_atual: "80" },
+                          { sensor_id: "sensor_torre_a", nome: "Caixa Torre A", local: "Telhado Torre A", capacidade_litros: "5000", nivel_atual: "75" },
+                        ]); }}
+                          style={{ fontSize: 12, padding: "8px 16px", borderRadius: 9, background: "rgba(99,102,241,.1)", border: "1px solid rgba(99,102,241,.2)", color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit" }}>
+                          ← Tenho sensores, configurar agora
+                        </button>
                       </div>
-                      <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 16, flexWrap: "wrap" }}>
-                        {["💧 Nível de cisterna","📊 Alertas automáticos","📱 Push notification","🔔 Histórico de consumo"].map(f => (
-                          <span key={f} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 20, background: "rgba(20,184,166,.1)", border: "1px solid rgba(20,184,166,.2)", color: "#5EEAD4" }}>{f}</span>
-                        ))}
+
+                      {/* Prévia em tempo real do condomínio */}
+                      <div style={{ position: "sticky", top: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Prévia do Condomínio</div>
+                        <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 14 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "#F1F5F9", marginBottom: 2 }}>{obCondo.nome || "—"}</div>
+                          <div style={{ fontSize: 11, color: "#64748B", marginBottom: 12 }}>{obCondo.cidade || "Cidade"}{obCondo.estado ? " · " + obCondo.estado : ""}</div>
+                          {[
+                            { label: "Unidades", val: totalUnits || "–", color: "#A5B4FC" },
+                            { label: "Moradores", val: obMoradores.length || "–", color: "#6EE7B7" },
+                            { label: "Torres", val: obTorres.length || "–", color: "#FCD34D" },
+                            { label: "Receita/mês", val: receita > 0 ? `R$ ${receita.toLocaleString("pt-BR")}` : "–", color: "#10B981" },
+                          ].map(kpi => (
+                            <div key={kpi.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "5px 0", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                              <span style={{ color: "#475569" }}>{kpi.label}</span>
+                              <span style={{ fontWeight: 700, color: kpi.color }}>{kpi.val}</span>
+                            </div>
+                          ))}
+                          {amenidades.length > 0 && (
+                            <div style={{ marginTop: 10 }}>
+                              <div style={{ fontSize: 9, color: "#334155", marginBottom: 4 }}>ÁREAS COMUNS</div>
+                              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                                {amenidades.map(a => (
+                                  <span key={String(a)} style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: "rgba(99,102,241,.1)", color: "#A5B4FC" }}>{String(a)}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          <div style={{ marginTop: 10, padding: "8px", background: "rgba(20,184,166,.06)", borderRadius: 8, border: "1px solid rgba(20,184,166,.12)" }}>
+                            <div style={{ fontSize: 9, color: "#2DD4BF", fontWeight: 600 }}>💧 SENSORES IoT</div>
+                            <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>Aguardando instalação física</div>
+                            <div style={{ height: 4, background: "rgba(255,255,255,.06)", borderRadius: 2, marginTop: 6 }}>
+                              <div style={{ width: "0%", height: "100%", background: "#14B8A6", borderRadius: 2 }} />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <button onClick={() => { setObHasSensors(null); setObSensors([
-                      { sensor_id: "sensor_cisterna", nome: "Cisterna Principal", local: "Subsolo", capacidade_litros: "20000", nivel_atual: "80" },
-                      { sensor_id: "sensor_torre_a", nome: "Caixa Torre A", local: "Telhado Torre A", capacidade_litros: "5000", nivel_atual: "75" },
-                    ]); }}
-                      style={{ fontSize: 12, padding: "8px 16px", borderRadius: 9, background: "rgba(99,102,241,.1)", border: "1px solid rgba(99,102,241,.2)", color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit" }}>
-                      ← Voltar e configurar sensores
-                    </button>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* ── Opção A: configurar sensores ── */}
                 {obHasSensors === "sim" && (
@@ -1575,10 +1651,29 @@ export default function App() {
                             </tbody>
                           </table>
                         </div>
-                        <button onClick={() => setObSensors(arr => [...arr, { sensor_id: `sensor_${arr.length + 1}`, nome: "Novo Sensor", local: "–", capacidade_litros: "1000", nivel_atual: "50" }])}
-                          style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.2)", color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit" }}>
-                          + Adicionar sensor
-                        </button>
+                        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                          <button onClick={() => setObSensors(arr => [...arr, { sensor_id: `sensor_${arr.length + 1}`, nome: "Novo Sensor", local: "–", capacidade_litros: "1000", nivel_atual: "50" }])}
+                            style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.2)", color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit" }}>
+                            + Adicionar sensor
+                          </button>
+                        </div>
+                        {obSensorQRs.length > 0 && (
+                          <div style={{ marginTop: 14 }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>QR Codes dos Sensores</div>
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                              {obSensorQRs.map((qr, i) => (
+                                <button key={i} onClick={() => setObQRModal(i)}
+                                  style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(99,102,241,.2)", borderRadius: 10, padding: "8px 10px", cursor: "pointer", textAlign: "center", fontFamily: "inherit" }}>
+                                  <img src={qr} alt={obSensors[i]?.nome} style={{ width: 60, height: 60, display: "block" }} />
+                                  <div style={{ fontSize: 9, color: "#A5B4FC", marginTop: 4, maxWidth: 60, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {obSensors[i]?.nome || `S${i+1}`}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 10, color: "#334155", marginTop: 6 }}>Clique para ampliar. Fixe o QR em cada reservatório.</div>
+                          </div>
+                        )}
                         <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>💡 Sensores pré-configurados — ajuste conforme sua infraestrutura.</div>
                       </div>
 
@@ -2006,6 +2101,29 @@ export default function App() {
           </div>
 
         </div>
+
+        {/* ── QR Modal ── */}
+        {obQRModal !== null && obSensorQRs[obQRModal] && (
+          <div onClick={() => setObQRModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: "#0F172A", border: "1px solid rgba(99,102,241,.3)", borderRadius: 20, padding: "28px 32px", textAlign: "center", maxWidth: 280 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#A5B4FC", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 14 }}>
+                📡 QR Code do Sensor
+              </div>
+              <img src={obSensorQRs[obQRModal]} alt="QR" style={{ width: 180, height: 180, borderRadius: 10 }} />
+              <div style={{ marginTop: 14 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#F1F5F9" }}>{obSensors[obQRModal]?.nome}</div>
+                <div style={{ fontSize: 11, color: "#64748B", marginTop: 2 }}>📍 {obSensors[obQRModal]?.local}</div>
+                <div style={{ fontSize: 11, color: "#475569", marginTop: 1 }}>ID: {obSensors[obQRModal]?.sensor_id}</div>
+              </div>
+              <div style={{ marginTop: 8, padding: "6px 10px", background: "rgba(99,102,241,.08)", borderRadius: 8, fontSize: 10, color: "#64748B" }}>
+                Imprima e fixe no reservatório físico
+              </div>
+              <button onClick={() => setObQRModal(null)} style={{ marginTop: 14, padding: "8px 20px", borderRadius: 9, background: "rgba(99,102,241,.15)", border: "1px solid rgba(99,102,241,.25)", color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit", fontSize: 12 }}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
