@@ -237,7 +237,47 @@ textarea.fc:focus{outline:none;border-color:rgba(99,102,241,.5)}
 .avg-ring-wrap{position:relative;width:120px;height:120px;margin:0 auto 10px}
 .avg-ring-wrap svg{width:120px;height:120px;transform:rotate(-135deg)}
 .avg-ring-wrap .ring-label{font-size:22px}
+.ob-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 16px;background:radial-gradient(ellipse at 20% 50%,rgba(99,102,241,.12) 0%,transparent 50%),radial-gradient(ellipse at 80% 20%,rgba(168,85,247,.08) 0%,transparent 50%),var(--bg)}
+.ob-card{width:100%;max-width:680px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:24px;overflow:hidden;box-shadow:0 32px 80px rgba(0,0,0,.6)}
+.ob-hero{background:var(--grad);padding:40px 40px 32px;text-align:center;position:relative;overflow:hidden}
+.ob-hero::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")}
+.ob-hero-logo{font-size:48px;margin-bottom:12px;position:relative}
+.ob-hero-title{font-size:26px;font-weight:800;color:#fff;margin-bottom:6px;position:relative}
+.ob-hero-sub{font-size:14px;color:rgba(255,255,255,.75);position:relative}
+.ob-steps{display:flex;align-items:center;justify-content:center;gap:0;padding:20px 40px;border-bottom:1px solid var(--card-border)}
+.ob-step{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569;font-weight:500}
+.ob-step.active{color:#A5B4FC}
+.ob-step.done{color:#10B981}
+.ob-step-num{width:24px;height:24px;border-radius:50%;border:1px solid currentColor;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.ob-step.active .ob-step-num{background:rgba(99,102,241,.2);border-color:var(--indigo)}
+.ob-step.done .ob-step-num{background:rgba(16,185,129,.2);border-color:var(--green)}
+.ob-sep{width:24px;height:1px;background:var(--card-border);flex-shrink:0;margin:0 4px}
+.ob-body{padding:32px 40px}
+.ob-footer{padding:20px 40px;border-top:1px solid var(--card-border);display:flex;align-items:center;justify-content:space-between}
+.btn-ob-back{padding:10px 20px;border-radius:10px;border:1px solid var(--card-border);background:transparent;color:#64748B;font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;transition:all .15s}
+.btn-ob-back:hover{background:rgba(255,255,255,.06);color:#E2E8F0}
+.btn-ob-next{padding:10px 24px;border-radius:10px;background:var(--grad);border:none;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:opacity .15s}
+.btn-ob-next:hover{opacity:.85}
+.btn-ob-next:disabled{opacity:.4;cursor:not-allowed}
+.btn-ativar{width:100%;padding:18px;border-radius:16px;background:var(--grad);border:none;color:#fff;font-size:18px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:-.3px;box-shadow:0 8px 32px rgba(99,102,241,.4);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:10px}
+.btn-ativar:hover{transform:translateY(-2px);box-shadow:0 12px 40px rgba(99,102,241,.6)}
+.btn-ativar:active{transform:translateY(0)}
+.btn-ativar:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.ob-sensor-row{display:grid;grid-template-columns:1fr 1fr 1fr 80px 70px;gap:6px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.ob-sensor-hdr{font-size:10px;color:#475569;font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.ob-confirm-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.ob-confirm-label{font-size:13px;color:#64748B}
+.ob-confirm-val{font-size:13px;font-weight:600}
+.ob-badge{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:600;background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.2);color:#A5B4FC}
+.ob-progress{height:3px;background:var(--card-border);border-radius:2px;margin-bottom:24px;overflow:hidden}
+.ob-progress-bar{height:100%;background:var(--grad);border-radius:2px;transition:width .3s ease}
+.topbar-sep{width:1px;height:20px;background:var(--card-border);margin:0 4px}
+.btn-reconfig{padding:5px 12px;border-radius:8px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.08);color:#F87171;font-size:12px;font-weight:500;cursor:pointer;transition:all .2s;font-family:inherit;display:flex;align-items:center;gap:5px}
+.btn-reconfig:hover{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.4)}
+.btn-onboard{padding:5px 12px;border-radius:8px;border:1px solid rgba(99,102,241,.3);background:rgba(99,102,241,.12);color:#A5B4FC;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;font-family:inherit;animation:pulse 2s infinite}
+.btn-onboard:hover{background:rgba(99,102,241,.25);animation:none}
 `;
+
 
 // ─── Sensor Ring ──────────────────────────────────────────────────────────────
 function SensorRing({ sensor, small = false }: { sensor: Sensor; small?: boolean }) {
@@ -280,7 +320,7 @@ function TypingIndicator() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [view, setView] = useState<"gestor" | "sindico" | "morador">("gestor");
+  const [view, setView] = useState<"gestor" | "sindico" | "morador" | "onboarding">("gestor");
   const [panel, setPanel] = useState("sv-chat");
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [condId, setCondId] = useState<string | null>(null);
@@ -331,6 +371,20 @@ export default function App() {
   // Calendar
   const [calSel, setCalSel] = useState<number | null>(null);
 
+  // ── Onboarding Wizard ─────────────────────────────────────────────────────
+  const [obStep, setObStep] = useState(0);
+  const [obLoading, setObLoading] = useState(false);
+  const [obIsReset, setObIsReset] = useState(false);
+  const [obCondo, setObCondo] = useState({ nome: "", cidade: "", unidades: "84", moradores: "168", sindico_nome: "" });
+  const [obSensors, setObSensors] = useState([
+    { sensor_id: "sensor_cisterna", nome: "Cisterna Principal", local: "Subsolo", capacidade_litros: "20000", nivel_atual: "80" },
+    { sensor_id: "sensor_torre_a", nome: "Caixa Torre A", local: "Telhado Torre A", capacidade_litros: "5000", nivel_atual: "75" },
+    { sensor_id: "sensor_torre_b", nome: "Caixa Torre B", local: "Telhado Torre B", capacidade_litros: "5000", nivel_atual: "70" },
+    { sensor_id: "sensor_piscina", nome: "Tanque Piscina", local: "Área da Piscina", capacidade_litros: "8000", nivel_atual: "85" },
+    { sensor_id: "sensor_jardim", nome: "Reservatório Jardim", local: "Área Verde", capacidade_litros: "2000", nivel_atual: "60" },
+  ]);
+  const [obSaldo, setObSaldo] = useState("50000");
+
   // ── Toast ─────────────────────────────────────────────────────────────────
   const showToast = useCallback((msg: string, type = "info") => {
     const id = ++toastIdRef.current;
@@ -351,9 +405,43 @@ export default function App() {
       const r = await fetch("/api/dashboard");
       const d: Dashboard = await r.json();
       setDash(d);
-      if (d.condominios?.[0]) setCondId(d.condominios[0].id);
+      if (d.condominios?.[0]) {
+        setCondId(d.condominios[0].id);
+        // Pre-fill onboarding with existing condo data for reconfiguration
+        const c = d.condominios[0];
+        setObCondo({ nome: c.nome || "", cidade: c.cidade || "", unidades: String(c.unidades || "84"), moradores: String(c.moradores || "168"), sindico_nome: c.sindico_nome || "" });
+      } else {
+        // No condo configured — go to onboarding automatically
+        setView("onboarding");
+        setObStep(0);
+      }
     } catch (e) { console.error("dashboard err:", e); }
   }, []);
+
+  // ── Ativar ImobCore (Onboarding Submit) ───────────────────────────────────
+  const ativarImobCore = useCallback(async () => {
+    if (!obCondo.nome.trim()) { showToast("Nome do condomínio é obrigatório", "warn"); return; }
+    setObLoading(true);
+    try {
+      const payload = {
+        nome: obCondo.nome, cidade: obCondo.cidade,
+        unidades: Number(obCondo.unidades), moradores: Number(obCondo.moradores),
+        sindico_nome: obCondo.sindico_nome,
+        sensores: obSensors.map(s => ({ ...s, capacidade_litros: Number(s.capacidade_litros), nivel_atual: Number(s.nivel_atual) })),
+        saldo_inicial: Number(obSaldo) || 0,
+        reset: obIsReset,
+      };
+      const r = await fetch("/api/onboarding", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await r.json();
+      if (!r.ok) { showToast("Erro: " + res.error, "error"); setObLoading(false); return; }
+      showToast("🚀 ImobCore ativado com sucesso!", "success");
+      setObIsReset(false);
+      await loadDashboard();
+      setView("gestor");
+      setObStep(0);
+    } catch { showToast("Erro ao ativar ImobCore", "error"); }
+    setObLoading(false);
+  }, [obCondo, obSensors, obSaldo, obIsReset, showToast, loadDashboard]);
 
   // ── SSE ───────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -486,6 +574,184 @@ export default function App() {
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).getDay();
   const takenDays = new Set([3, 8, 14, 20, 25]);
   const availDays = new Set([5, 6, 7, 10, 11, 12, 15, 17, 18, 19, 22, 24, 26, 27, 28]);
+
+  // ── Onboarding Wizard ─────────────────────────────────────────────────────
+  const OB_STEPS = ["Condomínio", "Sensores IoT", "Financeiro", "Ativação"];
+  const renderOnboarding = () => {
+    const progress = ((obStep) / (OB_STEPS.length - 1)) * 100;
+    const hasCondo = (dash?.condominios?.length ?? 0) > 0;
+
+    return (
+      <div className="ob-wrap" style={{ overflowY: "auto", marginTop: "var(--topbar-h)" }}>
+        <div className="ob-card">
+          <div className="ob-hero">
+            <div className="ob-hero-logo">🏢</div>
+            <div className="ob-hero-title">
+              {obIsReset ? "Reconfigurar ImobCore" : hasCondo ? "Reconfigurar ImobCore" : "Configurar ImobCore"}
+            </div>
+            <div className="ob-hero-sub">
+              {obIsReset ? "Dados atuais serão apagados e substituídos" : "Configure seu condomínio em minutos"}
+            </div>
+          </div>
+
+          <div className="ob-steps">
+            {OB_STEPS.map((s, i) => (
+              <div key={s} style={{ display: "flex", alignItems: "center" }}>
+                <div className={`ob-step ${i === obStep ? "active" : i < obStep ? "done" : ""}`}>
+                  <div className="ob-step-num">{i < obStep ? "✓" : i + 1}</div>
+                  <span style={{ display: window.innerWidth > 500 ? "inline" : "none" }}>{s}</span>
+                </div>
+                {i < OB_STEPS.length - 1 && <div className="ob-sep" />}
+              </div>
+            ))}
+          </div>
+
+          <div className="ob-body">
+            <div className="ob-progress"><div className="ob-progress-bar" style={{ width: progress + "%" }} /></div>
+
+            {/* STEP 0: Condomínio */}
+            {obStep === 0 && (
+              <div style={{ animation: "fadeIn .2s ease" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>🏢 Dados do Condomínio</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Informações básicas do seu condomínio</div>
+                <div className="form-group">
+                  <label className="form-label">Nome do Condomínio *</label>
+                  <input className="form-control" value={obCondo.nome} onChange={e => setObCondo(c => ({ ...c, nome: e.target.value }))} placeholder="Ex: Residencial Parque das Flores" autoFocus />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div className="form-group">
+                    <label className="form-label">Cidade</label>
+                    <input className="form-control" value={obCondo.cidade} onChange={e => setObCondo(c => ({ ...c, cidade: e.target.value }))} placeholder="Ex: Florianópolis" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Nome do Síndico</label>
+                    <input className="form-control" value={obCondo.sindico_nome} onChange={e => setObCondo(c => ({ ...c, sindico_nome: e.target.value }))} placeholder="Ex: Ricardo Gestor" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Total de Unidades</label>
+                    <input className="form-control" type="number" value={obCondo.unidades} onChange={e => setObCondo(c => ({ ...c, unidades: e.target.value }))} placeholder="84" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Total de Moradores</label>
+                    <input className="form-control" type="number" value={obCondo.moradores} onChange={e => setObCondo(c => ({ ...c, moradores: e.target.value }))} placeholder="168" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* STEP 1: Sensores IoT */}
+            {obStep === 1 && (
+              <div style={{ animation: "fadeIn .2s ease" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>💧 Sensores IoT de Água</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>Configure os 5 sensores do sistema</div>
+                <div className="ob-sensor-row" style={{ marginBottom: 4 }}>
+                  <div className="ob-sensor-hdr">Sensor ID</div>
+                  <div className="ob-sensor-hdr">Nome</div>
+                  <div className="ob-sensor-hdr">Local</div>
+                  <div className="ob-sensor-hdr">Cap. (L)</div>
+                  <div className="ob-sensor-hdr">Nível %</div>
+                </div>
+                {obSensors.map((s, i) => (
+                  <div key={i} className="ob-sensor-row">
+                    <input className="form-control" style={{ fontSize: 11, padding: "5px 8px" }} value={s.sensor_id}
+                      onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, sensor_id: e.target.value } : x))} />
+                    <input className="form-control" style={{ fontSize: 11, padding: "5px 8px" }} value={s.nome}
+                      onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, nome: e.target.value } : x))} />
+                    <input className="form-control" style={{ fontSize: 11, padding: "5px 8px" }} value={s.local}
+                      onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, local: e.target.value } : x))} />
+                    <input className="form-control" style={{ fontSize: 11, padding: "5px 8px" }} type="number" value={s.capacidade_litros}
+                      onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, capacidade_litros: e.target.value } : x))} />
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <input className="form-control" style={{ fontSize: 11, padding: "5px 8px" }} type="number" min="0" max="100" value={s.nivel_atual}
+                        onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, nivel_atual: e.target.value } : x))} />
+                    </div>
+                  </div>
+                ))}
+                <div style={{ fontSize: 11, color: "#475569", marginTop: 10 }}>💡 5 sensores pré-configurados. Ajuste conforme sua infraestrutura.</div>
+              </div>
+            )}
+
+            {/* STEP 2: Financeiro */}
+            {obStep === 2 && (
+              <div style={{ animation: "fadeIn .2s ease" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>💰 Saldo Inicial</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Configure o saldo inicial do condomínio</div>
+                <div className="form-group">
+                  <label className="form-label">Saldo Inicial do Fundo (R$)</label>
+                  <input className="form-control" type="number" value={obSaldo} onChange={e => setObSaldo(e.target.value)} placeholder="50000" />
+                  <div style={{ fontSize: 12, color: "#475569", marginTop: 6 }}>Será lançado como receita "Saldo inicial" no sistema financeiro.</div>
+                </div>
+                <div style={{ background: "rgba(99,102,241,.06)", border: "1px solid rgba(99,102,241,.15)", borderRadius: 12, padding: 16, marginTop: 8 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#A5B4FC", marginBottom: 6 }}>📋 Módulos que serão ativados</div>
+                  {[
+                    ["🤖", "Síndico Virtual IA", "Chat inteligente com Claude AI"],
+                    ["💧", "IoT Água", "5 sensores de nível monitorados"],
+                    ["🔧", "Ordens de Serviço", "CRUD completo com SSE em tempo real"],
+                    ["💰", "Financeiro", "Receitas, despesas e saldo"],
+                    ["🚨", "MISP", "Alertas públicos de segurança"],
+                    ["📢", "Comunicados IA", "Geração automática de comunicados"],
+                  ].map(([ic, n, d]) => (
+                    <div key={n} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 8 }}>
+                      <span style={{ fontSize: 16, marginTop: 1 }}>{ic}</span>
+                      <div><div style={{ fontSize: 13, fontWeight: 500 }}>{n}</div><div style={{ fontSize: 11, color: "#475569" }}>{d}</div></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* STEP 3: Ativação */}
+            {obStep === 3 && (
+              <div style={{ animation: "fadeIn .2s ease" }}>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>🚀 Resumo & Ativação</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Confirme os dados antes de ativar</div>
+                {[
+                  ["🏢 Condomínio", obCondo.nome || "–"],
+                  ["📍 Cidade", obCondo.cidade || "–"],
+                  ["👤 Síndico", obCondo.sindico_nome || "–"],
+                  ["🏠 Unidades", obCondo.unidades],
+                  ["👥 Moradores", obCondo.moradores],
+                  ["💧 Sensores IoT", `${obSensors.length} configurados`],
+                  ["💰 Saldo Inicial", `R$ ${Number(obSaldo || 0).toLocaleString("pt-BR")}`],
+                ].map(([l, v]) => (
+                  <div key={l as string} className="ob-confirm-row">
+                    <div className="ob-confirm-label">{l}</div>
+                    <div className="ob-confirm-val">{v as string}</div>
+                  </div>
+                ))}
+                {obIsReset && (
+                  <div style={{ marginTop: 16, padding: 12, background: "rgba(239,68,68,.08)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 10 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#F87171" }}>⚠️ Modo Reconfiguração</div>
+                    <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>Todos os dados existentes (OSs, sensores, financeiro, comunicados) serão apagados e substituídos.</div>
+                  </div>
+                )}
+                <button className="btn-ativar" onClick={ativarImobCore} disabled={obLoading} style={{ marginTop: 24 }}>
+                  {obLoading ? <><span style={{ animation: "pulse 1s infinite" }}>⏳</span> Ativando...</> : <><span>🚀</span> Ativar ImobCore</>}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="ob-footer">
+            <button className="btn-ob-back" onClick={() => {
+              if (obStep === 0) { if (hasCondo) setView("gestor"); }
+              else setObStep(s => s - 1);
+            }}>
+              {obStep === 0 ? (hasCondo ? "✕ Cancelar" : "") : "← Voltar"}
+            </button>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "#334155" }}>{obStep + 1} / {OB_STEPS.length}</span>
+              {obStep < OB_STEPS.length - 1 && (
+                <button className="btn-ob-next" onClick={() => { if (obStep === 0 && !obCondo.nome.trim()) { showToast("Informe o nome do condomínio", "warn"); return; } setObStep(s => s + 1); }}>
+                  Próximo →
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // ── Render Phone Sub-Screen ───────────────────────────────────────────────
   const renderSindicoScreen = () => {
@@ -857,12 +1123,38 @@ export default function App() {
       {/* TOPBAR */}
       <div className="topbar">
         <div className="logo"><span>🤖</span> ImobCore <span style={{ fontSize: 11, color: "#6366F1", fontWeight: 600, background: "rgba(99,102,241,.1)", padding: "2px 6px", borderRadius: 4 }}>v2</span></div>
-        <div className="view-btns">
-          <button className={`view-btn ${view === "gestor" ? "active" : ""}`} onClick={() => setView("gestor")}>⚡ Painel Gestor</button>
-          <button className={`view-btn ${view === "sindico" ? "active" : ""}`} onClick={() => setView("sindico")}>📱 App Síndico</button>
-          <button className={`view-btn ${view === "morador" ? "active" : ""}`} onClick={() => setView("morador")}>🏠 App Morador</button>
-        </div>
-        <div className={`rt-badge ${sseOnline ? "" : "offline"}`}>
+
+        {/* Main view buttons — hide when in onboarding with no condo */}
+        {((dash?.condominios?.length ?? 0) > 0 || view !== "onboarding") && (
+          <div className="view-btns">
+            <button className={`view-btn ${view === "gestor" ? "active" : ""}`} onClick={() => setView("gestor")}>⚡ Painel Gestor</button>
+            <button className={`view-btn ${view === "sindico" ? "active" : ""}`} onClick={() => setView("sindico")}>📱 App Síndico</button>
+            <button className={`view-btn ${view === "morador" ? "active" : ""}`} onClick={() => setView("morador")}>🏠 App Morador</button>
+          </div>
+        )}
+
+        {/* Onboarding button — pulsing if no condo yet */}
+        {(dash?.condominios?.length ?? 0) === 0 ? (
+          <button className="btn-onboard" onClick={() => { setObStep(0); setObIsReset(false); setView("onboarding"); }}>
+            ⚙️ Configurar ImobCore
+          </button>
+        ) : (
+          <>
+            <div className="topbar-sep" />
+            <button className={`view-btn ${view === "onboarding" ? "active" : ""}`}
+              onClick={() => { setObStep(0); setObIsReset(false); setView("onboarding"); }}
+              style={{ fontSize: 11 }}>
+              ⚙️ Onboarding
+            </button>
+            <button className="btn-reconfig"
+              onClick={() => { setObStep(0); setObIsReset(true); setView("onboarding"); }}
+              title="Apagar tudo e reconfigurar do zero">
+              🔄 Reconfigurar
+            </button>
+          </>
+        )}
+
+        <div className={`rt-badge ${sseOnline ? "" : "offline"}`} style={{ marginLeft: "auto" }}>
           <div className={`dot ${sseOnline ? "pulse" : ""}`} />
           <span>{sseOnline ? "Realtime Ativo" : "Conectando..."}</span>
         </div>
@@ -1311,6 +1603,9 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* ══ VIEW 4: ONBOARDING ════════════════════════════════════════════════ */}
+      {view === "onboarding" && renderOnboarding()}
     </>
   );
 }

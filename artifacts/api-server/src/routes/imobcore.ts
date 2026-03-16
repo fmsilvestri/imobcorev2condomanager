@@ -401,5 +401,87 @@ router.get("/comunicados", async (_req: Request, res: Response) => {
   res.json(data);
 });
 
+// POST /api/onboarding - Configurar condomínio do zero
+router.post("/onboarding", async (req: Request, res: Response) => {
+  const {
+    nome, cidade, unidades, moradores, sindico_nome,
+    sensores: sensorList,
+    saldo_inicial,
+    reset,
+  } = req.body as {
+    nome: string; cidade?: string; unidades?: number; moradores?: number; sindico_nome?: string;
+    sensores?: { sensor_id: string; nome: string; local: string; capacidade_litros: number; nivel_atual: number }[];
+    saldo_inicial?: number;
+    reset?: boolean;
+  };
+
+  if (!nome?.trim()) return res.status(400).json({ error: "Nome do condomínio é obrigatório" });
+
+  try {
+    // Optionally wipe existing data for reconfiguration
+    if (reset) {
+      await Promise.all([
+        supabase.from("sindico_historico").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+        supabase.from("comunicados").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+        supabase.from("financeiro_despesas").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+        supabase.from("financeiro_receitas").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+        supabase.from("alertas_publicos").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+        supabase.from("sensores").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+        supabase.from("ordens_servico").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+        supabase.from("condominios").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+      ]);
+    }
+
+    // Create condomínio
+    const { data: cond, error: condErr } = await supabase
+      .from("condominios")
+      .insert({ nome: nome.trim(), cidade: cidade || "", unidades: Number(unidades) || 0, moradores: Number(moradores) || 0, sindico_nome: sindico_nome || "" })
+      .select().single();
+    if (condErr) return res.status(500).json({ error: condErr.message });
+
+    const condId = cond.id;
+
+    // Create sensors if provided
+    if (sensorList && sensorList.length > 0) {
+      const rows = sensorList.map((s, i) => ({
+        condominio_id: condId,
+        sensor_id: s.sensor_id || `sensor_${i + 1}`,
+        nome: s.nome || `Sensor ${i + 1}`,
+        local: s.local || "",
+        capacidade_litros: Number(s.capacidade_litros) || 5000,
+        nivel_atual: Math.min(100, Math.max(0, Number(s.nivel_atual) || 80)),
+        volume_litros: Math.round((Number(s.capacidade_litros) || 5000) * (Number(s.nivel_atual) || 80) / 100),
+      }));
+      await supabase.from("sensores").insert(rows);
+    }
+
+    // Create initial financial entry if saldo_inicial provided
+    if (saldo_inicial && Number(saldo_inicial) > 0) {
+      await supabase.from("financeiro_receitas").insert({
+        condominio_id: condId,
+        descricao: "Saldo inicial",
+        valor: Number(saldo_inicial),
+        categoria: "taxa_condominio",
+        status: "pago",
+      });
+    }
+
+    // Create welcome comunicado
+    await supabase.from("comunicados").insert({
+      condominio_id: condId,
+      titulo: `Bem-vindo ao ${nome}!`,
+      corpo: `O sistema ImobCore foi ativado com sucesso para o ${nome}. Síndico: ${sindico_nome || "não informado"}.`,
+      gerado_por_ia: false,
+    });
+
+    broadcast("onboarding_completo", { condominio_id: condId, nome });
+
+    res.json({ ok: true, condominio: cond });
+  } catch (err) {
+    console.error("onboarding error:", err);
+    res.status(500).json({ error: "Erro no onboarding" });
+  }
+});
+
 export default router;
 export { broadcast };
