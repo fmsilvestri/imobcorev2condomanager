@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import QRCode from "qrcode";
-import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
+import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; responsavel?: string; updated_at?: string; created_at: string }
@@ -388,6 +388,21 @@ export default function App() {
   const [mantAiResult, setMantAiResult] = useState<string>("");
   const [mantMapHover, setMantMapHover] = useState<string|null>(null);
   const [mantPlanMonth, setMantPlanMonth] = useState(5); // index in MANUT_SCHEDULE (current=Mar/26)
+  // ── Energia state ──────────────────────────────────────────────────────────
+  const [energiaTab, setEnergiaTab] = useState<"ocorrencias"|"consumo"|"equipamentos"|"solar"|"graficos"|"fornecedora"|"alertas">("ocorrencias");
+  const [energiaAno, setEnergiaAno] = useState(2026);
+  const [energiaRegModal, setEnergiaRegModal] = useState(false);
+  const [energiaRegForm, setEnergiaRegForm] = useState({ titulo:"", tipo:"queda", obs:"" });
+  const [energiaOcorrencias, setEnergiaOcorrencias] = useState([
+    { id:"oc1", titulo:"queda energia 29/01/2026", tipo:"queda",     data:"29/01/2026", hora:"10:21:16", obs:"Queda total no bloco A" },
+    { id:"oc2", titulo:"energia normal",            tipo:"retorno",   data:"29/01/2026", hora:"10:21:04", obs:"Energia restaurada pela CELESC" },
+    { id:"oc3", titulo:"falta",                     tipo:"falta",     data:"20/01/2026", hora:"09:48:33", obs:"Falta de energia – manutenção programada CELESC" },
+    { id:"oc4", titulo:"oscilação detectada",        tipo:"oscilacao", data:"15/01/2026", hora:"14:30:00", obs:"Oscilação de tensão detectada pelo medidor" },
+    { id:"oc5", titulo:"energia restaurada",         tipo:"retorno",   data:"08/01/2026", hora:"07:15:22", obs:"Retorno após oscilação" },
+    { id:"oc6", titulo:"queda energia noturna",      tipo:"queda",     data:"03/01/2026", hora:"22:48:11", obs:"Queda por sobrecarga na rede" },
+    { id:"oc7", titulo:"falta de energia",           tipo:"falta",     data:"28/12/2025", hora:"16:22:00", obs:"Falta programada – manutenção preventiva" },
+    { id:"oc8", titulo:"energia restaurada",         tipo:"retorno",   data:"28/12/2025", hora:"16:45:12", obs:"Energia restabelecida dentro do prazo" },
+  ]);
 
   // Sub-screen navigation
   const [sindicoScreen, setSindicoScreen] = useState<string | null>(null);
@@ -2697,6 +2712,9 @@ export default function App() {
             <span className="sb-icon">🏗️</span> Manutenção
             <span className="sb-badge" style={{ background: EQUIP_DEMO.filter(e=>e.status==="manutencao"||e.status==="atencao").length>0?"#EF4444":"#1e293b" }}>{EQUIP_DEMO.filter(e=>e.status==="manutencao"||e.status==="atencao").length}</span>
           </div>
+          <div className={`sb-item ${panel === "energia" ? "active" : ""}`} onClick={() => setPanel("energia")}>
+            <span className="sb-icon">⚡</span> Energia
+          </div>
           <div className="sb-label">Sistema</div>
           <div className={`sb-item ${panel === "supabase" ? "active" : ""}`} onClick={() => setPanel("supabase")}>
             <span className="sb-icon">🗄️</span> SSE Live Log
@@ -3849,6 +3867,547 @@ export default function App() {
                       {!mantAiResult && !mantAiLoading && (
                         <div style={{ fontSize:12, color:"#334155" }}>Clique em "Analisar com IA" para receber um diagnóstico completo dos equipamentos com recomendações do Síndico Virtual.</div>
                       )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* PANEL: ENERGIA */}
+          {panel === "energia" && (() => {
+            // ── Demo data ─────────────────────────────────────────────────────
+            const consumoMensal2026 = [
+              { mes:"Jan", kWh:950,  solar:4800 },
+              { mes:"Fev", kWh:1050, solar:5200 },
+              { mes:"Mar", kWh:1000, solar:5000 },
+              { mes:"Abr", kWh:0,    solar:0 },
+              { mes:"Mai", kWh:0,    solar:0 },
+              { mes:"Jun", kWh:0,    solar:0 },
+              { mes:"Jul", kWh:0,    solar:0 },
+              { mes:"Ago", kWh:0,    solar:0 },
+              { mes:"Set", kWh:0,    solar:0 },
+              { mes:"Out", kWh:0,    solar:0 },
+              { mes:"Nov", kWh:0,    solar:0 },
+              { mes:"Dez", kWh:0,    solar:0 },
+            ];
+            const consumoMensal2025 = [
+              { mes:"Jan", kWh:880,  solar:4100 },{ mes:"Fev", kWh:920,  solar:4500 },{ mes:"Mar", kWh:970,  solar:4800 },
+              { mes:"Abr", kWh:1050, solar:4600 },{ mes:"Mai", kWh:1100, solar:4200 },{ mes:"Jun", kWh:1080, solar:3800 },
+              { mes:"Jul", kWh:1150, solar:4100 },{ mes:"Ago", kWh:1200, solar:4600 },{ mes:"Set", kWh:1050, solar:4900 },
+              { mes:"Out", kWh:990,  solar:5100 },{ mes:"Nov", kWh:920,  solar:5000 },{ mes:"Dez", kWh:860,  solar:4800 },
+            ];
+            const anoData = energiaAno === 2026 ? consumoMensal2026 : consumoMensal2025;
+            const anoFiltrado = anoData.filter(m => m.kWh > 0);
+
+            const totalConsumo = anoFiltrado.reduce((s, m) => s + m.kWh, 0);
+            const totalSolar = anoFiltrado.reduce((s, m) => s + m.solar, 0);
+            const tarifa = 0.89;
+            const economia = Math.round(Math.min(totalConsumo, totalSolar) * tarifa * 0.067);
+            const estEquipMes = 3360;
+
+            // ── Status atual (última ocorrência) ──────────────────────────────
+            const lastOc = energiaOcorrencias[0];
+            const statusAtual = lastOc?.tipo === "retorno" ? "normal" : lastOc?.tipo || "—";
+            const statusColor = { normal:"#10B981", queda:"#F59E0B", falta:"#EF4444", oscilacao:"#F97316" }[statusAtual] || "#475569";
+
+            // ── Equipment estimation ──────────────────────────────────────────
+            const equipConsumo = [
+              { nome:"Iluminação Áreas Comuns", icone:"💡", kWhMes:890,  pct:26 },
+              { nome:"Elevadores (2)",           icone:"🛗", kWhMes:640,  pct:19 },
+              { nome:"Bombas d'Água",            icone:"💧", kWhMes:480,  pct:14 },
+              { nome:"Piscina + Aquecimento",    icone:"🏊", kWhMes:420,  pct:13 },
+              { nome:"Sistema CFTV",             icone:"📷", kWhMes:230,  pct:7  },
+              { nome:"Portões + Automação",      icone:"🚗", kWhMes:180,  pct:5  },
+              { nome:"Gerador (standby)",        icone:"⚡", kWhMes:160,  pct:5  },
+              { nome:"Aquecedor Solar Aux.",     icone:"☀️", kWhMes:200,  pct:6  },
+              { nome:"Outros / Escritório",      icone:"🖥️", kWhMes:160,  pct:5  },
+            ];
+
+            // ── Alertas inteligentes ──────────────────────────────────────────
+            const alertas = [
+              { nivel:"alto",   icone:"⚡", titulo:"Queda de energia detectada",          desc:"Última queda em 29/01/2026. Verificar infraestrutura elétrica do Bloco A.", acao:"Ver ocorrências" },
+              { nivel:"medio",  icone:"📈", titulo:"Consumo acima da média em Março",      desc:"Mar/26 apresenta consumo 8% acima da média dos últimos 3 meses.", acao:"Ver consumo" },
+              { nivel:"medio",  icone:"☀️", titulo:"Geração solar abaixo do esperado",     desc:"Fev/26: geração foi 7% menor que o projetado. Verificar painel para incrustação.", acao:"Ver solar" },
+              { nivel:"baixo",  icone:"💡", titulo:"Oportunidade: shift de horário de pico",desc:"Mover cargas flexíveis (bomba piscina, irrigação) para fora do horário de ponta reduz 12% na fatura.", acao:"Ver gráficos" },
+              { nivel:"baixo",  icone:"✅", titulo:"Meta de eficiência atingida em Janeiro", desc:"Jan/26 ficou 5% abaixo do consumo de Jan/25. Ótimo desempenho.", acao:null },
+            ];
+
+            const ocBadge: Record<string,{label:string;color:string;bg:string}> = {
+              queda:     { label:"queda",           color:"#F59E0B", bg:"rgba(245,158,11,.15)" },
+              falta:     { label:"Falta de Energia", color:"#EF4444", bg:"rgba(239,68,68,.15)" },
+              retorno:   { label:"Energia OK",       color:"#10B981", bg:"rgba(16,185,129,.15)" },
+              oscilacao: { label:"Oscilação",        color:"#F97316", bg:"rgba(249,115,22,.15)" },
+            };
+
+            const tabDef: [typeof energiaTab, string, string][] = [
+              ["ocorrencias",   "⚡", "Ocorrências"],
+              ["consumo",       "📊", "Consumo"],
+              ["equipamentos",  "🖥️", "Est. Equipamentos"],
+              ["solar",         "☀️", "Placa Solar"],
+              ["graficos",      "📈", "Gráficos"],
+              ["fornecedora",   "ℹ️", "Informações Fornecedora"],
+              ["alertas",       "🔔", "Alertas Inteligentes"],
+            ];
+
+            const tabBtn = (id: typeof energiaTab, icon: string, label: string) => (
+              <button key={id} onClick={() => setEnergiaTab(id)} style={{
+                display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6,
+                padding:"14px 12px", borderRadius:10, cursor:"pointer", minWidth:110, border:"none",
+                background: energiaTab === id ? "#F59E0B" : "rgba(255,255,255,.03)",
+                color: energiaTab === id ? "#0F172A" : "#64748B",
+                fontWeight: energiaTab === id ? 800 : 500, fontSize:11, transition:"all .15s",
+                outline: energiaTab !== id ? "1px solid rgba(255,255,255,.07)" : "none",
+              }}>
+                <span style={{ fontSize:22, color: energiaTab === id ? "#0F172A" : {
+                  ocorrencias:"#F59E0B", consumo:"#06B6D4", equipamentos:"#06B6D4",
+                  solar:"#EAB308", graficos:"#06B6D4", fornecedora:"#10B981", alertas:"#EF4444"
+                }[id] }}>{icon}</span>
+                <span style={{ textAlign:"center", lineHeight:1.3 }}>{label}</span>
+              </button>
+            );
+
+            return (
+              <div style={{ padding:20 }}>
+                {/* ── Header ── */}
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+                  <div>
+                    <div style={{ fontSize:22, fontWeight:800, marginBottom:2 }}>⚡ Energia</div>
+                    <div style={{ fontSize:12, color:"#475569" }}>Monitoramento de energia, consumo e geração solar</div>
+                  </div>
+                  <button onClick={() => window.print()} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 16px", color:"#94A3B8", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                    📄 Gerar PDF
+                  </button>
+                </div>
+
+                {/* ── KPI Cards ── */}
+                <div style={{ display:"flex", gap:10, marginBottom:18, flexWrap:"wrap" }}>
+                  {[
+                    { label:"Status Atual", val:statusAtual, icon:"⚠️", bg:"rgba(245,158,11,.1)", border:"rgba(245,158,11,.2)", valColor:statusColor },
+                    { label:"Consumo Total (Ano)", val:`${totalConsumo.toLocaleString("pt-BR")} kWh`, icon:"⚡", bg:"rgba(99,102,241,.08)", border:"rgba(99,102,241,.2)", valColor:"#fff" },
+                    { label:"Geração Solar (Ano)", val:`${totalSolar.toLocaleString("pt-BR")} kWh`, icon:"☀️", bg:"rgba(16,185,129,.08)", border:"rgba(16,185,129,.2)", valColor:"#fff" },
+                    { label:"Economia (Ano)", val:`R$ ${economia.toLocaleString("pt-BR")},00`, icon:"💜", bg:"rgba(168,85,247,.08)", border:"rgba(168,85,247,.2)", valColor:"#fff" },
+                    { label:"Est. Equipamentos (Mês)", val:`${estEquipMes.toLocaleString("pt-BR")} kWh`, icon:"🖥️", bg:"rgba(6,182,212,.08)", border:"rgba(6,182,212,.2)", valColor:"#fff" },
+                  ].map(k => (
+                    <div key={k.label} style={{ flex:1, minWidth:150, background:k.bg, border:`1px solid ${k.border}`, borderRadius:12, padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                      <div>
+                        <div style={{ fontSize:10, color:"#475569", marginBottom:6 }}>{k.label}</div>
+                        <div style={{ fontSize:18, fontWeight:800, color:k.valColor }}>{k.val}</div>
+                      </div>
+                      <div style={{ fontSize:24, opacity:0.7 }}>{k.icon}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Year selector ── */}
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:18 }}>
+                  <span style={{ fontSize:12, color:"#475569" }}>Ano:</span>
+                  <select value={energiaAno} onChange={e=>setEnergiaAno(Number(e.target.value))} style={{ background:"#1e293b", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"5px 12px", color:"#E2E8F0", fontSize:12 }}>
+                    <option value={2026}>2026</option>
+                    <option value={2025}>2025</option>
+                  </select>
+                </div>
+
+                {/* ── Tab bar ── */}
+                <div style={{ display:"flex", gap:8, marginBottom:20, overflowX:"auto", paddingBottom:4 }}>
+                  {tabDef.map(([id, icon, label]) => tabBtn(id, icon, label))}
+                </div>
+
+                {/* ═══════════════════════════════════════════════════════════
+                    ABA: OCORRÊNCIAS
+                ═══════════════════════════════════════════════════════════ */}
+                {energiaTab === "ocorrencias" && (
+                  <div>
+                    <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:14 }}>
+                      <button onClick={()=>setEnergiaRegModal(true)} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 16px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                        + Registrar Ocorrência
+                      </button>
+                    </div>
+
+                    {/* Modal Registrar */}
+                    {energiaRegModal && (
+                      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setEnergiaRegModal(false)}>
+                        <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:14, padding:28, width:440 }} onClick={e=>e.stopPropagation()}>
+                          <div style={{ fontSize:16, fontWeight:700, marginBottom:16 }}>📝 Registrar Ocorrência</div>
+                          {[["Título", "text", "titulo", "Ex: queda de energia Bloco B"],["Observações", "text", "obs", "Descreva a ocorrência..."]].map(([label, type, field, ph]) => (
+                            <div key={field} style={{ marginBottom:12 }}>
+                              <div style={{ fontSize:11, color:"#475569", marginBottom:4 }}>{label}</div>
+                              <input type={type} value={(energiaRegForm as any)[field]} onChange={e=>setEnergiaRegForm(f=>({...f,[field]:e.target.value}))}
+                                placeholder={ph} style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" }}/>
+                            </div>
+                          ))}
+                          <div style={{ marginBottom:16 }}>
+                            <div style={{ fontSize:11, color:"#475569", marginBottom:4 }}>Tipo</div>
+                            <select value={energiaRegForm.tipo} onChange={e=>setEnergiaRegForm(f=>({...f,tipo:e.target.value}))} style={{ background:"#1e293b", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, width:"100%" }}>
+                              <option value="queda">Queda</option>
+                              <option value="falta">Falta de energia</option>
+                              <option value="retorno">Retorno / Energia OK</option>
+                              <option value="oscilacao">Oscilação</option>
+                            </select>
+                          </div>
+                          <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+                            <button onClick={()=>setEnergiaRegModal(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 16px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                            <button onClick={()=>{
+                              if (!energiaRegForm.titulo.trim()) return;
+                              const now = new Date();
+                              const nova = { id:`oc${Date.now()}`, titulo:energiaRegForm.titulo, tipo:energiaRegForm.tipo, obs:energiaRegForm.obs,
+                                data:`${String(now.getDate()).padStart(2,"0")}/${String(now.getMonth()+1).padStart(2,"0")}/${now.getFullYear()}`,
+                                hora:`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`,
+                              };
+                              setEnergiaOcorrencias(prev=>[nova,...prev]);
+                              setEnergiaRegForm({ titulo:"", tipo:"queda", obs:"" });
+                              setEnergiaRegModal(false);
+                            }} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 20px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>Salvar</button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, overflow:"hidden" }}>
+                      <div style={{ padding:"12px 16px", borderBottom:"1px solid rgba(255,255,255,.06)", fontSize:12, fontWeight:600, color:"#94A3B8", display:"flex", alignItems:"center", gap:6 }}>
+                        🕐 Histórico de Ocorrências <span style={{ color:"#334155", fontWeight:400 }}>({energiaOcorrencias.length})</span>
+                      </div>
+                      {energiaOcorrencias.map((oc, i) => {
+                        const b = ocBadge[oc.tipo] || { label:oc.tipo, color:"#94A3B8", bg:"rgba(255,255,255,.06)" };
+                        const isQueda = oc.tipo === "queda" || oc.tipo === "falta";
+                        return (
+                          <div key={oc.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 16px", borderBottom: i < energiaOcorrencias.length-1 ? "1px solid rgba(255,255,255,.04)" : "none", background: oc.tipo==="queda"?"rgba(245,158,11,.03)":oc.tipo==="falta"?"rgba(239,68,68,.03)":"" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                              <div style={{ width:32, height:32, borderRadius:"50%", background:isQueda?"rgba(245,158,11,.12)":"rgba(16,185,129,.12)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>
+                                {oc.tipo==="retorno"?"✅":oc.tipo==="queda"?"⚡":oc.tipo==="falta"?"⚠️":"〰️"}
+                              </div>
+                              <div>
+                                <div style={{ fontSize:13, fontWeight:600 }}>{oc.titulo}</div>
+                                <div style={{ fontSize:11, color:"#475569", marginTop:1 }}>{oc.data}, {oc.hora}</div>
+                                {oc.obs && <div style={{ fontSize:10, color:"#334155", marginTop:2 }}>{oc.obs}</div>}
+                              </div>
+                            </div>
+                            <span style={{ background:b.bg, color:b.color, border:`1px solid ${b.color}33`, borderRadius:6, padding:"3px 10px", fontSize:11, fontWeight:700, whiteSpace:"nowrap" }}>{b.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* ═══════════════════════════════════════════════════════════
+                    ABA: CONSUMO
+                ═══════════════════════════════════════════════════════════ */}
+                {energiaTab === "consumo" && (
+                  <div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
+                      {[
+                        { label:"Total Consumido",  val:`${totalConsumo.toLocaleString("pt-BR")} kWh`, sub:`${anoFiltrado.length} meses`, color:"#06B6D4" },
+                        { label:"Média Mensal",      val:`${anoFiltrado.length?Math.round(totalConsumo/anoFiltrado.length).toLocaleString("pt-BR"):0} kWh`, sub:"por mês", color:"#A5B4FC" },
+                        { label:"Custo Estimado",    val:`R$ ${Math.round(totalConsumo*tarifa).toLocaleString("pt-BR")}`, sub:`@ R$ ${tarifa}/kWh`, color:"#F59E0B" },
+                      ].map(k => (
+                        <div key={k.label} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"12px 16px" }}>
+                          <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
+                          <div style={{ fontSize:20, fontWeight:800, color:k.color }}>{k.val}</div>
+                          <div style={{ fontSize:10, color:"#334155", marginTop:2 }}>{k.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize:11, color:"#475569", marginBottom:10, fontWeight:600 }}>📊 CONSUMO MENSAL (kWh) — {energiaAno}</div>
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px" }}>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart data={anoData} margin={{ top:4, right:10, bottom:4, left:0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" vertical={false}/>
+                          <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                          <YAxis tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false} width={45} tickFormatter={(v:number)=>v?`${v}`:""}/>
+                          <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} formatter={(v:number)=>[`${v.toLocaleString("pt-BR")} kWh`,"Consumo"]}/>
+                          <Bar dataKey="kWh" fill="#6366F1" radius={[4,4,0,0]} name="Consumo (kWh)"/>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div style={{ marginTop:14, display:"flex", gap:8, flexWrap:"wrap" }}>
+                      {anoData.filter(m=>m.kWh>0).map(m=>(
+                        <div key={m.mes} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:8, padding:"8px 12px", textAlign:"center", minWidth:60 }}>
+                          <div style={{ fontSize:10, color:"#475569" }}>{m.mes}</div>
+                          <div style={{ fontSize:13, fontWeight:700, color:"#6366F1", marginTop:2 }}>{m.kWh.toLocaleString("pt-BR")}</div>
+                          <div style={{ fontSize:9, color:"#334155" }}>kWh</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ═══════════════════════════════════════════════════════════
+                    ABA: EST. EQUIPAMENTOS
+                ═══════════════════════════════════════════════════════════ */}
+                {energiaTab === "equipamentos" && (
+                  <div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+                      <div style={{ background:"rgba(6,182,212,.08)", border:"1px solid rgba(6,182,212,.2)", borderRadius:12, padding:"14px 18px" }}>
+                        <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>Est. Total Mensal</div>
+                        <div style={{ fontSize:24, fontWeight:800, color:"#06B6D4" }}>{equipConsumo.reduce((s,e)=>s+e.kWhMes,0).toLocaleString("pt-BR")} kWh</div>
+                      </div>
+                      <div style={{ background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.2)", borderRadius:12, padding:"14px 18px" }}>
+                        <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>Custo Estimado Mensal</div>
+                        <div style={{ fontSize:24, fontWeight:800, color:"#F59E0B" }}>R$ {Math.round(equipConsumo.reduce((s,e)=>s+e.kWhMes,0)*tarifa).toLocaleString("pt-BR")}</div>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                      {equipConsumo.map(eq => (
+                        <div key={eq.nome} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"12px 16px" }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              <span style={{ fontSize:18 }}>{eq.icone}</span>
+                              <div>
+                                <div style={{ fontSize:13, fontWeight:600 }}>{eq.nome}</div>
+                                <div style={{ fontSize:10, color:"#475569" }}>R$ {Math.round(eq.kWhMes*tarifa)}/mês</div>
+                              </div>
+                            </div>
+                            <div style={{ textAlign:"right" }}>
+                              <div style={{ fontSize:16, fontWeight:800, color:"#06B6D4" }}>{eq.kWhMes.toLocaleString("pt-BR")}</div>
+                              <div style={{ fontSize:9, color:"#475569" }}>kWh/mês</div>
+                            </div>
+                          </div>
+                          <div style={{ height:6, background:"rgba(255,255,255,.06)", borderRadius:3 }}>
+                            <div style={{ width:`${eq.pct}%`, height:"100%", background:`hsl(${220-eq.pct*1.5},70%,60%)`, borderRadius:3 }}/>
+                          </div>
+                          <div style={{ fontSize:9, color:"#475569", marginTop:3 }}>{eq.pct}% do total estimado</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* ═══════════════════════════════════════════════════════════
+                    ABA: PLACA SOLAR
+                ═══════════════════════════════════════════════════════════ */}
+                {energiaTab === "solar" && (
+                  <div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:20 }}>
+                      {[
+                        { label:"Geração (Ano)", val:`${totalSolar.toLocaleString("pt-BR")} kWh`, color:"#EAB308" },
+                        { label:"Potência Instalada", val:"72 kWp", color:"#10B981" },
+                        { label:"Painéis", val:"180 un.", color:"#A5B4FC" },
+                        { label:"Eficiência Média", val:"94%", color:"#06B6D4" },
+                      ].map(k => (
+                        <div key={k.label} style={{ background:"rgba(234,179,8,.06)", border:"1px solid rgba(234,179,8,.15)", borderRadius:12, padding:"12px 16px" }}>
+                          <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
+                          <div style={{ fontSize:18, fontWeight:800, color:k.color }}>{k.val}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
+                      {/* Geração mensal chart */}
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"14px 16px" }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:10, fontWeight:600 }}>☀️ GERAÇÃO SOLAR MENSAL (kWh)</div>
+                        <ResponsiveContainer width="100%" height={180}>
+                          <BarChart data={anoData} margin={{ top:4, right:4, bottom:4, left:0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" vertical={false}/>
+                            <XAxis dataKey="mes" tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                            <YAxis tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} width={40} tickFormatter={(v:number)=>v?`${(v/1000).toFixed(1)}k`:""}/>
+                            <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} formatter={(v:number)=>[`${v.toLocaleString("pt-BR")} kWh`,"Geração"]}/>
+                            <Bar dataKey="solar" fill="#EAB308" radius={[4,4,0,0]} name="Geração Solar"/>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Info painéis */}
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"14px 16px" }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:12, fontWeight:600 }}>🔧 ESPECIFICAÇÕES DO SISTEMA</div>
+                        {[
+                          ["Fabricante Inversor", "Fronius Symo 72kW"],
+                          ["Fabricante Painel", "Canadian Solar 400W"],
+                          ["Data instalação", "Abril/2022"],
+                          ["Orientação", "Norte / Noroeste"],
+                          ["Inclinação", "15°"],
+                          ["Tensão CC", "800V"],
+                          ["Garantia painel", "25 anos (produção)"],
+                          ["Última vistoria", "Jan/2026"],
+                          ["Próxima vistoria", "Jul/2026"],
+                          ["Conexão rede", "Net metering (CELESC)"],
+                        ].map(([l,v]) => (
+                          <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:11 }}>
+                            <span style={{ color:"#475569" }}>{l}</span>
+                            <span style={{ color:"#E2E8F0", fontWeight:600 }}>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Créditos de energia */}
+                    <div style={{ background:"rgba(234,179,8,.06)", border:"1px solid rgba(234,179,8,.15)", borderRadius:12, padding:"14px 16px" }}>
+                      <div style={{ fontSize:11, color:"#EAB308", fontWeight:700, marginBottom:8 }}>💡 CRÉDITOS DE ENERGIA — NET METERING</div>
+                      <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+                        {[
+                          { label:"Créditos acumulados", val:"8.340 kWh" },
+                          { label:"Validade créditos", val:"60 meses" },
+                          { label:"Economia acumulada", val:`R$ ${Math.round(totalSolar*tarifa*0.067).toLocaleString("pt-BR")}` },
+                          { label:"Redução na fatura", val:"~23% ao mês" },
+                        ].map(k => (
+                          <div key={k.label} style={{ flex:1, minWidth:140 }}>
+                            <div style={{ fontSize:10, color:"#475569", marginBottom:2 }}>{k.label}</div>
+                            <div style={{ fontSize:16, fontWeight:800, color:"#EAB308" }}>{k.val}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ═══════════════════════════════════════════════════════════
+                    ABA: GRÁFICOS
+                ═══════════════════════════════════════════════════════════ */}
+                {energiaTab === "graficos" && (
+                  <div>
+                    <div style={{ fontSize:11, color:"#475569", marginBottom:10, fontWeight:600 }}>📊 CONSUMO vs GERAÇÃO SOLAR — {energiaAno}</div>
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px", marginBottom:16 }}>
+                      <ResponsiveContainer width="100%" height={240}>
+                        <LineChart data={anoData} margin={{ top:4, right:10, bottom:4, left:0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)"/>
+                          <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                          <YAxis tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false} width={50} tickFormatter={(v:number)=>v?`${(v/1000).toFixed(1)}k`:""}/>
+                          <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} formatter={(v:number)=>[`${v.toLocaleString("pt-BR")} kWh`]}/>
+                          <Legend wrapperStyle={{ fontSize:10 }}/>
+                          <Line type="monotone" dataKey="kWh" stroke="#6366F1" strokeWidth={2} dot={{ r:4 }} name="Consumo (kWh)"/>
+                          <Line type="monotone" dataKey="solar" stroke="#EAB308" strokeWidth={2} dot={{ r:4 }} name="Geração Solar (kWh)"/>
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                      {/* Distribuição horária */}
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"14px 16px" }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:10, fontWeight:600 }}>🕐 DISTRIBUIÇÃO HORÁRIA TÍPICA</div>
+                        {[
+                          { periodo:"Ponta (18h–21h)", pct:28, color:"#EF4444" },
+                          { periodo:"Fora Ponta (06h–18h)", pct:55, color:"#10B981" },
+                          { periodo:"Noturno (21h–06h)", pct:17, color:"#475569" },
+                        ].map(p => (
+                          <div key={p.periodo} style={{ marginBottom:10 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4, fontSize:11 }}>
+                              <span style={{ color:"#94A3B8" }}>{p.periodo}</span>
+                              <span style={{ color:p.color, fontWeight:700 }}>{p.pct}%</span>
+                            </div>
+                            <div style={{ height:6, background:"rgba(255,255,255,.06)", borderRadius:3 }}>
+                              <div style={{ width:`${p.pct}%`, height:"100%", background:p.color, borderRadius:3 }}/>
+                            </div>
+                          </div>
+                        ))}
+                        <div style={{ fontSize:10, color:"#334155", marginTop:8 }}>💡 Dica: Mover cargas para fora do horário de ponta reduz até 12% na fatura.</div>
+                      </div>
+
+                      {/* Comparativo anual */}
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"14px 16px" }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:10, fontWeight:600 }}>📅 COMPARATIVO {energiaAno} vs {energiaAno-1}</div>
+                        {(energiaAno === 2026 ? [
+                          ["Jan", 950, 880], ["Fev", 1050, 920], ["Mar", 1000, 970]
+                        ] : [
+                          ["Jan", 880, 820], ["Fev", 920, 870], ["Mar", 970, 910],
+                          ["Abr", 1050, 990], ["Mai", 1100, 1040], ["Jun", 1080, 1020],
+                        ]).map(([mes, cur, prev]) => (
+                          <div key={mes as string} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, fontSize:11 }}>
+                            <span style={{ color:"#475569", width:30 }}>{mes}</span>
+                            <div style={{ flex:1, height:6, background:"rgba(255,255,255,.04)", borderRadius:3, position:"relative" }}>
+                              <div style={{ position:"absolute", height:"100%", width:`${Math.round((prev as number)/12)}%`, background:"rgba(100,116,139,.4)", borderRadius:3 }}/>
+                              <div style={{ position:"absolute", height:"100%", width:`${Math.round((cur as number)/12)}%`, background:"#6366F1", borderRadius:3, opacity:0.8 }}/>
+                            </div>
+                            <span style={{ color:(cur as number)>(prev as number)?"#EF4444":"#10B981", fontWeight:600, fontSize:10, width:50, textAlign:"right" }}>
+                              {(cur as number)>(prev as number)?"+":"-"}{Math.abs(Math.round(((cur as number)-(prev as number))/(prev as number)*100))}%
+                            </span>
+                          </div>
+                        ))}
+                        <div style={{ fontSize:10, color:"#334155", marginTop:8 }}>🟣 {energiaAno} &nbsp; ░ {energiaAno-1}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ═══════════════════════════════════════════════════════════
+                    ABA: INFORMAÇÕES FORNECEDORA
+                ═══════════════════════════════════════════════════════════ */}
+                {energiaTab === "fornecedora" && (
+                  <div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px 20px" }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#10B981", marginBottom:14 }}>🏢 DADOS DA CONCESSIONÁRIA</div>
+                        {[
+                          ["Nome", "CELESC Distribuição S.A."],
+                          ["CNPJ", "08.336.783/0001-90"],
+                          ["Agência", "Florianópolis Centro"],
+                          ["Telefone", "0800 048 0196"],
+                          ["Site", "celesc.com.br"],
+                          ["Emergências", "197 (24h)"],
+                        ].map(([l,v]) => (
+                          <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:12 }}>
+                            <span style={{ color:"#475569" }}>{l}</span>
+                            <span style={{ color:"#E2E8F0", fontWeight:600 }}>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px 20px" }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#A5B4FC", marginBottom:14 }}>📋 CONTRATO E TARIFAS</div>
+                        {[
+                          ["Classe", "Comercial B3"],
+                          ["Tensão fornecimento", "220V / 380V"],
+                          ["Demanda contratada", "50 kW"],
+                          ["Tarifa ponta", "R$ 0,89/kWh"],
+                          ["Tarifa fora ponta", "R$ 0,67/kWh"],
+                          ["Tarifa TUSD", "R$ 0,31/kWh"],
+                          ["Nº Medidor", "MEL-4921-873"],
+                          ["Leitura atual", "3.847 kWh"],
+                          ["Próx. leitura", "15/04/2026"],
+                          ["Vencimento fatura", "Todo dia 10"],
+                        ].map(([l,v]) => (
+                          <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"7px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:12 }}>
+                            <span style={{ color:"#475569" }}>{l}</span>
+                            <span style={{ color:"#E2E8F0", fontWeight:600 }}>{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ background:"rgba(16,185,129,.06)", border:"1px solid rgba(16,185,129,.2)", borderRadius:12, padding:"14px 18px", marginTop:16 }}>
+                      <div style={{ fontSize:11, color:"#10B981", fontWeight:700, marginBottom:8 }}>📊 HISTÓRICO DE FATURAS — {energiaAno}</div>
+                      <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                        {anoData.filter(m=>m.kWh>0).map(m=>(
+                          <div key={m.mes} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:8, padding:"10px 14px", minWidth:100 }}>
+                            <div style={{ fontSize:10, color:"#475569" }}>{m.mes}/{energiaAno}</div>
+                            <div style={{ fontSize:13, fontWeight:700, color:"#10B981", marginTop:2 }}>R$ {Math.round(m.kWh*tarifa).toLocaleString("pt-BR")}</div>
+                            <div style={{ fontSize:10, color:"#334155" }}>{m.kWh} kWh</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ═══════════════════════════════════════════════════════════
+                    ABA: ALERTAS INTELIGENTES
+                ═══════════════════════════════════════════════════════════ */}
+                {energiaTab === "alertas" && (
+                  <div>
+                    <div style={{ fontSize:12, color:"#475569", marginBottom:16 }}>Alertas gerados automaticamente com base no histórico de consumo, geração solar e padrões detectados.</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                      {alertas.map((a, i) => {
+                        const nc = { alto:"#EF4444", medio:"#F59E0B", baixo:"#10B981" }[a.nivel] || "#475569";
+                        return (
+                          <div key={i} style={{ background:"rgba(255,255,255,.02)", border:`1px solid ${nc}22`, borderRadius:12, padding:"14px 18px", display:"flex", gap:14, alignItems:"flex-start" }}>
+                            <div style={{ width:40, height:40, borderRadius:"50%", background:`${nc}18`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>
+                              {a.icone}
+                            </div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
+                                <div style={{ fontSize:13, fontWeight:700 }}>{a.titulo}</div>
+                                <span style={{ background:`${nc}18`, color:nc, border:`1px solid ${nc}33`, borderRadius:12, padding:"2px 8px", fontSize:10, fontWeight:700, whiteSpace:"nowrap" }}>{a.nivel}</span>
+                              </div>
+                              <div style={{ fontSize:12, color:"#64748B", lineHeight:1.5 }}>{a.desc}</div>
+                              {a.acao && (
+                                <div style={{ marginTop:8 }}>
+                                  <span style={{ fontSize:11, color:"#6366F1", cursor:"pointer", textDecoration:"underline" }} onClick={()=>{
+                                    const m: Record<string,"ocorrencias"|"consumo"|"equipamentos"|"solar"|"graficos"|"fornecedora"|"alertas"> = { "Ver ocorrências":"ocorrencias","Ver consumo":"consumo","Ver solar":"solar","Ver gráficos":"graficos" };
+                                    if (m[a.acao]) setEnergiaTab(m[a.acao]);
+                                  }}>{a.acao} →</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
