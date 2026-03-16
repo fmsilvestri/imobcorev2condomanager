@@ -388,6 +388,28 @@ export default function App() {
   const [mantAiResult, setMantAiResult] = useState<string>("");
   const [mantMapHover, setMantMapHover] = useState<string|null>(null);
   const [mantPlanMonth, setMantPlanMonth] = useState(5); // index in MANUT_SCHEDULE (current=Mar/26)
+  // ── Gás state ──────────────────────────────────────────────────────────────
+  const [gasNovaLeitModal, setGasNovaLeitModal] = useState(false);
+  const [gasNovaLeitForm, setGasNovaLeitForm] = useState({ nivel:"", obs:"" });
+  const [gasLeituras, setGasLeituras] = useState([
+    { id:"g1",  nivel:35, data:"29/01/2026", hora:"16:34", foto:true,  obs:"Verificação final do dia" },
+    { id:"g2",  nivel:15, data:"29/01/2026", hora:"13:07", foto:true,  obs:"Nível crítico detectado" },
+    { id:"g3",  nivel:80, data:"29/01/2026", hora:"10:21", foto:false, obs:"Abastecimento realizado" },
+    { id:"g4",  nivel:28, data:"28/01/2026", hora:"18:00", foto:false, obs:"" },
+    { id:"g5",  nivel:22, data:"28/01/2026", hora:"09:00", foto:false, obs:"" },
+    { id:"g6",  nivel:18, data:"27/01/2026", hora:"17:30", foto:false, obs:"" },
+    { id:"g7",  nivel:15, data:"27/01/2026", hora:"08:15", foto:true,  obs:"Alerta nível baixo" },
+    { id:"g8",  nivel:20, data:"26/01/2026", hora:"19:00", foto:false, obs:"" },
+    { id:"g9",  nivel:25, data:"26/01/2026", hora:"08:45", foto:false, obs:"" },
+    { id:"g10", nivel:30, data:"25/01/2026", hora:"18:30", foto:false, obs:"" },
+    { id:"g11", nivel:38, data:"25/01/2026", hora:"08:00", foto:false, obs:"" },
+    { id:"g12", nivel:45, data:"24/01/2026", hora:"17:00", foto:false, obs:"" },
+    { id:"g13", nivel:55, data:"23/01/2026", hora:"16:00", foto:false, obs:"" },
+    { id:"g14", nivel:65, data:"22/01/2026", hora:"15:00", foto:false, obs:"" },
+    { id:"g15", nivel:72, data:"21/01/2026", hora:"14:00", foto:false, obs:"" },
+    { id:"g16", nivel:78, data:"20/01/2026", hora:"13:00", foto:false, obs:"" },
+    { id:"g17", nivel:80, data:"20/01/2026", hora:"08:00", foto:true,  obs:"Início do período" },
+  ]);
   // ── Água state ─────────────────────────────────────────────────────────────
   const [aguaTab, setAguaTab] = useState<"reservatorios"|"leituras"|"hidrometro"|"historico"|"fornecedora"|"alertas">("reservatorios");
   const [aguaNovoResModal, setAguaNovoResModal] = useState(false);
@@ -2742,6 +2764,10 @@ export default function App() {
           <div className={`sb-item ${panel === "energia" ? "active" : ""}`} onClick={() => setPanel("energia")}>
             <span className="sb-icon">⚡</span> Energia
           </div>
+          <div className={`sb-item ${panel === "gas" ? "active" : ""}`} onClick={() => setPanel("gas")}>
+            <span className="sb-icon">🔥</span> Gás
+            {gasLeituras.some(l=>l.nivel<20) && <span className="sb-badge" style={{ background:"#EF4444" }}>!</span>}
+          </div>
           <div className="sb-label">Sistema</div>
           <div className={`sb-item ${panel === "supabase" ? "active" : ""}`} onClick={() => setPanel("supabase")}>
             <span className="sb-icon">🗄️</span> SSE Live Log
@@ -4331,6 +4357,190 @@ export default function App() {
                       {!mantAiResult && !mantAiLoading && (
                         <div style={{ fontSize:12, color:"#334155" }}>Clique em "Analisar com IA" para receber um diagnóstico completo dos equipamentos com recomendações do Síndico Virtual.</div>
                       )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* PANEL: GÁS */}
+          {panel === "gas" && (() => {
+            // ── Chart data (oldest → newest for correct line direction) ──
+            const chartData = [...gasLeituras].reverse().map(l => ({
+              label: `${l.data.slice(0,5)} ${l.hora.slice(0,5)}`,
+              nivel: l.nivel,
+            }));
+
+            const nivelAtual = gasLeituras[0]?.nivel ?? 0;
+            const nivelMin    = Math.min(...gasLeituras.map(l => l.nivel));
+            const nivelMax    = Math.max(...gasLeituras.map(l => l.nivel));
+            const nivelMedio  = Math.round(gasLeituras.reduce((s,l) => s+l.nivel, 0) / gasLeituras.length);
+
+            const nivelColor = (n: number) =>
+              n < 20 ? "#EF4444" : n < 40 ? "#F59E0B" : "#10B981";
+
+            const saveReading = () => {
+              if (!gasNovaLeitForm.nivel) return;
+              const now = new Date();
+              setGasLeituras(prev => [{
+                id: `g${Date.now()}`,
+                nivel: Number(gasNovaLeitForm.nivel),
+                data: `${String(now.getDate()).padStart(2,"0")}/${String(now.getMonth()+1).padStart(2,"0")}/${now.getFullYear()}`,
+                hora: `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`,
+                foto: false,
+                obs: gasNovaLeitForm.obs,
+              }, ...prev]);
+              setGasNovaLeitForm({ nivel:"", obs:"" });
+              setGasNovaLeitModal(false);
+            };
+
+            return (
+              <div style={{ padding:20 }}>
+
+                {/* ── Cross-navigation tabs (Água / Gás / Energia) ── */}
+                <div style={{ display:"flex", gap:6, marginBottom:22 }}>
+                  {([["iot","💧","Água"],["gas","🔥","Gás"],["energia","⚡","Energia"]] as [string,string,string][]).map(([pid,icon,label]) => (
+                    <button key={pid} onClick={()=>setPanel(pid as any)} style={{
+                      background: panel===pid ? (pid==="gas"?"#F97316":pid==="iot"?"#3B82F6":"#6366F1") : "rgba(255,255,255,.05)",
+                      border: panel===pid ? "none" : "1px solid rgba(255,255,255,.1)",
+                      borderRadius:8, padding:"6px 16px", color: panel===pid?"#fff":"#64748B",
+                      fontSize:12, fontWeight: panel===pid?700:400, cursor:"pointer",
+                      display:"flex", alignItems:"center", gap:6,
+                    }}>{icon} {label}</button>
+                  ))}
+                </div>
+
+                {/* ── Header ── */}
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                  <div style={{ fontSize:20, fontWeight:800 }}>🔥 Leituras de Gás</div>
+                  <button onClick={()=>setGasNovaLeitModal(true)} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 18px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                    + Nova Leitura
+                  </button>
+                </div>
+
+                {/* ── KPI row ── */}
+                <div style={{ display:"flex", gap:10, marginBottom:18, flexWrap:"wrap" }}>
+                  {[
+                    { label:"Nível Atual",    val:`${nivelAtual}%`,   color:nivelColor(nivelAtual) },
+                    { label:"Nível Mínimo",   val:`${nivelMin}%`,     color:"#EF4444" },
+                    { label:"Nível Máximo",   val:`${nivelMax}%`,     color:"#10B981" },
+                    { label:"Média Período",  val:`${nivelMedio}%`,   color:"#F97316" },
+                    { label:"Total Leituras", val:`${gasLeituras.length}`, color:"#A5B4FC" },
+                  ].map(k=>(
+                    <div key={k.label} style={{ flex:1, minWidth:110, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"12px 14px" }}>
+                      <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
+                      <div style={{ fontSize:20, fontWeight:800, color:k.color }}>{k.val}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── Chart ── */}
+                <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"18px 20px", marginBottom:20 }}>
+                  <div style={{ fontSize:13, fontWeight:700, marginBottom:2 }}>Histórico de Nível de Gás</div>
+                  <div style={{ fontSize:11, color:"#475569", marginBottom:16 }}>Últimas {gasLeituras.length} leituras</div>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart data={chartData} margin={{ top:8, right:10, bottom:4, left:0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)" vertical={false}/>
+                      <XAxis dataKey="label" tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false}
+                        tickFormatter={(v:string)=>v.slice(0,5)}
+                        interval={Math.floor(chartData.length/3)}/>
+                      <YAxis domain={[0,100]} tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} width={30}
+                        tickFormatter={(v:number)=>`${v}`}/>
+                      <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }}
+                        formatter={(v:number)=>[`${v}%`, "Nível"]}
+                        labelFormatter={(l:string)=>l}/>
+                      <Line type="monotone" dataKey="nivel" stroke="#F97316" strokeWidth={2.5}
+                        dot={(props: any) => {
+                          const { cx, cy, payload } = props;
+                          const isKey = payload.nivel <= nivelMin || payload.nivel >= nivelMax;
+                          return isKey
+                            ? <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={5} fill="#F97316" stroke="#0F172A" strokeWidth={2}/>
+                            : <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={0} fill="none"/>;
+                        }}
+                        activeDot={{ r:6, fill:"#F97316", stroke:"#0F172A", strokeWidth:2 }}
+                        name="Nível (%)"/>
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* ── Reading list ── */}
+                <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, overflow:"hidden" }}>
+                  <div style={{ padding:"14px 20px", borderBottom:"1px solid rgba(255,255,255,.06)", fontSize:13, fontWeight:700 }}>
+                    Histórico de Leituras
+                  </div>
+                  {gasLeituras.map((l, i) => {
+                    const nc = nivelColor(l.nivel);
+                    return (
+                      <div key={l.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 20px",
+                        borderBottom: i < gasLeituras.length-1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                        background: l.nivel<20?"rgba(239,68,68,.03)":l.nivel<40?"rgba(245,158,11,.02)":"" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                          {/* Avatar circle */}
+                          <div style={{ width:40, height:40, borderRadius:"50%", flexShrink:0,
+                            background: l.nivel<20?"rgba(239,68,68,.2)":l.nivel<40?"rgba(245,158,11,.2)":"rgba(249,115,22,.2)",
+                            display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>
+                            🔥
+                          </div>
+                          <div>
+                            <div style={{ fontSize:13, fontWeight:700, color:nc }}>{l.nivel}% disponível</div>
+                            <div style={{ fontSize:11, color:"#475569", marginTop:1 }}>
+                              Nível: {l.nivel}% · {l.data} {l.hora}
+                            </div>
+                            {l.obs && <div style={{ fontSize:10, color:"#334155", marginTop:2 }}>{l.obs}</div>}
+                          </div>
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                          {/* Level pill */}
+                          <span style={{ background:`${nc}18`, color:nc, border:`1px solid ${nc}33`, borderRadius:6, padding:"3px 9px", fontSize:11, fontWeight:700 }}>
+                            {l.nivel<20?"Crítico":l.nivel<40?"Baixo":"Normal"}
+                          </span>
+                          {/* Photo icon */}
+                          {l.foto && (
+                            <div title="Foto anexada" style={{ width:32, height:32, borderRadius:6, background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, cursor:"pointer" }}>
+                              🖼️
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* ── Nova leitura modal ── */}
+                {gasNovaLeitModal && (
+                  <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setGasNovaLeitModal(false)}>
+                    <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:14, padding:28, width:400 }} onClick={e=>e.stopPropagation()}>
+                      <div style={{ fontSize:16, fontWeight:700, marginBottom:18 }}>🔥 Nova Leitura de Gás</div>
+                      <div style={{ marginBottom:14 }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:5 }}>Nível do Botijão / Reservatório (%)</div>
+                        <input type="number" min="0" max="100" value={gasNovaLeitForm.nivel}
+                          onChange={e=>setGasNovaLeitForm(f=>({...f,nivel:e.target.value}))}
+                          placeholder="0 – 100"
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"10px 12px", color:"#fff", fontSize:14, fontWeight:700, boxSizing:"border-box" }}/>
+                        {gasNovaLeitForm.nivel && (
+                          <div style={{ marginTop:10 }}>
+                            <div style={{ height:8, background:"rgba(255,255,255,.06)", borderRadius:4 }}>
+                              <div style={{ width:`${Math.min(100,Number(gasNovaLeitForm.nivel))}%`, height:"100%", borderRadius:4, transition:"width .3s",
+                                background: Number(gasNovaLeitForm.nivel)<20?"#EF4444":Number(gasNovaLeitForm.nivel)<40?"#F59E0B":"#10B981" }}/>
+                            </div>
+                            <div style={{ fontSize:11, color:nivelColor(Number(gasNovaLeitForm.nivel)), marginTop:4, fontWeight:600 }}>
+                              {Number(gasNovaLeitForm.nivel)<20?"⚠️ Nível crítico — abastecer urgente":Number(gasNovaLeitForm.nivel)<40?"⚡ Nível baixo — programar abastecimento":"✅ Nível adequado"}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ marginBottom:16 }}>
+                        <div style={{ fontSize:11, color:"#475569", marginBottom:5 }}>Observação (opcional)</div>
+                        <input type="text" value={gasNovaLeitForm.obs}
+                          onChange={e=>setGasNovaLeitForm(f=>({...f,obs:e.target.value}))}
+                          placeholder="Ex: Após abastecimento"
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" }}/>
+                      </div>
+                      <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+                        <button onClick={()=>setGasNovaLeitModal(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 16px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                        <button onClick={saveReading} style={{ background:"#F97316", border:"none", borderRadius:8, padding:"8px 22px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>Registrar</button>
+                      </div>
                     </div>
                   </div>
                 )}
