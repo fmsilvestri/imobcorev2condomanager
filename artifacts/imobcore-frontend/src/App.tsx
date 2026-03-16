@@ -173,6 +173,52 @@ select.form-control option{background:var(--c-bg2)}
 .os-form.open{display:block;animation:fadeIn .2s ease}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+/* ═══════════════════════════════════════════════════════════════
+   LOGIN SCREEN
+   ════════════════════════════════════════════════════════════════ */
+.login-root{min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 30% 20%,rgba(99,102,241,.18) 0%,transparent 55%),radial-gradient(ellipse at 75% 80%,rgba(168,85,247,.14) 0%,transparent 50%),#070B12;font-family:'Inter',sans-serif;padding:20px}
+.login-card{width:100%;max-width:400px;display:flex;flex-direction:column;gap:0;animation:fadeIn .35s ease}
+.login-logo-row{display:flex;align-items:center;gap:12px;margin-bottom:28px}
+.login-logo-icon{width:52px;height:52px;border-radius:16px;background:linear-gradient(135deg,#6366F1,#7C3AED,#A855F7);display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 8px 24px rgba(99,102,241,.4)}
+.login-logo-text{display:flex;flex-direction:column}
+.login-logo-title{font-size:22px;font-weight:800;letter-spacing:-.5px;background:linear-gradient(135deg,#A5B4FC,#C4B5FD);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.login-logo-sub{font-size:10px;font-weight:600;letter-spacing:.18em;color:#4B5563;text-transform:uppercase;margin-top:1px}
+.login-welcome{margin-bottom:28px}
+.login-welcome-h{font-size:28px;font-weight:800;color:#F1F5F9;letter-spacing:-.5px;margin-bottom:4px}
+.login-welcome-sub{font-size:14px;color:#64748B}
+.login-tabs{display:flex;gap:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:4px;margin-bottom:24px}
+.login-tab{flex:1;padding:9px 8px;border-radius:10px;border:none;background:transparent;font-family:'Inter',sans-serif;font-size:12px;font-weight:600;color:#64748B;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:5px;white-space:nowrap}
+.login-tab.active{background:linear-gradient(135deg,#6366F1,#7C3AED);color:#fff;box-shadow:0 4px 12px rgba(99,102,241,.35)}
+.login-tab:hover:not(.active){color:#94A3B8;background:rgba(255,255,255,.04)}
+.login-form-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:20px;padding:20px;margin-bottom:16px}
+.login-field{margin-bottom:16px}
+.login-field:last-child{margin-bottom:0}
+.login-field-label{font-size:10px;font-weight:700;letter-spacing:.1em;color:#475569;text-transform:uppercase;margin-bottom:8px;display:block}
+.login-input-wrap{position:relative;display:flex;align-items:center}
+.login-input-icon{position:absolute;left:14px;font-size:15px;pointer-events:none}
+.login-input{width:100%;padding:13px 14px 13px 42px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:12px;color:#E2E8F0;font-size:14px;font-family:'Inter',sans-serif;outline:none;transition:border-color .2s;box-sizing:border-box}
+.login-input:focus{border-color:rgba(99,102,241,.6);background:rgba(99,102,241,.06)}
+.login-input::placeholder{color:#334155}
+.login-eye{position:absolute;right:14px;background:none;border:none;color:#475569;cursor:pointer;padding:0;font-size:16px;display:flex;align-items:center;transition:color .15s}
+.login-eye:hover{color:#94A3B8}
+.login-forgot{text-align:right;margin-top:10px;margin-bottom:0}
+.login-forgot a{font-size:12px;color:#6366F1;text-decoration:none;cursor:pointer;font-weight:500}
+.login-forgot a:hover{color:#818CF8}
+.login-btn{width:100%;padding:15px;border:none;border-radius:14px;background:linear-gradient(135deg,#6366F1,#7C3AED,#A855F7);color:#fff;font-size:15px;font-weight:700;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s;box-shadow:0 6px 20px rgba(99,102,241,.4);margin-bottom:24px;letter-spacing:-.1px}
+.login-btn:hover{opacity:.9;box-shadow:0 8px 28px rgba(99,102,241,.5);transform:translateY(-1px)}
+.login-btn:active{transform:translateY(0)}
+.login-divider{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.login-divider-line{flex:1;height:1px;background:rgba(255,255,255,.07)}
+.login-divider-text{font-size:10px;font-weight:600;letter-spacing:.1em;color:#334155;text-transform:uppercase}
+.login-quick{display:flex;justify-content:center;gap:32px;margin-bottom:28px}
+.login-quick-btn{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;background:none;border:none;font-family:'Inter',sans-serif}
+.login-quick-icon{width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:24px;transition:all .2s}
+.login-quick-btn:hover .login-quick-icon{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3)}
+.login-quick-label{font-size:10px;font-weight:600;letter-spacing:.1em;color:#475569;text-transform:uppercase}
+.login-footer-link{text-align:center;margin-bottom:16px;font-size:13px;color:#475569}
+.login-footer-link a{color:#6366F1;text-decoration:none;font-weight:600;cursor:pointer}
+.login-footer-link a:hover{color:#818CF8}
+.login-version{text-align:center;font-size:11px;color:#1E293B}
 .toast{padding:10px 16px;border-radius:10px;background:#1E293B;border:1px solid var(--card-border);color:#E2E8F0;font-size:13px;max-width:320px;animation:slideIn .2s ease;box-shadow:0 8px 32px rgba(0,0,0,.4)}
 .toast.success{border-color:rgba(16,185,129,.3);background:rgba(16,185,129,.1);color:#34D399}
 .toast.error{border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.1);color:#F87171}
@@ -377,7 +423,7 @@ const MANUT_SCHEDULE: { mes: string; items: { equip: string; tipo: "preventiva"|
 ];
 
 export default function App() {
-  const [view, setView] = useState<"gestor" | "sindico" | "morador" | "onboarding">("gestor");
+  const [view, setView] = useState<"login" | "gestor" | "sindico" | "morador" | "onboarding">("login");
   const [panel, setPanel] = useState("sv-chat");
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [condId, setCondId] = useState<string | null>(null);
@@ -390,6 +436,10 @@ export default function App() {
   const [bellCount, setBellCount] = useState(0);
   const [bellShake, setBellShake] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [loginMode, setLoginMode] = useState<"morador" | "sindico" | "gestor">("morador");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPass, setLoginPass] = useState("");
+  const [showLoginPass, setShowLoginPass] = useState(false);
   // ── Manutenção state ────────────────────────────────────────────────────
   const [mantTab, setMantTab] = useState<"equip"|"mapa"|"plano"|"os"|"qr"|"ia">("equip");
   const [mantSearch, setMantSearch] = useState("");
@@ -2773,6 +2823,126 @@ export default function App() {
     );
   };
 
+  /* ── LOGIN SCREEN ────────────────────────────────────────────────────── */
+  if (view === "login") {
+    const modeInfo = {
+      morador:  { icon: "🏠", label: "Morador",       dest: "morador"  as const, btnLabel: "Entrar como Morador",  desc: "App Mobile do Morador" },
+      sindico:  { icon: "🛡️", label: "Síndico",       dest: "sindico"  as const, btnLabel: "Entrar como Síndico",  desc: "App Mobile do Síndico" },
+      gestor:   { icon: "⚡", label: "Painel Gestor",  dest: "gestor"   as const, btnLabel: "Acessar Painel Gestor", desc: "Interface Desktop" },
+    }[loginMode];
+
+    const handleLogin = () => {
+      if (!loginEmail.trim()) { showToast("Informe o e-mail", "warn"); return; }
+      if (!loginPass.trim())  { showToast("Informe a senha", "warn"); return; }
+      setView(modeInfo.dest);
+    };
+
+    return (
+      <>
+        <style>{CSS}</style>
+        <div className="toast-container">
+          {toasts.map(t => <div key={t.id} className={`toast ${t.type}`}>{t.msg}</div>)}
+        </div>
+        <div className="login-root">
+          <div className="login-card">
+            {/* Logo */}
+            <div className="login-logo-row">
+              <div className="login-logo-icon">🏢</div>
+              <div className="login-logo-text">
+                <span className="login-logo-title">ImobCore</span>
+                <span className="login-logo-sub">Gestão Inteligente</span>
+              </div>
+            </div>
+
+            {/* Welcome */}
+            <div className="login-welcome">
+              <div className="login-welcome-h">👋 Bem-vindo</div>
+              <div className="login-welcome-sub">Acesse seu condomínio</div>
+            </div>
+
+            {/* 3 Access tabs */}
+            <div className="login-tabs">
+              {(["morador","sindico","gestor"] as const).map(m => (
+                <button key={m} className={`login-tab ${loginMode === m ? "active" : ""}`} onClick={() => setLoginMode(m)}>
+                  <span>{modeInfo.icon && m === loginMode ? { morador:"🏠", sindico:"🛡️", gestor:"⚡" }[m] : { morador:"🏠", sindico:"🛡️", gestor:"⚡" }[m]}</span>
+                  <span>{{ morador:"Morador", sindico:"Síndico", gestor:"Gestor" }[m]}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Form card */}
+            <form className="login-form-card" onSubmit={e => { e.preventDefault(); handleLogin(); }}>
+              <div className="login-field">
+                <label className="login-field-label">Email</label>
+                <div className="login-input-wrap">
+                  <span className="login-input-icon">✉️</span>
+                  <input
+                    className="login-input"
+                    type="email"
+                    placeholder="seu@email.com"
+                    value={loginEmail}
+                    onChange={e => setLoginEmail(e.target.value)}
+                    autoComplete="email"
+                  />
+                </div>
+              </div>
+              <div className="login-field">
+                <label className="login-field-label">Senha</label>
+                <div className="login-input-wrap">
+                  <span className="login-input-icon">🔑</span>
+                  <input
+                    className="login-input"
+                    type={showLoginPass ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={loginPass}
+                    onChange={e => setLoginPass(e.target.value)}
+                    autoComplete="current-password"
+                    style={{ paddingRight: 44 }}
+                  />
+                  <button type="button" className="login-eye" onClick={() => setShowLoginPass(s => !s)}>
+                    {showLoginPass ? "🙈" : "👁️"}
+                  </button>
+                </div>
+                <div className="login-forgot"><a onClick={() => showToast("Recuperação de senha enviada para o e-mail", "success")}>Esqueci a senha</a></div>
+              </div>
+              <input type="submit" style={{ display: "none" }} />
+            </form>
+
+            {/* Login button */}
+            <button className="login-btn" onClick={handleLogin}>
+              {modeInfo.btnLabel}
+            </button>
+
+            {/* Divider */}
+            <div className="login-divider">
+              <div className="login-divider-line" />
+              <span className="login-divider-text">Acesso Rápido</span>
+              <div className="login-divider-line" />
+            </div>
+
+            {/* Biometria + Face ID */}
+            <div className="login-quick">
+              <button className="login-quick-btn" onClick={() => showToast("Autenticação biométrica ativada", "success")}>
+                <div className="login-quick-icon">👆</div>
+                <span className="login-quick-label">Biometria</span>
+              </button>
+              <button className="login-quick-btn" onClick={() => showToast("Face ID ativado", "success")}>
+                <div className="login-quick-icon">🤳</div>
+                <span className="login-quick-label">Face ID</span>
+              </button>
+            </div>
+
+            {/* Footer links */}
+            <div className="login-footer-link">
+              Não tem conta? <a onClick={() => showToast("Entre em contato com o síndico para solicitar acesso", "success")}>Solicitar acesso</a>
+            </div>
+            <div className="login-version">ImobCore v2.4.1 · {modeInfo.desc}</div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <style>{CSS}</style>
@@ -2821,6 +2991,9 @@ export default function App() {
         <div className="clock">{clock}</div>
         <button className="theme-toggle" onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} title={theme === "dark" ? "Mudar para Tema Claro" : "Mudar para Tema Escuro"}>
           {theme === "dark" ? "☀️ Claro" : "🌙 Escuro"}
+        </button>
+        <button className="theme-toggle" style={{ borderColor: "rgba(239,68,68,.3)", color: "#F87171" }} onClick={() => { setLoginEmail(""); setLoginPass(""); setView("login"); }} title="Sair do sistema">
+          🚪 Sair
         </button>
       </div>
 
