@@ -392,6 +392,7 @@ export default function App() {
   const [obMoradores, setObMoradores] = useState<{ unidade: string; nome: string; email: string; telefone: string; tipo: string; cpf: string; nascimento: string; veiculos: string }[]>([]);
   const [obMorForm, setObMorForm] = useState({ unidade: "", nome: "", email: "", telefone: "", tipo: "proprietario", cpf: "", nascimento: "", veiculos: "0" });
   const [obMorTab, setObMorTab] = useState<"manual" | "csv">("manual");
+  const [obHasSensors, setObHasSensors] = useState<"sim" | "nao" | null>(null);
   const [obCsvPreview, setObCsvPreview] = useState<{ unidade: string; nome: string; email: string; telefone: string; tipo: string; cpf: string; nascimento: string; veiculos: string }[]>([]);
   const [obCsvError, setObCsvError] = useState("");
   // Step 4: Sensores IoT
@@ -686,8 +687,14 @@ export default function App() {
       setObLoading(false);
     }
 
+    // ── Step 4: Sensores ──────────────────────────────────────────────────────
+    if (obStep === 4 && obHasSensors === null) {
+      showToast("Selecione uma opção: Tenho sensores ou Não tenho sensores", "warn");
+      return;
+    }
+
     setObStep(s => Math.min(s + 1, OB_STEPS.length - 1));
-  }, [obStep, obCondo, obSavedCondoId, obTorres, obMoradores, showToast]);
+  }, [obStep, obCondo, obSavedCondoId, obTorres, obMoradores, obHasSensors, showToast]);
 
   const obPrevStep = () => setObStep(s => Math.max(s - 1, 0));
 
@@ -1466,115 +1473,162 @@ export default function App() {
             {obStep === 4 && (
               <div style={{ animation: "fadeIn .25s ease" }}>
                 <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>💧 Sensores IoT de Água</div>
-                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>Configure os sensores de nível monitorados em tempo real</div>
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>Monitoramento de nível em tempo real — selecione sua situação atual</div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20, alignItems: "start" }}>
+                {/* ── Seleção A / B ── */}
+                {obHasSensors === null && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 8 }}>
+                    {[
+                      { key: "sim", icon: "📡", title: "Tenho sensores físicos", desc: "Configure os dispositivos IoT já instalados nas cisternas e caixas d'água.", color: "#6366F1", glow: "rgba(99,102,241,.18)" },
+                      { key: "nao", icon: "🕐", title: "Não tenho sensores ainda", desc: "Continue sem sensores agora. Você pode instalá-los e configurar depois.", color: "#14B8A6", glow: "rgba(20,184,166,.15)" },
+                    ].map(opt => (
+                      <button key={opt.key} onClick={() => { setObHasSensors(opt.key as "sim" | "nao"); if (opt.key === "nao") setObSensors([]); }}
+                        style={{ background: opt.glow, border: `1.5px solid ${opt.color}30`, borderRadius: 16, padding: "24px 20px", cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "all .2s", display: "flex", flexDirection: "column", gap: 10 }}>
+                        <span style={{ fontSize: 32 }}>{opt.icon}</span>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: opt.color }}>{opt.title}</div>
+                        <div style={{ fontSize: 12, color: "#64748B", lineHeight: 1.5 }}>{opt.desc}</div>
+                        <div style={{ marginTop: 4, fontSize: 12, color: opt.color, fontWeight: 600 }}>Selecionar →</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
 
-                  {/* ── Tabela de configuração ── */}
+                {/* ── Opção B: sem sensores ── */}
+                {obHasSensors === "nao" && (
                   <div>
-                    <div style={{ overflowX: "auto", marginBottom: 10 }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                        <thead>
-                          <tr style={{ borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-                            {["#", "Nome", "Local", "Cap. (L)", "Nível %", ""].map(h => (
-                              <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "#64748B", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {obSensors.map((s, i) => {
-                            const lvl = Number(s.nivel_atual) || 0;
-                            const color = lvl < 25 ? "#EF4444" : lvl < 50 ? "#F59E0B" : "#10B981";
-                            return (
-                              <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
-                                <td style={{ padding: "6px 8px", color: "#475569" }}>{i + 1}</td>
-                                {(["nome","local","capacidade_litros","nivel_atual"] as (keyof typeof s)[]).map(field => (
-                                  <td key={field} style={{ padding: "4px 6px" }}>
-                                    {field === "nivel_atual" ? (
-                                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                        <input className="form-control" style={{ fontSize: 11, padding: "4px 7px", width: 54 }}
-                                          type="number" min="0" max="100" value={s[field]}
-                                          onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, [field]: e.target.value } : x))} />
-                                        <span style={{ fontSize: 10, color, fontWeight: 700 }}>{lvl}%</span>
-                                      </div>
-                                    ) : (
-                                      <input className="form-control" style={{ fontSize: 11, padding: "4px 7px", minWidth: field === "nome" || field === "local" ? 110 : 70 }}
-                                        value={s[field]}
-                                        onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, [field]: e.target.value } : x))} />
-                                    )}
-                                  </td>
+                    <div style={{ background: "rgba(20,184,166,.06)", border: "1px solid rgba(20,184,166,.18)", borderRadius: 16, padding: "32px 24px", textAlign: "center", marginBottom: 16 }}>
+                      <div style={{ fontSize: 40, marginBottom: 10 }}>🕐</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#2DD4BF", marginBottom: 6 }}>Sem sensores por enquanto</div>
+                      <div style={{ fontSize: 12, color: "#64748B", lineHeight: 1.6, maxWidth: 360, margin: "0 auto" }}>
+                        O ImobCore funcionará normalmente. Quando você instalar os sensores físicos, volte a este passo para configurar o monitoramento em tempo real.
+                      </div>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 16, flexWrap: "wrap" }}>
+                        {["💧 Nível de cisterna","📊 Alertas automáticos","📱 Push notification","🔔 Histórico de consumo"].map(f => (
+                          <span key={f} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 20, background: "rgba(20,184,166,.1)", border: "1px solid rgba(20,184,166,.2)", color: "#5EEAD4" }}>{f}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <button onClick={() => { setObHasSensors(null); setObSensors([
+                      { sensor_id: "sensor_cisterna", nome: "Cisterna Principal", local: "Subsolo", capacidade_litros: "20000", nivel_atual: "80" },
+                      { sensor_id: "sensor_torre_a", nome: "Caixa Torre A", local: "Telhado Torre A", capacidade_litros: "5000", nivel_atual: "75" },
+                    ]); }}
+                      style={{ fontSize: 12, padding: "8px 16px", borderRadius: 9, background: "rgba(99,102,241,.1)", border: "1px solid rgba(99,102,241,.2)", color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit" }}>
+                      ← Voltar e configurar sensores
+                    </button>
+                  </div>
+                )}
+
+                {/* ── Opção A: configurar sensores ── */}
+                {obHasSensors === "sim" && (
+                  <div>
+                    <button onClick={() => setObHasSensors(null)}
+                      style={{ fontSize: 11, padding: "4px 10px", borderRadius: 7, background: "transparent", border: "1px solid rgba(255,255,255,.08)", color: "#64748B", cursor: "pointer", fontFamily: "inherit", marginBottom: 14 }}>
+                      ← Mudar opção
+                    </button>
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20, alignItems: "start" }}>
+                      {/* Tabela */}
+                      <div>
+                        <div style={{ overflowX: "auto", marginBottom: 10 }}>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                            <thead>
+                              <tr style={{ borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+                                {["#", "Nome", "Local", "Cap. (L)", "Nível %", ""].map(h => (
+                                  <th key={h} style={{ padding: "6px 8px", textAlign: "left", color: "#64748B", fontWeight: 600, whiteSpace: "nowrap" }}>{h}</th>
                                 ))}
-                                <td style={{ padding: "4px 6px" }}>
-                                  {obSensors.length > 1 && (
-                                    <button onClick={() => setObSensors(arr => arr.filter((_, j) => j !== i))}
-                                      style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid rgba(239,68,68,.2)", background: "rgba(239,68,68,.1)", color: "#F87171", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>
-                                      ×
-                                    </button>
-                                  )}
-                                </td>
                               </tr>
+                            </thead>
+                            <tbody>
+                              {obSensors.map((s, i) => {
+                                const lvl = Number(s.nivel_atual) || 0;
+                                const color = lvl < 25 ? "#EF4444" : lvl < 50 ? "#F59E0B" : "#10B981";
+                                return (
+                                  <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.04)" }}>
+                                    <td style={{ padding: "6px 8px", color: "#475569" }}>{i + 1}</td>
+                                    {(["nome","local","capacidade_litros","nivel_atual"] as (keyof typeof s)[]).map(field => (
+                                      <td key={field} style={{ padding: "4px 6px" }}>
+                                        {field === "nivel_atual" ? (
+                                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                            <input className="form-control" style={{ fontSize: 11, padding: "4px 7px", width: 54 }}
+                                              type="number" min="0" max="100" value={s[field]}
+                                              onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, [field]: e.target.value } : x))} />
+                                            <span style={{ fontSize: 10, color, fontWeight: 700 }}>{lvl}%</span>
+                                          </div>
+                                        ) : (
+                                          <input className="form-control" style={{ fontSize: 11, padding: "4px 7px", minWidth: field === "nome" || field === "local" ? 110 : 70 }}
+                                            value={s[field]}
+                                            onChange={e => setObSensors(arr => arr.map((x, j) => j === i ? { ...x, [field]: e.target.value } : x))} />
+                                        )}
+                                      </td>
+                                    ))}
+                                    <td style={{ padding: "4px 6px" }}>
+                                      {obSensors.length > 1 && (
+                                        <button onClick={() => setObSensors(arr => arr.filter((_, j) => j !== i))}
+                                          style={{ width: 22, height: 22, borderRadius: 5, border: "1px solid rgba(239,68,68,.2)", background: "rgba(239,68,68,.1)", color: "#F87171", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "inherit" }}>
+                                          ×
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <button onClick={() => setObSensors(arr => [...arr, { sensor_id: `sensor_${arr.length + 1}`, nome: "Novo Sensor", local: "–", capacidade_litros: "1000", nivel_atual: "50" }])}
+                          style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.2)", color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit" }}>
+                          + Adicionar sensor
+                        </button>
+                        <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>💡 Sensores pré-configurados — ajuste conforme sua infraestrutura.</div>
+                      </div>
+
+                      {/* Gauges */}
+                      <div style={{ position: "sticky", top: 0 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>Monitor em Tempo Real</div>
+                        <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+                          {obSensors.map((s, i) => {
+                            const lvl = Math.min(100, Math.max(0, Number(s.nivel_atual) || 0));
+                            const cap = Number(s.capacidade_litros) || 1000;
+                            const color = lvl < 25 ? "#EF4444" : lvl < 50 ? "#F59E0B" : "#10B981";
+                            const vol = Math.round(cap * lvl / 100);
+                            return (
+                              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                <div style={{ width: 22, height: 44, borderRadius: "3px 3px 5px 5px", border: `1.5px solid ${color}40`, background: "rgba(0,0,0,.25)", position: "relative", overflow: "hidden", flexShrink: 0 }}>
+                                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${lvl}%`, background: color + "55", borderRadius: "0 0 3px 3px", transition: "height .5s ease" }} />
+                                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${Math.min(lvl, 12)}%`, background: color + "99" }} />
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: "#E2E8F0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nome || `Sensor ${i+1}`}</div>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color, flexShrink: 0, marginLeft: 4 }}>{lvl}%</span>
+                                  </div>
+                                  <div style={{ height: 5, background: "rgba(255,255,255,.07)", borderRadius: 3, overflow: "hidden" }}>
+                                    <div style={{ height: "100%", width: `${lvl}%`, background: color, borderRadius: 3, transition: "width .5s ease" }} />
+                                  </div>
+                                  <div style={{ fontSize: 9, color: "#475569", marginTop: 2 }}>{vol.toLocaleString("pt-BR")}L / {cap.toLocaleString("pt-BR")}L · {s.local || "–"}</div>
+                                </div>
+                              </div>
                             );
                           })}
-                        </tbody>
-                      </table>
-                    </div>
-                    <button onClick={() => setObSensors(arr => [...arr, { sensor_id: `sensor_${arr.length + 1}`, nome: "Novo Sensor", local: "–", capacidade_litros: "1000", nivel_atual: "50" }])}
-                      style={{ fontSize: 12, padding: "6px 14px", borderRadius: 8, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.2)", color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit" }}>
-                      + Adicionar sensor
-                    </button>
-                    <div style={{ fontSize: 11, color: "#475569", marginTop: 8 }}>💡 Sensores pré-configurados — ajuste conforme sua infraestrutura.</div>
-                  </div>
-
-                  {/* ── Preview: gauges de nível ── */}
-                  <div style={{ position: "sticky", top: 0 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "#475569", textTransform: "uppercase", letterSpacing: ".07em", marginBottom: 8 }}>
-                      Monitor em Tempo Real
-                    </div>
-                    <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-                      {obSensors.map((s, i) => {
-                        const lvl = Math.min(100, Math.max(0, Number(s.nivel_atual) || 0));
-                        const cap = Number(s.capacidade_litros) || 1000;
-                        const color = lvl < 25 ? "#EF4444" : lvl < 50 ? "#F59E0B" : "#10B981";
-                        const vol = Math.round(cap * lvl / 100);
-                        return (
-                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            {/* Tank visual */}
-                            <div style={{ width: 22, height: 44, borderRadius: "3px 3px 5px 5px", border: `1.5px solid ${color}40`, background: "rgba(0,0,0,.25)", position: "relative", overflow: "hidden", flexShrink: 0 }}>
-                              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${lvl}%`, background: color + "55", borderRadius: "0 0 3px 3px", transition: "height .5s ease" }} />
-                              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: `${Math.min(lvl, 12)}%`, background: color + "99" }} />
+                          <div style={{ borderTop: "1px solid rgba(255,255,255,.05)", paddingTop: 8, marginTop: 2 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
+                              <span style={{ color: "#64748B" }}>Total de sensores</span>
+                              <span style={{ color: "#94A3B8", fontWeight: 600 }}>{obSensors.length}</span>
                             </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
-                                <div style={{ fontSize: 11, fontWeight: 600, color: "#E2E8F0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.nome || `Sensor ${i+1}`}</div>
-                                <span style={{ fontSize: 10, fontWeight: 700, color, flexShrink: 0, marginLeft: 4 }}>{lvl}%</span>
-                              </div>
-                              <div style={{ height: 5, background: "rgba(255,255,255,.07)", borderRadius: 3, overflow: "hidden" }}>
-                                <div style={{ height: "100%", width: `${lvl}%`, background: color, borderRadius: 3, transition: "width .5s ease" }} />
-                              </div>
-                              <div style={{ fontSize: 9, color: "#475569", marginTop: 2 }}>{vol.toLocaleString("pt-BR")}L / {cap.toLocaleString("pt-BR")}L · {s.local || "–"}</div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 3 }}>
+                              <span style={{ color: "#64748B" }}>Nível médio</span>
+                              <span style={{ color: "#10B981", fontWeight: 700 }}>{Math.round(obSensors.reduce((a, s) => a + (Number(s.nivel_atual) || 0), 0) / (obSensors.length || 1))}%</span>
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 3 }}>
+                              <span style={{ color: "#64748B" }}>Cap. total</span>
+                              <span style={{ color: "#94A3B8", fontWeight: 600 }}>{obSensors.reduce((a, s) => a + (Number(s.capacidade_litros) || 0), 0).toLocaleString("pt-BR")}L</span>
                             </div>
                           </div>
-                        );
-                      })}
-                      {/* Summary */}
-                      <div style={{ borderTop: "1px solid rgba(255,255,255,.05)", paddingTop: 8, marginTop: 2 }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
-                          <span style={{ color: "#64748B" }}>Total de sensores</span>
-                          <span style={{ color: "#94A3B8", fontWeight: 600 }}>{obSensors.length}</span>
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 3 }}>
-                          <span style={{ color: "#64748B" }}>Nível médio</span>
-                          <span style={{ color: "#10B981", fontWeight: 700 }}>{Math.round(obSensors.reduce((a, s) => a + (Number(s.nivel_atual) || 0), 0) / obSensors.length)}%</span>
-                        </div>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 3 }}>
-                          <span style={{ color: "#64748B" }}>Cap. total</span>
-                          <span style={{ color: "#94A3B8", fontWeight: 600 }}>{obSensors.reduce((a, s) => a + (Number(s.capacidade_litros) || 0), 0).toLocaleString("pt-BR")}L</span>
                         </div>
                       </div>
                     </div>
                   </div>
-
-                </div>
+                )}
               </div>
             )}
 
@@ -1789,12 +1843,23 @@ export default function App() {
               const totalUnits = obTorres.reduce((s, t) => s + t.andares * t.unidades_por_andar, 0) || Number(obCondo.unidades) || 0;
               const receita = Number(obTaxaMensal) * (Number(obCondo.unidades) || totalUnits);
               const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+
+              const checks = [
+                { label: "Condomínio", ok: !!obCondo.nome.trim(), detail: obCondo.nome || "Não preenchido" },
+                { label: "Estrutura", ok: obTorres.length > 0, detail: `${obTorres.length} torre(s) · ${totalUnits} unidades` },
+                { label: "Moradores", ok: true, detail: obMoradores.length > 0 ? `${obMoradores.length} cadastrado(s)` : "Opcional — nenhum ainda", optional: true },
+                { label: "Sensores IoT", ok: obHasSensors !== null, detail: obHasSensors === "nao" ? "Sem sensores (configurar depois)" : obHasSensors === "sim" ? `${obSensors.length} sensor(es)` : "Não configurado" },
+                { label: "Financeiro", ok: Number(obTaxaMensal) > 0, detail: Number(obTaxaMensal) > 0 ? `R$ ${fmtBRL(Number(obTaxaMensal))}/un.` : "Taxa não definida" },
+                { label: "Síndico IA", ok: true, detail: `Tom: ${obIA.persona}`, optional: true },
+              ];
+              const requiredOk = checks.filter(c => !c.optional).every(c => c.ok);
+
               const sections = [
                 {
                   icon: "🏢", title: "Condomínio",
                   items: [
                     ["Nome", obCondo.nome || "–"],
-                    ["Cidade / Estado", obCondo.cidade ? `${obCondo.cidade} / ${obCondo.estado}` : "–"],
+                    ["Cidade / Estado", obCondo.cidade ? `${obCondo.cidade}${obCondo.estado ? " / " + obCondo.estado : ""}` : "–"],
                     ["CNPJ", obCondo.cnpj || "–"],
                     ["Síndico", obCondo.sindico_nome || "–"],
                     ["E-mail síndico", obCondo.sindico_email || "–"],
@@ -1805,31 +1870,33 @@ export default function App() {
                   items: [
                     ["Torres / Blocos", `${obTorres.length}`],
                     ["Unidades totais", `${totalUnits}`],
-                    ["Moradores cadastrados", `${obMoradores.length}`],
+                    ["Moradores", `${obMoradores.length} cadastrado(s)`],
                     ["Áreas comuns", [obInfra.churrasqueira && "Churrasqueira", obInfra.salao && "Salão", obInfra.piscina && "Piscina", obInfra.academia && "Academia"].filter(Boolean).join(", ") || "–"],
                   ]
                 },
                 {
                   icon: "💧", title: "Sensores IoT",
-                  items: [
-                    ["Sensores configurados", `${obSensors.length}`],
-                    ["Nível médio", `${Math.round(obSensors.reduce((a, s) => a + (Number(s.nivel_atual) || 0), 0) / obSensors.length)}%`],
-                    ["Cap. total", `${obSensors.reduce((a, s) => a + (Number(s.capacidade_litros) || 0), 0).toLocaleString("pt-BR")} L`],
-                  ]
+                  items: obHasSensors === "nao"
+                    ? [["Status", "Sem sensores físicos"], ["Monitoramento", "Ativado depois da instalação"]]
+                    : [
+                        ["Sensores configurados", `${obSensors.length}`],
+                        ["Nível médio", obSensors.length ? `${Math.round(obSensors.reduce((a, s) => a + (Number(s.nivel_atual) || 0), 0) / obSensors.length)}%` : "–"],
+                        ["Cap. total", `${obSensors.reduce((a, s) => a + (Number(s.capacidade_litros) || 0), 0).toLocaleString("pt-BR")} L`],
+                      ]
                 },
                 {
                   icon: "💰", title: "Financeiro",
                   items: [
                     ["Saldo inicial", `R$ ${fmtBRL(Number(obSaldo) || 0)}`],
                     ["Taxa mensal / un.", `R$ ${fmtBRL(Number(obTaxaMensal) || 0)}`],
-                    ["Receita mensal", `R$ ${fmtBRL(receita)}`],
+                    ["Receita mensal est.", `R$ ${fmtBRL(receita)}`],
                     ["Vencimento", `Dia ${obVencimento || "10"}`],
                   ]
                 },
                 {
                   icon: "🤖", title: "Síndico IA",
                   items: [
-                    ["Modelo", "Claude claude-sonnet-4-6"],
+                    ["Modelo", "Claude Sonnet"],
                     ["Tom", obIA.persona],
                     ["Saudação auto", obIA.greet ? "✓ Ativado" : "✗ Desativado"],
                     ["Comunicados auto", obIA.auto_com ? "✓ Ativado" : "✗ Desativado"],
@@ -1840,10 +1907,25 @@ export default function App() {
               return (
                 <div style={{ animation: "fadeIn .25s ease" }}>
                   <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 4 }}>🚀 Revisão & Ativação</div>
-                  <div style={{ fontSize: 13, color: "#64748B", marginBottom: 20 }}>Revise tudo antes de ativar. Após a ativação, o ImobCore estará operacional.</div>
+                  <div style={{ fontSize: 13, color: "#64748B", marginBottom: 16 }}>Revise as configurações antes de ativar o ImobCore.</div>
+
+                  {/* ── Checklist de completude ── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 18 }}>
+                    {checks.map(c => (
+                      <div key={c.label} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderRadius: 10,
+                        background: c.ok ? "rgba(16,185,129,.06)" : c.optional ? "rgba(99,102,241,.05)" : "rgba(239,68,68,.06)",
+                        border: `1px solid ${c.ok ? "rgba(16,185,129,.18)" : c.optional ? "rgba(99,102,241,.12)" : "rgba(239,68,68,.2)"}` }}>
+                        <span style={{ fontSize: 14, flexShrink: 0 }}>{c.ok ? "✅" : c.optional ? "ℹ️" : "⚠️"}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: c.ok ? "#6EE7B7" : c.optional ? "#A5B4FC" : "#FCA5A5" }}>{c.label}</div>
+                          <div style={{ fontSize: 10, color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.detail}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
 
                   {/* Summary sections */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
                     {sections.map(sec => (
                       <div key={sec.title} style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "12px 14px" }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: "#94A3B8", marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
@@ -1859,7 +1941,7 @@ export default function App() {
                     ))}
                   </div>
 
-                  {/* Torres preview chips */}
+                  {/* Torres chips */}
                   {obTorres.length > 0 && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
                       {obTorres.map((t, i) => {
@@ -1877,17 +1959,23 @@ export default function App() {
                   {obIsReset && (
                     <div style={{ padding: "10px 14px", background: "rgba(239,68,68,.07)", border: "1px solid rgba(239,68,68,.18)", borderRadius: 10, marginBottom: 14 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "#F87171" }}>⚠️ Modo Reconfiguração</div>
-                      <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 3 }}>Todos os dados existentes (OSs, sensores, financeiro, comunicados) serão apagados e substituídos por esta configuração.</div>
+                      <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 3 }}>Todos os dados existentes serão substituídos por esta configuração.</div>
                     </div>
                   )}
 
-                  <button className="btn-ativar" onClick={ativarImobCore} disabled={obLoading} style={{ marginTop: 4, width: "100%" }}>
+                  {!requiredOk && (
+                    <div style={{ padding: "10px 14px", background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.15)", borderRadius: 10, marginBottom: 14 }}>
+                      <div style={{ fontSize: 12, color: "#FCA5A5" }}>⚠️ Preencha os itens obrigatórios antes de ativar: {checks.filter(c => !c.ok && !c.optional).map(c => c.label).join(", ")}.</div>
+                    </div>
+                  )}
+
+                  <button className="btn-ativar" onClick={ativarImobCore} disabled={obLoading || !requiredOk} style={{ marginTop: 4, width: "100%", opacity: (!requiredOk && !obLoading) ? .5 : 1 }}>
                     {obLoading
                       ? <><span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⏳</span> Ativando ImobCore...</>
                       : <><span>🚀</span> Ativar ImobCore &rarr;</>}
                   </button>
                   <div style={{ textAlign: "center", fontSize: 11, color: "#334155", marginTop: 8 }}>
-                    A ativação leva menos de 5 segundos. Você será redirecionado ao Painel Gestor.
+                    A ativação leva menos de 5 segundos — você será redirecionado ao Painel Gestor.
                   </div>
                 </div>
               );
