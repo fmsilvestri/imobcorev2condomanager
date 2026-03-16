@@ -389,10 +389,10 @@ export default function App() {
   ]);
   const [obInfra, setObInfra] = useState({ moradores: "168", andares: "10", torres: "2", churrasqueira: true, salao: true, piscina: true, academia: false, playground: false, coworking: false });
   // Step 3: Moradores
-  const [obMoradores, setObMoradores] = useState<{ unidade: string; nome: string; email: string; telefone: string; tipo: string }[]>([]);
-  const [obMorForm, setObMorForm] = useState({ unidade: "", nome: "", email: "", telefone: "", tipo: "proprietario" });
+  const [obMoradores, setObMoradores] = useState<{ unidade: string; nome: string; email: string; telefone: string; tipo: string; cpf: string; nascimento: string; veiculos: string }[]>([]);
+  const [obMorForm, setObMorForm] = useState({ unidade: "", nome: "", email: "", telefone: "", tipo: "proprietario", cpf: "", nascimento: "", veiculos: "0" });
   const [obMorTab, setObMorTab] = useState<"manual" | "csv">("manual");
-  const [obCsvPreview, setObCsvPreview] = useState<{ unidade: string; nome: string; email: string; telefone: string; tipo: string }[]>([]);
+  const [obCsvPreview, setObCsvPreview] = useState<{ unidade: string; nome: string; email: string; telefone: string; tipo: string; cpf: string; nascimento: string; veiculos: string }[]>([]);
   const [obCsvError, setObCsvError] = useState("");
   // Step 4: Sensores IoT
   const [obSensors, setObSensors] = useState([
@@ -1165,17 +1165,18 @@ export default function App() {
                   setObMoradores(ms => [...ms, { ...obMorForm }]);
                 }
                 const nextEmpty = allUnits.find(u => u !== obMorForm.unidade && !filledSet.has(u));
-                setObMorForm(f => ({ ...f, unidade: nextEmpty || "", nome: "", email: "", telefone: "" }));
+                setObMorForm(f => ({ ...f, unidade: nextEmpty || "", nome: "", email: "", telefone: "", cpf: "", nascimento: "", veiculos: "0" }));
               };
 
               const downloadTemplate = () => {
-                const header = "unidade,nome,email,telefone,tipo";
+                const header = "unidade,nome,email,telefone,tipo,cpf,nascimento,veiculos";
+                const names = ["Ana Silva","Carlos Souza","Maria Lima"];
+                const cpfs = ["123.456.789-00","987.654.321-00","111.222.333-44"];
                 const examples = allUnits.slice(0, 3).map((u, i) => {
-                  const names = ["Ana Silva","Carlos Souza","Maria Lima"];
-                  return `${u},${names[i] || "Morador Exemplo"},morador${i+1}@email.com,(48) 9${i}999-000${i},proprietario`;
+                  return `${u},${names[i] || "Morador Exemplo"},morador${i+1}@email.com,(48) 9${i}999-000${i},proprietario,${cpfs[i]},1985-0${i+1}-15,${i}`;
                 }).join("\n");
                 const csv = header + "\n" + examples;
-                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement("a"); a.href = url; a.download = "moradores_template.csv"; a.click();
                 URL.revokeObjectURL(url);
@@ -1185,8 +1186,8 @@ export default function App() {
                 setObCsvError("");
                 const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
                 if (lines.length < 2) { setObCsvError("CSV deve ter ao menos uma linha de dados após o cabeçalho."); return; }
-                const header = lines[0].toLowerCase().split(",").map(h => h.trim());
-                const idx = { unidade: header.indexOf("unidade"), nome: header.indexOf("nome"), email: header.indexOf("email"), telefone: header.indexOf("telefone"), tipo: header.indexOf("tipo") };
+                const header = lines[0].toLowerCase().replace(/^\uFEFF/,"").split(",").map(h => h.trim());
+                const idx = { unidade: header.indexOf("unidade"), nome: header.indexOf("nome"), email: header.indexOf("email"), telefone: header.indexOf("telefone"), tipo: header.indexOf("tipo"), cpf: header.indexOf("cpf"), nascimento: header.indexOf("nascimento"), veiculos: header.indexOf("veiculos") };
                 if (idx.unidade < 0 || idx.nome < 0) { setObCsvError("Colunas obrigatórias ausentes: 'unidade' e 'nome'."); return; }
                 const rows = lines.slice(1).map(line => {
                   const cols = line.split(",").map(c => c.trim().replace(/^["']|["']$/g, ""));
@@ -1196,6 +1197,9 @@ export default function App() {
                     email: idx.email >= 0 ? (cols[idx.email] || "") : "",
                     telefone: idx.telefone >= 0 ? (cols[idx.telefone] || "") : "",
                     tipo: idx.tipo >= 0 ? (cols[idx.tipo] || "proprietario") : "proprietario",
+                    cpf: idx.cpf >= 0 ? (cols[idx.cpf] || "") : "",
+                    nascimento: idx.nascimento >= 0 ? (cols[idx.nascimento] || "") : "",
+                    veiculos: idx.veiculos >= 0 ? (cols[idx.veiculos] || "0") : "0",
                   };
                 }).filter(r => r.unidade && r.nome);
                 if (rows.length === 0) { setObCsvError("Nenhuma linha válida encontrada no CSV."); return; }
@@ -1282,6 +1286,30 @@ export default function App() {
                               <input className="form-control" value={obMorForm.telefone} onChange={e => setObMorForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(48) 99999-0000" />
                             </div>
                           </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                            <div className="form-group">
+                              <label className="form-label">CPF</label>
+                              <input className="form-control" value={obMorForm.cpf} onChange={e => setObMorForm(f => ({ ...f, cpf: e.target.value }))} placeholder="000.000.000-00" maxLength={14} />
+                            </div>
+                            <div className="form-group">
+                              <label className="form-label">Data de nascimento</label>
+                              <input className="form-control" type="date" value={obMorForm.nascimento} onChange={e => setObMorForm(f => ({ ...f, nascimento: e.target.value }))} />
+                            </div>
+                          </div>
+                          <div className="form-group">
+                            <label className="form-label">Nº de veículos</label>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              {["0","1","2","3","4+"].map(v => (
+                                <button key={v} type="button" onClick={() => setObMorForm(f => ({ ...f, veiculos: v }))}
+                                  style={{ flex: 1, padding: "6px 4px", borderRadius: 8, border: "1px solid", fontSize: 12, cursor: "pointer", fontFamily: "inherit", transition: "all .15s",
+                                    borderColor: obMorForm.veiculos === v ? "#6366F1" : "#334155",
+                                    background: obMorForm.veiculos === v ? "rgba(99,102,241,.18)" : "rgba(30,41,59,.5)",
+                                    color: obMorForm.veiculos === v ? "#A5B4FC" : "#64748B" }}>
+                                  🚗 {v}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                           <button onClick={addMorador} disabled={!obMorForm.unidade || !obMorForm.nome.trim()}
                             style={{ width: "100%", padding: "10px", marginTop: 4, borderRadius: 10, background: "var(--grad)", border: "none", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", opacity: (!obMorForm.unidade || !obMorForm.nome.trim()) ? .4 : 1, transition: "opacity .15s" }}>
                             {filledSet.has(obMorForm.unidade) ? "✏️ Atualizar Morador" : "➕ Adicionar Morador"}
@@ -1294,7 +1322,7 @@ export default function App() {
                                 <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(99,102,241,.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>{m.tipo === "proprietario" ? "🏠" : "🔑"}</div>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: 12, fontWeight: 600, color: "#F1F5F9" }}>{m.nome}</div>
-                                  <div style={{ fontSize: 10, color: "#64748B" }}>{m.unidade} · {m.email || "sem e-mail"}</div>
+                                  <div style={{ fontSize: 10, color: "#64748B" }}>{m.unidade} · {m.cpf || m.email || "sem dados"} {m.veiculos && m.veiculos !== "0" ? `· 🚗×${m.veiculos}` : ""}</div>
                                 </div>
                                 <button onClick={() => setObMorForm({ ...m })} style={{ padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(99,102,241,.3)", background: "rgba(99,102,241,.1)", color: "#A5B4FC", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }}>editar</button>
                                 <button onClick={() => setObMoradores(ms => ms.filter((_, j) => j !== i))} style={{ width: 22, height: 22, borderRadius: 6, border: "1px solid rgba(239,68,68,.2)", background: "rgba(239,68,68,.1)", color: "#F87171", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontFamily: "inherit" }}>×</button>
@@ -1314,7 +1342,7 @@ export default function App() {
                         <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 14, padding: "14px 16px", marginBottom: 12 }}>
                           <div style={{ fontSize: 12, fontWeight: 600, color: "#94A3B8", marginBottom: 8 }}>1️⃣ Baixe o template</div>
                           <div style={{ fontSize: 11, color: "#64748B", marginBottom: 10 }}>
-                            Planilha pré-preenchida com as unidades do seu condomínio (colunas: unidade, nome, email, telefone, tipo).
+                            Planilha pré-preenchida com as unidades do seu condomínio (colunas: unidade, nome, email, telefone, tipo, cpf, nascimento, veiculos).
                           </div>
                           <button onClick={downloadTemplate}
                             style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 16px", borderRadius: 9, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.22)", color: "#A5B4FC", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>
@@ -1352,7 +1380,7 @@ export default function App() {
                               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                                 <thead>
                                   <tr style={{ borderBottom: "1px solid rgba(255,255,255,.06)" }}>
-                                    {["Unidade","Nome","E-mail","Tipo"].map(h => <th key={h} style={{ padding: "4px 8px", textAlign: "left", color: "#64748B", fontWeight: 600 }}>{h}</th>)}
+                                    {["Unidade","Nome","CPF","Nasc.","Veíc.","Tipo"].map(h => <th key={h} style={{ padding: "4px 8px", textAlign: "left", color: "#64748B", fontWeight: 600 }}>{h}</th>)}
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -1360,7 +1388,9 @@ export default function App() {
                                     <tr key={i} style={{ borderBottom: "1px solid rgba(255,255,255,.03)" }}>
                                       <td style={{ padding: "4px 8px", color: "#A5B4FC", fontWeight: 600 }}>{r.unidade}</td>
                                       <td style={{ padding: "4px 8px", color: "#E2E8F0" }}>{r.nome}</td>
-                                      <td style={{ padding: "4px 8px", color: "#64748B" }}>{r.email || "–"}</td>
+                                      <td style={{ padding: "4px 8px", color: "#64748B" }}>{r.cpf || "–"}</td>
+                                      <td style={{ padding: "4px 8px", color: "#64748B" }}>{r.nascimento || "–"}</td>
+                                      <td style={{ padding: "4px 8px", color: "#64748B", textAlign: "center" }}>{r.veiculos || "0"}</td>
                                       <td style={{ padding: "4px 8px" }}>
                                         <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 4, background: r.tipo === "proprietario" ? "rgba(99,102,241,.15)" : "rgba(245,158,11,.12)", color: r.tipo === "proprietario" ? "#A5B4FC" : "#FCD34D" }}>
                                           {r.tipo === "proprietario" ? "🏠 Prop." : "🔑 Inq."}

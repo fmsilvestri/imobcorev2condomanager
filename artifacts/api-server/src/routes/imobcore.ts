@@ -505,7 +505,7 @@ router.patch("/condominios/:id", async (req: Request, res: Response) => {
 router.post("/moradores", async (req: Request, res: Response) => {
   const { condominio_id, moradores } = req.body as {
     condominio_id?: string;
-    moradores: { unidade: string; nome: string; email: string; telefone: string; tipo: string }[];
+    moradores: { unidade: string; nome: string; email: string; telefone: string; tipo: string; cpf?: string; nascimento?: string; veiculos?: string }[];
   };
   if (!moradores || !Array.isArray(moradores) || moradores.length === 0)
     return res.status(400).json({ error: "Lista de moradores vazia" });
@@ -519,6 +519,9 @@ router.post("/moradores", async (req: Request, res: Response) => {
       email: m.email || null,
       telefone: m.telefone || null,
       tipo: m.tipo || "proprietario",
+      cpf: m.cpf || null,
+      nascimento: m.nascimento || null,
+      veiculos: m.veiculos ? parseInt(m.veiculos) || 0 : 0,
     }));
 
     const { error } = await supabase
