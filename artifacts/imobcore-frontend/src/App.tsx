@@ -616,6 +616,17 @@ export default function App() {
   type DiagAutoResult = { score: { total:number; nivel:string; financeiro:number; manutencao:number; iot:number; gestao:number }; dados: { inadimplencia_pct:number; os_atrasadas:number; os_urgentes:number; sensores_offline:number; nivel_medio_agua:number; saldo_positivo:boolean }; insights: { tipo:string; mensagem:string; prioridade:string }[]; ia_analise:string; calculado_em:string };
   const [diagAutoResult, setDiagAutoResult] = useState<DiagAutoResult | null>(null);
   const [diagAutoLoading, setDiagAutoLoading] = useState(false);
+
+  // Ao trocar condomínio: resetar resultado e carregar último salvo do Supabase
+  useEffect(() => {
+    setDiagAutoResult(null);
+    if (!condId) return;
+    fetch(`/api/diagnostico/ultimo?condominio_id=${condId}`)
+      .then(r => r.json())
+      .then(d => { if (d.ok && d.resultado) setDiagAutoResult(d.resultado); })
+      .catch(() => {});
+  }, [condId]);
+
   const calcDiagAuto = async () => {
     if (!condId) { showToast("Selecione um condomínio primeiro", "warn"); return; }
     setDiagAutoLoading(true);

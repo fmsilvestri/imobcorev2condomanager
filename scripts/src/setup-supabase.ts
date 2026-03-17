@@ -89,6 +89,43 @@ async function runMigrations() {
     console.log("✅ Migration 2 (ordens_servico responsavel+numero): OK");
   }
 
+  // ── Migration 3: Diagnóstico Inteligente tables ─────────────────────────
+  const { error: m3Err } = await supabase.from("score_condominio").select("id").limit(1);
+  if (m3Err) {
+    console.log("⚠️  Migration 3 needed (diagnostico tables). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    [
+      `CREATE TABLE IF NOT EXISTS score_condominio (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id uuid NOT NULL,
+  score_total int NOT NULL DEFAULT 0,
+  financeiro int NOT NULL DEFAULT 0,
+  manutencao int NOT NULL DEFAULT 0,
+  operacao int NOT NULL DEFAULT 0,
+  iot int NOT NULL DEFAULT 0,
+  gestao int NOT NULL DEFAULT 0,
+  nivel text,
+  dados jsonb,
+  insights jsonb,
+  ia_analise text,
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE(condominio_id)
+)`,
+      `CREATE TABLE IF NOT EXISTS insights_ia (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id uuid NOT NULL,
+  tipo text,
+  mensagem text,
+  prioridade text,
+  status text DEFAULT 'ativo',
+  created_at timestamptz DEFAULT now()
+)`,
+    ].forEach(m => console.log(m + ";\n"));
+    console.log();
+  } else {
+    console.log("✅ Migration 3 (diagnostico tables): OK");
+  }
+
   console.log();
 }
 

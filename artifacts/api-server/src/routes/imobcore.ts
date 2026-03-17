@@ -972,6 +972,33 @@ router.delete("/usuarios/:id", async (req: Request, res: Response) => {
 
 // ─── DIAGNÓSTICO INTELIGENTE ─────────────────────────────────────────────────
 
+// GET /api/diagnostico/ultimo?condominio_id=X — último resultado salvo para este condomínio
+router.get("/diagnostico/ultimo", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const { data, error } = await supabase
+      .from("score_condominio")
+      .select("*")
+      .eq("condominio_id", condId)
+      .single();
+    if (error || !data) return res.json({ ok: true, resultado: null });
+    res.json({
+      ok: true,
+      resultado: {
+        score: { total: data.score_total, nivel: data.nivel, financeiro: data.financeiro, manutencao: data.manutencao, iot: data.iot, gestao: data.gestao },
+        dados: data.dados || {},
+        insights: data.insights || [],
+        ia_analise: data.ia_analise || "",
+        calculado_em: data.updated_at,
+      }
+    });
+  } catch (err) {
+    console.error("GET /diagnostico/ultimo error:", err);
+    res.status(500).json({ error: "Erro ao carregar diagnóstico" });
+  }
+});
+
 // GET /api/diagnostico/dados?condominio_id=X — métricas reais para o diagnóstico
 router.get("/diagnostico/dados", async (req: Request, res: Response) => {
   const condId = String(req.query.condominio_id || "");
@@ -1122,7 +1149,8 @@ Use linguagem direta e profissional. Use emojis estrategicamente.`;
       console.error("IA call error:", e);
     }
 
-    // ── 5. Salvar no Supabase (best-effort) ──────────────────────────────────
+    // ── 5. Salvar no Supabase ────────────────────────────────────────────────
+    const dadosPayload = { inadimplencia_pct: inadimpPct, os_atrasadas: osAtrasadas, os_urgentes: osUrgentes, sensores_offline: sensoresOffline, nivel_medio_agua: nivelMedio, saldo_positivo: saldoPositivo };
     try {
       await supabase.from("score_condominio").upsert({
         condominio_id: condId,
@@ -1131,12 +1159,19 @@ Use linguagem direta e profissional. Use emojis estrategicamente.`;
         manutencao: scoreOS,
         operacao: scoreOS,
         iot: scoreIoT,
+        gestao: scoreGestao,
+        nivel,
+        dados: dadosPayload,
+        insights,
+        ia_analise: iaAnalise,
         updated_at: new Date().toISOString(),
       }, { onConflict: "condominio_id" });
-    } catch { /* table may not exist yet, that's ok */ }
+    } catch (err) { console.error("score_condominio upsert error:", err); }
 
     try {
       if (insights.length > 0) {
+        // Delete old insights for this condo before inserting new ones
+        await supabase.from("insights_ia").delete().eq("condominio_id", condId);
         await supabase.from("insights_ia").insert(insights.map(i => ({
           condominio_id: condId,
           tipo: i.tipo,
@@ -1145,7 +1180,7 @@ Use linguagem direta e profissional. Use emojis estrategicamente.`;
           status: "ativo",
         })));
       }
-    } catch { /* table may not exist yet, that's ok */ }
+    } catch (err) { console.error("insights_ia insert error:", err); }
 
     res.json({
       ok: true,
