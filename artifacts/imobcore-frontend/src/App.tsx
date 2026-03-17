@@ -612,8 +612,23 @@ export default function App() {
     setEquipForm({ nome:e.nome, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:e.serie, dataInstalacao:e.dataInstalacao, vidaUtilAnos:e.vidaUtilAnos, instaladoHa:e.instaladoHa, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:e.status, proxManutencao:e.proxManutencao, ultimaManutencao:e.ultimaManutencao, custoManutencao:e.custoManutencao, descricao:e.descricao });
     setEquipShowEdit(true);
   };
+  // ── Diagnóstico Automático (IA + dados reais) ───────────────────────────────
+  type DiagAutoResult = { score: { total:number; nivel:string; financeiro:number; manutencao:number; iot:number; gestao:number }; dados: { inadimplencia_pct:number; os_atrasadas:number; os_urgentes:number; sensores_offline:number; nivel_medio_agua:number; saldo_positivo:boolean }; insights: { tipo:string; mensagem:string; prioridade:string }[]; ia_analise:string; calculado_em:string };
+  const [diagAutoResult, setDiagAutoResult] = useState<DiagAutoResult | null>(null);
+  const [diagAutoLoading, setDiagAutoLoading] = useState(false);
+  const calcDiagAuto = async () => {
+    if (!condId) { showToast("Selecione um condomínio primeiro", "warn"); return; }
+    setDiagAutoLoading(true);
+    try {
+      const r = await fetch("/api/diagnostico/calcular", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ condominio_id: condId }) });
+      const d = await r.json();
+      if (!r.ok) { showToast("Erro: " + d.error, "error"); } else { setDiagAutoResult(d); showToast("✅ Diagnóstico calculado!", "success"); }
+    } catch { showToast("Erro ao calcular diagnóstico", "error"); }
+    setDiagAutoLoading(false);
+  };
+
   // ── MISP Checklist state ────────────────────────────────────────────────────
-  const [mispTab, setMispTab] = useState<"checklist"|"resultado"|"historico">("checklist");
+  const [mispTab, setMispTab] = useState<"checklist"|"resultado"|"historico"|"automatico">("automatico");
   const [mispActivePilar, setMispActivePilar] = useState("Financeiro");
   const [mispAnswers, setMispAnswers] = useState<Record<string,"sim"|"parcial"|"nao">>({});
   const [mispAiLoading, setMispAiLoading] = useState(false);
@@ -3969,7 +3984,7 @@ export default function App() {
               { label: "Saldo", val: fmtBRL(t?.saldo || 0), sub: "em caixa", color: (t?.saldo || 0) >= 0 ? "var(--green)" : "var(--red)" },
               { label: "Água Média", val: (nivelMedio || 0) + "%", sub: "nível médio", color: "var(--cyan)" },
               { label: "Alertas MISP", val: String(t?.alertas_ativos || 0), sub: "ativos", color: "var(--amber)" },
-              { label: "Score Cond.", val: "847", sub: "excelente", color: "var(--purple)" },
+              { label: "Score Cond.", val: String(diagAutoResult?.score.total ?? mispCalc(mispAnswers).score), sub: diagAutoResult?.score.nivel ?? (mispCalc(mispAnswers).answered > 0 ? mispCalc(mispAnswers).nivel : "–"), color: (diagAutoResult?.score.total ?? mispCalc(mispAnswers).score) >= 80 ? "#10B981" : (diagAutoResult?.score.total ?? mispCalc(mispAnswers).score) >= 60 ? "#F59E0B" : "#EF4444" },
             ].map(k => (
               <div key={k.label} className="kpi-card">
                 <div className="kpi-label">{k.label}</div>
@@ -5235,10 +5250,126 @@ export default function App() {
                 <div style={{ padding:"16px 24px" }}>
                 {/* Tab bar */}
                 <div style={{ display:"flex", gap:6, marginBottom:20 }}>
-                  {([["checklist","📋 Checklist"],["resultado","📊 Resultado"],["historico","📅 Histórico"]] as [typeof mispTab, string][]).map(([k,l])=>(
+                  {([["automatico","🤖 Automático"],["checklist","📋 Checklist"],["resultado","📊 Resultado"],["historico","📅 Histórico"]] as [typeof mispTab, string][]).map(([k,l])=>(
                     <button key={k} onClick={()=>setMispTab(k)} style={{ background:mispTab===k?"rgba(99,102,241,.25)":"transparent", border:mispTab===k?"1px solid rgba(99,102,241,.4)":"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"7px 16px", color:mispTab===k?"#A5B4FC":"#475569", fontSize:12, fontWeight:mispTab===k?700:400, cursor:"pointer" }}>{l}</button>
                   ))}
                 </div>
+
+                {/* ── TELA 0: DIAGNÓSTICO AUTOMÁTICO ── */}
+                {mispTab === "automatico" && (
+                  <div>
+                    {/* Hero button — calcular */}
+                    <div style={{ textAlign:"center", marginBottom:24 }}>
+                      <div style={{ fontSize:13, color:"#64748B", marginBottom:16, lineHeight:1.6 }}>
+                        O diagnóstico automático analisa dados reais do condomínio (financeiro, ordens de serviço, sensores IoT) e gera um score de saúde com insights do Síndico Virtual IA.
+                      </div>
+                      <button onClick={calcDiagAuto} disabled={diagAutoLoading} style={{ background:"linear-gradient(135deg,#6366F1,#8B5CF6)", border:"none", borderRadius:12, padding:"14px 32px", color:"#fff", fontSize:15, fontWeight:800, cursor:diagAutoLoading?"not-allowed":"pointer", boxShadow:"0 4px 20px rgba(99,102,241,.4)", display:"inline-flex", alignItems:"center", gap:10, opacity:diagAutoLoading?.7:1 }}>
+                        {diagAutoLoading ? <>⏳ Calculando…</> : <>🤖 Calcular Saúde Agora</>}
+                      </button>
+                      {diagAutoResult && <div style={{ fontSize:10, color:"#475569", marginTop:8 }}>Última análise: {new Date(diagAutoResult.calculado_em).toLocaleString("pt-BR")}</div>}
+                    </div>
+
+                    {diagAutoResult && (() => {
+                      const s = diagAutoResult.score;
+                      const d = diagAutoResult.dados;
+                      const scoreColor = s.total >= 80 ? "#10B981" : s.total >= 60 ? "#F59E0B" : s.total >= 40 ? "#F97316" : "#EF4444";
+                      return (
+                        <>
+                          {/* Score gauge + nivel */}
+                          <div style={{ display:"flex", alignItems:"center", gap:24, background:"rgba(255,255,255,.03)", border:`1px solid ${scoreColor}33`, borderRadius:16, padding:"20px 24px", marginBottom:20 }}>
+                            <div style={{ position:"relative", width:90, height:90, flexShrink:0 }}>
+                              <svg width="90" height="90" viewBox="0 0 90 90">
+                                <circle cx="45" cy="45" r="38" fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="9"/>
+                                <circle cx="45" cy="45" r="38" fill="none" stroke={scoreColor} strokeWidth="9"
+                                  strokeDasharray={`${2*Math.PI*38}`}
+                                  strokeDashoffset={`${2*Math.PI*38*(1-s.total/100)}`}
+                                  strokeLinecap="round" transform="rotate(-90 45 45)"
+                                  style={{ transition:"stroke-dashoffset .5s ease" }}/>
+                              </svg>
+                              <div style={{ position:"absolute", inset:0, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center" }}>
+                                <span style={{ fontSize:22, fontWeight:900, color:scoreColor, lineHeight:1 }}>{s.total}</span>
+                                <span style={{ fontSize:9, color:"#64748B" }}>/ 100</span>
+                              </div>
+                            </div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:22, fontWeight:900, color:scoreColor, marginBottom:4 }}>{s.nivel}</div>
+                              <div style={{ fontSize:12, color:"#64748B", marginBottom:12 }}>Score de Saúde do Condomínio</div>
+                              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+                                {[["💰 Financeiro", s.financeiro], ["🔧 Manutenção", s.manutencao], ["💧 IoT", s.iot], ["📊 Gestão", s.gestao]].map(([label, val]) => (
+                                  <div key={String(label)} style={{ textAlign:"center" }}>
+                                    <div style={{ fontSize:16, fontWeight:800, color:Number(val)>=80?"#10B981":Number(val)>=60?"#F59E0B":"#EF4444" }}>{val}</div>
+                                    <div style={{ fontSize:9, color:"#475569" }}>{label}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Métricas reais */}
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:20 }}>
+                            {[
+                              { icon:"💰", label:"Inadimplência", val:`${d.inadimplencia_pct.toFixed(0)}%`, ok:d.inadimplencia_pct<=10, warn:d.inadimplencia_pct<=25 },
+                              { icon:"✅", label:"Saldo", val:d.saldo_positivo?"Positivo":"Negativo", ok:d.saldo_positivo, warn:d.saldo_positivo },
+                              { icon:"🔧", label:"OS Atrasadas", val:String(d.os_atrasadas), ok:d.os_atrasadas===0, warn:d.os_atrasadas<=3 },
+                              { icon:"🚨", label:"OS Urgentes", val:String(d.os_urgentes), ok:d.os_urgentes===0, warn:d.os_urgentes<=2 },
+                              { icon:"📡", label:"Sensores Offline", val:String(d.sensores_offline), ok:d.sensores_offline===0, warn:d.sensores_offline<=1 },
+                              { icon:"💧", label:"Nível Médio Água", val:`${d.nivel_medio_agua}%`, ok:d.nivel_medio_agua>=50, warn:d.nivel_medio_agua>=25 },
+                            ].map(m=>{
+                              const color = m.ok?"#10B981":m.warn?"#F59E0B":"#EF4444";
+                              return (
+                                <div key={m.label} style={{ background:"rgba(255,255,255,.03)", border:`1px solid ${color}22`, borderRadius:10, padding:"12px 14px", display:"flex", alignItems:"center", gap:10 }}>
+                                  <span style={{ fontSize:20 }}>{m.icon}</span>
+                                  <div>
+                                    <div style={{ fontSize:16, fontWeight:800, color }}>{m.val}</div>
+                                    <div style={{ fontSize:10, color:"#475569" }}>{m.label}</div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* Insights */}
+                          {diagAutoResult.insights.length > 0 && (
+                            <div style={{ marginBottom:20 }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:"#94A3B8", marginBottom:10 }}>⚡ Insights Automáticos</div>
+                              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                                {diagAutoResult.insights.map((ins, i) => {
+                                  const c = ins.prioridade==="alta"?"#EF4444":ins.prioridade==="media"?"#F59E0B":"#10B981";
+                                  return (
+                                    <div key={i} style={{ background:`${c}0D`, border:`1px solid ${c}33`, borderRadius:10, padding:"10px 14px", display:"flex", alignItems:"center", gap:10, fontSize:12 }}>
+                                      <span style={{ fontSize:16 }}>{ins.prioridade==="alta"?"🔴":ins.prioridade==="media"?"🟡":"🟢"}</span>
+                                      <div style={{ flex:1 }}>
+                                        <span style={{ fontWeight:700, color:c, textTransform:"uppercase", fontSize:10, marginRight:8 }}>{ins.tipo}</span>
+                                        <span style={{ color:"#CBD5E1" }}>{ins.mensagem}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Análise IA */}
+                          {diagAutoResult.ia_analise && (
+                            <div style={{ background:"rgba(99,102,241,.08)", border:"1px solid rgba(99,102,241,.2)", borderRadius:12, padding:"16px 20px" }}>
+                              <div style={{ fontSize:11, fontWeight:700, color:"#818CF8", marginBottom:10 }}>🤖 Síndico Virtual — Análise de Saúde</div>
+                              <div style={{ fontSize:12, color:"#C7D2FE", lineHeight:1.8, whiteSpace:"pre-wrap" }}>{diagAutoResult.ia_analise}</div>
+                            </div>
+                          )}
+                          {!diagAutoResult.ia_analise && (
+                            <div style={{ textAlign:"center", padding:16, color:"#334155", fontSize:12 }}>Análise IA não disponível neste momento.</div>
+                          )}
+                        </>
+                      );
+                    })()}
+                    {!diagAutoResult && !diagAutoLoading && (
+                      <div style={{ textAlign:"center", padding:40, color:"#334155", fontSize:13 }}>
+                        <div style={{ fontSize:48, marginBottom:12 }}>🏥</div>
+                        Clique em <strong style={{ color:"#A5B4FC" }}>Calcular Saúde Agora</strong> para analisar os dados reais do condomínio com inteligência artificial.
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* ── TELA 1: CHECKLIST ── */}
                 {mispTab === "checklist" && (

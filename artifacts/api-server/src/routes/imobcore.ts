@@ -970,5 +970,196 @@ router.delete("/usuarios/:id", async (req: Request, res: Response) => {
   }
 });
 
+// ─── DIAGNÓSTICO INTELIGENTE ─────────────────────────────────────────────────
+
+// GET /api/diagnostico/dados?condominio_id=X — métricas reais para o diagnóstico
+router.get("/diagnostico/dados", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const [osRes, senRes, recRes, despRes] = await Promise.all([
+      supabase.from("ordens_servico").select("id,status,prioridade,created_at").eq("condominio_id", condId),
+      supabase.from("sensores").select("id,nome,nivel_atual,status").eq("condominio_id", condId),
+      supabase.from("financeiro_receitas").select("id,valor,status").eq("condominio_id", condId),
+      supabase.from("financeiro_despesas").select("id,valor,status").eq("condominio_id", condId),
+    ]);
+    const os = osRes.data || [];
+    const sensores = senRes.data || [];
+    const receitas = recRes.data || [];
+    const despesas = despRes.data || [];
+
+    const os_total = os.length;
+    const os_abertas = os.filter(o => o.status === "aberta").length;
+    const os_atrasadas = os.filter(o => {
+      if (o.status === "fechada") return false;
+      const days = (Date.now() - new Date(o.created_at).getTime()) / 86400000;
+      return days > 7;
+    }).length;
+    const sensores_total = sensores.length;
+    const sensores_offline = sensores.filter(s => s.nivel_atual < 10 || s.status === "offline").length;
+    const nivel_medio = sensores_total > 0 ? Math.round(sensores.reduce((a, s) => a + (s.nivel_atual || 0), 0) / sensores_total) : 0;
+    const total_receitas = receitas.reduce((a, r) => a + (Number(r.valor) || 0), 0);
+    const total_despesas = despesas.reduce((a, d) => a + (Number(d.valor) || 0), 0);
+    const inadimplentes = receitas.filter(r => r.status === "pendente" || r.status === "atrasado").length;
+    const inadimplencia_pct = receitas.length > 0 ? Math.round((inadimplentes / receitas.length) * 100) : 0;
+    const saldo = total_receitas - total_despesas;
+
+    res.json({
+      os: { total: os_total, abertas: os_abertas, atrasadas: os_atrasadas },
+      sensores: { total: sensores_total, offline: sensores_offline, nivel_medio },
+      financeiro: { total_receitas, total_despesas, saldo, inadimplencia_pct },
+    });
+  } catch (err) {
+    console.error("GET /diagnostico/dados error:", err);
+    res.status(500).json({ error: "Erro ao calcular dados" });
+  }
+});
+
+// POST /api/diagnostico/calcular — calcula score real + gera insights IA
+router.post("/diagnostico/calcular", async (req: Request, res: Response) => {
+  const { condominio_id: condId } = req.body as { condominio_id: string };
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+
+  try {
+    // ── 1. Coletar dados reais ───────────────────────────────────────────────
+    const [osRes, senRes, recRes, despRes, condRes] = await Promise.all([
+      supabase.from("ordens_servico").select("id,status,prioridade,created_at").eq("condominio_id", condId),
+      supabase.from("sensores").select("id,nome,nivel_atual,status").eq("condominio_id", condId),
+      supabase.from("financeiro_receitas").select("id,valor,status").eq("condominio_id", condId),
+      supabase.from("financeiro_despesas").select("id,valor,status").eq("condominio_id", condId),
+      supabase.from("condominios").select("nome,sindico_nome,unidades").eq("id", condId).single(),
+    ]);
+
+    const os = osRes.data || [];
+    const sensores = senRes.data || [];
+    const receitas = recRes.data || [];
+    const despesas = despRes.data || [];
+    const condo = condRes.data;
+
+    // ── 2. Calcular scores por categoria (0-100) ─────────────────────────────
+    // Financeiro
+    const inadimplentes = receitas.filter(r => r.status === "pendente" || r.status === "atrasado").length;
+    const inadimpPct = receitas.length > 0 ? (inadimplentes / receitas.length) * 100 : 0;
+    const totalRec = receitas.reduce((a, r) => a + (Number(r.valor) || 0), 0);
+    const totalDesp = despesas.reduce((a, d) => a + (Number(d.valor) || 0), 0);
+    const saldoPositivo = totalRec >= totalDesp;
+    let scoreFinanceiro = 100;
+    if (inadimpPct > 30) scoreFinanceiro -= 40;
+    else if (inadimpPct > 20) scoreFinanceiro -= 25;
+    else if (inadimpPct > 10) scoreFinanceiro -= 15;
+    if (!saldoPositivo) scoreFinanceiro -= 25;
+    scoreFinanceiro = Math.max(0, scoreFinanceiro);
+
+    // Manutenção/OS
+    const osAbertas = os.filter(o => o.status === "aberta").length;
+    const osAtrasadas = os.filter(o => {
+      if (o.status === "fechada") return false;
+      return (Date.now() - new Date(o.created_at).getTime()) / 86400000 > 7;
+    }).length;
+    const osUrgentes = os.filter(o => o.prioridade === "urgente" && o.status !== "fechada").length;
+    let scoreOS = 100;
+    if (osAtrasadas > 5) scoreOS -= 35;
+    else if (osAtrasadas > 2) scoreOS -= 20;
+    else if (osAtrasadas > 0) scoreOS -= 10;
+    if (osUrgentes > 3) scoreOS -= 25;
+    else if (osUrgentes > 0) scoreOS -= 10;
+    if (osAbertas > 10) scoreOS -= 15;
+    scoreOS = Math.max(0, scoreOS);
+
+    // IoT/Sensores
+    const sensoresTotal = sensores.length;
+    const sensoresOffline = sensores.filter(s => s.nivel_atual < 10 || s.status === "offline").length;
+    const nivelMedio = sensoresTotal > 0 ? Math.round(sensores.reduce((a, s) => a + (s.nivel_atual || 0), 0) / sensoresTotal) : 100;
+    let scoreIoT = sensoresTotal === 0 ? 75 : 100;
+    if (sensoresOffline > 0) scoreIoT -= Math.min(40, sensoresOffline * 15);
+    if (nivelMedio < 20) scoreIoT -= 30;
+    else if (nivelMedio < 40) scoreIoT -= 15;
+    scoreIoT = Math.max(0, scoreIoT);
+
+    // Gestão geral (baseado nas outras métricas)
+    const scoreGestao = Math.round((scoreFinanceiro * 0.4 + scoreOS * 0.35 + scoreIoT * 0.25));
+
+    // Score total ponderado
+    const scoreTotal = Math.round(scoreFinanceiro * 0.35 + scoreOS * 0.30 + scoreIoT * 0.20 + scoreGestao * 0.15);
+    const nivel = scoreTotal >= 80 ? "Excelente" : scoreTotal >= 60 ? "Bom" : scoreTotal >= 40 ? "Atenção" : "Crítico";
+
+    // ── 3. Gerar insights baseados nos dados ─────────────────────────────────
+    const insights: { tipo: string; mensagem: string; prioridade: string }[] = [];
+    if (inadimpPct > 10) insights.push({ tipo: "financeiro", mensagem: `Inadimplência elevada: ${inadimpPct.toFixed(0)}% das taxas pendentes`, prioridade: inadimpPct > 25 ? "alta" : "media" });
+    if (!saldoPositivo) insights.push({ tipo: "financeiro", mensagem: "Saldo negativo: despesas superam receitas", prioridade: "alta" });
+    if (osAtrasadas > 0) insights.push({ tipo: "manutencao", mensagem: `${osAtrasadas} OS(s) com mais de 7 dias sem atualização`, prioridade: osAtrasadas > 3 ? "alta" : "media" });
+    if (osUrgentes > 0) insights.push({ tipo: "operacao", mensagem: `${osUrgentes} OS(s) urgentes em aberto`, prioridade: "alta" });
+    if (sensoresOffline > 0) insights.push({ tipo: "iot", mensagem: `${sensoresOffline} sensor(es) offline ou com nível crítico`, prioridade: "media" });
+    if (nivelMedio < 30) insights.push({ tipo: "iot", mensagem: `Nível médio dos reservatórios crítico: ${nivelMedio}%`, prioridade: "alta" });
+    if (scoreTotal >= 80) insights.push({ tipo: "geral", mensagem: "Condomínio em excelente condição de saúde", prioridade: "baixa" });
+
+    // ── 4. Chamar Síndico Virtual IA ─────────────────────────────────────────
+    let iaAnalise = "";
+    try {
+      const prompt = `Você é o Síndico Virtual do ImobCore. Analise o diagnóstico de saúde do condomínio ${condo?.nome || ""} e gere uma análise concisa em 3 seções:
+
+1. **Diagnóstico Resumido** (2-3 linhas)
+2. **Principais Problemas** (lista com bullet points)
+3. **Ações Recomendadas** (lista priorizada)
+
+Score Geral: ${scoreTotal}/100 (${nivel})
+Financeiro: ${scoreFinanceiro}/100 | Inadimplência: ${inadimpPct.toFixed(0)}% | Saldo: ${saldoPositivo ? "positivo" : "negativo"}
+OS/Manutenção: ${scoreOS}/100 | OS atrasadas: ${osAtrasadas} | OS urgentes: ${osUrgentes}
+IoT/Sensores: ${scoreIoT}/100 | Sensores offline: ${sensoresOffline} | Nível médio água: ${nivelMedio}%
+
+Use linguagem direta e profissional. Use emojis estrategicamente.`;
+
+      const aiRes = await fetch(`http://localhost:${process.env.PORT || 8080}/api/sindico/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: prompt, history: [], condominio_id: condId }),
+      });
+      if (aiRes.ok) {
+        const aiData = await aiRes.json() as { reply?: string };
+        iaAnalise = aiData.reply || "";
+      }
+    } catch (e) {
+      console.error("IA call error:", e);
+    }
+
+    // ── 5. Salvar no Supabase (best-effort) ──────────────────────────────────
+    try {
+      await supabase.from("score_condominio").upsert({
+        condominio_id: condId,
+        score_total: scoreTotal,
+        financeiro: scoreFinanceiro,
+        manutencao: scoreOS,
+        operacao: scoreOS,
+        iot: scoreIoT,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "condominio_id" });
+    } catch { /* table may not exist yet, that's ok */ }
+
+    try {
+      if (insights.length > 0) {
+        await supabase.from("insights_ia").insert(insights.map(i => ({
+          condominio_id: condId,
+          tipo: i.tipo,
+          mensagem: i.mensagem,
+          prioridade: i.prioridade,
+          status: "ativo",
+        })));
+      }
+    } catch { /* table may not exist yet, that's ok */ }
+
+    res.json({
+      ok: true,
+      score: { total: scoreTotal, nivel, financeiro: scoreFinanceiro, manutencao: scoreOS, iot: scoreIoT, gestao: scoreGestao },
+      dados: { inadimplencia_pct: inadimpPct, os_atrasadas: osAtrasadas, os_urgentes: osUrgentes, sensores_offline: sensoresOffline, nivel_medio_agua: nivelMedio, saldo_positivo: saldoPositivo },
+      insights,
+      ia_analise: iaAnalise,
+      calculado_em: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("POST /diagnostico/calcular error:", err);
+    res.status(500).json({ error: "Erro ao calcular diagnóstico" });
+  }
+});
+
 export default router;
 export { broadcast };
