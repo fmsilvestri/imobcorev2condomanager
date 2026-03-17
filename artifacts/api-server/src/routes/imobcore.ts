@@ -633,12 +633,18 @@ router.post("/moradores", async (req: Request, res: Response) => {
 // POST /api/onboarding - Configurar condomínio do zero
 router.post("/onboarding", async (req: Request, res: Response) => {
   const {
-    nome, cidade, unidades, moradores, sindico_nome,
+    condominio_id: existingId,
+    nome, cidade, unidades, moradores, sindico_nome, sindico_email, sindico_tel,
+    taxa_mensal, vencimento_dia, bairro, ia_persona, ia_auto_com,
     sensores: sensorList,
     saldo_inicial,
     reset,
   } = req.body as {
-    nome: string; cidade?: string; unidades?: number; moradores?: number; sindico_nome?: string;
+    condominio_id?: string;
+    nome: string; cidade?: string; unidades?: number; moradores?: number;
+    sindico_nome?: string; sindico_email?: string; sindico_tel?: string;
+    taxa_mensal?: number; vencimento_dia?: number; bairro?: string;
+    ia_persona?: string; ia_auto_com?: boolean;
     sensores?: { sensor_id: string; nome: string; local: string; capacidade_litros: number; nivel_atual: number }[];
     saldo_inicial?: number;
     reset?: boolean;
@@ -647,65 +653,141 @@ router.post("/onboarding", async (req: Request, res: Response) => {
   if (!nome?.trim()) return res.status(400).json({ error: "Nome do condomínio é obrigatório" });
 
   try {
-    // Optionally wipe existing data for reconfiguration
+    // Optionally wipe existing data for reconfiguration (scoped to the condo if possible)
     if (reset) {
-      await Promise.all([
-        supabase.from("sindico_historico").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
-        supabase.from("comunicados").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
-        supabase.from("financeiro_despesas").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
-        supabase.from("financeiro_receitas").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
-        supabase.from("alertas_publicos").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
-        supabase.from("sensores").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
-        supabase.from("ordens_servico").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
-        supabase.from("condominios").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
-      ]);
+      if (existingId) {
+        await Promise.all([
+          supabase.from("sindico_historico").delete().eq("condominio_id", existingId),
+          supabase.from("comunicados").delete().eq("condominio_id", existingId),
+          supabase.from("financeiro_despesas").delete().eq("condominio_id", existingId),
+          supabase.from("financeiro_receitas").delete().eq("condominio_id", existingId),
+          supabase.from("sensores").delete().eq("condominio_id", existingId),
+          supabase.from("ordens_servico").delete().eq("condominio_id", existingId),
+        ]);
+      } else {
+        await Promise.all([
+          supabase.from("sindico_historico").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+          supabase.from("comunicados").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+          supabase.from("financeiro_despesas").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+          supabase.from("financeiro_receitas").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+          supabase.from("alertas_publicos").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+          supabase.from("sensores").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+          supabase.from("ordens_servico").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+          supabase.from("condominios").delete().neq("id", "00000000-0000-0000-0000-000000000000"),
+        ]);
+      }
     }
 
-    // Create condomínio
-    const { data: cond, error: condErr } = await supabase
-      .from("condominios")
-      .insert({ nome: nome.trim(), cidade: cidade || "", unidades: Number(unidades) || 0, moradores: Number(moradores) || 0, sindico_nome: sindico_nome || "" })
-      .select().single();
-    if (condErr) return res.status(500).json({ error: condErr.message });
+    let condId: string;
+    let condData: Record<string, unknown>;
 
-    const condId = cond.id;
+    // Extra fields to persist (best-effort — columns may not exist yet)
+    const extraFields: Record<string, unknown> = {};
+    if (taxa_mensal !== undefined) extraFields["taxa_mensal"] = Number(taxa_mensal);
+    if (vencimento_dia !== undefined) extraFields["vencimento_dia"] = Number(vencimento_dia);
+    if (bairro) extraFields["bairro"] = bairro;
+    if (ia_persona) extraFields["ia_persona"] = ia_persona;
+    if (ia_auto_com !== undefined) extraFields["ia_auto_com"] = ia_auto_com;
+    if (sindico_email) extraFields["sindico_email"] = sindico_email;
+    if (sindico_tel) extraFields["sindico_tel"] = sindico_tel;
 
-    // Create sensors if provided
+    if (existingId && !reset) {
+      // Condo already created in wizard step 1 — just update extra fields
+      const updatePayload: Record<string, unknown> = {
+        nome: nome.trim(), cidade: cidade || "",
+        unidades: Number(unidades) || 0, moradores: Number(moradores) || 0,
+        sindico_nome: sindico_nome || "",
+        ...extraFields,
+      };
+      const { data: updated, error: updErr } = await supabase
+        .from("condominios").update(updatePayload).eq("id", existingId).select().single();
+      if (updErr) {
+        // Fallback: update only safe base columns if schema columns missing
+        const { data: fallback, error: fbErr } = await supabase
+          .from("condominios")
+          .update({ nome: nome.trim(), cidade: cidade || "", unidades: Number(unidades) || 0, moradores: Number(moradores) || 0, sindico_nome: sindico_nome || "" })
+          .eq("id", existingId).select().single();
+        if (fbErr) return res.status(500).json({ error: fbErr.message });
+        condData = fallback as Record<string, unknown>;
+      } else {
+        condData = updated as Record<string, unknown>;
+      }
+      condId = existingId;
+    } else {
+      // Create brand new condomínio
+      const insertPayload: Record<string, unknown> = {
+        nome: nome.trim(), cidade: cidade || "",
+        unidades: Number(unidades) || 0, moradores: Number(moradores) || 0,
+        sindico_nome: sindico_nome || "",
+        ...extraFields,
+      };
+      const { data: cond, error: condErr } = await supabase
+        .from("condominios").insert(insertPayload).select().single();
+      if (condErr) {
+        // Fallback without extra columns
+        const { data: cond2, error: err2 } = await supabase
+          .from("condominios")
+          .insert({ nome: nome.trim(), cidade: cidade || "", unidades: Number(unidades) || 0, moradores: Number(moradores) || 0, sindico_nome: sindico_nome || "" })
+          .select().single();
+        if (err2) return res.status(500).json({ error: err2.message });
+        condData = cond2 as Record<string, unknown>;
+      } else {
+        condData = cond as Record<string, unknown>;
+      }
+      condId = condData["id"] as string;
+    }
+
+    // Create sensors if provided and not yet saved by wizard steps
     if (sensorList && sensorList.length > 0) {
-      const rows = sensorList.map((s, i) => ({
-        condominio_id: condId,
-        sensor_id: s.sensor_id || `sensor_${i + 1}`,
-        nome: s.nome || `Sensor ${i + 1}`,
-        local: s.local || "",
-        capacidade_litros: Number(s.capacidade_litros) || 5000,
-        nivel_atual: Math.min(100, Math.max(0, Number(s.nivel_atual) || 80)),
-        volume_litros: Math.round((Number(s.capacidade_litros) || 5000) * (Number(s.nivel_atual) || 80) / 100),
-      }));
-      await supabase.from("sensores").insert(rows);
+      // Only insert sensors that don't already exist for this condo
+      const { data: existingSensors } = await supabase.from("sensores").select("sensor_id").eq("condominio_id", condId);
+      const existingIds = new Set((existingSensors || []).map((s: { sensor_id: string }) => s.sensor_id));
+      const newSensors = sensorList.filter(s => !existingIds.has(s.sensor_id));
+      if (newSensors.length > 0) {
+        const rows = newSensors.map((s, i) => ({
+          condominio_id: condId,
+          sensor_id: s.sensor_id || `sensor_${i + 1}`,
+          nome: s.nome || `Sensor ${i + 1}`,
+          local: s.local || "",
+          capacidade_litros: Number(s.capacidade_litros) || 5000,
+          nivel_atual: Math.min(100, Math.max(0, Number(s.nivel_atual) || 80)),
+          volume_litros: Math.round((Number(s.capacidade_litros) || 5000) * (Number(s.nivel_atual) || 80) / 100),
+        }));
+        await supabase.from("sensores").insert(rows);
+      }
     }
 
-    // Create initial financial entry if saldo_inicial provided
+    // Create initial financial entry if saldo_inicial provided (only if none exists yet)
     if (saldo_inicial && Number(saldo_inicial) > 0) {
-      await supabase.from("financeiro_receitas").insert({
+      const { count } = await supabase.from("financeiro_receitas")
+        .select("id", { count: "exact", head: true })
+        .eq("condominio_id", condId).eq("descricao", "Saldo inicial");
+      if ((count ?? 0) === 0) {
+        await supabase.from("financeiro_receitas").insert({
+          condominio_id: condId,
+          descricao: "Saldo inicial",
+          valor: Number(saldo_inicial),
+          categoria: "taxa_condominio",
+          status: "pago",
+        });
+      }
+    }
+
+    // Create welcome comunicado (only if none exists yet for this condo)
+    const { count: comCount } = await supabase.from("comunicados")
+      .select("id", { count: "exact", head: true }).eq("condominio_id", condId);
+    if ((comCount ?? 0) === 0) {
+      await supabase.from("comunicados").insert({
         condominio_id: condId,
-        descricao: "Saldo inicial",
-        valor: Number(saldo_inicial),
-        categoria: "taxa_condominio",
-        status: "pago",
+        titulo: `Bem-vindo ao ${nome}!`,
+        corpo: `O sistema ImobCore foi ativado com sucesso para o ${nome}. Síndico: ${sindico_nome || "não informado"}.`,
+        gerado_por_ia: false,
       });
     }
 
-    // Create welcome comunicado
-    await supabase.from("comunicados").insert({
-      condominio_id: condId,
-      titulo: `Bem-vindo ao ${nome}!`,
-      corpo: `O sistema ImobCore foi ativado com sucesso para o ${nome}. Síndico: ${sindico_nome || "não informado"}.`,
-      gerado_por_ia: false,
-    });
-
     broadcast("onboarding_completo", { condominio_id: condId, nome });
 
-    res.json({ ok: true, condominio: cond });
+    res.json({ ok: true, condominio: condData });
   } catch (err) {
     console.error("onboarding error:", err);
     res.status(500).json({ error: "Erro no onboarding" });

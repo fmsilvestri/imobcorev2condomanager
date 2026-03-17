@@ -1,0 +1,311 @@
+Atualize o sistema existente **ImobCore OS (SaaS de gestão de condomínios)** adicionando um novo módulo completo chamado:
+
+🧠 **Diagnóstico Inteligente + Score de Saúde + Insights IA**
+
+Este módulo deve ser totalmente integrado com:
+
+* Dashboard atual
+* Módulos existentes (Financeiro, OS, IoT, etc.)
+* Síndico Virtual (IA)
+* Supabase
+
+────────────────────────
+
+OBJETIVO
+
+Criar um sistema que:
+
+* Analisa o condomínio via checklist inteligente
+* Calcula um Score de Saúde (0 a 100)
+* Gera insights automáticos
+* Envia análise para o Síndico Virtual
+* Exibe tudo no dashboard em tempo real
+
+────────────────────────
+
+1️⃣ BANCO DE DADOS (SUPABASE)
+
+Criar as seguintes tabelas:
+
+Tabela: diagnostico
+
+* id (uuid)
+* condominio_id (uuid)
+* categoria (text)
+* pergunta (text)
+* resposta (boolean)
+* peso (int)
+* created_at (timestamp)
+
+Tabela: score_condominio
+
+* id (uuid)
+* condominio_id (uuid)
+* score_total (int)
+* financeiro (int)
+* manutencao (int)
+* operacao (int)
+* iot (int)
+* updated_at (timestamp)
+
+Tabela: insights_ia
+
+* id (uuid)
+* condominio_id (uuid)
+* tipo (text)
+* mensagem (text)
+* prioridade (text)
+* status (text)
+* created_at (timestamp)
+
+────────────────────────
+
+2️⃣ BACKEND — DIAGNOSTICO ENGINE
+
+Criar arquivo:
+
+/engine/diagnosticoEngine.js
+
+Função:
+
+export function obterPerguntas(condominio) {
+
+return [
+{
+categoria: "financeiro",
+pergunta: "A inadimplência está abaixo de 10%?",
+peso: 10
+},
+{
+categoria: "manutencao",
+pergunta: "Existe manutenção preventiva ativa?",
+peso: 10
+},
+{
+categoria: "operacao",
+pergunta: "Existem OSs atrasadas?",
+peso: 8
+},
+{
+categoria: "iot",
+pergunta: "Sensores estão online?",
+peso: 6
+}
+]
+
+}
+
+────────────────────────
+
+3️⃣ BACKEND — SCORE ENGINE
+
+Criar:
+
+/engine/scoreEngine.js
+
+export function calcularScore(respostas) {
+
+let total = 0
+let max = 0
+
+const categorias = {
+financeiro: 0,
+manutencao: 0,
+operacao: 0,
+iot: 0
+}
+
+respostas.forEach(r => {
+max += r.peso
+
+```
+if (r.resposta === true) {
+  total += r.peso
+  categorias[r.categoria] += r.peso
+}
+```
+
+})
+
+const scoreTotal = Math.round((total / max) * 100)
+
+return {
+scoreTotal,
+categorias
+}
+
+}
+
+────────────────────────
+
+4️⃣ BACKEND — INSIGHTS ENGINE
+
+Criar:
+
+/engine/insightsEngine.js
+
+export function gerarInsights(score) {
+
+const insights = []
+
+if (score.financeiro < 60) {
+insights.push({
+tipo: "financeiro",
+mensagem: "Inadimplência elevada detectada",
+prioridade: "alta"
+})
+}
+
+if (score.manutencao < 60) {
+insights.push({
+tipo: "manutencao",
+mensagem: "Falta de manutenção preventiva",
+prioridade: "alta"
+})
+}
+
+if (score.operacao < 60) {
+insights.push({
+tipo: "operacao",
+mensagem: "Existem ordens de serviço atrasadas",
+prioridade: "media"
+})
+}
+
+return insights
+
+}
+
+────────────────────────
+
+5️⃣ API ENDPOINTS
+
+Criar rotas:
+
+GET /api/diagnostico/perguntas
+POST /api/diagnostico/responder
+POST /api/diagnostico/calcular
+
+Fluxo:
+
+1. retorna perguntas
+2. salva respostas
+3. calcula score
+4. gera insights
+5. salva tudo no Supabase
+
+────────────────────────
+
+6️⃣ INTEGRAÇÃO COM SÍNDICO VIRTUAL
+
+Após calcular o score:
+
+Enviar automaticamente para IA:
+
+POST /api/sindico/chat
+
+Payload:
+
+{
+"tipo": "diagnostico",
+"score": 62,
+"dados": {
+"financeiro": "baixo",
+"manutencao": "critico",
+"operacao": "medio"
+}
+}
+
+Prompt interno da IA:
+
+"Você é o Síndico Virtual do ImobCore.
+Analise o score do condomínio e gere:
+
+1. Diagnóstico resumido
+2. Principais problemas
+3. Ações recomendadas"
+
+Salvar resposta da IA em insights_ia
+
+────────────────────────
+
+7️⃣ DASHBOARD (INTEGRAÇÃO)
+
+Atualizar dashboard existente:
+
+Adicionar card:
+
+📊 Saúde do Condomínio
+
+* Score (0 a 100)
+* Status (Excelente / Bom / Atenção / Crítico)
+* Cor dinâmica
+
+Regras:
+
+> 80 → verde
+> 60 → amarelo
+> < 60 → vermelho
+
+────────────────────────
+
+8️⃣ TELA DIAGNÓSTICO
+
+Menu lateral já existente: "Diagnóstico"
+
+Criar tela com:
+
+* checklist inteligente
+* progresso (%)
+* botão "Calcular Saúde"
+* exibir resultado
+* exibir insights
+
+────────────────────────
+
+9️⃣ APP MOBILE
+
+Adicionar card:
+
+📊 Saúde do Condomínio
+
+Tela:
+
+* score
+* gráfico simples
+* recomendações IA
+
+────────────────────────
+
+🔟 AUTOMAÇÃO
+
+Criar rotina automática:
+
+* roda 1x por dia
+* recalcula score
+* atualiza insights
+* envia para IA
+
+────────────────────────
+
+11️⃣ INTEGRAÇÃO COM MÓDULOS
+
+O diagnóstico deve usar dados reais:
+
+Financeiro → inadimplência
+OS → atrasos
+IoT → sensores offline
+
+────────────────────────
+
+12️⃣ OBJETIVO FINAL
+
+Criar um sistema que:
+
+* mede a saúde do condomínio automaticamente
+* identifica problemas
+* sugere melhorias
+* integra com IA
+* melhora continuamente
+
+Transformando o ImobCore em um sistema inteligente e autônomo.
