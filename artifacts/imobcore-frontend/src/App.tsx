@@ -6576,7 +6576,7 @@ export default function App() {
               <div className={`nav-item ${!sindicoScreen ? "active" : ""}`} onClick={() => setSindicoScreen(null)}><span>🏠</span>Início</div>
               <div className={`nav-item ${sindicoScreen === "misp" ? "active" : ""}`} onClick={() => setSindicoScreen("misp")}><span>🚨</span>Alertas</div>
               <button className="nav-fab" onClick={() => setSindicoScreen("sindico")}>🤖</button>
-              <div className={`nav-item ${sindicoScreen === "planejamento" ? "active" : ""}`} onClick={() => setSindicoScreen("planejamento")}><span>📋</span>OSs</div>
+              <div className={`nav-item ${sindicoScreen === "planejamento" ? "active" : ""}`} onClick={() => setSindicoScreen("planejamento")}><span>📋</span>Usuário</div>
               <div className={`nav-item ${sindicoScreen === "crm" ? "active" : ""}`} onClick={() => setSindicoScreen("crm")}><span>👥</span>CRM</div>
             </div>
           </div>
