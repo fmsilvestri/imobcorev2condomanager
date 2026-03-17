@@ -231,7 +231,7 @@ select.form-control option{background:var(--c-bg2)}
 .phone-notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:30px;background:#000;border-radius:0 0 20px 20px;z-index:100}
 .phone-status{height:44px;display:flex;align-items:center;padding:0 24px;justify-content:space-between;font-size:12px;font-weight:600;padding-top:6px;position:relative;z-index:10}
 .phone-content{flex:1;overflow-y:auto;overflow-x:hidden}
-.phone-bottom-nav{height:64px;background:rgba(13,18,32,.98);border-top:1px solid var(--card-border);display:flex;align-items:center;justify-content:space-around;padding:0 8px;flex-shrink:0}
+.phone-bottom-nav{height:64px;background:rgba(13,18,32,.98);border-top:1px solid var(--card-border);display:flex;align-items:center;justify-content:space-around;padding:0 8px;flex-shrink:0;position:relative;z-index:300}
 .nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:#475569;cursor:pointer;flex:1;padding:8px 4px;transition:color .15s}
 .nav-item.active{color:var(--indigo)}
 .nav-fab{width:54px;height:54px;border-radius:50%;background:var(--grad);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 20px rgba(99,102,241,.5);margin-top:-18px;flex-shrink:0;transition:transform .15s}
@@ -265,7 +265,7 @@ select.form-control option{background:var(--c-bg2)}
 .module-card-title{font-size:12px;font-weight:600;color:#CBD5E1;margin-bottom:2px}
 .module-card-sub{font-size:10px;color:#475569}
 .module-card-val{font-size:18px;font-weight:700;margin-top:4px}
-.ph-subscreen{position:absolute;inset:0;background:#0D1220;z-index:200;display:flex;flex-direction:column;border-radius:48px;overflow:hidden;animation:slideLeft .2s ease}
+.ph-subscreen{position:absolute;top:0;left:0;right:0;bottom:64px;background:#0D1220;z-index:200;display:flex;flex-direction:column;overflow:hidden;animation:slideLeft .2s ease}
 .ph-subscreen.hidden{display:none}
 .ph-sub-header{padding:16px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--card-border);flex-shrink:0}
 .back-btn{width:32px;height:32px;border-radius:10px;background:rgba(255,255,255,.06);border:none;color:#E2E8F0;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s}
@@ -6255,16 +6255,16 @@ export default function App() {
               </div>
             </div>
 
-            <div className="phone-bottom-nav">
-              <div className="nav-item active"><span>🏠</span>Início</div>
-              <div className="nav-item" onClick={() => setSindicoScreen("misp")}><span>🚨</span>Alertas</div>
-              <button className="nav-fab" onClick={() => setSindicoScreen("sindico")}>🤖</button>
-              <div className="nav-item" onClick={() => setSindicoScreen("planejamento")}><span>📋</span>OSs</div>
-              <div className="nav-item" onClick={() => setSindicoScreen("crm")}><span>👥</span>CRM</div>
-            </div>
-
             {/* Sub-screen overlay */}
             {renderSindicoScreen()}
+
+            <div className="phone-bottom-nav">
+              <div className={`nav-item ${!sindicoScreen ? "active" : ""}`} onClick={() => setSindicoScreen(null)}><span>🏠</span>Início</div>
+              <div className={`nav-item ${sindicoScreen === "misp" ? "active" : ""}`} onClick={() => setSindicoScreen("misp")}><span>🚨</span>Alertas</div>
+              <button className="nav-fab" onClick={() => setSindicoScreen("sindico")}>🤖</button>
+              <div className={`nav-item ${sindicoScreen === "planejamento" ? "active" : ""}`} onClick={() => setSindicoScreen("planejamento")}><span>📋</span>OSs</div>
+              <div className={`nav-item ${sindicoScreen === "crm" ? "active" : ""}`} onClick={() => setSindicoScreen("crm")}><span>👥</span>CRM</div>
+            </div>
           </div>
         </div>
       </div>
@@ -6353,16 +6353,16 @@ export default function App() {
               </div>
             </div>
 
-            <div className="phone-bottom-nav morador-nav">
-              <div className="nav-item active"><span>🏠</span>Início</div>
-              <div className="nav-item" onClick={() => setMoradorScreen("misp")}><span>🚨</span>Alertas</div>
-              <button className="nav-fab" onClick={() => setMoradorScreen("visitante")}>➕</button>
-              <div className="nav-item" onClick={() => setMoradorScreen("comunicados")}><span>💬</span>Avisos</div>
-              <div className="nav-item"><span>👤</span>Perfil</div>
-            </div>
-
             {/* Sub-screen overlay */}
             {renderMoradorScreen()}
+
+            <div className="phone-bottom-nav morador-nav">
+              <div className={`nav-item ${!moradorScreen ? "active" : ""}`} onClick={() => setMoradorScreen(null)}><span>🏠</span>Início</div>
+              <div className={`nav-item ${moradorScreen === "misp" ? "active" : ""}`} onClick={() => setMoradorScreen("misp")}><span>🚨</span>Alertas</div>
+              <button className="nav-fab" onClick={() => setMoradorScreen("visitante")}>➕</button>
+              <div className={`nav-item ${moradorScreen === "comunicados" ? "active" : ""}`} onClick={() => setMoradorScreen("comunicados")}><span>💬</span>Avisos</div>
+              <div className={`nav-item ${moradorScreen === "boletos" ? "active" : ""}`} onClick={() => setMoradorScreen("boletos")}><span>💳</span>Boletos</div>
+            </div>
           </div>
         </div>
       </div>
