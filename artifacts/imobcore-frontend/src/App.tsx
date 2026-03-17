@@ -3779,6 +3779,11 @@ export default function App() {
           </div>
           <div className={`sb-item ${panel === "diagnostico" ? "active" : ""}`} onClick={() => setPanel("diagnostico")}>
             <span className="sb-icon">🫀</span> Diagnóstico
+            {mispCalc(mispAnswers).answered > 0 && (
+              <span className="sb-badge" style={{ background: mispCalc(mispAnswers).nivelColor + "22", color: mispCalc(mispAnswers).nivelColor, border: `1px solid ${mispCalc(mispAnswers).nivelColor}55`, minWidth:28, textAlign:"center" }}>
+                {mispCalc(mispAnswers).score}
+              </span>
+            )}
           </div>
           <div className={`sb-item ${panel === "crm" ? "active" : ""}`} onClick={() => setPanel("crm")}>
             <span className="sb-icon">👥</span> CRM Inteligente
@@ -4942,20 +4947,57 @@ export default function App() {
             const pilarItems = (p: string) => MISP_ITEMS.filter(it => it.pilar === p);
             const answered = (p: string) => pilarItems(p).filter(it => mispAnswers[it.id]).length;
             const nivelBg = calc.score >= 80 ? "rgba(16,185,129,.12)" : calc.score >= 60 ? "rgba(245,158,11,.12)" : calc.score >= 40 ? "rgba(249,115,22,.12)" : "rgba(239,68,68,.12)";
+            const pct = calc.total > 0 ? Math.round(calc.answered / calc.total * 100) : 0;
             return (
-              <div className="panel active card">
-                {/* Header */}
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
-                  <div>
-                    <div className="card-title" style={{ marginBottom:2 }}>🫀 Diagnóstico de Saúde do Condomínio</div>
-                    <div style={{ fontSize:11, color:"#475569" }}>Checklist completo • {MISP_ITEMS.length} itens em 6 pilares</div>
-                  </div>
-                  <div style={{ textAlign:"right" }}>
-                    <div style={{ fontSize:28, fontWeight:900, color:calc.nivelColor }}>{calc.score}</div>
-                    <div style={{ fontSize:10, color:calc.nivelColor, fontWeight:700 }}>{calc.nivel}</div>
+              <div className="panel active card" style={{ padding:0, overflow:"hidden" }}>
+
+                {/* ══ SCORE CARD — sempre visível ══ */}
+                <div style={{ background: `linear-gradient(135deg, ${calc.nivelColor}18 0%, rgba(15,23,42,0) 100%)`, borderBottom:"1px solid rgba(255,255,255,.07)", padding:"20px 24px" }}>
+                  <div style={{ fontSize:11, color:"#475569", fontWeight:600, letterSpacing:1, textTransform:"uppercase" as const, marginBottom:12 }}>🫀 Diagnóstico de Saúde do Condomínio</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:20 }}>
+                    {/* Gauge circle */}
+                    <div style={{ position:"relative" as const, width:80, height:80, flexShrink:0 }}>
+                      <svg width="80" height="80" viewBox="0 0 80 80">
+                        <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="8"/>
+                        <circle cx="40" cy="40" r="34" fill="none" stroke={calc.nivelColor} strokeWidth="8"
+                          strokeDasharray={`${2*Math.PI*34}`}
+                          strokeDashoffset={`${2*Math.PI*34*(1-calc.score/100)}`}
+                          strokeLinecap="round"
+                          transform="rotate(-90 40 40)"
+                          style={{ transition:"stroke-dashoffset .4s ease" }}
+                        />
+                      </svg>
+                      <div style={{ position:"absolute" as const, inset:0, display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center" }}>
+                        <span style={{ fontSize:20, fontWeight:900, color:calc.nivelColor, lineHeight:1 }}>{calc.score}</span>
+                        <span style={{ fontSize:8, color:"#64748B", fontWeight:600 }}>/ 100</span>
+                      </div>
+                    </div>
+                    {/* Details */}
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:18, fontWeight:800, color:calc.nivelColor, marginBottom:2 }}>{calc.nivel}</div>
+                      <div style={{ fontSize:11, color:"#64748B", marginBottom:8 }}>{calc.answered} de {calc.total} itens respondidos</div>
+                      <div style={{ height:5, background:"rgba(255,255,255,.06)", borderRadius:3 }}>
+                        <div style={{ width:`${pct}%`, height:"100%", background:`linear-gradient(90deg, ${calc.nivelColor}88, ${calc.nivelColor})`, borderRadius:3, transition:"width .3s" }}/>
+                      </div>
+                      <div style={{ fontSize:10, color:"#475569", marginTop:4 }}>{pct}% concluído</div>
+                    </div>
+                    {/* Pilar mini scores */}
+                    <div style={{ display:"flex", gap:10, flexShrink:0 }}>
+                      {MISP_PILARES.map(p => {
+                        const items = MISP_ITEMS.filter(it => it.pilar === p);
+                        const ans = items.filter(it => mispAnswers[it.id]).length;
+                        return (
+                          <div key={p} style={{ textAlign:"center", cursor:"pointer" }} onClick={() => { setMispTab("checklist"); setMispActivePilar(p); }}>
+                            <div style={{ fontSize:18, marginBottom:2 }}>{MISP_PILAR_ICONS[p]}</div>
+                            <div style={{ fontSize:10, fontWeight:700, color: ans === items.length ? MISP_PILAR_COLORS[p] : "#475569" }}>{ans}/{items.length}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
+                <div style={{ padding:"16px 24px" }}>
                 {/* Tab bar */}
                 <div style={{ display:"flex", gap:6, marginBottom:20 }}>
                   {([["checklist","📋 Checklist"],["resultado","📊 Resultado"],["historico","📅 Histórico"]] as [typeof mispTab, string][]).map(([k,l])=>(
@@ -5173,6 +5215,7 @@ export default function App() {
                     )}
                   </div>
                 )}
+                </div>{/* end padding wrapper */}
               </div>
             );
           })()}
