@@ -6191,7 +6191,21 @@ export default function App() {
                                 </div>
                               </td>
                               <td style={{ padding:"10px 12px", whiteSpace:"nowrap" as const }}>
-                                <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:12, background:`${cfg.cor}22`, color:cfg.cor, border:`1px solid ${cfg.cor}44` }}>{cfg.icon} {cfg.label}</span>
+                                <div style={{ display:"flex", flexDirection:"column" as const, gap:4, alignItems:"flex-start" }}>
+                                  <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:12, background:`${cfg.cor}22`, color:cfg.cor, border:`1px solid ${cfg.cor}44` }}>{cfg.icon} {cfg.label}</span>
+                                  {(() => {
+                                    const pc = u.permissoes_customizadas as Record<string,boolean>|null|undefined;
+                                    if (!pc) return null;
+                                    const defaultMods = new Set(PERFIS_CONFIG[u.perfil].modulos);
+                                    const allKeys = ["chatIA","insights","comunicados","ordens","financeiro","agua","misp","diagnostico","crm","manutencao","energia","gas","encomendas","condominios","usuarios","sseLiveLog"];
+                                    const isDiff = allKeys.some(k => {
+                                      const expected = defaultMods.has(k);
+                                      const actual = pc[k] !== undefined ? !!pc[k] : expected;
+                                      return actual !== expected;
+                                    });
+                                    return isDiff ? <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:8, background:"rgba(217,119,6,.2)", color:"#FCD34D", border:"1px solid rgba(217,119,6,.4)" }}>⚙ Customizado</span> : null;
+                                  })()}
+                                </div>
                               </td>
                               <td style={{ padding:"10px 12px", color: u.unidade ? "#E2E8F0" : "#334155" }}>{u.unidade || "–"}</td>
                               <td style={{ padding:"10px 12px" }}>
