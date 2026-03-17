@@ -578,21 +578,23 @@ export default function App() {
   const resTestCF = async (r: Reservatorio) => {
     setResTesting(p=>({...p,cf:true}));
     try {
-      const resp = await fetch(r.cf_url, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ test:true, sensor_id:r.sensor_id }), signal:AbortSignal.timeout(5000) });
-      const ok = resp.ok;
+      const resp = await fetch("/imobcore/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.cf_url, method:"POST", payload:{ test:true, sensor_id:r.sensor_id } }) });
+      const data = await resp.json();
+      const ok = data.ok as boolean;
       setResList(prev => prev.map(x => x.id === r.id ? { ...x, cf_online:ok } : x));
-      showToast(ok ? "✅ Cloudflare conectado!" : "❌ Cloudflare sem resposta", ok?"success":"warn");
-    } catch { showToast("❌ Cloudflare inacessível", "warn"); }
+      showToast(ok ? `✅ Cloudflare conectado! (HTTP ${data.status})` : `❌ Cloudflare respondeu com erro (HTTP ${data.status})`, ok?"success":"warn");
+    } catch { showToast("❌ Cloudflare inacessível ou timeout", "warn"); }
     setResTesting(p=>({...p,cf:false}));
   };
   const resTestWH = async (r: Reservatorio) => {
     setResTesting(p=>({...p,wh:true}));
     try {
-      const resp = await fetch(r.wh_url, { method:r.protocolo.includes("POST")?"POST":"GET", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ test:true, sensor_id:r.sensor_id }), signal:AbortSignal.timeout(5000) });
-      const ok = resp.ok;
+      const resp = await fetch("/imobcore/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.wh_url, method:r.protocolo.includes("POST")?"POST":"GET", payload:{ test:true, sensor_id:r.sensor_id } }) });
+      const data = await resp.json();
+      const ok = data.ok as boolean;
       setResList(prev => prev.map(x => x.id === r.id ? { ...x, wh_online:ok } : x));
-      showToast(ok ? "✅ Webhook conectado!" : "❌ Webhook sem resposta", ok?"success":"warn");
-    } catch { showToast("❌ Webhook inacessível", "warn"); }
+      showToast(ok ? `✅ Webhook conectado! (HTTP ${data.status})` : `❌ Webhook respondeu com erro (HTTP ${data.status})`, ok?"success":"warn");
+    } catch { showToast("❌ Webhook inacessível ou timeout", "warn"); }
     setResTesting(p=>({...p,wh:false}));
   };
   const [aguaNovaLeitModal, setAguaNovaLeitModal] = useState(false);

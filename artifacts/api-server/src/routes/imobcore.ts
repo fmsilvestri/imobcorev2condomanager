@@ -734,6 +734,27 @@ router.delete("/encomendas/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ─── Reservatórios: proxy URL tester (avoids CORS on client) ──────────────
+router.post("/reservatorios/test-url", async (req: Request, res: Response) => {
+  const { url, method = "POST", payload } = req.body as { url: string; method: string; payload: object };
+  if (!url) { res.status(400).json({ ok: false, error: "url required" }); return; }
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+    const r = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json", "User-Agent": "ImobCore/2.0 Sensor-Test" },
+      body: method !== "GET" ? JSON.stringify(payload ?? {}) : undefined,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    res.json({ ok: r.ok, status: r.status });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "unknown";
+    res.json({ ok: false, status: 0, error: msg });
+  }
+});
+
 // ─── Reservatórios ────────────────────────────────────────────────────────
 let reservatorios: object[] = [];
 
