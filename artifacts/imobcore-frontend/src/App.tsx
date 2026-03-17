@@ -3777,6 +3777,9 @@ export default function App() {
           <div className={`sb-item ${panel === "misp" ? "active" : ""}`} onClick={() => setPanel("misp")}>
             <span className="sb-icon">🚨</span> MISP<span className="sb-badge">{t?.alertas_ativos || 0}</span>
           </div>
+          <div className={`sb-item ${panel === "diagnostico" ? "active" : ""}`} onClick={() => setPanel("diagnostico")}>
+            <span className="sb-icon">🫀</span> Diagnóstico
+          </div>
           <div className={`sb-item ${panel === "crm" ? "active" : ""}`} onClick={() => setPanel("crm")}>
             <span className="sb-icon">👥</span> CRM Inteligente
           </div>
@@ -4910,8 +4913,31 @@ export default function App() {
             );
           })()}
 
-          {/* PANEL: MISP */}
-          {panel === "misp" && (() => {
+          {/* PANEL: MISP – Alertas Públicos */}
+          <div className={`panel ${panel === "misp" ? "active" : ""} card`}>
+            <div className="card-title">🚨 Alertas Públicos – MISP</div>
+            {(dash?.alertas_publicos || []).length === 0 && <div style={{ color: "#475569", textAlign: "center", padding: 20, fontSize: 13 }}>Nenhum alerta ativo no momento</div>}
+            {(dash?.alertas_publicos || []).map(a => {
+              const nc = { alto: "pill-red", medio: "pill-amber", baixo: "pill-green" }[a.nivel] || "pill-gray";
+              return (
+                <div key={a.id} className="misp-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.titulo}</div>
+                    <span className={`pill ${nc}`}>{a.nivel}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748B", marginBottom: 8 }}>{a.descricao}</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
+                    <span className="pill pill-gray">{a.tipo}</span>
+                    <span className="pill pill-gray">{a.cidade} – {a.bairro}</span>
+                    <span className="pill pill-blue">{a.origem}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* PANEL: DIAGNÓSTICO DE SAÚDE */}
+          {panel === "diagnostico" && (() => {
             const calc = mispCalc(mispAnswers);
             const pilarItems = (p: string) => MISP_ITEMS.filter(it => it.pilar === p);
             const answered = (p: string) => pilarItems(p).filter(it => mispAnswers[it.id]).length;
@@ -4921,8 +4947,8 @@ export default function App() {
                 {/* Header */}
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
                   <div>
-                    <div className="card-title" style={{ marginBottom:2 }}>📋 MISP – Diagnóstico do Condomínio</div>
-                    <div style={{ fontSize:11, color:"#475569" }}>Módulo de Inspeção e Sustentabilidade Predial • {MISP_ITEMS.length} itens</div>
+                    <div className="card-title" style={{ marginBottom:2 }}>🫀 Diagnóstico de Saúde do Condomínio</div>
+                    <div style={{ fontSize:11, color:"#475569" }}>Checklist completo • {MISP_ITEMS.length} itens em 6 pilares</div>
                   </div>
                   <div style={{ textAlign:"right" }}>
                     <div style={{ fontSize:28, fontWeight:900, color:calc.nivelColor }}>{calc.score}</div>
@@ -5085,7 +5111,7 @@ export default function App() {
 
                     {mispAiResult && (
                       <div style={{ background:"rgba(99,102,241,.08)", border:"1px solid rgba(99,102,241,.2)", borderRadius:12, padding:"16px 20px", fontSize:12, color:"#C7D2FE", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>
-                        <div style={{ fontSize:11, fontWeight:700, color:"#818CF8", marginBottom:8 }}>🤖 Síndico Virtual – Diagnóstico MISP</div>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#818CF8", marginBottom:8 }}>🤖 Síndico Virtual – Diagnóstico de Saúde</div>
                         {mispAiResult}
                       </div>
                     )}
