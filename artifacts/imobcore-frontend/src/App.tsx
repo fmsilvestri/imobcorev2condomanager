@@ -544,6 +544,8 @@ export default function App() {
   const [panel, setPanel] = useState("sv-chat");
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [condId, setCondId] = useState<string | null>(null);
+  const condIdRef = useRef<string | null>(null);
+  const [condDropOpen, setCondDropOpen] = useState(false);
   const [sseOnline, setSseOnline] = useState(false);
   const [clock, setClock] = useState(fmtTime());
   const [logs, setLogs] = useState<{ ev: string; data: string; time: string }[]>([]);
@@ -883,13 +885,20 @@ export default function App() {
     setTimeout(() => setBellShake(false), 500);
   }, []);
 
+  // Sync condIdRef whenever condId changes (stable ref for callbacks)
+  useEffect(() => { condIdRef.current = condId; }, [condId]);
+
   // ── Dashboard ─────────────────────────────────────────────────────────────
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async (forCondId?: string) => {
     try {
-      const r = await fetch("/api/dashboard");
+      const cid = forCondId ?? condIdRef.current;
+      const url = cid ? `/api/dashboard?condominio_id=${cid}` : "/api/dashboard";
+      const r = await fetch(url);
       const d: Dashboard = await r.json();
       setDash(d);
-      if (d.condominios?.[0]) {
+      if (forCondId) {
+        setCondId(forCondId);
+      } else if (d.condominios?.[0] && !condIdRef.current) {
         setCondId(d.condominios[0].id);
         // Pre-fill onboarding with existing condo data for reconfiguration
         const c = d.condominios[0];
@@ -3727,6 +3736,48 @@ export default function App() {
           </div>
         )}
 
+        {/* ── Condo selector dropdown ── */}
+        {(dash?.condominios?.length ?? 0) > 0 && (() => {
+          const currentCondo = dash!.condominios.find(c => c.id === condId) ?? dash!.condominios[0];
+          return (
+            <div style={{ position:"relative" as const, marginLeft:4 }} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setCondDropOpen(false); }}>
+              <button
+                title="Trocar condomínio ativo"
+                onClick={() => setCondDropOpen(o => !o)}
+                style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 12px", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, cursor:"pointer", color:"var(--c-text)", fontSize:12, fontWeight:600, fontFamily:"inherit", minWidth:160 }}>
+                <span style={{ width:8, height:8, borderRadius:"50%", background: currentCondo?.cor_primaria || "#7C5CFC", flexShrink:0, boxShadow:`0 0 6px ${currentCondo?.cor_primaria || "#7C5CFC"}88` }} />
+                <span style={{ maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{currentCondo?.nome ?? "Condomínio"}</span>
+                <span style={{ fontSize:9, opacity:.6, marginLeft:"auto" }}>▾</span>
+              </button>
+              {condDropOpen && (
+                <div tabIndex={-1} style={{ position:"absolute" as const, top:"calc(100% + 8px)", left:0, width:260, background:"#0D1321", border:"1px solid rgba(255,255,255,.1)", borderRadius:12, padding:8, zIndex:9999, boxShadow:"0 20px 40px rgba(0,0,0,.6)" }}>
+                  <div style={{ fontSize:10, color:"#475569", fontWeight:700, padding:"4px 12px 8px", textTransform:"uppercase" as const, letterSpacing:1 }}>Condomínios</div>
+                  {dash!.condominios.map(c => {
+                    const active = c.id === (condId ?? dash!.condominios[0].id);
+                    const planBadge: Record<string,string> = { free:"#475569", starter:"#0D9488", pro:"#7C5CFC", admin_plus:"#D97706" };
+                    return (
+                      <div key={c.id} tabIndex={0} onClick={() => { setCondDropOpen(false); loadDashboard(c.id); }} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:8, cursor:"pointer", background: active ? "rgba(255,255,255,.07)" : "transparent", transition:"background .15s" }}>
+                        <span style={{ width:10, height:10, borderRadius:"50%", background: c.cor_primaria || "#7C5CFC", flexShrink:0 }} />
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:12, fontWeight:active?700:500, color: active ? "#fff" : "#94A3B8", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{c.nome}</div>
+                          <div style={{ fontSize:10, color:"#475569" }}>{c.cidade}{c.estado ? ` · ${c.estado}` : ""}</div>
+                        </div>
+                        <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:4, background: planBadge[c.plano||"free"]+"22", color: planBadge[c.plano||"free"], border:`1px solid ${planBadge[c.plano||"free"]}44`, textTransform:"uppercase" as const }}>{c.plano||"free"}</span>
+                        {active && <span style={{ fontSize:10, color:c.cor_primaria||"#7C5CFC" }}>✓</span>}
+                      </div>
+                    );
+                  })}
+                  <div style={{ borderTop:"1px solid rgba(255,255,255,.07)", marginTop:8, paddingTop:6 }}>
+                    <div tabIndex={0} onClick={() => { setPanel("condominios"); setView("gestor"); setCondDropOpen(false); }} style={{ padding:"8px 12px", fontSize:12, color:"#A5B4FC", cursor:"pointer", borderRadius:8, display:"flex", alignItems:"center", gap:6 }}>
+                      🏢 Gerenciar condomínios
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Onboarding button — pulsing if no condo yet */}
         {(dash?.condominios?.length ?? 0) === 0 ? (
           <button className="btn-onboard" onClick={() => { setObStep(0); setObIsReset(false); setView("onboarding"); }}>
@@ -3774,6 +3825,11 @@ export default function App() {
               <span className="sb-icon">{i.icon}</span>{i.label}
             </div>
           ))}
+          <div className="sb-label">Plataforma</div>
+          <div className={`sb-item ${panel === "condominios" ? "active" : ""}`} onClick={() => setPanel("condominios")} style={{ borderLeft: panel === "condominios" ? `3px solid ${dash?.condominios?.find(c=>c.id===condId)?.cor_primaria||"#7C5CFC"}` : undefined }}>
+            <span className="sb-icon">🏢</span> Meus Condomínios
+            <span className="sb-badge" style={{ background:"rgba(99,102,241,.2)", color:"#A5B4FC" }}>{dash?.condominios?.length ?? 0}</span>
+          </div>
           <div className="sb-label">Módulos</div>
           <div className={`sb-item ${panel === "operacao" ? "active" : ""}`} onClick={() => setPanel("operacao")}>
             <span className="sb-icon">🔧</span> Ordens de Serviço<span className="sb-badge">{t?.os_abertas || 0}</span>
@@ -4924,6 +4980,89 @@ export default function App() {
                     </div>
                   </div>
                 )}
+              </div>
+            );
+          })()}
+
+          {/* PANEL: MEUS CONDOMÍNIOS */}
+          {panel === "condominios" && (() => {
+            const planLabel: Record<string,string> = { free:"Free", starter:"Starter", pro:"Pro", admin_plus:"Admin+" };
+            const planColor: Record<string,string> = { free:"#475569", starter:"#0D9488", pro:"#7C5CFC", admin_plus:"#D97706" };
+            const statusColor: Record<string,string> = { ativo:"#10B981", trial:"#F59E0B", suspenso:"#EF4444" };
+            const statusLabel: Record<string,string> = { ativo:"Ativo", trial:"Trial", suspenso:"Suspenso" };
+            const condos = dash?.condominios || [];
+            return (
+              <div className="panel active card">
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:20 }}>
+                  <div>
+                    <div className="card-title" style={{ marginBottom:2 }}>🏢 Meus Condomínios</div>
+                    <div style={{ fontSize:11, color:"#475569" }}>{condos.length} condomínio{condos.length !== 1 ? "s" : ""} cadastrado{condos.length !== 1 ? "s" : ""}</div>
+                  </div>
+                  <button title="Adicionar novo condomínio" onClick={() => { setObStep(0); setObIsReset(false); setView("onboarding"); }} style={{ background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.35)", borderRadius:8, padding:"8px 16px", color:"#A5B4FC", fontSize:12, fontWeight:700, cursor:"pointer" }}>＋ Novo</button>
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:16 }}>
+                  {condos.map(c => {
+                    const isActive = c.id === condId;
+                    const accent = c.cor_primaria || "#7C5CFC";
+                    const st = (c.status || "trial") as string;
+                    const pl = (c.plano || "free") as string;
+                    return (
+                      <div key={c.id} style={{ background: isActive ? `linear-gradient(135deg, ${accent}12 0%, rgba(15,23,42,.95) 100%)` : "rgba(255,255,255,.03)", border:`1px solid ${isActive ? accent+"44" : "rgba(255,255,255,.08)"}`, borderRadius:14, overflow:"hidden", transition:"all .2s" }}>
+                        {/* Color accent bar */}
+                        <div style={{ height:4, background: `linear-gradient(90deg, ${accent}, ${accent}88)` }} />
+                        <div style={{ padding:"16px 18px" }}>
+                          {/* Header */}
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:14, fontWeight:800, marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{c.nome}</div>
+                              <div style={{ fontSize:11, color:"#64748B" }}>{c.cidade}{c.estado ? ` · ${c.estado}` : ""}</div>
+                            </div>
+                            <div style={{ display:"flex", flexDirection:"column" as const, alignItems:"flex-end", gap:4 }}>
+                              <span style={{ fontSize:9, fontWeight:700, padding:"2px 7px", borderRadius:4, background: planColor[pl]+"22", color: planColor[pl], border:`1px solid ${planColor[pl]}44`, textTransform:"uppercase" as const }}>{planLabel[pl]||pl}</span>
+                              <span style={{ fontSize:9, fontWeight:700, padding:"2px 7px", borderRadius:4, background: statusColor[st]+"22", color: statusColor[st], border:`1px solid ${statusColor[st]}44` }}>{statusLabel[st]||st}</span>
+                            </div>
+                          </div>
+
+                          {/* Stats row */}
+                          <div style={{ display:"flex", gap:16, marginBottom:14 }}>
+                            <div style={{ textAlign:"center" as const }}>
+                              <div style={{ fontSize:18, fontWeight:900, color: accent }}>{c.total_unidades || c.unidades || 0}</div>
+                              <div style={{ fontSize:9, color:"#475569" }}>Unidades</div>
+                            </div>
+                            <div style={{ textAlign:"center" as const }}>
+                              <div style={{ fontSize:18, fontWeight:900 }}>{c.moradores || 0}</div>
+                              <div style={{ fontSize:9, color:"#475569" }}>Moradores</div>
+                            </div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:11, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{c.sindico_nome || "–"}</div>
+                              <div style={{ fontSize:9, color:"#475569" }}>Síndico</div>
+                            </div>
+                          </div>
+
+                          {/* Trial warning */}
+                          {st === "trial" && c.trial_expires_at && (
+                            <div style={{ background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.2)", borderRadius:6, padding:"6px 10px", fontSize:10, color:"#FCD34D", marginBottom:10 }}>
+                              ⏳ Trial expira em {new Date(c.trial_expires_at).toLocaleDateString("pt-BR")}
+                            </div>
+                          )}
+
+                          {/* Actions */}
+                          <div style={{ display:"flex", gap:8 }}>
+                            {isActive ? (
+                              <div style={{ flex:1, textAlign:"center" as const, padding:"8px", fontSize:11, fontWeight:700, color: accent, background: accent+"15", borderRadius:8, border:`1px solid ${accent}33` }}>✓ Ativo</div>
+                            ) : (
+                              <button title={`Mudar para ${c.nome}`} onClick={() => loadDashboard(c.id)} style={{ flex:1, background: accent+"22", border:`1px solid ${accent}44`, borderRadius:8, padding:"8px", color: accent, fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                                Selecionar
+                              </button>
+                            )}
+                            <button title="Editar dados do condomínio" onClick={() => { setObSavedCondoId(c.id); setObCondo({ nome:c.nome||"", cnpj:c.cnpj||"", endereco:c.endereco||"", cidade:c.cidade||"", estado:c.estado||"SC", sindico_nome:c.sindico_nome||"", sindico_email:c.sindico_email||"", sindico_tel:c.sindico_tel||"", unidades:String(c.total_unidades||c.unidades||84) }); setObIsReset(false); setObStep(0); setView("onboarding"); }} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#64748B", fontSize:12, cursor:"pointer" }}>✏️</button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
           })()}

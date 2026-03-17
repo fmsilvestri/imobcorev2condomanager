@@ -58,12 +58,13 @@ router.get("/stream", (req: Request, res: Response) => {
 });
 
 // GET /api/dashboard
-router.get("/dashboard", async (_req: Request, res: Response) => {
+router.get("/dashboard", async (req: Request, res: Response) => {
   try {
-    // Resolve primary condominio first (oldest created = main demo condo)
+    const { condominio_id } = req.query as { condominio_id?: string };
+    // Load all condominios for the selector
     const { data: condominios } = await supabase.from("condominios").select("*").order("created_at", { ascending: true });
-    const primaryCondo = (condominios || [])[0];
-    const primaryId = primaryCondo?.id;
+    // Use requested condo or fall back to first
+    const primaryId = condominio_id || (condominios || [])[0]?.id;
 
     const [
       { data: os },
@@ -279,6 +280,20 @@ router.post("/sindico/comunicado", async (req: Request, res: Response) => {
   } catch (err) {
     console.error("comunicado error:", err);
     res.status(500).json({ error: "Erro ao gerar comunicado" });
+  }
+});
+
+// GET /api/condominios - Listar todos os condomínios
+router.get("/condominios", async (_req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase
+      .from("condominios")
+      .select("*")
+      .order("created_at", { ascending: true });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
   }
 });
 
