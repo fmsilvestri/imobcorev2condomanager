@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import QRCode from "qrcode";
-import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
+import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis } from "recharts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; responsavel?: string; updated_at?: string; created_at: string }
@@ -449,6 +449,56 @@ const ENC_DEMO: Encomenda[] = [
   { id:"enc-5", condominio_id:"87339066-db1e-4743-a152-095527e66c28", morador_nome:"Carlos", bloco:"Bloco D", unidade:"501", tipos:["pacote","documento"], codigo_rastreio:"JD987654321", status:"devolvido", received_at:"2026-02-18T14:00:00Z", notified_at:"2026-02-18T14:30:00Z", withdrawn_at:null, returned_at:"2026-02-25T10:00:00Z", created_at:"2026-02-18T14:00:00Z" },
 ];
 
+// ─── MISP Checklist Items ──────────────────────────────────────────────────────
+const MISP_ITEMS: { id:string; pilar:string; nome:string; desc:string; peso:number }[] = [
+  // FINANCEIRO
+  { id:"f1", pilar:"Financeiro", nome:"Inadimplência < 5%", desc:"Taxa de inadimplência abaixo de 5% do total de condôminos", peso:4 },
+  { id:"f2", pilar:"Financeiro", nome:"Fundo de reserva ≥ 35%", desc:"Fundo de reserva equivalente a 35% do orçamento anual", peso:3 },
+  { id:"f3", pilar:"Financeiro", nome:"Previsão orçamentária divulgada", desc:"Previsão orçamentária aprovada em assembleia e publicada", peso:3 },
+  { id:"f4", pilar:"Financeiro", nome:"Balanço mensal publicado", desc:"Balanço mensal sem pendências divulgado no prazo", peso:3 },
+  { id:"f5", pilar:"Financeiro", nome:"Conciliação bancária em dia", desc:"Conciliação bancária realizada corretamente todo mês", peso:3 },
+  { id:"f6", pilar:"Financeiro", nome:"Monitoramento consumo mensal", desc:"Consumo de energia e água monitorado mensalmente", peso:3 },
+  { id:"f7", pilar:"Financeiro", nome:"Seguro predial vigente", desc:"Seguro predial contratado, vigente e renovado", peso:2 },
+  { id:"f8", pilar:"Financeiro", nome:"Contratos formalizados", desc:"Contratos de fornecedores formalmente assinados", peso:2 },
+  // SEGURANÇA
+  { id:"s1", pilar:"Segurança", nome:"CFTV 100% funcionando", desc:"Sistema CFTV com todas as câmeras operacionais", peso:1 },
+  { id:"s2", pilar:"Segurança", nome:"Controle de acesso ativo", desc:"Controle de acesso (portaria remota ou presencial) ativo", peso:4 },
+  { id:"s3", pilar:"Segurança", nome:"Comunicação emergência configurada", desc:"App/portal/mural com canais de emergência configurados", peso:3 },
+  { id:"s4", pilar:"Segurança", nome:"Comunicados regulares", desc:"Comunicados enviados mensalmente aos condôminos", peso:2 },
+  { id:"s5", pilar:"Segurança", nome:"Extintores em validade (30 dias)", desc:"Extintores com recarga e validade dentro de 30 dias", peso:2 },
+  { id:"s6", pilar:"Segurança", nome:"Hidrante em conformidade", desc:"Hidrante com laudo e pressão dentro das normas ABNT", peso:4 },
+  { id:"s7", pilar:"Segurança", nome:"AVCB vigente", desc:"Auto de Vistoria do Corpo de Bombeiros vigente e atualizado", peso:3 },
+  { id:"s8", pilar:"Segurança", nome:"Regimento interno divulgado", desc:"Regimento interno publicado e acessível a todos os moradores", peso:2 },
+  { id:"s9", pilar:"Segurança", nome:"CONPAJ ativo e regular", desc:"CONPAJ (contribuição para Bombeiros) ativo e em dia", peso:3 },
+  // MANUTENÇÃO
+  { id:"m1", pilar:"Manutenção", nome:"Sistema de OS ativo", desc:"Sistema de Ordem de Serviço em uso pela gestão do condomínio", peso:3 },
+  { id:"m2", pilar:"Manutenção", nome:"MTT Urgentes < 48h", desc:"Manutenções urgentes atendidas em menos de 48 horas", peso:4 },
+  { id:"m3", pilar:"Manutenção", nome:"Preventiva implementada", desc:"Plano de manutenção preventiva ativo e em andamento", peso:3 },
+  { id:"m4", pilar:"Manutenção", nome:"Histórico de manutenção registrado", desc:"Dados histórico de manutenção registrados digitalmente", peso:2 },
+  { id:"m5", pilar:"Manutenção", nome:"Certidões negativas atualizadas", desc:"Certidões negativas (Trabalhista/Fiscal/Previdenciária) em dia", peso:3 },
+  { id:"m6", pilar:"Manutenção", nome:"Gestão digital implantada", desc:"Sistema de gestão digital com dados em backup e histórico", peso:3 },
+  // INFRAESTRUTURA
+  { id:"i1", pilar:"Infraestrutura", nome:"Elevadores – preventiva em dia", desc:"Elevadores com manutenção preventiva obrigatória em dia", peso:5 },
+  { id:"i2", pilar:"Infraestrutura", nome:"Hidráulicos sem vazamentos", desc:"Sistema hidráulico sem vazamentos identificados e registrados", peso:4 },
+  { id:"i3", pilar:"Infraestrutura", nome:"SPDA (para-raios) com laudo", desc:"Para-raios com laudo técnico vigente conforme NR-10", peso:3 },
+  { id:"i4", pilar:"Infraestrutura", nome:"GLP com laudo vigente", desc:"Instalação de gás com laudo de inspeção vigente (NR-12)", peso:4 },
+  { id:"i5", pilar:"Infraestrutura", nome:"Cobertura impermeabilizada", desc:"Cobertura/telhado com impermeabilização vigente e sem infiltração", peso:3 },
+  // SUSTENTABILIDADE
+  { id:"su1", pilar:"Sustentabilidade", nome:"Medidores individuais de água", desc:"Hidrômetros individuais por unidade instalados e funcionando", peso:3 },
+  { id:"su2", pilar:"Sustentabilidade", nome:"Gerador testado mensalmente", desc:"Gerador testado mensalmente com laudo registrado", peso:4 },
+  { id:"su3", pilar:"Sustentabilidade", nome:"Coleta seletiva implantada", desc:"Coleta seletiva com descarte correto em funcionamento", peso:3 },
+  // GESTÃO E GOVERNANÇA
+  { id:"g1", pilar:"Gestão", nome:"App/portal ativo e atualizado", desc:"App ou portal do condômino ativo e com conteúdo atualizado", peso:3 },
+  { id:"g2", pilar:"Gestão", nome:"Comunicados regulares periódicos", desc:"Comunicados enviados regularmente com conteúdo relevante", peso:2 },
+  { id:"g3", pilar:"Gestão", nome:"Assembleia realizada regularmente", desc:"Assembleias realizadas conforme regulamento (mínimo anual)", peso:3 },
+  { id:"g4", pilar:"Gestão", nome:"Sistema digital completo", desc:"Sistema de gestão digital com dados completos e atualizados", peso:3 },
+  { id:"g5", pilar:"Gestão", nome:"Dados em backup digital", desc:"Dados históricos do condomínio em backup digital seguro", peso:2 },
+  { id:"g6", pilar:"Gestão", nome:"Iluminação LED nas áreas comuns", desc:"Iluminação LED implantada em todas as áreas comuns", peso:2 },
+];
+const MISP_PILARES = ["Financeiro","Segurança","Manutenção","Infraestrutura","Sustentabilidade","Gestão"];
+const MISP_PILAR_ICONS: Record<string,string> = { "Financeiro":"💰","Segurança":"🔒","Manutenção":"🔧","Infraestrutura":"🏗️","Sustentabilidade":"🌱","Gestão":"📊" };
+const MISP_PILAR_COLORS: Record<string,string> = { "Financeiro":"#10B981","Segurança":"#EF4444","Manutenção":"#3B82F6","Infraestrutura":"#F59E0B","Sustentabilidade":"#06B6D4","Gestão":"#8B5CF6" };
+
 const EQUIP_DEMO: Equipamento[] = [
   { id:"eq1", nome:"Elevador Torre A", categoria:"elevador", catIcon:"🛗", local:"Torre A – Poço", fabricante:"OTIS", modelo:"Gen2 MRL", serie:"OT-2021-0841", dataInstalacao:"2021-03-15", vidaUtilAnos:20, instaladoHa:4, consumoKwh:5.2, horasDia:12, status:"operacional", proxManutencao:"2026-04-10", ultimaManutencao:"2026-01-10", custoManutencao:2400, descricao:"Elevador sem casa de máquinas, 10 paradas." },
   { id:"eq2", nome:"Elevador Torre B", categoria:"elevador", catIcon:"🛗", local:"Torre B – Poço", fabricante:"ThyssenKrupp", modelo:"Evolution 200", serie:"TK-2019-3312", dataInstalacao:"2019-08-20", vidaUtilAnos:20, instaladoHa:6, consumoKwh:5.8, horasDia:10, status:"manutencao", proxManutencao:"2026-03-28", ultimaManutencao:"2025-12-20", custoManutencao:2400, descricao:"Em manutenção corretiva – cabo de tração." },
@@ -503,6 +553,65 @@ export default function App() {
   const [mantCatFilter, setMantCatFilter] = useState("todos");
   const [mantStatusFilter, setMantStatusFilter] = useState("todos");
   const [mantSelEquip, setMantSelEquip] = useState<Equipamento | null>(null);
+  // ── Equipamentos CRUD ───────────────────────────────────────────────────────
+  const [equipList, setEquipList] = useState<Equipamento[]>(EQUIP_DEMO);
+  const [equipEditId, setEquipEditId] = useState<string|null>(null);
+  const [equipShowEdit, setEquipShowEdit] = useState(false);
+  const EMPTY_EQ: { nome:string; categoria:string; catIcon:string; local:string; fabricante:string; modelo:string; serie:string; dataInstalacao:string; vidaUtilAnos:number; instaladoHa:number; consumoKwh:number; horasDia:number; status:"operacional"|"atencao"|"manutencao"|"inativo"; proxManutencao:string; ultimaManutencao:string; custoManutencao:number; descricao:string } = { nome:"", categoria:"elevador", catIcon:"🛗", local:"", fabricante:"", modelo:"", serie:"", dataInstalacao:"", vidaUtilAnos:10, instaladoHa:0, consumoKwh:0, horasDia:8, status:"operacional", proxManutencao:"", ultimaManutencao:"", custoManutencao:0, descricao:"" };
+  const [equipForm, setEquipForm] = useState(EMPTY_EQ);
+  const equipSave = () => {
+    if (!equipForm.nome.trim()) return;
+    if (equipEditId) {
+      setEquipList(prev => prev.map(e => e.id === equipEditId ? { ...e, ...equipForm } : e));
+    } else {
+      setEquipList(prev => [{ id:`eq${Date.now()}`, ...equipForm }, ...prev]);
+    }
+    setEquipShowEdit(false); setEquipEditId(null); setEquipForm(EMPTY_EQ);
+  };
+  const equipDelete = (id: string) => {
+    if (!confirm("Excluir equipamento permanentemente?")) return;
+    setEquipList(prev => prev.filter(e => e.id !== id));
+    if (mantSelEquip?.id === id) setMantSelEquip(null);
+  };
+  const equipEdit = (e: Equipamento) => {
+    setEquipEditId(e.id);
+    setEquipForm({ nome:e.nome, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:e.serie, dataInstalacao:e.dataInstalacao, vidaUtilAnos:e.vidaUtilAnos, instaladoHa:e.instaladoHa, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:e.status, proxManutencao:e.proxManutencao, ultimaManutencao:e.ultimaManutencao, custoManutencao:e.custoManutencao, descricao:e.descricao });
+    setEquipShowEdit(true);
+  };
+  // ── MISP Checklist state ────────────────────────────────────────────────────
+  const [mispTab, setMispTab] = useState<"checklist"|"resultado"|"historico">("checklist");
+  const [mispActivePilar, setMispActivePilar] = useState("Financeiro");
+  const [mispAnswers, setMispAnswers] = useState<Record<string,"sim"|"parcial"|"nao">>({});
+  const [mispAiLoading, setMispAiLoading] = useState(false);
+  const [mispAiResult, setMispAiResult] = useState("");
+  const [mispHistory, setMispHistory] = useState<{date:string;score:number;nivel:string;answers:Record<string,string>}[]>(() => {
+    try { return JSON.parse(localStorage.getItem("misp_history")||"[]"); } catch { return []; }
+  });
+  const mispCalc = (answers: Record<string,string>) => {
+    let obtained = 0; let max = 0;
+    const pilarObt: Record<string,number> = {}; const pilarMax: Record<string,number> = {};
+    MISP_ITEMS.forEach(it => {
+      max += it.peso * 2;
+      pilarMax[it.pilar] = (pilarMax[it.pilar]||0) + it.peso * 2;
+      const pts = answers[it.id] === "sim" ? it.peso*2 : answers[it.id] === "parcial" ? it.peso : 0;
+      obtained += pts;
+      pilarObt[it.pilar] = (pilarObt[it.pilar]||0) + pts;
+    });
+    const score = Math.round((obtained/max)*100);
+    const nivel = score >= 80 ? "Excelente" : score >= 60 ? "Bom" : score >= 40 ? "Regular" : "Crítico";
+    const nivelColor = score >= 80 ? "#10B981" : score >= 60 ? "#F59E0B" : score >= 40 ? "#F97316" : "#EF4444";
+    const radarData = MISP_PILARES.map(p => ({ pilar:p, score: pilarMax[p] ? Math.round((pilarObt[p]||0)/pilarMax[p]*100) : 0 }));
+    const answered = Object.keys(answers).length;
+    return { score, nivel, nivelColor, radarData, answered, total:MISP_ITEMS.length };
+  };
+  const mispFinalize = () => {
+    const { score, nivel } = mispCalc(mispAnswers);
+    const entry = { date: new Date().toLocaleDateString("pt-BR")+" "+new Date().toLocaleTimeString("pt-BR"), score, nivel, answers:{...mispAnswers} };
+    const newHist = [entry, ...mispHistory].slice(0, 20);
+    setMispHistory(newHist);
+    try { localStorage.setItem("misp_history", JSON.stringify(newHist)); } catch { /**/ }
+    setMispTab("resultado");
+  };
   const [qrUrls, setQrUrls] = useState<Record<string,string>>({});
   const [mantAiLoading, setMantAiLoading] = useState(false);
   const [mantAiResult, setMantAiResult] = useState<string>("");
@@ -959,7 +1068,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     Promise.all(
-      EQUIP_DEMO.map(eq =>
+      equipList.map(eq =>
         QRCode.toDataURL(`EQUIP|${eq.id}|${eq.nome}|${eq.serie}|${eq.categoria}`, {
           width: 160, margin: 1, color: { dark: "#6366F1", light: "#0F172A" }
         })
@@ -967,7 +1076,7 @@ export default function App() {
     ).then(urls => {
       if (cancelled) return;
       const map: Record<string, string> = {};
-      EQUIP_DEMO.forEach((eq, i) => { map[eq.id] = urls[i]; });
+      equipList.forEach((eq, i) => { map[eq.id] = urls[i]; });
       setQrUrls(map);
     });
     return () => { cancelled = true; };
@@ -2904,7 +3013,7 @@ export default function App() {
               {/* Quick stats */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
                 {[
-                  { label: "Equipamentos", val: String(EQUIP_DEMO.length), icon: "🔧", color: "#6366F1" },
+                  { label: "Equipamentos", val: String(equipList.length), icon: "🔧", color: "#6366F1" },
                   { label: "Próx. Mês", val: String(nextMonth?.items.length ?? 0), icon: "📅", color: "#F59E0B" },
                   { label: "Custo Est.", val: `R$${(totalCusto/1000).toFixed(1)}k`, icon: "💰", color: "#10B981" },
                 ].map(k => (
@@ -2928,7 +3037,7 @@ export default function App() {
               ))}
               {/* Equipment list */}
               <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", margin: "14px 0 8px" }}>⚙️ Equipamentos Cadastrados</div>
-              {EQUIP_DEMO.map(eq => (
+              {equipList.map(eq => (
                 <div key={eq.id} className="ph-os-item" style={{ marginBottom: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
                     <span style={{ fontSize: 12, fontWeight: 600 }}>{eq.nome}</span>
@@ -3673,7 +3782,7 @@ export default function App() {
           </div>
           <div className={`sb-item ${panel === "manutencao" ? "active" : ""}`} onClick={() => setPanel("manutencao")}>
             <span className="sb-icon">🏗️</span> Manutenção
-            <span className="sb-badge" style={{ background: EQUIP_DEMO.filter(e=>e.status==="manutencao"||e.status==="atencao").length>0?"#EF4444":"#1e293b" }}>{EQUIP_DEMO.filter(e=>e.status==="manutencao"||e.status==="atencao").length}</span>
+            <span className="sb-badge" style={{ background: equipList.filter(e=>e.status==="manutencao"||e.status==="atencao").length>0?"#EF4444":"#1e293b" }}>{equipList.filter(e=>e.status==="manutencao"||e.status==="atencao").length}</span>
           </div>
           <div className={`sb-item ${panel === "energia" ? "active" : ""}`} onClick={() => setPanel("energia")}>
             <span className="sb-icon">⚡</span> Energia
@@ -4802,27 +4911,245 @@ export default function App() {
           })()}
 
           {/* PANEL: MISP */}
-          <div className={`panel ${panel === "misp" ? "active" : ""} card`}>
-            <div className="card-title">🚨 Alertas Públicos – MISP</div>
-            {(dash?.alertas_publicos || []).length === 0 && <div style={{ color: "#475569", textAlign: "center", padding: 20, fontSize: 13 }}>Nenhum alerta ativo</div>}
-            {(dash?.alertas_publicos || []).map(a => {
-              const nc = { alto: "pill-red", medio: "pill-amber", baixo: "pill-green" }[a.nivel] || "pill-gray";
-              return (
-                <div key={a.id} className="misp-card">
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.titulo}</div>
-                    <span className={`pill ${nc}`}>{a.nivel}</span>
+          {panel === "misp" && (() => {
+            const calc = mispCalc(mispAnswers);
+            const pilarItems = (p: string) => MISP_ITEMS.filter(it => it.pilar === p);
+            const answered = (p: string) => pilarItems(p).filter(it => mispAnswers[it.id]).length;
+            const nivelBg = calc.score >= 80 ? "rgba(16,185,129,.12)" : calc.score >= 60 ? "rgba(245,158,11,.12)" : calc.score >= 40 ? "rgba(249,115,22,.12)" : "rgba(239,68,68,.12)";
+            return (
+              <div className="panel active card">
+                {/* Header */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                  <div>
+                    <div className="card-title" style={{ marginBottom:2 }}>📋 MISP – Diagnóstico do Condomínio</div>
+                    <div style={{ fontSize:11, color:"#475569" }}>Módulo de Inspeção e Sustentabilidade Predial • {MISP_ITEMS.length} itens</div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#64748B", marginBottom: 8 }}>{a.descricao}</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
-                    <span className="pill pill-gray">{a.tipo}</span>
-                    <span className="pill pill-gray">{a.cidade} – {a.bairro}</span>
-                    <span className="pill pill-blue">{a.origem}</span>
+                  <div style={{ textAlign:"right" }}>
+                    <div style={{ fontSize:28, fontWeight:900, color:calc.nivelColor }}>{calc.score}</div>
+                    <div style={{ fontSize:10, color:calc.nivelColor, fontWeight:700 }}>{calc.nivel}</div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+
+                {/* Tab bar */}
+                <div style={{ display:"flex", gap:6, marginBottom:20 }}>
+                  {([["checklist","📋 Checklist"],["resultado","📊 Resultado"],["historico","📅 Histórico"]] as [typeof mispTab, string][]).map(([k,l])=>(
+                    <button key={k} onClick={()=>setMispTab(k)} style={{ background:mispTab===k?"rgba(99,102,241,.25)":"transparent", border:mispTab===k?"1px solid rgba(99,102,241,.4)":"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"7px 16px", color:mispTab===k?"#A5B4FC":"#475569", fontSize:12, fontWeight:mispTab===k?700:400, cursor:"pointer" }}>{l}</button>
+                  ))}
+                </div>
+
+                {/* ── TELA 1: CHECKLIST ── */}
+                {mispTab === "checklist" && (
+                  <div>
+                    {/* Progress bar */}
+                    <div style={{ marginBottom:16 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#64748B", marginBottom:6 }}>
+                        <span>{calc.answered}/{calc.total} itens respondidos</span>
+                        <span style={{ color:calc.nivelColor, fontWeight:700 }}>Score: {calc.score}/100 – {calc.nivel}</span>
+                      </div>
+                      <div style={{ height:6, background:"rgba(255,255,255,.06)", borderRadius:3 }}>
+                        <div style={{ width:`${Math.round(calc.answered/calc.total*100)}%`, height:"100%", background:"#6366F1", borderRadius:3, transition:"width .3s" }} />
+                      </div>
+                    </div>
+
+                    {/* Pilar tabs */}
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const, marginBottom:16 }}>
+                      {MISP_PILARES.map(p => (
+                        <button key={p} onClick={()=>setMispActivePilar(p)} style={{ background:mispActivePilar===p ? MISP_PILAR_COLORS[p]+"22" : "rgba(255,255,255,.03)", border:`1px solid ${mispActivePilar===p ? MISP_PILAR_COLORS[p]+"66" : "rgba(255,255,255,.08)"}`, borderRadius:8, padding:"6px 12px", color:mispActivePilar===p ? MISP_PILAR_COLORS[p] : "#64748B", fontSize:11, fontWeight:mispActivePilar===p?700:400, cursor:"pointer" }}>
+                          {MISP_PILAR_ICONS[p]} {p} <span style={{ opacity:.7 }}>({answered(p)}/{pilarItems(p).length})</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Items for active pilar */}
+                    <div style={{ display:"flex", flexDirection:"column" as const, gap:8 }}>
+                      {pilarItems(mispActivePilar).map(it => {
+                        const resp = mispAnswers[it.id];
+                        return (
+                          <div key={it.id} style={{ background: resp ? "rgba(255,255,255,.04)" : "rgba(255,255,255,.02)", border:`1px solid ${resp==="sim"?"rgba(16,185,129,.3)":resp==="parcial"?"rgba(245,158,11,.3)":resp==="nao"?"rgba(239,68,68,.2)":"rgba(255,255,255,.07)"}`, borderRadius:10, padding:"12px 14px" }}>
+                            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:12 }}>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:13, fontWeight:700, marginBottom:4 }}>{it.nome} <span style={{ fontSize:10, color:"#475569", fontWeight:400 }}>peso {it.peso}</span></div>
+                                <div style={{ fontSize:11, color:"#64748B" }}>{it.desc}</div>
+                              </div>
+                              <div style={{ display:"flex", gap:5, flexShrink:0 }}>
+                                {(["sim","parcial","nao"] as const).map(r=>(
+                                  <button key={r} onClick={()=>setMispAnswers(a=>({...a,[it.id]:r}))} style={{ background: resp===r ? (r==="sim"?"#10B981":r==="parcial"?"#F59E0B":"#EF4444") : "rgba(255,255,255,.06)", border:"none", borderRadius:6, padding:"5px 10px", color: resp===r ? "#fff" : "#64748B", fontSize:11, fontWeight:resp===r?700:400, cursor:"pointer", transition:"all .15s" }}>
+                                    {r==="sim"?"✅ Sim":r==="parcial"?"⚠️ Parcial":"❌ Não"}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Finalizar button */}
+                    <div style={{ marginTop:20, display:"flex", gap:10 }}>
+                      <button onClick={mispFinalize} style={{ background:"#6366F1", border:"none", borderRadius:10, padding:"12px 28px", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>📊 Finalizar Diagnóstico</button>
+                      <button onClick={()=>{ if(confirm("Limpar todas as respostas?")) setMispAnswers({}); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, padding:"12px 20px", color:"#64748B", fontSize:13, cursor:"pointer" }}>Limpar</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── TELA 2: RESULTADO ── */}
+                {mispTab === "resultado" && (
+                  <div>
+                    {/* Score card */}
+                    <div style={{ background:nivelBg, border:`1px solid ${calc.nivelColor}33`, borderRadius:12, padding:"20px 24px", marginBottom:20, textAlign:"center" }}>
+                      <div style={{ fontSize:52, fontWeight:900, color:calc.nivelColor, lineHeight:1 }}>{calc.score}</div>
+                      <div style={{ fontSize:16, fontWeight:700, color:calc.nivelColor, marginBottom:4 }}>{calc.nivel}</div>
+                      <div style={{ fontSize:12, color:"#64748B" }}>{calc.answered} de {calc.total} itens respondidos</div>
+                    </div>
+
+                    {/* KPI cards */}
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:20 }}>
+                      {[
+                        { label:"Score Total", val:`${calc.score}/100`, color:calc.nivelColor },
+                        { label:"Itens Críticos", val:String(MISP_ITEMS.filter(it=>mispAnswers[it.id]==="nao"&&it.peso>=4).length), color:"#EF4444" },
+                        { label:"Itens Parciais", val:String(MISP_ITEMS.filter(it=>mispAnswers[it.id]==="parcial").length), color:"#F59E0B" },
+                        { label:"% Preenchido", val:`${Math.round(calc.answered/calc.total*100)}%`, color:"#6366F1" },
+                      ].map(k=>(
+                        <div key={k.label} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.08)", borderRadius:10, padding:"12px 16px", textAlign:"center" }}>
+                          <div style={{ fontSize:20, fontWeight:800, color:k.color }}>{k.val}</div>
+                          <div style={{ fontSize:10, color:"#64748B", marginTop:3 }}>{k.label}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Radar Chart */}
+                    <div style={{ marginBottom:20 }}>
+                      <div style={{ fontSize:12, fontWeight:700, color:"#94A3B8", marginBottom:10 }}>📡 Score por Pilar</div>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <RadarChart data={calc.radarData}>
+                          <PolarGrid stroke="rgba(255,255,255,.08)" />
+                          <PolarAngleAxis dataKey="pilar" tick={{ fill:"#64748B", fontSize:11 }} />
+                          <Radar dataKey="score" stroke="#6366F1" fill="#6366F1" fillOpacity={0.25} />
+                          <Tooltip formatter={(v:number)=>[`${v}%`,"Score"]} contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:12 }} />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Lists */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:20 }}>
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#EF4444", marginBottom:8 }}>🔴 CRÍTICOS (Não, peso ≥ 4)</div>
+                        {MISP_ITEMS.filter(it=>mispAnswers[it.id]==="nao"&&it.peso>=4).map(it=>(
+                          <div key={it.id} style={{ background:"rgba(239,68,68,.08)", border:"1px solid rgba(239,68,68,.15)", borderRadius:8, padding:"8px 10px", marginBottom:6, fontSize:11 }}>
+                            <div style={{ fontWeight:600 }}>{it.nome}</div>
+                            <div style={{ color:"#64748B", fontSize:10 }}>{MISP_PILAR_ICONS[it.pilar]} {it.pilar}</div>
+                          </div>
+                        ))}
+                        {MISP_ITEMS.filter(it=>mispAnswers[it.id]==="nao"&&it.peso>=4).length===0 && <div style={{ color:"#334155", fontSize:11 }}>Nenhum item crítico</div>}
+                      </div>
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#F59E0B", marginBottom:8 }}>🟡 ATENÇÃO (Parcial, peso ≥ 3)</div>
+                        {MISP_ITEMS.filter(it=>mispAnswers[it.id]==="parcial"&&it.peso>=3).map(it=>(
+                          <div key={it.id} style={{ background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.15)", borderRadius:8, padding:"8px 10px", marginBottom:6, fontSize:11 }}>
+                            <div style={{ fontWeight:600 }}>{it.nome}</div>
+                            <div style={{ color:"#64748B", fontSize:10 }}>{MISP_PILAR_ICONS[it.pilar]} {it.pilar}</div>
+                          </div>
+                        ))}
+                        {MISP_ITEMS.filter(it=>mispAnswers[it.id]==="parcial"&&it.peso>=3).length===0 && <div style={{ color:"#334155", fontSize:11 }}>Nenhum item em atenção</div>}
+                      </div>
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#10B981", marginBottom:8 }}>🟢 POSITIVOS (Sim, peso ≥ 4)</div>
+                        {MISP_ITEMS.filter(it=>mispAnswers[it.id]==="sim"&&it.peso>=4).map(it=>(
+                          <div key={it.id} style={{ background:"rgba(16,185,129,.08)", border:"1px solid rgba(16,185,129,.15)", borderRadius:8, padding:"8px 10px", marginBottom:6, fontSize:11 }}>
+                            <div style={{ fontWeight:600 }}>{it.nome}</div>
+                            <div style={{ color:"#64748B", fontSize:10 }}>{MISP_PILAR_ICONS[it.pilar]} {it.pilar}</div>
+                          </div>
+                        ))}
+                        {MISP_ITEMS.filter(it=>mispAnswers[it.id]==="sim"&&it.peso>=4).length===0 && <div style={{ color:"#334155", fontSize:11 }}>Nenhum ponto forte</div>}
+                      </div>
+                    </div>
+
+                    {/* AI + Export buttons */}
+                    <div style={{ display:"flex", gap:10, flexWrap:"wrap" as const, marginBottom:16 }}>
+                      <button onClick={async ()=>{
+                        setMispAiLoading(true); setMispAiResult("");
+                        const criticos = MISP_ITEMS.filter(it=>mispAnswers[it.id]==="nao"&&it.peso>=4).map(it=>it.nome).join(", ");
+                        const parciais = MISP_ITEMS.filter(it=>mispAnswers[it.id]==="parcial").map(it=>it.nome).join(", ");
+                        const prompt = `Diagnóstico MISP do condomínio: Score ${calc.score}/100 (${calc.nivel}). ${calc.answered}/${calc.total} itens respondidos. Itens críticos (Não com peso≥4): ${criticos||"nenhum"}. Itens parciais: ${parciais||"nenhum"}. Scores por pilar: ${calc.radarData.map(d=>d.pilar+": "+d.score+"%").join(", ")}. Forneça: 1) Diagnóstico executivo 2) Top 5 prioridades de ação 3) Estimativa de impacto no score se as prioridades forem corrigidas. Seja direto e prático.`;
+                        try {
+                          const r = await fetch("/api/ai/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ message: prompt }) });
+                          const data = await r.json();
+                          setMispAiResult(data.reply || data.message || JSON.stringify(data));
+                        } catch { setMispAiResult("Erro ao contatar o Síndico Virtual."); }
+                        setMispAiLoading(false);
+                      }} style={{ background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.4)", borderRadius:10, padding:"10px 20px", color:"#A5B4FC", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                        {mispAiLoading ? "⏳ Analisando..." : "🤖 Análise IA – Síndico Virtual"}
+                      </button>
+                      <button onClick={()=>window.print()} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"10px 20px", color:"#94A3B8", fontSize:13, cursor:"pointer" }}>🖨️ Exportar PDF</button>
+                    </div>
+
+                    {mispAiResult && (
+                      <div style={{ background:"rgba(99,102,241,.08)", border:"1px solid rgba(99,102,241,.2)", borderRadius:12, padding:"16px 20px", fontSize:12, color:"#C7D2FE", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#818CF8", marginBottom:8 }}>🤖 Síndico Virtual – Diagnóstico MISP</div>
+                        {mispAiResult}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── TELA 3: HISTÓRICO ── */}
+                {mispTab === "historico" && (
+                  <div>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                      <div style={{ fontSize:13, fontWeight:700 }}>📅 Histórico de Diagnósticos ({mispHistory.length})</div>
+                      <button onClick={()=>{ setMispAnswers({}); setMispTab("checklist"); }} style={{ background:"#6366F1", border:"none", borderRadius:8, padding:"8px 18px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>➕ Novo Diagnóstico</button>
+                    </div>
+
+                    {mispHistory.length === 0 && <div style={{ textAlign:"center", color:"#334155", padding:40, fontSize:13 }}>Nenhum diagnóstico realizado ainda. Clique em "Finalizar Diagnóstico" no checklist.</div>}
+
+                    {/* Line chart */}
+                    {mispHistory.length > 1 && (
+                      <div style={{ marginBottom:20 }}>
+                        <div style={{ fontSize:11, color:"#64748B", marginBottom:8 }}>📈 Evolução do Score</div>
+                        <ResponsiveContainer width="100%" height={160}>
+                          <LineChart data={[...mispHistory].reverse().map((h,i)=>({ name:`#${i+1}`, score:h.score }))}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)" />
+                            <XAxis dataKey="name" tick={{ fill:"#475569", fontSize:10 }} />
+                            <YAxis domain={[0,100]} tick={{ fill:"#475569", fontSize:10 }} />
+                            <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", fontSize:12 }} />
+                            <Line type="monotone" dataKey="score" stroke="#6366F1" strokeWidth={2} dot={{ fill:"#6366F1", r:4 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+
+                    {/* History list */}
+                    <div style={{ display:"flex", flexDirection:"column" as const, gap:8 }}>
+                      {mispHistory.map((h, i) => {
+                        const nc = h.score >= 80 ? "#10B981" : h.score >= 60 ? "#F59E0B" : h.score >= 40 ? "#F97316" : "#EF4444";
+                        return (
+                          <div key={i} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                            <div>
+                              <div style={{ fontSize:12, fontWeight:700 }}>Diagnóstico #{mispHistory.length - i}</div>
+                              <div style={{ fontSize:11, color:"#64748B" }}>{h.date}</div>
+                            </div>
+                            <div style={{ textAlign:"right" }}>
+                              <div style={{ fontSize:22, fontWeight:900, color:nc }}>{h.score}</div>
+                              <div style={{ fontSize:10, color:nc, fontWeight:700 }}>{h.nivel}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {mispHistory.length > 1 && (
+                      <div style={{ marginTop:16, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"12px 16px" }}>
+                        <div style={{ fontSize:12, fontWeight:700, marginBottom:8 }}>📊 Variação</div>
+                        <div style={{ fontSize:12, color: mispHistory[0].score >= mispHistory[1].score ? "#10B981" : "#EF4444" }}>
+                          {mispHistory[0].score >= mispHistory[1].score ? "▲" : "▼"} {Math.abs(mispHistory[0].score - mispHistory[1].score)} pontos em relação ao diagnóstico anterior ({mispHistory[1].score} → {mispHistory[0].score})
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* PANEL: MANUTENÇÃO */}
           {panel === "manutencao" && (() => {
@@ -4833,8 +5160,8 @@ export default function App() {
             const vidaColor = (p: number) => p < 50 ? "#10B981" : p < 75 ? "#F59E0B" : "#EF4444";
 
             // ── Aba 1: filtros ──────────────────────────────────────────
-            const cats = ["todos", ...Array.from(new Set(EQUIP_DEMO.map(e => e.categoria)))];
-            const filtered = EQUIP_DEMO.filter(e => {
+            const cats = ["todos", ...Array.from(new Set(equipList.map(e => e.categoria)))];
+            const filtered = equipList.filter(e => {
               const q = mantSearch.toLowerCase();
               const matchQ = !q || e.nome.toLowerCase().includes(q) || e.local.toLowerCase().includes(q) || e.fabricante.toLowerCase().includes(q);
               const matchC = mantCatFilter === "todos" || e.categoria === mantCatFilter;
@@ -4853,7 +5180,7 @@ export default function App() {
 
             // ── Aba 6: dados para charts ────────────────────────────────
             const catCounts: Record<string,{count:number;custo:number}> = {};
-            EQUIP_DEMO.forEach(e => {
+            equipList.forEach(e => {
               catCounts[e.categoria] = catCounts[e.categoria] || { count:0, custo:0 };
               catCounts[e.categoria].count++;
               catCounts[e.categoria].custo += e.custoManutencao;
@@ -4867,11 +5194,11 @@ export default function App() {
             ];
 
             // Score saúde equipamentos
-            const nOp = EQUIP_DEMO.filter(e=>e.status==="operacional").length;
-            const nAt = EQUIP_DEMO.filter(e=>e.status==="atencao").length;
-            const nMt = EQUIP_DEMO.filter(e=>e.status==="manutencao").length;
-            const nIn = EQUIP_DEMO.filter(e=>e.status==="inativo").length;
-            const scoreEquip = Math.round(((nOp*100 + nAt*60 + nMt*30 + nIn*0) / EQUIP_DEMO.length));
+            const nOp = equipList.filter(e=>e.status==="operacional").length;
+            const nAt = equipList.filter(e=>e.status==="atencao").length;
+            const nMt = equipList.filter(e=>e.status==="manutencao").length;
+            const nIn = equipList.filter(e=>e.status==="inativo").length;
+            const scoreEquip = Math.round(((nOp*100 + nAt*60 + nMt*30 + nIn*0) / equipList.length));
             const scoreEquipColor = scoreEquip >= 80 ? "#10B981" : scoreEquip >= 60 ? "#F59E0B" : "#EF4444";
             const scoreEquipLabel = scoreEquip >= 80 ? "Excelente" : scoreEquip >= 60 ? "Bom" : "Crítico";
 
@@ -4906,7 +5233,7 @@ export default function App() {
                   <div>
                     <div style={{ fontSize:20, fontWeight:800 }}>🏗️ Gestão da Manutenção</div>
                     <div style={{ fontSize:12, color:"#475569", marginTop:2 }}>
-                      {EQUIP_DEMO.length} equipamentos · {nOp} operacionais · {nAt} atenção · {nMt} em manutenção · {nIn} inativos
+                      {equipList.length} equipamentos · {nOp} operacionais · {nAt} atenção · {nMt} em manutenção · {nIn} inativos
                     </div>
                   </div>
                   <div style={{ display:"flex", gap:8 }}>
@@ -5004,7 +5331,11 @@ export default function App() {
                               <td style={{ padding:"10px 10px", color:"#64748B" }}>{e.fabricante}</td>
                               <td style={{ padding:"10px 10px", color:"#64748B", whiteSpace:"nowrap" }}>{e.proxManutencao}</td>
                               <td style={{ padding:"10px 10px" }}>
-                                <button onClick={()=>setMantSelEquip(e)} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:6, padding:"4px 10px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>Ver</button>
+                                <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const }}>
+                                  <button onClick={()=>setMantSelEquip(e)} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:6, padding:"4px 8px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>Ver</button>
+                                  <button onClick={()=>equipEdit(e)} style={{ background:"rgba(59,130,246,.15)", border:"1px solid rgba(59,130,246,.3)", borderRadius:6, padding:"4px 8px", color:"#60A5FA", fontSize:11, cursor:"pointer" }}>✏️</button>
+                                  <button onClick={()=>equipDelete(e.id)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:6, padding:"4px 8px", color:"#F87171", fontSize:11, cursor:"pointer" }}>🗑️</button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -5012,6 +5343,55 @@ export default function App() {
                       </table>
                       {filtered.length === 0 && <div style={{ textAlign:"center", color:"#334155", padding:30, fontSize:13 }}>Nenhum equipamento encontrado</div>}
                     </div>
+
+                    {/* Add new / Novo Equipamento button */}
+                    <div style={{ marginTop:12, display:"flex", justifyContent:"flex-end" }}>
+                      <button onClick={()=>{ setEquipEditId(null); setEquipForm(EMPTY_EQ); setEquipShowEdit(true); }} style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"8px 18px", color:"#34D399", fontSize:12, fontWeight:700, cursor:"pointer" }}>＋ Novo Equipamento</button>
+                    </div>
+
+                    {/* Edit / Add Modal */}
+                    {equipShowEdit && (
+                      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setEquipShowEdit(false)}>
+                        <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:16, padding:28, width:560, maxHeight:"85vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                            <div style={{ fontSize:16, fontWeight:800 }}>{equipEditId ? "✏️ Editar Equipamento" : "➕ Novo Equipamento"}</div>
+                            <button onClick={()=>setEquipShowEdit(false)} style={{ background:"none", border:"none", color:"#475569", fontSize:20, cursor:"pointer" }}>✕</button>
+                          </div>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                            {([["Nome *","nome","text",""],["Local","local","text",""],["Fabricante","fabricante","text",""],["Modelo","modelo","text",""],["Nº Série","serie","text",""],["Data Instalação","dataInstalacao","date",""],["Vida Útil (anos)","vidaUtilAnos","number",""],["Instalado há (anos)","instaladoHa","number",""],["Consumo kWh/h","consumoKwh","number",""],["Horas/dia","horasDia","number",""],["Custo Manutenção R$","custoManutencao","number",""],["Próx. Manutenção","proxManutencao","date",""],["Última Manutenção","ultimaManutencao","date",""]] as [string,string,string,string][]).map(([label,key,type]) => (
+                              <div key={key}>
+                                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>{label}</div>
+                                <input type={type} value={String(equipForm[key as keyof typeof equipForm]||"")} onChange={e=>setEquipForm(f=>({...f,[key]:type==="number"?Number(e.target.value):e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} />
+                              </div>
+                            ))}
+                            <div>
+                              <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Categoria</div>
+                              <select value={equipForm.categoria} onChange={e=>setEquipForm(f=>({...f,categoria:e.target.value}))} style={{ width:"100%", background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }}>
+                                {["elevador","hidraulico","eletrico","seguranca","limpeza","estrutural","outros"].map(c=><option key={c} value={c}>{c}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Status</div>
+                              <select value={equipForm.status} onChange={e=>setEquipForm(f=>({...f,status:e.target.value as "operacional"|"atencao"|"manutencao"|"inativo"}))} style={{ width:"100%", background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }}>
+                                <option value="operacional">Operacional</option>
+                                <option value="atencao">Atenção</option>
+                                <option value="manutencao">Em Manutenção</option>
+                                <option value="inativo">Inativo</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div style={{ marginTop:12 }}>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Descrição</div>
+                            <textarea value={equipForm.descricao} onChange={e=>setEquipForm(f=>({...f,descricao:e.target.value}))} rows={3} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const, resize:"vertical" as const }} />
+                          </div>
+                          <div style={{ display:"flex", gap:10, marginTop:18 }}>
+                            <button onClick={equipSave} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"10px 24px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>Salvar</button>
+                            <button onClick={()=>setEquipShowEdit(false)} style={{ background:"transparent", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"10px 18px", color:"#64748B", fontSize:13, cursor:"pointer" }}>Cancelar</button>
+                            {equipEditId && <button onClick={()=>{ equipDelete(equipEditId); setEquipShowEdit(false); }} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.3)", borderRadius:8, padding:"10px 18px", color:"#F87171", fontSize:13, cursor:"pointer", marginLeft:"auto" }}>🗑️ Excluir</button>}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -5046,7 +5426,7 @@ export default function App() {
 
                           {/* PINS */}
                           {mapPins.map(pin => {
-                            const eq = EQUIP_DEMO.find(e => e.id === pin.id)!;
+                            const eq = equipList.find(e => e.id === pin.id)!;
                             const col = stColor[eq.status];
                             const isHov = mantMapHover === pin.id;
                             return (
@@ -5076,7 +5456,7 @@ export default function App() {
                             <div style={{ width:12, height:12, borderRadius:"50%", background:stColor[s], flexShrink:0 }}/>
                             <span style={{ color:"#94A3B8" }}>{stLabel[s]}</span>
                             <span style={{ marginLeft:"auto", color:stColor[s], fontWeight:700 }}>
-                              {EQUIP_DEMO.filter(e=>e.status===s).length}
+                              {equipList.filter(e=>e.status===s).length}
                             </span>
                           </div>
                         ))}
@@ -5099,10 +5479,10 @@ export default function App() {
                 {mantTab === "plano" && (
                   <div>
                     {/* Alertas vencidos */}
-                    {EQUIP_DEMO.filter(e => e.proxManutencao <= new Date().toISOString().slice(0,10)).length > 0 && (
+                    {equipList.filter(e => e.proxManutencao <= new Date().toISOString().slice(0,10)).length > 0 && (
                       <div style={{ background:"rgba(239,68,68,.08)", border:"1px solid rgba(239,68,68,.2)", borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:12 }}>
-                        🔴 <strong>{EQUIP_DEMO.filter(e=>e.proxManutencao<=new Date().toISOString().slice(0,10)).length} manutenção(ões) vencida(s):</strong>{" "}
-                        {EQUIP_DEMO.filter(e=>e.proxManutencao<=new Date().toISOString().slice(0,10)).map(e=>e.nome).join(", ")}
+                        🔴 <strong>{equipList.filter(e=>e.proxManutencao<=new Date().toISOString().slice(0,10)).length} manutenção(ões) vencida(s):</strong>{" "}
+                        {equipList.filter(e=>e.proxManutencao<=new Date().toISOString().slice(0,10)).map(e=>e.nome).join(", ")}
                       </div>
                     )}
 
@@ -5186,7 +5566,7 @@ export default function App() {
                     {/* Associação equip → OS */}
                     <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", marginBottom:10 }}>🔗 HISTÓRICO DE OS POR EQUIPAMENTO</div>
                     <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                      {EQUIP_DEMO.filter(e=>e.status!=="operacional").map(e => (
+                      {equipList.filter(e=>e.status!=="operacional").map(e => (
                         <div key={e.id} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"12px 14px" }}>
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
                             <div style={{ fontWeight:600, fontSize:13 }}>{e.catIcon} {e.nome}</div>
@@ -5229,7 +5609,7 @@ export default function App() {
                       </button>
                     </div>
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(170px,1fr))", gap:12 }}>
-                      {EQUIP_DEMO.map(eq => (
+                      {equipList.map(eq => (
                         <div key={eq.id} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:14, display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
                           {qrUrls[eq.id]
                             ? <img src={qrUrls[eq.id]} alt={eq.nome} style={{ width:130, height:130, borderRadius:8 }}/>
@@ -5254,10 +5634,10 @@ export default function App() {
                     {/* KPIs */}
                     <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap" }}>
                       {[
-                        { label:"Equipamentos", val:EQUIP_DEMO.length, color:"#A5B4FC", icon:"🏗️" },
+                        { label:"Equipamentos", val:equipList.length, color:"#A5B4FC", icon:"🏗️" },
                         { label:"Operacionais", val:nOp, color:"#10B981", icon:"✅" },
                         { label:"Em Atenção/Manutenção", val:nAt+nMt, color:"#F59E0B", icon:"⚠️" },
-                        { label:"Custo Anual Est.", val:fmtBRLFull(EQUIP_DEMO.reduce((s,e)=>s+e.custoManutencao*2,0)), color:"#06B6D4", icon:"💰" },
+                        { label:"Custo Anual Est.", val:fmtBRLFull(equipList.reduce((s,e)=>s+e.custoManutencao*2,0)), color:"#06B6D4", icon:"💰" },
                       ].map(k => (
                         <div key={k.label} style={{ flex:1, minWidth:160, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"12px 16px" }}>
                           <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.icon} {k.label.toUpperCase()}</div>
@@ -5334,7 +5714,7 @@ export default function App() {
                           onClick={async () => {
                             setMantAiLoading(true);
                             setMantAiResult("");
-                            const resumo = `Condomínio: Residencial Parque das Flores. Equipamentos: ${EQUIP_DEMO.length} total, ${nOp} operacionais, ${nAt} em atenção, ${nMt} em manutenção, ${nIn} inativos. Score de saúde: ${scoreEquip}/100. Equipamentos críticos: ${EQUIP_DEMO.filter(e=>e.status!=="operacional").map(e=>e.nome+" ("+e.status+": "+e.descricao+")").join("; ")}. Custo de manutenção anual estimado: R$ ${EQUIP_DEMO.reduce((s,e)=>s+e.custoManutencao*2,0).toLocaleString("pt-BR")}. MTTR: 4.2 dias. MTBF: 38 dias. Disponibilidade: 89%.`;
+                            const resumo = `Condomínio: Residencial Parque das Flores. Equipamentos: ${equipList.length} total, ${nOp} operacionais, ${nAt} em atenção, ${nMt} em manutenção, ${nIn} inativos. Score de saúde: ${scoreEquip}/100. Equipamentos críticos: ${equipList.filter(e=>e.status!=="operacional").map(e=>e.nome+" ("+e.status+": "+e.descricao+")").join("; ")}. Custo de manutenção anual estimado: R$ ${equipList.reduce((s,e)=>s+e.custoManutencao*2,0).toLocaleString("pt-BR")}. MTTR: 4.2 dias. MTBF: 38 dias. Disponibilidade: 89%.`;
                             try {
                               const r = await fetch("/api/sindico/chat", {
                                 method:"POST",
@@ -6697,7 +7077,7 @@ export default function App() {
                 {[
                   { icon: "📋", title: "OSs / Planejamento", badgeColor: "#F59E0B", badgeBg: "rgba(245,158,11,.12)", sub: `${osAbertas.length} em aberto`, dot: true, screen: "planejamento" },
                   { icon: "💰", title: "Financeiro", badgeColor: "#10B981", badgeBg: "rgba(16,185,129,.12)", sub: fmtBRL(t?.saldo || 0), dot: false, screen: "financeiro" },
-                  { icon: "🔧", title: "Manutenção", badgeColor: "var(--neu-text-2)", badgeBg: "transparent", sub: `${EQUIP_DEMO.length} itens`, dot: false, screen: "manutencao" },
+                  { icon: "🔧", title: "Manutenção", badgeColor: "var(--neu-text-2)", badgeBg: "transparent", sub: `${equipList.length} itens`, dot: false, screen: "manutencao" },
                   { icon: "👥", title: "CRM Moradores", badgeColor: "#3B82F6", badgeBg: "rgba(59,130,246,.12)", sub: `${crmMoradores.length} cadastros`, dot: false, screen: "crm" },
                   { icon: "📢", title: "Comunicados", badgeColor: "#F59E0B", badgeBg: "rgba(245,158,11,.12)", sub: `${(dash?.comunicados||[]).length} enviados`, dot: false, screen: "comunicados" },
                   { icon: "💡", title: "Insights IA", badgeColor: "#7C5CFC", badgeBg: "rgba(124,92,252,.12)", sub: "Tempo real", dot: false, screen: "insights" },
