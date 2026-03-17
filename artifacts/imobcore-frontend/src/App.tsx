@@ -673,6 +673,8 @@ export default function App() {
   const [usuarioModal, setUsuarioModal] = useState<"none"|"new"|"edit">("none");
   const [usuarioEditId, setUsuarioEditId] = useState<string|null>(null);
   const [usuarioForm, setUsuarioForm] = useState({ nome:"", email:"", telefone:"", perfil:"morador" as PerfilKey, unidade:"", status:"ativo" });
+  const [showPermsPanel, setShowPermsPanel] = useState(false);
+  const [permsCustom, setPermsCustom] = useState<Record<string,boolean>>({});
   const [usuariosLoaded, setUsuariosLoaded] = useState(false);
   const [usuarioPermId, setUsuarioPermId] = useState<string|null>(null);
   const [usuarioPermNome, setUsuarioPermNome] = useState("");
@@ -935,14 +937,15 @@ export default function App() {
       const isEdit = usuarioModal === "edit" && usuarioEditId;
       const url = isEdit ? `/api/usuarios/${usuarioEditId}` : "/api/usuarios";
       const method = isEdit ? "PUT" : "POST";
-      const body = isEdit ? usuarioForm : { ...usuarioForm, condominio_id: condId };
+      const payload = { ...usuarioForm, permissoes_customizadas: permsCustom };
+      const body = isEdit ? payload : { ...payload, condominio_id: condId };
       const r = await fetch(url, { method, headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
       if (!r.ok) throw new Error(await r.text());
       showToast(isEdit ? "Usuário atualizado ✓" : "Usuário criado ✓","ok");
       setUsuarioModal("none");
       loadUsuarios();
     } catch { showToast("Erro ao salvar usuário","error"); }
-  }, [usuarioModal, usuarioEditId, usuarioForm, condId, showToast, loadUsuarios]);
+  }, [usuarioModal, usuarioEditId, usuarioForm, permsCustom, condId, showToast, loadUsuarios]);
 
   const deleteUsuario = useCallback(async (id: string) => {
     try {
@@ -6055,13 +6058,26 @@ export default function App() {
               acc[p] = p === "todos" ? usuarios.length : usuarios.filter(u => u.perfil === p).length;
               return acc;
             }, {} as Record<string, number>);
+            const ALL_MOD_KEYS = ["chatIA","insights","comunicados","ordens","financeiro","agua","misp","diagnostico","crm","manutencao","energia","gas","encomendas","condominios","usuarios","sseLiveLog"];
+            const buildPerms = (perfil: PerfilKey, existing?: Record<string,unknown>) => {
+              const mods = new Set(PERFIS_CONFIG[perfil].modulos);
+              return ALL_MOD_KEYS.reduce((acc,k) => {
+                acc[k] = existing ? (existing[k] === true || (existing[k] === undefined && mods.has(k))) : mods.has(k);
+                return acc;
+              }, {} as Record<string,boolean>);
+            };
             const openNew = () => {
-              setUsuarioForm({ nome:"", email:"", telefone:"", perfil:"morador", unidade:"", status:"ativo" });
+              const perfil: PerfilKey = "morador";
+              setUsuarioForm({ nome:"", email:"", telefone:"", perfil, unidade:"", status:"ativo" });
+              setPermsCustom(buildPerms(perfil));
+              setShowPermsPanel(false);
               setUsuarioEditId(null);
               setUsuarioModal("new");
             };
             const openEdit = (u: typeof usuarios[0]) => {
               setUsuarioForm({ nome:u.nome, email:u.email, telefone:u.telefone||"", perfil:u.perfil, unidade:u.unidade||"", status:u.status });
+              setPermsCustom(buildPerms(u.perfil, u.permissoes_customizadas as Record<string,unknown>|undefined));
+              setShowPermsPanel(false);
               setUsuarioEditId(u.id);
               setUsuarioModal("edit");
             };
@@ -6222,7 +6238,7 @@ export default function App() {
                             {(["gestor","sindico","morador","zelador"] as const).map(p => {
                               const cfg = PERFIS_CONFIG[p];
                               const sel = usuarioForm.perfil === p;
-                              return <button key={p} type="button" onClick={()=>setUsuarioForm(f=>({...f,perfil:p}))} style={{ padding:"7px 14px", borderRadius:8, fontSize:11, fontWeight:sel?700:500, cursor:"pointer", border:sel?`2px solid ${cfg.cor}`:"1px solid rgba(255,255,255,.1)", background:sel?`${cfg.cor}22`:"rgba(255,255,255,.03)", color:sel?cfg.cor:"#64748B" }}>{cfg.icon} {cfg.label}</button>;
+                              return <button key={p} type="button" onClick={()=>{ setUsuarioForm(f=>({...f,perfil:p})); setPermsCustom(buildPerms(p)); setShowPermsPanel(false); }} style={{ padding:"7px 14px", borderRadius:8, fontSize:11, fontWeight:sel?700:500, cursor:"pointer", border:sel?`2px solid ${cfg.cor}`:"1px solid rgba(255,255,255,.1)", background:sel?`${cfg.cor}22`:"rgba(255,255,255,.03)", color:sel?cfg.cor:"#64748B" }}>{cfg.icon} {cfg.label}</button>;
                             })}
                           </div>
                           {/* Card visual de acesso a módulos */}
@@ -6261,6 +6277,45 @@ export default function App() {
                                     );
                                   })}
                                 </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Seção expansível: Personalizar permissões */}
+                          {(() => {
+                            const ALL_MODS_LABELED: {key:string;label:string;icon:string}[] = [
+                              {key:"chatIA",label:"Chat IA",icon:"🤖"},{key:"insights",label:"Insights",icon:"📊"},
+                              {key:"comunicados",label:"Comunicados",icon:"📢"},{key:"ordens",label:"Ordens",icon:"📋"},
+                              {key:"financeiro",label:"Financeiro",icon:"💰"},{key:"agua",label:"Água",icon:"💧"},
+                              {key:"misp",label:"MISP",icon:"🎯"},{key:"diagnostico",label:"Diagnóstico",icon:"🔍"},
+                              {key:"crm",label:"CRM",icon:"👥"},{key:"manutencao",label:"Manutenção",icon:"🔧"},
+                              {key:"energia",label:"Energia",icon:"⚡"},{key:"gas",label:"Gás",icon:"🔥"},
+                              {key:"encomendas",label:"Encomendas",icon:"📦"},{key:"condominios",label:"Condomínios",icon:"🏢"},
+                              {key:"usuarios",label:"Usuários",icon:"👤"},{key:"sseLiveLog",label:"Live Log",icon:"📡"},
+                            ];
+                            const perfilCor2 = PERFIS_CONFIG[usuarioForm.perfil].cor;
+                            const enabledCount = Object.values(permsCustom).filter(Boolean).length;
+                            return (
+                              <div style={{ marginTop:6, borderRadius:10, border:"1px solid rgba(255,255,255,.08)", overflow:"hidden" }}>
+                                <button type="button" onClick={()=>setShowPermsPanel(v=>!v)} style={{ width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"9px 12px", background:"rgba(255,255,255,.04)", border:"none", cursor:"pointer", color:"#94a3b8", fontSize:11 }}>
+                                  <span style={{ fontWeight:700, textTransform:"uppercase" as const, letterSpacing:1, color:perfilCor2 }}>🔐 Personalizar Permissões</span>
+                                  <span style={{ fontSize:10 }}>{enabledCount}/{ALL_MODS_LABELED.length} ativos &nbsp;{showPermsPanel?"▲":"▼"}</span>
+                                </button>
+                                {showPermsPanel && (
+                                  <div style={{ padding:"10px 12px", background:"rgba(0,0,0,.15)", display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"7px 12px" }}>
+                                    {ALL_MODS_LABELED.map(m => {
+                                      const on = !!permsCustom[m.key];
+                                      return (
+                                        <label key={m.key} style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer", fontSize:11, color: on?"#e2e8f0":"#475569" }}>
+                                          <div onClick={()=>setPermsCustom(p=>({...p,[m.key]:!p[m.key]}))} style={{ width:32, height:18, borderRadius:9, background: on?perfilCor2:"rgba(255,255,255,.1)", position:"relative" as const, flexShrink:0, transition:"background .2s", cursor:"pointer" }}>
+                                            <div style={{ position:"absolute" as const, top:3, left: on?16:3, width:12, height:12, borderRadius:"50%", background:"#fff", transition:"left .15s" }} />
+                                          </div>
+                                          {m.icon} {m.label}
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                )}
                               </div>
                             );
                           })()}
