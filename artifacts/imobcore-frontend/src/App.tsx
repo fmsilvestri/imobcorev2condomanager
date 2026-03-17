@@ -674,6 +674,10 @@ export default function App() {
   const [usuarioEditId, setUsuarioEditId] = useState<string|null>(null);
   const [usuarioForm, setUsuarioForm] = useState({ nome:"", email:"", telefone:"", perfil:"morador" as PerfilKey, unidade:"", status:"ativo" });
   const [usuariosLoaded, setUsuariosLoaded] = useState(false);
+  const [usuarioPermId, setUsuarioPermId] = useState<string|null>(null);
+  const [usuarioPermNome, setUsuarioPermNome] = useState("");
+  const [usuarioPermJson, setUsuarioPermJson] = useState("");
+  const [usuarioPermJsonErr, setUsuarioPermJsonErr] = useState(false);
 
   // ── Gás state ──────────────────────────────────────────────────────────────
   const [gasNovaLeitModal, setGasNovaLeitModal] = useState(false);
@@ -6169,6 +6173,7 @@ export default function App() {
                               <td style={{ padding:"10px 12px", whiteSpace:"nowrap" as const }}>
                                 <div style={{ display:"flex", gap:6 }}>
                                   <button title="Editar usuário" onClick={() => openEdit(u)} style={{ background:"rgba(37,99,235,.15)", border:"1px solid rgba(37,99,235,.3)", borderRadius:6, padding:"5px 9px", color:"#93C5FD", fontSize:11, cursor:"pointer" }}>✏️</button>
+                                  <button title="Permissões customizadas" onClick={() => { setUsuarioPermId(u.id); setUsuarioPermNome(u.nome); setUsuarioPermJson(u.permissoes_customizadas ? JSON.stringify(u.permissoes_customizadas, null, 2) : "{}"); setUsuarioPermJsonErr(false); }} style={{ background:"rgba(124,60,252,.12)", border:"1px solid rgba(124,60,252,.3)", borderRadius:6, padding:"5px 9px", color:"#C4B5FD", fontSize:11, cursor:"pointer" }}>🔐</button>
                                   {u.status === "ativo" && <button title="Desativar usuário" onClick={() => deleteUsuario(u.id)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.25)", borderRadius:6, padding:"5px 9px", color:"#FCA5A5", fontSize:11, cursor:"pointer" }}>🚫</button>}
                                   {u.status === "inativo" && <button title="Reativar usuário" onClick={() => { fetch(`/api/usuarios/${u.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"ativo"})}).then(()=>{ showToast("Usuário reativado","ok"); loadUsuarios(); }); }} style={{ background:"rgba(16,185,129,.1)", border:"1px solid rgba(16,185,129,.25)", borderRadius:6, padding:"5px 9px", color:"#6EE7B7", fontSize:11, cursor:"pointer" }}>✓</button>}
                                 </div>
@@ -6260,6 +6265,52 @@ export default function App() {
                     </div>
                   </div>
                 )}
+                {/* Modal Permissões Customizadas */}
+                {usuarioPermId && (
+                  <div style={{ position:"fixed" as const, inset:0, background:"rgba(0,0,0,.75)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={e => { if (e.target===e.currentTarget) setUsuarioPermId(null); }}>
+                    <div style={{ background:"#0D1321", border:"1px solid rgba(124,60,252,.3)", borderRadius:16, padding:28, width:500, maxWidth:"92vw", maxHeight:"85vh", overflowY:"auto" as const }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                        <div style={{ fontSize:16, fontWeight:800 }}>🔐 Permissões Customizadas</div>
+                        <button onClick={()=>setUsuarioPermId(null)} style={{ background:"none", border:"none", color:"#64748B", fontSize:18, cursor:"pointer" }}>×</button>
+                      </div>
+                      <div style={{ fontSize:12, color:"#475569", marginBottom:16 }}>{usuarioPermNome} — edite o JSON de permissões extras</div>
+
+                      <div style={{ fontSize:10, color:"#475569", fontWeight:700, marginBottom:6, textTransform:"uppercase" as const }}>JSON de Permissões</div>
+                      <textarea
+                        value={usuarioPermJson}
+                        onChange={e => {
+                          setUsuarioPermJson(e.target.value);
+                          try { JSON.parse(e.target.value); setUsuarioPermJsonErr(false); } catch { setUsuarioPermJsonErr(true); }
+                        }}
+                        rows={12}
+                        spellCheck={false}
+                        style={{ width:"100%", boxSizing:"border-box" as const, padding:"10px 12px", background:"rgba(255,255,255,.04)", border:`1px solid ${usuarioPermJsonErr?"#EF4444":"rgba(255,255,255,.1)"}`, borderRadius:8, color: usuarioPermJsonErr?"#FCA5A5":"#E2E8F0", fontSize:12, fontFamily:"'Courier New', monospace", resize:"vertical" as const, outline:"none" }}
+                      />
+                      {usuarioPermJsonErr && <div style={{ fontSize:11, color:"#EF4444", marginTop:4 }}>⚠️ JSON inválido — corrija antes de salvar</div>}
+
+                      <div style={{ fontSize:11, color:"#334155", marginTop:10, marginBottom:16 }}>
+                        Exemplo: <code style={{ background:"rgba(255,255,255,.06)", padding:"2px 6px", borderRadius:4 }}>{`{"ver_financeiro": true, "aprovar_os": false}`}</code>
+                      </div>
+
+                      <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+                        <button onClick={()=>setUsuarioPermId(null)} style={{ padding:"9px 20px", borderRadius:8, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#64748B", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                        <button disabled={usuarioPermJsonErr} onClick={async () => {
+                          try {
+                            const parsed = JSON.parse(usuarioPermJson);
+                            const r = await fetch(`/api/usuarios/${usuarioPermId}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ permissoes_customizadas: parsed }) });
+                            if (!r.ok) throw new Error();
+                            showToast("Permissões salvas ✓","ok");
+                            setUsuarioPermId(null);
+                            loadUsuarios();
+                          } catch { showToast("Erro ao salvar permissões","error"); }
+                        }} style={{ padding:"9px 24px", borderRadius:8, background: usuarioPermJsonErr ? "rgba(100,116,139,.3)" : "rgba(124,60,252,.8)", border:"none", color: usuarioPermJsonErr ? "#64748B" : "#fff", fontSize:12, fontWeight:700, cursor: usuarioPermJsonErr ? "not-allowed" : "pointer" }}>
+                          Salvar Permissões
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
               </div>
             );
           })()}
