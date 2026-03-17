@@ -2468,12 +2468,18 @@ export default function App() {
     if (!sindicoScreen) return null;
 
     const screenTitle: Record<string, string> = {
-      planejamento: "📋 Planejamento",
+      planejamento: "📋 Planejamento / OSs",
       sindico: "🤖 Síndico Virtual IA",
       iot: "📡 Monitor IoT",
-      agua: "💧 Água IoT",
+      agua: "💧 Água & Reservatórios",
       financeiro: "💰 Financeiro",
       misp: "🚨 Alertas MISP",
+      energia: "⚡ Módulo Energia",
+      gas: "🔥 Módulo Gás",
+      manutencao: "🔧 Manutenção",
+      crm: "👥 CRM – Moradores",
+      comunicados: "📢 Comunicados",
+      insights: "💡 Insights & Análises",
     };
 
     return (
@@ -2625,6 +2631,273 @@ export default function App() {
               );
             })}
           </div>
+        )}
+
+        {/* ── ENERGIA ──────────────────────────────────────────────────── */}
+        {sindicoScreen === "energia" && (
+          <div className="ph-sub-body">
+            {/* KPI row */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+              {[
+                { label: "Consumo Atual", val: "284 kWh", icon: "⚡", color: "#F59E0B" },
+                { label: "Meta Mensal", val: "320 kWh", icon: "🎯", color: "#6366F1" },
+                { label: "Geração Solar", val: "62 kWh", icon: "☀️", color: "#10B981" },
+                { label: "Economia", val: "R$186", icon: "💚", color: "#14B8A6" },
+              ].map(k => (
+                <div key={k.label} className="ph-os-item" style={{ textAlign: "center", padding: "10px 8px" }}>
+                  <div style={{ fontSize: 20, marginBottom: 4 }}>{k.icon}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: k.color }}>{k.val}</div>
+                  <div style={{ fontSize: 10, color: "#475569" }}>{k.label}</div>
+                </div>
+              ))}
+            </div>
+            {/* Alerts */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#F59E0B", marginBottom: 8 }}>⚡ Alertas de Energia</div>
+            {[
+              { msg: "Pico de consumo no elevador Torre A – 14h", level: "#F59E0B" },
+              { msg: "Geração solar abaixo do esperado – nebulosidade", level: "#94A3B8" },
+              { msg: "Tarifa fora de ponta ativa", level: "#10B981" },
+            ].map((a, i) => (
+              <div key={i} className="ph-os-item" style={{ borderColor: a.level + "40", marginBottom: 8 }}>
+                <div style={{ fontSize: 12, display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: a.level, flexShrink: 0 }} />
+                  {a.msg}
+                </div>
+              </div>
+            ))}
+            {/* Occurrences */}
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", margin: "14px 0 8px" }}>📋 Ocorrências Recentes</div>
+            {energiaOcorrencias.slice(0, 3).map(o => (
+              <div key={o.id} className="ph-os-item" style={{ marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>{o.titulo}</span>
+                  <span style={{ fontSize: 10, color: { queda:"#EF4444", sobretensao:"#F59E0B", manutencao:"#6366F1", outro:"#94A3B8" }[o.tipo] || "#94A3B8" }}>{o.tipo}</span>
+                </div>
+                <div style={{ fontSize: 10, color: "#475569" }}>{fmtDate(o.data)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── GÁS ──────────────────────────────────────────────────────── */}
+        {sindicoScreen === "gas" && (() => {
+          const nivelAtual = gasLeituras[0]?.nivel ?? 0;
+          const isLow = nivelAtual < 20;
+          const barColor = nivelAtual > 50 ? "#10B981" : nivelAtual > 20 ? "#F59E0B" : "#EF4444";
+          return (
+            <div className="ph-sub-body">
+              {isLow && (
+                <div className="ph-os-item" style={{ borderColor: "#EF444440", background: "rgba(239,68,68,.08)", marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#F87171" }}>🚨 NÍVEL CRÍTICO – Solicitar recarga urgente!</div>
+                </div>
+              )}
+              {/* Level indicator */}
+              <div className="ph-os-item" style={{ textAlign: "center", padding: 20, marginBottom: 14 }}>
+                <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>NÍVEL ATUAL</div>
+                <div style={{ fontSize: 42, fontWeight: 800, color: barColor }}>{nivelAtual}%</div>
+                <div style={{ margin: "12px auto", width: "100%", height: 12, background: "rgba(255,255,255,.06)", borderRadius: 6, overflow: "hidden" }}>
+                  <div style={{ width: `${nivelAtual}%`, height: "100%", background: barColor, borderRadius: 6, transition: "width .5s" }} />
+                </div>
+                <div style={{ fontSize: 11, color: "#475569" }}>Fornecedora: Ultragaz · Próxima leitura: 15 dias</div>
+              </div>
+              {/* KPIs */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+                {[
+                  { label: "Mín", val: Math.min(...gasLeituras.map(l=>l.nivel)) + "%", color: "#EF4444" },
+                  { label: "Médio", val: Math.round(gasLeituras.reduce((s,l)=>s+l.nivel,0)/gasLeituras.length) + "%", color: "#F59E0B" },
+                  { label: "Máx", val: Math.max(...gasLeituras.map(l=>l.nivel)) + "%", color: "#10B981" },
+                ].map(k => (
+                  <div key={k.label} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: k.color }}>{k.val}</div>
+                    <div style={{ fontSize: 10, color: "#475569" }}>{k.label}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Recent readings */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", marginBottom: 8 }}>📋 Leituras Recentes</div>
+              {gasLeituras.slice(0, 5).map((l, i) => (
+                <div key={i} className="ph-fin-item">
+                  <div>
+                    <div className="ph-fin-label">Leitura {i + 1}</div>
+                    <div className="ph-fin-sub">{l.obs || "—"}</div>
+                  </div>
+                  <div className="ph-fin-val" style={{ color: l.nivel < 20 ? "#EF4444" : l.nivel < 50 ? "#F59E0B" : "#10B981" }}>{l.nivel}%</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* ── MANUTENÇÃO ───────────────────────────────────────────────── */}
+        {sindicoScreen === "manutencao" && (() => {
+          const nextMonth = MANUT_SCHEDULE[0];
+          const totalCusto = nextMonth?.items.reduce((s, i) => s + i.custo, 0) ?? 0;
+          return (
+            <div className="ph-sub-body">
+              {/* Quick stats */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+                {[
+                  { label: "Equipamentos", val: String(EQUIP_DEMO.length), icon: "🔧", color: "#6366F1" },
+                  { label: "Próx. Mês", val: String(nextMonth?.items.length ?? 0), icon: "📅", color: "#F59E0B" },
+                  { label: "Custo Est.", val: `R$${(totalCusto/1000).toFixed(1)}k`, icon: "💰", color: "#10B981" },
+                ].map(k => (
+                  <div key={k.label} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
+                    <div style={{ fontSize: 18, marginBottom: 2 }}>{k.icon}</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: k.color }}>{k.val}</div>
+                    <div style={{ fontSize: 9, color: "#475569" }}>{k.label}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Upcoming maintenance */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#F59E0B", marginBottom: 8 }}>📅 Próximas Manutenções – {nextMonth?.mes}</div>
+              {nextMonth?.items.map((it, i) => (
+                <div key={i} className="ph-os-item" style={{ marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{it.equip}</span>
+                    <span style={{ fontSize: 10, color: it.tipo === "preventiva" ? "#10B981" : "#F59E0B", fontWeight: 600 }}>{it.tipo}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#475569" }}>Custo estimado: R${it.custo.toLocaleString("pt-BR")}</div>
+                </div>
+              ))}
+              {/* Equipment list */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", margin: "14px 0 8px" }}>⚙️ Equipamentos Cadastrados</div>
+              {EQUIP_DEMO.map(eq => (
+                <div key={eq.id} className="ph-os-item" style={{ marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{eq.nome}</span>
+                    <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8, fontWeight: 600,
+                      background: eq.status === "operacional" ? "rgba(16,185,129,.15)" : "rgba(239,68,68,.15)",
+                      color: eq.status === "operacional" ? "#34D399" : "#F87171" }}>{eq.status}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: "#64748B" }}>{eq.categoria} · {eq.local}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* ── CRM – MORADORES ──────────────────────────────────────────── */}
+        {sindicoScreen === "crm" && (() => {
+          const [srch, setSrch] = [crmSearch, setCrmSearch];
+          const lista = crmMoradores.filter(m =>
+            m.nome.toLowerCase().includes(srch.toLowerCase()) ||
+            m.email.toLowerCase().includes(srch.toLowerCase()) ||
+            m.bloco.toLowerCase().includes(srch.toLowerCase())
+          );
+          return (
+            <div className="ph-sub-body">
+              {/* Search */}
+              <div style={{ position: "relative", marginBottom: 12 }}>
+                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 14 }}>🔍</span>
+                <input
+                  value={srch} onChange={e => setSrch(e.target.value)}
+                  placeholder="Buscar morador, e-mail, bloco..."
+                  style={{ width: "100%", padding: "9px 12px 9px 36px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 10, color: "#E2E8F0", fontSize: 12, fontFamily: "Inter, sans-serif", boxSizing: "border-box" as const }}
+                />
+              </div>
+              {/* Stats */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                {[
+                  { label: "Total", val: crmMoradores.length, color: "#6366F1" },
+                  { label: "Pet Owners", val: crmMoradores.filter(m=>m.pet).length, color: "#10B981" },
+                  { label: "Home Office", val: crmMoradores.filter(m=>m.homeOffice).length, color: "#A855F7" },
+                ].map(s => (
+                  <div key={s.label} style={{ flex: 1, background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10, padding: "8px", textAlign: "center" }}>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{s.val}</div>
+                    <div style={{ fontSize: 10, color: "#475569" }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Residents list */}
+              {lista.map(m => (
+                <div key={m.id} className="ph-os-item" style={{ marginBottom: 10 }}>
+                  <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg,#6366F1,#A855F7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
+                      {m.nome.charAt(0)}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{m.nome}</div>
+                      <div style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}>Bloco {m.bloco} · Apto {m.apto}</div>
+                      <div style={{ fontSize: 11, color: "#475569" }}>{m.email}</div>
+                      <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" as const }}>
+                        {m.segmentos.slice(0,2).map((s: string) => (
+                          <span key={s} style={{ fontSize: 9, padding: "2px 6px", borderRadius: 6, background: "rgba(99,102,241,.15)", color: "#A5B4FC", fontWeight: 600 }}>{s}</span>
+                        ))}
+                        {m.pet && <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 6, background: "rgba(16,185,129,.15)", color: "#34D399", fontWeight: 600 }}>🐾 Pet</span>}
+                        {m.homeOffice && <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 6, background: "rgba(168,85,247,.15)", color: "#C084FC", fontWeight: 600 }}>💻 HO</span>}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: m.score >= 80 ? "#10B981" : m.score >= 60 ? "#F59E0B" : "#EF4444" }}>{m.score}</div>
+                  </div>
+                </div>
+              ))}
+              {lista.length === 0 && <div style={{ textAlign: "center", padding: 24, color: "#334155", fontSize: 12 }}>Nenhum morador encontrado</div>}
+            </div>
+          );
+        })()}
+
+        {/* ── COMUNICADOS ──────────────────────────────────────────────── */}
+        {sindicoScreen === "comunicados" && (
+          <div className="ph-sub-body">
+            {/* Quick generate */}
+            <div style={{ background: "rgba(99,102,241,.08)", border: "1px solid rgba(99,102,241,.2)", borderRadius: 12, padding: 12, marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#A5B4FC", marginBottom: 8 }}>🤖 Gerar Comunicado com IA</div>
+              <select value={comTema} onChange={e => setComTema(e.target.value)}
+                style={{ width: "100%", padding: "8px 10px", background: "rgba(0,0,0,.3)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, color: "#E2E8F0", fontSize: 12, fontFamily: "Inter, sans-serif", marginBottom: 8 }}>
+                <option value="">Selecione um tema...</option>
+                {["Manutenção Programada","Água – Interrupção","Assembleia","Segurança","Regras do Condomínio","Festividades"].map(t=><option key={t} value={t}>{t}</option>)}
+              </select>
+              <button className="btn-primary btn" onClick={gerarComunicado}
+                style={{ width: "100%", padding: "9px", fontSize: 12, borderRadius: 8 }}>
+                {comLoading ? "Gerando..." : "✨ Gerar com IA"}
+              </button>
+            </div>
+            {/* List */}
+            {(dash?.comunicados || []).length === 0 && <div style={{ textAlign: "center", padding: 24, color: "#334155", fontSize: 12 }}>Nenhum comunicado ainda</div>}
+            {(dash?.comunicados || []).map(c => (
+              <div key={c.id} className="ph-os-item" style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{c.titulo}</div>
+                <div style={{ fontSize: 11, color: "#64748B", lineHeight: 1.5, marginBottom: 6 }}>
+                  {c.corpo?.substring(0, 120)}{(c.corpo?.length ?? 0) > 120 ? "..." : ""}
+                </div>
+                <div style={{ fontSize: 10, color: "#334155" }}>{fmtDate(c.created_at)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── INSIGHTS & ANÁLISES ──────────────────────────────────────── */}
+        {sindicoScreen === "insights" && (
+          <>
+            <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 12px", borderBottom: "1px solid var(--card-border)", flexShrink: 0 }}>
+              {[["💡 Resumo", "Gere insights executivos sobre o condomínio agora"],
+                ["🔴 Riscos", "Quais são os principais riscos e vulnerabilidades?"],
+                ["💰 Financeiro", "Análise financeira: eficiência e oportunidades de economia"],
+                ["📈 Tendências", "Tendências de consumo de água, energia e gás do mês"]
+              ].map(([l, m]) => (
+                <button key={l} className="chip" style={{ whiteSpace: "nowrap", fontSize: 11 }}
+                  onClick={() => sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory)}>{l}</button>
+              ))}
+            </div>
+            <div className="ph-sub-body" style={{ padding: "8px", display: "flex", flexDirection: "column", gap: 8 }}
+              ref={el => { if (el) el.scrollTop = el.scrollHeight; }}>
+              {deskMsgs.map((m, i) => (
+                <div key={i} className={`msg ${m.role}`}>
+                  <div className="msg-bubble" style={{ fontSize: 12 }}>{m.content}</div>
+                  <div className="msg-time">{m.time}</div>
+                </div>
+              ))}
+              {deskTyping && <TypingIndicator />}
+            </div>
+            <div className="ph-sub-footer">
+              <div style={{ display: "flex", gap: 6 }}>
+                <textarea className="fc" placeholder="Pergunte sobre insights..." rows={2}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const v = (e.target as HTMLTextAreaElement).value; sendChat(v, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); (e.target as HTMLTextAreaElement).value = ""; }}}
+                  style={{ flex: 1, fontSize: 12 }} />
+                <button className="btn-send" style={{ padding: "8px 12px" }} disabled={deskTyping}>➤</button>
+              </div>
+            </div>
+          </>
         )}
       </div>
     );
@@ -5766,21 +6039,40 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="sec-header"><div className="sec-title">Gestão do Condomínio</div></div>
+              {/* ── Seção 1: Operações ────────────────────────────── */}
+              <div className="sec-header"><div className="sec-title">Operações e Gestão</div></div>
               <div className="grid-2">
                 {[
-                  { icon: "📋", title: "Planejamento", sub: "OSs abertas", val: String(osAbertas.length), color: "var(--amber)", screen: "planejamento" },
-                  { icon: "💰", title: "Financeiro", sub: "Saldo atual", val: fmtBRL(t?.saldo || 0), color: "var(--green)", screen: "financeiro" },
-                  { icon: "💧", title: "Água IoT", sub: "Nível médio", val: nivelMedio + "%", color: "var(--cyan)", screen: "agua" },
-                  { icon: "🚨", title: "MISP", sub: "Alertas ativos", val: String(t?.alertas_ativos || 0), color: "var(--red)", screen: "misp" },
-                  { icon: "📡", title: "Monitor IoT", sub: "Eventos SSE", val: String(sseCount), color: "var(--green)", screen: "iot" },
-                  { icon: "🤖", title: "Síndico Virtual", sub: "Chat IA", val: "847", color: "var(--purple)", screen: "sindico" },
+                  { icon: "📋", title: "OSs / Planej.", sub: `${osAbertas.length} em aberto`, color: "var(--amber)", screen: "planejamento" },
+                  { icon: "💰", title: "Financeiro", sub: fmtBRL(t?.saldo || 0), color: "var(--green)", screen: "financeiro" },
+                  { icon: "🔧", title: "Manutenção", sub: `${EQUIP_DEMO.length} equipamentos`, color: "var(--indigo)", screen: "manutencao" },
+                  { icon: "👥", title: "CRM Moradores", sub: `${crmMoradores.length} cadastrados`, color: "var(--purple)", screen: "crm" },
+                  { icon: "📢", title: "Comunicados", sub: `${(dash?.comunicados||[]).length} enviados`, color: "#F59E0B", screen: "comunicados" },
+                  { icon: "💡", title: "Insights IA", sub: "Análises em tempo real", color: "#A855F7", screen: "insights" },
                 ].map(m => (
                   <div key={m.title} className="module-card" onClick={() => setSindicoScreen(m.screen)}>
                     <div className="module-card-icon">{m.icon}</div>
                     <div className="module-card-title">{m.title}</div>
-                    <div className="module-card-sub">{m.sub}</div>
-                    <div className="module-card-val" style={{ color: m.color }}>{m.val}</div>
+                    <div className="module-card-sub" style={{ color: m.color }}>{m.sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Seção 2: Monitoramento ─────────────────────────── */}
+              <div className="sec-header" style={{ marginTop: 4 }}><div className="sec-title">Monitoramento & IoT</div></div>
+              <div className="grid-2">
+                {[
+                  { icon: "💧", title: "Água & Reserv.", sub: `Nível: ${nivelMedio}%`, color: "var(--cyan)", screen: "agua" },
+                  { icon: "🔥", title: "Gás", sub: `Nível: ${gasLeituras[0]?.nivel ?? 0}%${gasLeituras[0]?.nivel < 20 ? " ⚠️" : ""}`, color: "#F97316", screen: "gas" },
+                  { icon: "⚡", title: "Energia", sub: "284 kWh este mês", color: "#EAB308", screen: "energia" },
+                  { icon: "🚨", title: "MISP", sub: `${t?.alertas_ativos || 0} alertas ativos`, color: "var(--red)", screen: "misp" },
+                  { icon: "📡", title: "Monitor IoT", sub: `${sseCount} eventos SSE`, color: "var(--teal)", screen: "iot" },
+                  { icon: "🤖", title: "Síndico IA", sub: "Chat em tempo real", color: "var(--violet)", screen: "sindico" },
+                ].map(m => (
+                  <div key={m.title} className="module-card" onClick={() => setSindicoScreen(m.screen)}>
+                    <div className="module-card-icon">{m.icon}</div>
+                    <div className="module-card-title">{m.title}</div>
+                    <div className="module-card-sub" style={{ color: m.color }}>{m.sub}</div>
                   </div>
                 ))}
               </div>
@@ -5791,7 +6083,7 @@ export default function App() {
               <div className="nav-item" onClick={() => setSindicoScreen("misp")}><span>🚨</span>Alertas</div>
               <button className="nav-fab" onClick={() => setSindicoScreen("sindico")}>🤖</button>
               <div className="nav-item" onClick={() => setSindicoScreen("planejamento")}><span>📋</span>OSs</div>
-              <div className="nav-item"><span>👤</span>Perfil</div>
+              <div className="nav-item" onClick={() => setSindicoScreen("crm")}><span>👥</span>CRM</div>
             </div>
 
             {/* Sub-screen overlay */}
