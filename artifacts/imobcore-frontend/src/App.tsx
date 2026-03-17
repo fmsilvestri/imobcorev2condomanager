@@ -4012,11 +4012,11 @@ export default function App() {
                               <td style={{ fontSize: 10, color: "#475569" }}>{fmtDate(o.created_at)}</td>
                               <td onClick={e => e.stopPropagation()}>
                                 <div style={{ display: "flex", gap: 4 }}>
-                                  {o.status === "aberta" && <button className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "em_andamento")}>▶</button>}
-                                  {o.status === "em_andamento" && <button className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "fechada")}>✓</button>}
-                                  {o.status !== "aberta" && o.status !== "em_andamento" && <button className="btn btn-sm" style={{ background: "rgba(100,116,139,.15)", color: "#94A3B8" }} onClick={() => updateOSStatus(o.id, "aberta")}>↺</button>}
-                                  <button className="btn btn-sm" style={{ background: "rgba(99,102,241,.12)", color: "#A5B4FC" }} onClick={() => openEditarOS(o)}>✏️</button>
-                                  <button className="btn btn-sm btn-danger" onClick={() => setOsDeleteId(o.id)}>🗑</button>
+                                  {o.status === "aberta" && <button title="Iniciar atendimento desta OS" className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "em_andamento")}>▶</button>}
+                                  {o.status === "em_andamento" && <button title="Marcar OS como concluída" className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "fechada")}>✓</button>}
+                                  {o.status !== "aberta" && o.status !== "em_andamento" && <button title="Reabrir esta OS" className="btn btn-sm" style={{ background: "rgba(100,116,139,.15)", color: "#94A3B8" }} onClick={() => updateOSStatus(o.id, "aberta")}>↺</button>}
+                                  <button title="Editar ordem de serviço" className="btn btn-sm" style={{ background: "rgba(99,102,241,.12)", color: "#A5B4FC" }} onClick={() => openEditarOS(o)}>✏️</button>
+                                  <button title="Excluir ordem de serviço" className="btn btn-sm btn-danger" onClick={() => setOsDeleteId(o.id)}>🗑</button>
                                 </div>
                               </td>
                             </tr>
@@ -5054,8 +5054,8 @@ export default function App() {
 
                     {/* Finalizar button */}
                     <div style={{ marginTop:20, display:"flex", gap:10 }}>
-                      <button onClick={mispFinalize} style={{ background:"#6366F1", border:"none", borderRadius:10, padding:"12px 28px", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>📊 Finalizar Diagnóstico</button>
-                      <button onClick={()=>{ if(confirm("Limpar todas as respostas?")) setMispAnswers({}); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, padding:"12px 20px", color:"#64748B", fontSize:13, cursor:"pointer" }}>Limpar</button>
+                      <button title="Salvar este diagnóstico no histórico e ver o resultado" onClick={mispFinalize} style={{ background:"#6366F1", border:"none", borderRadius:10, padding:"12px 28px", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>📊 Finalizar Diagnóstico</button>
+                      <button title="Apagar todas as respostas e recomeçar do zero" onClick={()=>{ if(confirm("Limpar todas as respostas?")) setMispAnswers({}); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, padding:"12px 20px", color:"#64748B", fontSize:13, cursor:"pointer" }}>Limpar</button>
                     </div>
                   </div>
                 )}
@@ -5148,7 +5148,7 @@ export default function App() {
                       }} style={{ background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.4)", borderRadius:10, padding:"10px 20px", color:"#A5B4FC", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
                         {mispAiLoading ? "⏳ Analisando..." : "🤖 Análise IA – Síndico Virtual"}
                       </button>
-                      <button onClick={()=>window.print()} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"10px 20px", color:"#94A3B8", fontSize:13, cursor:"pointer" }}>🖨️ Exportar PDF</button>
+                      <button title="Imprimir ou exportar como PDF" onClick={()=>window.print()} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"10px 20px", color:"#94A3B8", fontSize:13, cursor:"pointer" }}>🖨️ Exportar PDF</button>
                     </div>
 
                     {mispAiResult && (
@@ -5165,7 +5165,7 @@ export default function App() {
                   <div>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
                       <div style={{ fontSize:13, fontWeight:700 }}>📅 Histórico de Diagnósticos ({mispHistory.length})</div>
-                      <button onClick={()=>{ setMispAnswers({}); setMispTab("checklist"); }} style={{ background:"#6366F1", border:"none", borderRadius:8, padding:"8px 18px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>➕ Novo Diagnóstico</button>
+                      <button title="Limpar respostas e iniciar um novo diagnóstico do zero" onClick={()=>{ setMispAnswers({}); setMispTab("checklist"); }} style={{ background:"#6366F1", border:"none", borderRadius:8, padding:"8px 18px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>➕ Novo Diagnóstico</button>
                     </div>
 
                     {mispHistory.length === 0 && <div style={{ textAlign:"center", color:"#334155", padding:40, fontSize:13 }}>Nenhum diagnóstico realizado ainda. Clique em "Finalizar Diagnóstico" no checklist.</div>}
@@ -5401,9 +5401,9 @@ export default function App() {
                               <td style={{ padding:"10px 10px", color:"#64748B", whiteSpace:"nowrap" }}>{e.proxManutencao}</td>
                               <td style={{ padding:"10px 10px" }}>
                                 <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const }}>
-                                  <button onClick={()=>setMantSelEquip(e)} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:6, padding:"4px 8px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>Ver</button>
-                                  <button onClick={()=>equipEdit(e)} style={{ background:"rgba(59,130,246,.15)", border:"1px solid rgba(59,130,246,.3)", borderRadius:6, padding:"4px 8px", color:"#60A5FA", fontSize:11, cursor:"pointer" }}>✏️</button>
-                                  <button onClick={()=>equipDelete(e.id)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:6, padding:"4px 8px", color:"#F87171", fontSize:11, cursor:"pointer" }}>🗑️</button>
+                                  <button title="Ver detalhes do equipamento" onClick={()=>setMantSelEquip(e)} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:6, padding:"4px 8px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>Ver</button>
+                                  <button title="Editar equipamento" onClick={()=>equipEdit(e)} style={{ background:"rgba(59,130,246,.15)", border:"1px solid rgba(59,130,246,.3)", borderRadius:6, padding:"4px 8px", color:"#60A5FA", fontSize:11, cursor:"pointer" }}>✏️</button>
+                                  <button title="Excluir equipamento" onClick={()=>equipDelete(e.id)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:6, padding:"4px 8px", color:"#F87171", fontSize:11, cursor:"pointer" }}>🗑️</button>
                                 </div>
                               </td>
                             </tr>
@@ -5415,7 +5415,7 @@ export default function App() {
 
                     {/* Add new / Novo Equipamento button */}
                     <div style={{ marginTop:12, display:"flex", justifyContent:"flex-end" }}>
-                      <button onClick={()=>{ setEquipEditId(null); setEquipForm(EMPTY_EQ); setEquipShowEdit(true); }} style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"8px 18px", color:"#34D399", fontSize:12, fontWeight:700, cursor:"pointer" }}>＋ Novo Equipamento</button>
+                      <button title="Cadastrar um novo equipamento no sistema" onClick={()=>{ setEquipEditId(null); setEquipForm(EMPTY_EQ); setEquipShowEdit(true); }} style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"8px 18px", color:"#34D399", fontSize:12, fontWeight:700, cursor:"pointer" }}>＋ Novo Equipamento</button>
                     </div>
 
                     {/* Edit / Add Modal */}
@@ -5424,7 +5424,7 @@ export default function App() {
                         <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:16, padding:28, width:560, maxHeight:"85vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
                           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
                             <div style={{ fontSize:16, fontWeight:800 }}>{equipEditId ? "✏️ Editar Equipamento" : "➕ Novo Equipamento"}</div>
-                            <button onClick={()=>setEquipShowEdit(false)} style={{ background:"none", border:"none", color:"#475569", fontSize:20, cursor:"pointer" }}>✕</button>
+                            <button title="Fechar" onClick={()=>setEquipShowEdit(false)} style={{ background:"none", border:"none", color:"#475569", fontSize:20, cursor:"pointer" }}>✕</button>
                           </div>
                           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                             {([["Nome *","nome","text",""],["Local","local","text",""],["Fabricante","fabricante","text",""],["Modelo","modelo","text",""],["Nº Série","serie","text",""],["Data Instalação","dataInstalacao","date",""],["Vida Útil (anos)","vidaUtilAnos","number",""],["Instalado há (anos)","instaladoHa","number",""],["Consumo kWh/h","consumoKwh","number",""],["Horas/dia","horasDia","number",""],["Custo Manutenção R$","custoManutencao","number",""],["Próx. Manutenção","proxManutencao","date",""],["Última Manutenção","ultimaManutencao","date",""]] as [string,string,string,string][]).map(([label,key,type]) => (
@@ -5454,9 +5454,9 @@ export default function App() {
                             <textarea value={equipForm.descricao} onChange={e=>setEquipForm(f=>({...f,descricao:e.target.value}))} rows={3} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const, resize:"vertical" as const }} />
                           </div>
                           <div style={{ display:"flex", gap:10, marginTop:18 }}>
-                            <button onClick={equipSave} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"10px 24px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>Salvar</button>
-                            <button onClick={()=>setEquipShowEdit(false)} style={{ background:"transparent", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"10px 18px", color:"#64748B", fontSize:13, cursor:"pointer" }}>Cancelar</button>
-                            {equipEditId && <button onClick={()=>{ equipDelete(equipEditId); setEquipShowEdit(false); }} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.3)", borderRadius:8, padding:"10px 18px", color:"#F87171", fontSize:13, cursor:"pointer", marginLeft:"auto" }}>🗑️ Excluir</button>}
+                            <button title="Salvar alterações do equipamento" onClick={equipSave} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"10px 24px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>Salvar</button>
+                            <button title="Cancelar sem salvar" onClick={()=>setEquipShowEdit(false)} style={{ background:"transparent", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"10px 18px", color:"#64748B", fontSize:13, cursor:"pointer" }}>Cancelar</button>
+                            {equipEditId && <button title="Excluir este equipamento permanentemente" onClick={()=>{ equipDelete(equipEditId); setEquipShowEdit(false); }} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.3)", borderRadius:8, padding:"10px 18px", color:"#F87171", fontSize:13, cursor:"pointer", marginLeft:"auto" }}>🗑️ Excluir</button>}
                           </div>
                         </div>
                       </div>
@@ -6009,9 +6009,9 @@ export default function App() {
                         </span>
                       </div>
                       <div style={{ display:"flex", gap:5 }}>
-                        <button onClick={()=>setCrmPerfilId(m.id)} style={{ background:"#3B82F6", border:"none", borderRadius:6, padding:"5px 10px", color:"#fff", fontSize:10, cursor:"pointer", fontWeight:600, whiteSpace:"nowrap" }}>Ver Perfil</button>
-                        <button style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:6, width:28, height:28, color:"#94A3B8", fontSize:12, cursor:"pointer" }}>✏️</button>
-                        <button onClick={()=>setCrmMoradores(prev=>prev.filter(x=>x.id!==m.id))} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:6, width:28, height:28, color:"#EF4444", fontSize:12, cursor:"pointer" }}>🗑️</button>
+                        <button title="Ver perfil completo do morador" onClick={()=>setCrmPerfilId(m.id)} style={{ background:"#3B82F6", border:"none", borderRadius:6, padding:"5px 10px", color:"#fff", fontSize:10, cursor:"pointer", fontWeight:600, whiteSpace:"nowrap" }}>Ver Perfil</button>
+                        <button title="Editar dados do morador" style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:6, width:28, height:28, color:"#94A3B8", fontSize:12, cursor:"pointer" }}>✏️</button>
+                        <button title="Remover morador da lista" onClick={()=>setCrmMoradores(prev=>prev.filter(x=>x.id!==m.id))} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:6, width:28, height:28, color:"#EF4444", fontSize:12, cursor:"pointer" }}>🗑️</button>
                       </div>
                     </div>
                   ))}
@@ -7003,15 +7003,15 @@ export default function App() {
                           {/* Actions */}
                           <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
                             {enc.status === "aguardando_retirada" && <>
-                              <button onClick={()=>encUpdateStatus(enc.id,"notificado")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.3)",color:"#60A5FA",fontSize:11,fontWeight:700,cursor:"pointer" }}>🔔 Notificar</button>
-                              <button onClick={()=>encUpdateStatus(enc.id,"retirado")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(16,185,129,.15)",border:"1px solid rgba(16,185,129,.3)",color:"#34D399",fontSize:11,fontWeight:700,cursor:"pointer" }}>✅ Retirar</button>
-                              <button onClick={()=>encUpdateStatus(enc.id,"devolvido")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.25)",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer" }}>↩️ Devolver</button>
+                              <button title="Registrar notificação ao morador sobre a encomenda" onClick={()=>encUpdateStatus(enc.id,"notificado")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.3)",color:"#60A5FA",fontSize:11,fontWeight:700,cursor:"pointer" }}>🔔 Notificar</button>
+                              <button title="Confirmar retirada direta sem notificação" onClick={()=>encUpdateStatus(enc.id,"retirado")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(16,185,129,.15)",border:"1px solid rgba(16,185,129,.3)",color:"#34D399",fontSize:11,fontWeight:700,cursor:"pointer" }}>✅ Retirar</button>
+                              <button title="Registrar devolução ao remetente" onClick={()=>encUpdateStatus(enc.id,"devolvido")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.25)",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer" }}>↩️ Devolver</button>
                             </>}
                             {enc.status === "notificado" && <>
-                              <button onClick={()=>encUpdateStatus(enc.id,"retirado")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(16,185,129,.15)",border:"1px solid rgba(16,185,129,.3)",color:"#34D399",fontSize:11,fontWeight:700,cursor:"pointer" }}>✅ Retirar</button>
-                              <button onClick={()=>encUpdateStatus(enc.id,"devolvido")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.25)",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer" }}>↩️ Devolver</button>
+                              <button title="Confirmar que o morador retirou a encomenda" onClick={()=>encUpdateStatus(enc.id,"retirado")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(16,185,129,.15)",border:"1px solid rgba(16,185,129,.3)",color:"#34D399",fontSize:11,fontWeight:700,cursor:"pointer" }}>✅ Retirar</button>
+                              <button title="Marcar encomenda como devolvida ao remetente" onClick={()=>encUpdateStatus(enc.id,"devolvido")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.25)",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer" }}>↩️ Devolver</button>
                             </>}
-                            <button onClick={()=>encDelete(enc.id)} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.2)",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer",marginLeft:"auto" }}>🗑️ Excluir</button>
+                            <button title="Excluir registro desta encomenda" onClick={()=>encDelete(enc.id)} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.2)",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer",marginLeft:"auto" }}>🗑️ Excluir</button>
                           </div>
                         </div>
                       );
