@@ -697,5 +697,42 @@ router.post("/onboarding", async (req: Request, res: Response) => {
   }
 });
 
+// ── ENCOMENDAS ──────────────────────────────────────────────────────────────
+let encomendas: Encomenda[] = [];
+
+router.get("/encomendas", async (_req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase.from("encomendas").select("*").order("created_at", { ascending: false });
+    if (!error && data?.length) encomendas = data;
+  } catch { /* use in-memory */ }
+  res.json({ encomendas });
+});
+
+router.post("/encomendas", async (req: Request, res: Response) => {
+  const enc: Encomenda = req.body;
+  encomendas.unshift(enc);
+  try { await supabase.from("encomendas").insert(enc); } catch { /* local only */ }
+  broadcast("encomenda_nova", enc);
+  res.json({ ok: true, enc });
+});
+
+router.put("/encomendas/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const updates = req.body;
+  encomendas = encomendas.map(e => e.id === id ? { ...e, ...updates } : e);
+  try { await supabase.from("encomendas").update(updates).eq("id", id); } catch { /* local only */ }
+  const enc = encomendas.find(e => e.id === id);
+  broadcast("encomenda_atualizada", enc);
+  res.json({ ok: true, enc });
+});
+
+router.delete("/encomendas/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  encomendas = encomendas.filter(e => e.id !== id);
+  try { await supabase.from("encomendas").delete().eq("id", id); } catch { /* local only */ }
+  broadcast("encomenda_removida", { id });
+  res.json({ ok: true });
+});
+
 export default router;
 export { broadcast };

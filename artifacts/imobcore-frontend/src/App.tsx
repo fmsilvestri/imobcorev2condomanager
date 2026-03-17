@@ -13,6 +13,7 @@ interface ChatMsg { role: "user" | "ai"; content: string; time: string }
 interface DashTotais { os_abertas: number; os_urgentes: number; saldo: number; total_receitas: number; total_despesas: number; alertas_ativos: number; nivel_medio_agua: number }
 interface CondominioInfo { id: string; nome: string; cidade: string; unidades: number; moradores: number; sindico_nome: string }
 interface Dashboard { ordens_servico: OrdemServico[]; sensores: Sensor[]; alertas_publicos: Alerta[]; receitas: Receita[]; despesas: Despesa[]; comunicados: Comunicado[]; totais: DashTotais; condominios: CondominioInfo[] }
+interface Encomenda { id: string; condominio_id: string; morador_nome: string; bloco: string; unidade: string; tipos: string[]; codigo_rastreio?: string | null; status: "aguardando_retirada" | "notificado" | "retirado" | "devolvido"; received_at: string; notified_at?: string | null; withdrawn_at?: string | null; returned_at?: string | null; created_at: string }
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 const fmtBRL = (v: number) => "R$" + Math.round(v).toLocaleString("pt-BR");
@@ -434,6 +435,14 @@ interface Equipamento {
   proxManutencao: string; ultimaManutencao: string; custoManutencao: number;
   descricao: string;
 }
+const ENC_DEMO: Encomenda[] = [
+  { id:"enc-1", condominio_id:"87339066-db1e-4743-a152-095527e66c28", morador_nome:"Dirce", bloco:"Bloco C", unidade:"107", tipos:["pacote","correio"], codigo_rastreio:"43456465", status:"retirado", received_at:"2026-02-26T12:29:00Z", notified_at:"2026-02-26T13:00:00Z", withdrawn_at:"2026-02-27T10:00:00Z", created_at:"2026-02-26T12:29:00Z" },
+  { id:"enc-2", condominio_id:"87339066-db1e-4743-a152-095527e66c28", morador_nome:"marcos", bloco:"Bloco C", unidade:"201", tipos:["pacote","correio"], codigo_rastreio:null, status:"retirado", received_at:"2026-02-21T17:02:00Z", notified_at:"2026-02-21T18:00:00Z", withdrawn_at:"2026-02-22T09:00:00Z", created_at:"2026-02-21T17:02:00Z" },
+  { id:"enc-3", condominio_id:"87339066-db1e-4743-a152-095527e66c28", morador_nome:"fabio", bloco:"Bloco A", unidade:"101A", tipos:["pacote","correio"], codigo_rastreio:"1", status:"aguardando_retirada", received_at:"2026-02-21T16:06:00Z", notified_at:null, withdrawn_at:null, created_at:"2026-02-21T16:06:00Z" },
+  { id:"enc-4", condominio_id:"87339066-db1e-4743-a152-095527e66c28", morador_nome:"Ana Beatriz", bloco:"Bloco B", unidade:"302", tipos:["correio"], codigo_rastreio:"BR123456789", status:"notificado", received_at:"2026-03-01T09:00:00Z", notified_at:"2026-03-01T09:30:00Z", withdrawn_at:null, created_at:"2026-03-01T09:00:00Z" },
+  { id:"enc-5", condominio_id:"87339066-db1e-4743-a152-095527e66c28", morador_nome:"Carlos", bloco:"Bloco D", unidade:"501", tipos:["pacote","documento"], codigo_rastreio:"JD987654321", status:"devolvido", received_at:"2026-02-18T14:00:00Z", notified_at:"2026-02-18T14:30:00Z", withdrawn_at:null, returned_at:"2026-02-25T10:00:00Z", created_at:"2026-02-18T14:00:00Z" },
+];
+
 const EQUIP_DEMO: Equipamento[] = [
   { id:"eq1", nome:"Elevador Torre A", categoria:"elevador", catIcon:"🛗", local:"Torre A – Poço", fabricante:"OTIS", modelo:"Gen2 MRL", serie:"OT-2021-0841", dataInstalacao:"2021-03-15", vidaUtilAnos:20, instaladoHa:4, consumoKwh:5.2, horasDia:12, status:"operacional", proxManutencao:"2026-04-10", ultimaManutencao:"2026-01-10", custoManutencao:2400, descricao:"Elevador sem casa de máquinas, 10 paradas." },
   { id:"eq2", nome:"Elevador Torre B", categoria:"elevador", catIcon:"🛗", local:"Torre B – Poço", fabricante:"ThyssenKrupp", modelo:"Evolution 200", serie:"TK-2019-3312", dataInstalacao:"2019-08-20", vidaUtilAnos:20, instaladoHa:6, consumoKwh:5.8, horasDia:10, status:"manutencao", proxManutencao:"2026-03-28", ultimaManutencao:"2025-12-20", custoManutencao:2400, descricao:"Em manutenção corretiva – cabo de tração." },
@@ -603,6 +612,36 @@ export default function App() {
   const [comTema, setComTema] = useState("");
   const [comLoading, setComLoading] = useState(false);
   const [comPreview, setComPreview] = useState<{ titulo: string; corpo: string } | null>(null);
+  // ── Encomendas module ─────────────────────────────────────────────────────
+  const [encList, setEncList] = useState<Encomenda[]>(ENC_DEMO);
+  const [encFilter, setEncFilter] = useState<"todos"|"aguardando_retirada"|"notificado"|"retirado"|"devolvido">("todos");
+  const [encSearch, setEncSearch] = useState("");
+  const [encLoading, setEncLoading] = useState(false);
+  const [encShowForm, setEncShowForm] = useState(false);
+  const [encForm, setEncForm] = useState({ morador_nome:"", bloco:"", unidade:"", tipos:["pacote"] as string[], codigo_rastreio:"" });
+  const [encEditId, setEncEditId] = useState<string|null>(null);
+  const fetchEncomendas = useCallback(async () => {
+    try {
+      const r = await fetch("/imobcore/api/encomendas");
+      if (r.ok) { const d = await r.json(); if (d.encomendas?.length) setEncList(d.encomendas); }
+    } catch { /* use demo data */ }
+  }, []);
+  const encUpdateStatus = async (id: string, status: Encomenda["status"]) => {
+    setEncList(prev => prev.map(e => e.id === id ? { ...e, status, notified_at: status==="notificado" ? new Date().toISOString() : e.notified_at, withdrawn_at: status==="retirado" ? new Date().toISOString() : e.withdrawn_at, returned_at: status==="devolvido" ? new Date().toISOString() : e.returned_at } : e));
+    try { await fetch(`/imobcore/api/encomendas/${id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ status }) }); } catch { /* local update kept */ }
+  };
+  const encDelete = async (id: string) => {
+    setEncList(prev => prev.filter(e => e.id !== id));
+    try { await fetch(`/imobcore/api/encomendas/${id}`, { method:"DELETE" }); } catch { /**/ }
+  };
+  const encCreate = async () => {
+    if (!encForm.morador_nome.trim() || !encForm.bloco.trim() || !encForm.unidade.trim()) return;
+    const novo: Encomenda = { id:`enc-${Date.now()}`, condominio_id:"87339066-db1e-4743-a152-095527e66c28", ...encForm, status:"aguardando_retirada", received_at:new Date().toISOString(), created_at:new Date().toISOString() };
+    setEncList(prev => [novo, ...prev]);
+    setEncShowForm(false);
+    setEncForm({ morador_nome:"", bloco:"", unidade:"", tipos:["pacote"], codigo_rastreio:"" });
+    try { await fetch("/imobcore/api/encomendas", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(novo) }); } catch { /**/ }
+  };
 
   // Insights
   const [insights, setInsights] = useState("");
@@ -2955,12 +2994,13 @@ export default function App() {
       agua: "💧 Status da Água",
       comunicados: "📢 Comunicados",
       misp: "🚨 Alertas Públicos",
+      encomendas: "📦 Minhas Encomendas",
     };
 
     return (
-      <div className="ph-subscreen" style={{ background: "#0a1520" }}>
+      <div className="ph-subscreen">
         <div style={{ height: 30, flexShrink: 0 }} />
-        <div className="ph-sub-header" style={{ borderColor: "rgba(20,184,166,.2)" }}>
+        <div className="ph-sub-header">
           <button className="back-btn" onClick={() => setMoradorScreen(null)}>←</button>
           <div className="ph-sub-title">{screenTitle[moradorScreen]}</div>
           <div style={{ width: 8, height: 8, borderRadius: "50%", background: sseOnline ? "#10B981" : "#EF4444" }} />
@@ -3115,9 +3155,9 @@ export default function App() {
         {/* MISP morador */}
         {moradorScreen === "misp" && (
           <div className="ph-sub-body">
-            <div style={{ fontSize: 11, color: "#64748B", marginBottom: 10 }}>Alertas públicos da região – atualizado via Supabase</div>
+            <div style={{ fontSize: 11, color: "var(--neu-text-2)", marginBottom: 10 }}>Alertas públicos da região – atualizado via Supabase</div>
             {(dash?.alertas_publicos || []).length === 0 && (
-              <div style={{ textAlign: "center", padding: 30, color: "#334155", fontSize: 12 }}>✅ Sem alertas ativos</div>
+              <div style={{ textAlign: "center", padding: 30, color: "var(--neu-text-2)", fontSize: 12 }}>✅ Sem alertas ativos</div>
             )}
             {(dash?.alertas_publicos || []).map(a => {
               const nc = { alto: "#EF4444", medio: "#F59E0B", baixo: "#10B981" }[a.nivel] || "#94A3B8";
@@ -3127,13 +3167,69 @@ export default function App() {
                     <div className="ph-os-titulo">{a.titulo}</div>
                     <span style={{ fontSize: 10, color: nc, fontWeight: 600 }}>{a.nivel}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}>{a.descricao}</div>
-                  <div style={{ fontSize: 10, color: "#475569" }}>{a.cidade} – {a.bairro}</div>
+                  <div style={{ fontSize: 11, color: "var(--neu-text-2)", marginBottom: 4 }}>{a.descricao}</div>
+                  <div style={{ fontSize: 10, color: "var(--neu-text-2)" }}>{a.cidade} – {a.bairro}</div>
                 </div>
               );
             })}
           </div>
         )}
+
+        {/* MORADOR: Minhas Encomendas */}
+        {moradorScreen === "encomendas" && (() => {
+          const ENC_ST: Record<Encomenda["status"], { label: string; color: string; emoji: string }> = {
+            aguardando_retirada: { label:"Aguardando Retirada", color:"#F59E0B", emoji:"⏳" },
+            notificado:          { label:"Você foi notificado", color:"#3B82F6", emoji:"🔔" },
+            retirado:            { label:"Retirado",            color:"#10B981", emoji:"✅" },
+            devolvido:           { label:"Devolvido",           color:"#EF4444", emoji:"↩️" },
+          };
+          const minhas = encList.filter(e => e.morador_nome.toLowerCase().includes("fabio") || e.unidade === "101A");
+          const pendentes = minhas.filter(e => e.status !== "retirado" && e.status !== "devolvido");
+          const fmtD = (iso?: string|null) => iso ? new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "–";
+          return (
+            <div className="ph-sub-body" style={{ paddingBottom: 24 }}>
+              {/* Banner pendentes */}
+              {pendentes.length > 0 && (
+                <div style={{ background:"linear-gradient(135deg,rgba(245,158,11,.18),rgba(245,158,11,.06))", border:"1.5px solid rgba(245,158,11,.35)", borderRadius:16, padding:"14px 16px", marginBottom:16, display:"flex", alignItems:"center", gap:12 }}>
+                  <span style={{ fontSize:24 }}>📦</span>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:800, color:"#F59E0B" }}>Você tem {pendentes.length} encomenda{pendentes.length>1?"s":""} pendente{pendentes.length>1?"s":""}!</div>
+                    <div style={{ fontSize:11, color:"var(--neu-text-2)", marginTop:2 }}>Passe na portaria para retirar</div>
+                  </div>
+                </div>
+              )}
+              {minhas.length === 0 && (
+                <div style={{ textAlign:"center", padding:"40px 20px", color:"var(--neu-text-2)" }}>
+                  <div style={{ fontSize:48, marginBottom:12 }}>📭</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:"var(--neu-text)" }}>Nenhuma encomenda</div>
+                  <div style={{ fontSize:12, marginTop:4 }}>Suas encomendas aparecerão aqui quando chegarem na portaria</div>
+                </div>
+              )}
+              {minhas.map(enc => {
+                const st = ENC_ST[enc.status];
+                return (
+                  <div key={enc.id} style={{ background:"var(--neu-bg)", borderRadius:16, boxShadow:"var(--neu-out)", padding:"16px", marginBottom:14 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                      <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const }}>
+                        {enc.tipos.map(t => <span key={t} style={{ padding:"3px 10px", borderRadius:8, background:"rgba(124,92,252,.12)", color:"var(--neu-purple)", fontSize:11, fontWeight:700 }}>{t==="pacote"?"📦":t==="correio"?"✉️":t==="documento"?"📄":"⚠️"} {t}</span>)}
+                      </div>
+                      <span style={{ fontSize:10, fontWeight:800, color:st.color, background:`${st.color}20`, padding:"3px 9px", borderRadius:8 }}>{st.emoji} {st.label}</span>
+                    </div>
+                    {enc.codigo_rastreio && <div style={{ fontSize:11, color:"var(--neu-text-2)", marginBottom:6 }}>🏷️ Rastreio: <span style={{ color:"var(--neu-purple)", fontWeight:700 }}>{enc.codigo_rastreio}</span></div>}
+                    <div style={{ fontSize:11, color:"var(--neu-text-2)", marginBottom:4 }}>📍 Portaria – {enc.bloco} · Unidade {enc.unidade}</div>
+                    <div style={{ height:1, background:"rgba(124,92,252,.12)", margin:"10px 0" }}/>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                      <div style={{ fontSize:10, color:"var(--neu-text-2)" }}>🕐 Chegou: <span style={{ color:"var(--neu-text)", fontWeight:600 }}>{fmtD(enc.received_at)}</span></div>
+                      {enc.notified_at && <div style={{ fontSize:10, color:"var(--neu-text-2)" }}>🔔 Notificado: <span style={{ color:"var(--neu-text)", fontWeight:600 }}>{fmtD(enc.notified_at)}</span></div>}
+                      {enc.withdrawn_at && <div style={{ fontSize:10, color:"var(--neu-text-2)" }}>✅ Retirado: <span style={{ color:"#10B981", fontWeight:600 }}>{fmtD(enc.withdrawn_at)}</span></div>}
+                      {enc.returned_at && <div style={{ fontSize:10, color:"var(--neu-text-2)" }}>↩️ Devolvido: <span style={{ color:"#EF4444", fontWeight:600 }}>{fmtD(enc.returned_at)}</span></div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -3499,6 +3595,10 @@ export default function App() {
           <div className={`sb-item ${panel === "gas" ? "active" : ""}`} onClick={() => setPanel("gas")}>
             <span className="sb-icon">🔥</span> Gás
             {gasLeituras.some(l=>l.nivel<20) && <span className="sb-badge" style={{ background:"#EF4444" }}>!</span>}
+          </div>
+          <div className={`sb-item ${panel === "encomendas" ? "active" : ""}`} onClick={() => { setPanel("encomendas"); fetchEncomendas(); }}>
+            <span className="sb-icon">📦</span> Encomendas
+            {encList.filter(e=>e.status==="aguardando_retirada").length > 0 && <span className="sb-badge" style={{ background:"#F59E0B" }}>{encList.filter(e=>e.status==="aguardando_retirada").length}</span>}
           </div>
           <div className="sb-label">Sistema</div>
           <div className={`sb-item ${panel === "supabase" ? "active" : ""}`} onClick={() => setPanel("supabase")}>
@@ -6141,6 +6241,169 @@ export default function App() {
             );
           })()}
 
+          {/* PANEL: ENCOMENDAS */}
+          {panel === "encomendas" && (() => {
+            const ENC_STATUS: Record<Encomenda["status"], { label: string; color: string; bg: string }> = {
+              aguardando_retirada: { label:"AGUARDANDO RETIRADA", color:"#F59E0B", bg:"rgba(245,158,11,.18)" },
+              notificado:          { label:"NOTIFICADO",          color:"#3B82F6", bg:"rgba(59,130,246,.18)" },
+              retirado:            { label:"RETIRADO",            color:"#10B981", bg:"rgba(16,185,129,.18)" },
+              devolvido:           { label:"DEVOLVIDO",           color:"#EF4444", bg:"rgba(239,68,68,.18)" },
+            };
+            const totais = { total: encList.length, aguardando: encList.filter(e=>e.status==="aguardando_retirada").length, notificado: encList.filter(e=>e.status==="notificado").length, retirado: encList.filter(e=>e.status==="retirado").length, devolvido: encList.filter(e=>e.status==="devolvido").length };
+            const tmMedio = (() => {
+              const retirados = encList.filter(e=>e.status==="retirado"&&e.withdrawn_at);
+              if (!retirados.length) return "N/A";
+              const avg = retirados.reduce((s,e)=>s+(new Date(e.withdrawn_at!).getTime()-new Date(e.received_at).getTime()),0)/retirados.length;
+              return Math.round(avg/3600000)+"h";
+            })();
+            const filtered = encList.filter(e =>
+              (encFilter === "todos" || e.status === encFilter) &&
+              (!encSearch.trim() || [e.morador_nome, e.unidade, e.bloco, e.codigo_rastreio||""].some(v=>v.toLowerCase().includes(encSearch.toLowerCase())))
+            );
+            const fmtEncDate = (iso?: string|null) => iso ? new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "–";
+            return (
+              <div className="panel" style={{ display:"flex", flexDirection:"column", height:"100%", gap:0 }}>
+                {/* Header */}
+                <div style={{ display:"flex", alignItems:"center", gap:12, padding:"18px 24px 14px", borderBottom:"1px solid var(--c-divider)", flexShrink:0 }}>
+                  <div style={{ fontSize:28 }}>📦</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:18, fontWeight:700 }}>Encomendas</div>
+                    <div style={{ fontSize:12, color:"var(--c-text-muted)" }}>Gerencie as encomendas e entregas do condomínio</div>
+                  </div>
+                  <button onClick={() => { setEncShowForm(!encShowForm); setEncEditId(null); setEncForm({morador_nome:"",bloco:"",unidade:"",tipos:["pacote"],codigo_rastreio:""}); }} style={{ display:"flex",alignItems:"center",gap:6,padding:"8px 16px",borderRadius:8,background:"var(--indigo)",border:"none",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer" }}>
+                    ＋ Nova Encomenda
+                  </button>
+                </div>
+
+                {/* Form modal */}
+                {encShowForm && (
+                  <div style={{ padding:"16px 24px", background:"rgba(99,102,241,.07)", borderBottom:"1px solid var(--c-divider)", flexShrink:0 }}>
+                    <div style={{ fontSize:14, fontWeight:700, marginBottom:12 }}>{encEditId ? "✏️ Editar Encomenda" : "＋ Registrar Nova Encomenda"}</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr 1fr", gap:10, marginBottom:12 }}>
+                      {[["Morador","morador_nome","text"],["Bloco","bloco","text"],["Unidade","unidade","text"],["Cód. Rastreio","codigo_rastreio","text"]].map(([lbl,field]) => (
+                        <div key={field}>
+                          <div style={{ fontSize:11, color:"var(--c-text-muted)", marginBottom:4 }}>{lbl}</div>
+                          <input value={(encForm as Record<string,string|string[]>)[field] as string} onChange={e => setEncForm(f=>({...f,[field]:e.target.value}))} style={{ width:"100%",padding:"7px 10px",background:"var(--c-input)",border:"1px solid var(--c-input-border)",borderRadius:7,color:"var(--c-text)",fontSize:13 }} placeholder={lbl as string}/>
+                        </div>
+                      ))}
+                      <div>
+                        <div style={{ fontSize:11, color:"var(--c-text-muted)", marginBottom:4 }}>Tipos</div>
+                        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                          {["pacote","correio","documento","fragil"].map(t => (
+                            <label key={t} style={{ display:"flex",alignItems:"center",gap:4,fontSize:12,cursor:"pointer",color:encForm.tipos.includes(t)?"var(--indigo)":"var(--c-text-muted)" }}>
+                              <input type="checkbox" checked={encForm.tipos.includes(t)} onChange={e => setEncForm(f=>({...f,tipos:e.target.checked?[...f.tipos,t]:f.tipos.filter(x=>x!==t)}))} style={{ accentColor:"var(--indigo)" }}/>{t}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={encCreate} style={{ padding:"8px 18px",borderRadius:7,background:"var(--indigo)",border:"none",color:"#fff",fontSize:13,fontWeight:600,cursor:"pointer" }}>Salvar</button>
+                      <button onClick={() => setEncShowForm(false)} style={{ padding:"8px 18px",borderRadius:7,background:"transparent",border:"1px solid var(--c-divider)",color:"var(--c-text-muted)",fontSize:13,cursor:"pointer" }}>Cancelar</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* KPI Cards */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:10, padding:"14px 24px", flexShrink:0 }}>
+                  {[
+                    { label:"Total", val:totais.total, color:"#6366F1" },
+                    { label:"Aguardando", val:totais.aguardando, color:"#F59E0B" },
+                    { label:"Notificados", val:totais.notificado, color:"#3B82F6" },
+                    { label:"Retirados", val:totais.retirado, color:"#10B981" },
+                    { label:"Devolvidos", val:totais.devolvido, color:"#EF4444" },
+                    { label:"Tempo Médio", val:tmMedio, color:"#A855F7" },
+                  ].map(k => (
+                    <div key={k.label} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"14px 16px" }}>
+                      <div style={{ fontSize:28, fontWeight:900, color:k.color }}>{k.val}</div>
+                      <div style={{ fontSize:11, color:"var(--c-text-muted)", marginTop:4, textTransform:"uppercase" as const, letterSpacing:".06em" }}>{k.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Filter tabs + search */}
+                <div style={{ padding:"0 24px 12px", flexShrink:0 }}>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const, marginBottom:10 }}>
+                    {([["todos","Todos",totais.total],["aguardando_retirada","Aguardando",totais.aguardando],["notificado","Notificado",totais.notificado],["retirado","Retirado",totais.retirado],["devolvido","Devolvido",totais.devolvido]] as [string,string,number][]).map(([v,lbl,cnt]) => (
+                      <button key={v} onClick={() => setEncFilter(v as typeof encFilter)} style={{ display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:20,border:`1px solid ${encFilter===v?"var(--indigo)":"var(--c-divider)"}`,background:encFilter===v?"rgba(99,102,241,.15)":"transparent",color:encFilter===v?"var(--indigo)":"var(--c-text-muted)",fontSize:12,fontWeight:600,cursor:"pointer" }}>
+                        {lbl} <span style={{ background:encFilter===v?"var(--indigo)":"rgba(255,255,255,.1)",color:"#fff",borderRadius:10,padding:"1px 7px",fontSize:11 }}>{cnt}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <input value={encSearch} onChange={e=>setEncSearch(e.target.value)} placeholder="🔍 Buscar por unidade, nome, código..." style={{ width:"100%",padding:"9px 14px",background:"var(--c-input)",border:"1px solid var(--c-input-border)",borderRadius:9,color:"var(--c-text)",fontSize:13 }}/>
+                </div>
+
+                {/* Alert banner */}
+                {totais.aguardando > 0 && (
+                  <div style={{ margin:"0 24px 12px", padding:"12px 16px", background:"rgba(245,158,11,.12)", border:"1px solid rgba(245,158,11,.25)", borderRadius:10, display:"flex", alignItems:"center", gap:12, flexShrink:0 }}>
+                    <span style={{ fontSize:20 }}>🔔</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#FCD34D" }}>{totais.aguardando} encomenda(s) aguardando retirada</div>
+                      <div style={{ fontSize:11, color:"#F59E0B" }}>Notifique os moradores para retirada</div>
+                    </div>
+                    <button onClick={() => encList.filter(e=>e.status==="aguardando_retirada").forEach(e=>encUpdateStatus(e.id,"notificado"))} style={{ padding:"6px 14px",borderRadius:7,background:"rgba(245,158,11,.25)",border:"1px solid rgba(245,158,11,.4)",color:"#FCD34D",fontSize:12,fontWeight:700,cursor:"pointer" }}>
+                      🔔 Notificar Todos
+                    </button>
+                  </div>
+                )}
+
+                {/* Cards grid */}
+                <div style={{ flex:1, overflowY:"auto", padding:"0 24px 24px" }}>
+                  {filtered.length === 0 && (
+                    <div style={{ textAlign:"center", padding:"60px 20px", color:"var(--c-text-muted)" }}>
+                      <div style={{ fontSize:48, marginBottom:12 }}>📭</div>
+                      <div style={{ fontSize:15, fontWeight:600 }}>Nenhuma encomenda encontrada</div>
+                      <div style={{ fontSize:12, marginTop:4 }}>Tente ajustar os filtros ou adicione uma nova encomenda</div>
+                    </div>
+                  )}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:14 }}>
+                    {filtered.map(enc => {
+                      const st = ENC_STATUS[enc.status];
+                      const borderColor = enc.status==="aguardando_retirada" ? "rgba(245,158,11,.35)" : enc.status==="notificado" ? "rgba(59,130,246,.35)" : enc.status==="retirado" ? "rgba(16,185,129,.35)" : "rgba(239,68,68,.35)";
+                      return (
+                        <div key={enc.id} style={{ background:"rgba(255,255,255,.04)", border:`1px solid ${borderColor}`, borderRadius:14, padding:"16px", position:"relative" }}>
+                          {/* Header row */}
+                          <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:10 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                              <div style={{ width:36,height:36,borderRadius:10,background:st.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,color:st.color }}>
+                                {enc.morador_nome.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <div style={{ fontSize:14, fontWeight:700 }}>{enc.morador_nome}</div>
+                                <div style={{ fontSize:11, color:"var(--c-text-muted)" }}>📍 {enc.bloco} · Unidade {enc.unidade}</div>
+                              </div>
+                            </div>
+                            <span style={{ padding:"3px 9px",borderRadius:6,background:st.bg,color:st.color,fontSize:10,fontWeight:800,letterSpacing:".04em" }}>{st.label}</span>
+                          </div>
+                          {/* Tags */}
+                          <div style={{ display:"flex", flexWrap:"wrap" as const, gap:5, marginBottom:10 }}>
+                            {enc.tipos.map(t => <span key={t} style={{ padding:"2px 8px",borderRadius:6,background:"rgba(255,255,255,.06)",fontSize:11,color:"var(--c-text-muted)" }}>{t==="pacote"?"📦":t==="correio"?"✉️":t==="documento"?"📄":"⚠️"} {t}</span>)}
+                            {enc.codigo_rastreio && <span style={{ padding:"2px 8px",borderRadius:6,background:"rgba(239,68,68,.12)",color:"#F87171",fontSize:11,fontWeight:700 }}>🏷️ {enc.codigo_rastreio}</span>}
+                          </div>
+                          {/* Date */}
+                          <div style={{ fontSize:11, color:"var(--c-text-muted)", marginBottom:12 }}>🕐 Recebido em {fmtEncDate(enc.received_at)}</div>
+                          {/* Actions */}
+                          <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
+                            {enc.status === "aguardando_retirada" && <>
+                              <button onClick={()=>encUpdateStatus(enc.id,"notificado")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.3)",color:"#60A5FA",fontSize:11,fontWeight:700,cursor:"pointer" }}>🔔 Notificar</button>
+                              <button onClick={()=>encUpdateStatus(enc.id,"retirado")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(16,185,129,.15)",border:"1px solid rgba(16,185,129,.3)",color:"#34D399",fontSize:11,fontWeight:700,cursor:"pointer" }}>✅ Retirar</button>
+                              <button onClick={()=>encUpdateStatus(enc.id,"devolvido")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.25)",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer" }}>↩️ Devolver</button>
+                            </>}
+                            {enc.status === "notificado" && <>
+                              <button onClick={()=>encUpdateStatus(enc.id,"retirado")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(16,185,129,.15)",border:"1px solid rgba(16,185,129,.3)",color:"#34D399",fontSize:11,fontWeight:700,cursor:"pointer" }}>✅ Retirar</button>
+                              <button onClick={()=>encUpdateStatus(enc.id,"devolvido")} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(239,68,68,.12)",border:"1px solid rgba(239,68,68,.25)",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer" }}>↩️ Devolver</button>
+                            </>}
+                            <button onClick={()=>encDelete(enc.id)} style={{ padding:"5px 12px",borderRadius:7,background:"rgba(239,68,68,.08)",border:"1px solid rgba(239,68,68,.2)",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer",marginLeft:"auto" }}>🗑️ Excluir</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* PANEL: SSE LOG */}
           <div className={`panel ${panel === "supabase" ? "active" : ""} card`}>
             <div className="card-title">🗄️ SSE Live Log – Eventos em Tempo Real
@@ -6405,6 +6668,7 @@ export default function App() {
                   { icon: "📅", name: "Reservar Espaço", count: "3 disp.", color: "#3B82F6", screen: "reserva" },
                   { icon: "💳", name: "Boletos", count: "1 venc.", color: "#F59E0B", screen: "boletos" },
                   { icon: "🚗", name: "Autorizar Visitante", count: "✓", color: "#10B981", screen: "visitante" },
+                  { icon: "📦", name: "Minhas Encomendas", count: String(encList.filter(e=>e.morador_nome.toLowerCase().includes("fabio")||e.unidade==="101A").filter(e=>e.status!=="retirado"&&e.status!=="devolvido").length || "0"), color: "#F59E0B", screen: "encomendas" },
                   { icon: "📢", name: "Comunicados", count: String(dash?.comunicados?.length || 0), color: "#7C5CFC", screen: "comunicados" },
                   { icon: "🚨", name: "Alertas MISP", count: String(t?.alertas_ativos || 0), color: "#EF4444", screen: "misp" },
                 ].map(s => (
