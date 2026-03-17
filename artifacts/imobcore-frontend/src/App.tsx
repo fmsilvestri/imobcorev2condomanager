@@ -236,13 +236,22 @@ select.form-control option{background:var(--c-bg2)}
 .nav-item.active{color:var(--indigo)}
 .nav-fab{width:54px;height:54px;border-radius:50%;background:var(--grad);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 20px rgba(99,102,241,.5);margin-top:-18px;flex-shrink:0;transition:transform .15s}
 .nav-fab:hover{transform:scale(1.05)}
-.phone-header{padding:8px 16px 10px;display:flex;align-items:center;justify-content:space-between}
-.phone-avatar{width:40px;height:40px;border-radius:50%;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#fff;flex-shrink:0}
-.phone-avatar.teal{background:var(--grad-teal)}
-.phone-user-info{flex:1;margin-left:10px}
-.phone-user-name{font-size:14px;font-weight:700}
-.phone-user-sub{font-size:11px;color:#475569}
-.phone-bell{width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid var(--card-border);display:flex;align-items:center;justify-content:center;font-size:16px;cursor:pointer;position:relative}
+.phone-header{padding:12px 16px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.ph-greet-wrap{flex:1;min-width:0}
+.ph-greet-time{font-size:11px;color:#475569;margin-bottom:1px;font-weight:400;letter-spacing:.01em}
+.ph-greet-name{font-size:19px;font-weight:800;line-height:1.15;margin-bottom:3px;color:#F1F5F9}
+.ph-greet-name .accent{color:#818CF8}
+.ph-greet-name .accent-teal{color:#2DD4BF}
+.ph-greet-condo{font-size:11px;color:#334155}
+.ph-header-actions{display:flex;align-items:center;gap:7px;flex-shrink:0}
+.ph-theme-pill{display:flex;align-items:center;justify-content:center;gap:4px;background:#0a1222;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:0 12px;height:32px;cursor:pointer;transition:border-color .2s}
+.ph-theme-pill:hover{border-color:rgba(255,255,255,.2)}
+.ph-bell-btn{width:33px;height:33px;border-radius:50%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;transition:all .2s;flex-shrink:0}
+.ph-bell-btn:hover{background:rgba(255,255,255,.09)}
+.ph-bell-btn.bell-shake{animation:bellShake .4s ease}
+.ph-bell-dot{position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:#EF4444;border:1.5px solid #0a1222}
+.ph-av-sm{width:33px;height:33px;border-radius:50%;background:linear-gradient(135deg,#7C3AED,#6366F1);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0;cursor:pointer;box-shadow:0 2px 10px rgba(99,102,241,.3)}
+.ph-av-sm.teal{background:linear-gradient(135deg,#0D9488,#14B8A6);box-shadow:0 2px 10px rgba(20,184,166,.3)}
 .bell-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--red);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #0D1220;padding:0 3px}
 .bell-shake{animation:bellShake .4s ease}
 .ph-card{margin:0 12px 10px;padding:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px}
@@ -6153,16 +6162,34 @@ export default function App() {
           <div className="phone-inner">
             <div className="phone-notch" />
             <div className="phone-status"><span>{clock}</span><span>📶 5G 🔋</span></div>
-            <div className="phone-header">
-              <div className="phone-avatar">R</div>
-              <div className="phone-user-info">
-                <div className="phone-user-name">Ricardo Gestor</div>
-                <div className="phone-user-sub">Síndico – Res. Parque das Flores</div>
-              </div>
-              <div className={`phone-bell ${bellShake ? "bell-shake" : ""}`} onClick={() => setBellCount(0)}>
-                🔔{bellCount > 0 && <div className="bell-badge">{bellCount > 99 ? "99+" : bellCount}</div>}
-              </div>
-            </div>
+            {(() => {
+              const h = new Date().getHours();
+              const greet = h < 12 ? "Bom dia," : h < 18 ? "Boa tarde," : "Boa noite,";
+              const eName = loginEmail.split("@")[0] || "Síndico";
+              const fname = eName.charAt(0).toUpperCase() + eName.slice(1);
+              const condo = dash?.condominios?.[0]?.nome || "Residencial Parque das Flores";
+              return (
+                <div className="phone-header">
+                  <div className="ph-greet-wrap">
+                    <div className="ph-greet-time">{greet}</div>
+                    <div className="ph-greet-name">{fname} <span className="accent">Síndico</span></div>
+                    <div className="ph-greet-condo">{condo}</div>
+                  </div>
+                  <div className="ph-header-actions">
+                    <button className="ph-theme-pill" onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} title="Tema">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" fill="#64748B"/></svg>
+                    </button>
+                    <button className={`ph-bell-btn ${bellShake ? "bell-shake" : ""}`} onClick={() => setBellCount(0)} title="Notificações">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+                      </svg>
+                      {bellCount > 0 && <div className="ph-bell-dot"/>}
+                    </button>
+                    <div className="ph-av-sm">{fname.charAt(0)}</div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="phone-content">
               {urgentes > 0 && (
@@ -6248,16 +6275,35 @@ export default function App() {
           <div className="phone-inner" style={{ background: "#0a1520" }}>
             <div className="phone-notch" />
             <div className="phone-status"><span>{clock}</span><span>📶 4G 🔋</span></div>
-            <div className="phone-header">
-              <div className="phone-avatar teal">A</div>
-              <div className="phone-user-info">
-                <div className="phone-user-name">Ana Silva</div>
-                <div className="phone-user-sub">Apto 204 – Torre A</div>
-              </div>
-              <div className="phone-bell">
-                🔔{(t?.alertas_ativos || 0) > 0 && <div className="bell-badge">{t?.alertas_ativos}</div>}
-              </div>
-            </div>
+            {(() => {
+              const h = new Date().getHours();
+              const greet = h < 12 ? "Bom dia," : h < 18 ? "Boa tarde," : "Boa noite,";
+              const eName = loginEmail.split("@")[0] || "Morador";
+              const fname = eName.charAt(0).toUpperCase() + eName.slice(1);
+              const condo = dash?.condominios?.[0]?.nome || "Residencial Parque das Flores";
+              const notifs = t?.alertas_ativos || 0;
+              return (
+                <div className="phone-header">
+                  <div className="ph-greet-wrap">
+                    <div className="ph-greet-time">{greet}</div>
+                    <div className="ph-greet-name">{fname} <span className="accent-teal">Morador</span></div>
+                    <div className="ph-greet-condo">{condo}</div>
+                  </div>
+                  <div className="ph-header-actions">
+                    <button className="ph-theme-pill" onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} title="Tema">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" fill="#64748B"/></svg>
+                    </button>
+                    <button className="ph-bell-btn" title="Notificações">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+                      </svg>
+                      {notifs > 0 && <div className="ph-bell-dot"/>}
+                    </button>
+                    <div className="ph-av-sm teal">{fname.charAt(0)}</div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="phone-content">
               {/* Comunicado do topo — atualiza via SSE */}
