@@ -12,7 +12,17 @@ interface Despesa { id: string; descricao: string; valor: number; categoria: str
 interface Comunicado { id: string; titulo: string; corpo: string; gerado_por_ia: boolean; created_at: string }
 interface ChatMsg { role: "user" | "ai"; content: string; time: string }
 interface DashTotais { os_abertas: number; os_urgentes: number; saldo: number; total_receitas: number; total_despesas: number; alertas_ativos: number; nivel_medio_agua: number }
-interface CondominioInfo { id: string; nome: string; cidade: string; unidades: number; moradores: number; sindico_nome: string }
+interface CondominioInfo {
+  id: string; nome: string; cidade: string; estado?: string;
+  cnpj?: string; endereco?: string;
+  unidades: number; total_unidades?: number; moradores: number;
+  sindico_nome: string; sindico_email?: string; sindico_tel?: string;
+  plano?: "free" | "starter" | "pro" | "admin_plus";
+  status?: "ativo" | "suspenso" | "trial";
+  trial_expires_at?: string;
+  logo_url?: string; cor_primaria?: string;
+  created_at?: string;
+}
 interface Dashboard { ordens_servico: OrdemServico[]; sensores: Sensor[]; alertas_publicos: Alerta[]; receitas: Receita[]; despesas: Despesa[]; comunicados: Comunicado[]; totais: DashTotais; condominios: CondominioInfo[] }
 interface Encomenda { id: string; condominio_id: string; morador_nome: string; bloco: string; unidade: string; tipos: string[]; codigo_rastreio?: string | null; status: "aguardando_retirada" | "notificado" | "retirado" | "devolvido"; received_at: string; notified_at?: string | null; withdrawn_at?: string | null; returned_at?: string | null; created_at: string }
 

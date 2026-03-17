@@ -55,6 +55,24 @@ async function runMigrations() {
     console.log("✅ Migration 1 (condominios): OK");
   }
 
+  // ── Migration 1b: condominios — plano, status, trial, logo, cor ────────
+  const { error: m1bErr } = await supabase.from("condominios").select("plano, status, trial_expires_at, logo_url, cor_primaria, total_unidades").limit(1);
+  if (m1bErr) {
+    console.log("⚠️  Migration 1b needed (condominios plano/status/trial). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    [
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS total_unidades INT DEFAULT 0",
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS plano TEXT DEFAULT 'free'",
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'trial'",
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ",
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS logo_url TEXT",
+      "ALTER TABLE condominios ADD COLUMN IF NOT EXISTS cor_primaria TEXT DEFAULT '#7C5CFC'",
+    ].forEach(m => console.log("   " + m + ";"));
+    console.log();
+  } else {
+    console.log("✅ Migration 1b (condominios plano/status/trial): OK");
+  }
+
   // ── Migration 2: ordens_servico → responsavel + numero + unique ────────
   const { error: m2Err } = await supabase.from("ordens_servico").select("responsavel, numero").limit(1);
   if (m2Err) {
@@ -79,8 +97,13 @@ function printSQL() {
 CREATE TABLE IF NOT EXISTS condominios (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nome TEXT NOT NULL, cnpj TEXT, endereco TEXT, cidade TEXT, estado TEXT DEFAULT 'SC',
-  unidades INT DEFAULT 0, moradores INT DEFAULT 0,
+  unidades INT DEFAULT 0, total_unidades INT DEFAULT 0, moradores INT DEFAULT 0,
   sindico_nome TEXT, sindico_email TEXT, sindico_tel TEXT,
+  plano TEXT DEFAULT 'free',
+  status TEXT DEFAULT 'trial',
+  trial_expires_at TIMESTAMPTZ,
+  logo_url TEXT,
+  cor_primaria TEXT DEFAULT '#7C5CFC',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 -- Migration for existing installs:
@@ -89,6 +112,12 @@ ALTER TABLE condominios ADD COLUMN IF NOT EXISTS endereco TEXT;
 ALTER TABLE condominios ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'SC';
 ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_email TEXT;
 ALTER TABLE condominios ADD COLUMN IF NOT EXISTS sindico_tel TEXT;
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS total_unidades INT DEFAULT 0;
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS plano TEXT DEFAULT 'free';
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'trial';
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS trial_expires_at TIMESTAMPTZ;
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE condominios ADD COLUMN IF NOT EXISTS cor_primaria TEXT DEFAULT '#7C5CFC';
 CREATE TABLE IF NOT EXISTS ordens_servico (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   condominio_id UUID, numero INTEGER, titulo TEXT NOT NULL,
