@@ -1001,11 +1001,12 @@ export default function App() {
         setObCondo({ nome: c.nome || "", cnpj: "", endereco: "", cidade: c.cidade || "", estado: "SC", sindico_nome: c.sindico_nome || "", sindico_email: "", sindico_tel: "", unidades: String(c.unidades || "84") });
         setObSavedCondoId(c.id);
         setObInfra(p => ({ ...p, moradores: String(c.moradores || "168") }));
-      } else {
-        // No condo configured — go to onboarding automatically
+      } else if (!d.condominios?.length) {
+        // Only go to onboarding when there are truly NO condominiums configured
         setView("onboarding");
         setObStep(0);
       }
+      // If condominios exist and condIdRef is already set, do nothing (stay on current view)
     } catch (e) { console.error("dashboard err:", e); }
   }, []);
 
