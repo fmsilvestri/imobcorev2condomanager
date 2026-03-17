@@ -3539,7 +3539,7 @@ export default function App() {
       </div>
 
       {/* TOPBAR */}
-      <div className="topbar">
+      <div className="topbar" style={{ display: (view === "sindico" || view === "morador") ? "none" : "flex" }}>
         <div className="logo"><span>🤖</span> ImobCore <span style={{ fontSize: 11, color: "#6366F1", fontWeight: 600, background: "rgba(99,102,241,.1)", padding: "2px 6px", borderRadius: 4 }}>v2</span></div>
 
         {/* Main view buttons — hide when in onboarding with no condo */}
@@ -6480,11 +6480,7 @@ export default function App() {
       </div>
 
       {/* ══ VIEW 2: APP SÍNDICO ════════════════════════════════════════════════ */}
-      <div className={`view ${view === "sindico" ? "active" : ""}`} style={{ justifyContent: "center", alignItems: "center" }}>
-        <div className="phone-frame">
-          <div className="phone-inner">
-            <div className="phone-notch" />
-            <div className="phone-status"><span>{clock}</span><span>📶 5G 🔋</span></div>
+      <div className={`view ${view === "sindico" ? "active" : ""}`} style={{ flexDirection:"column", background:"var(--neu-bg)", overflow:"hidden", fontFamily:"'Nunito', sans-serif", position:"relative", height:"100vh", marginTop:0 }}>
             {(() => {
               const h = new Date().getHours();
               const greet = h < 12 ? "Bom dia," : h < 18 ? "Boa tarde," : "Boa noite,";
@@ -6608,16 +6604,10 @@ export default function App() {
               <div className={`nav-item ${sindicoScreen === "planejamento" ? "active" : ""}`} onClick={() => setSindicoScreen("planejamento")}><span>📋</span>Usuário</div>
               <div className={`nav-item ${sindicoScreen === "crm" ? "active" : ""}`} onClick={() => setSindicoScreen("crm")}><span>👥</span>CRM</div>
             </div>
-          </div>
-        </div>
       </div>
 
       {/* ══ VIEW 3: APP MORADOR ════════════════════════════════════════════════ */}
-      <div className={`view ${view === "morador" ? "active" : ""}`} style={{ justifyContent: "center", alignItems: "center" }}>
-        <div className="phone-frame">
-          <div className="phone-inner">
-            <div className="phone-notch" />
-            <div className="phone-status"><span>{clock}</span><span>📶 4G 🔋</span></div>
+      <div className={`view ${view === "morador" ? "active" : ""}`} style={{ flexDirection:"column", background:"var(--neu-bg)", overflow:"hidden", fontFamily:"'Nunito', sans-serif", position:"relative", height:"100vh", marginTop:0 }}>
             {(() => {
               const h = new Date().getHours();
               const greet = h < 12 ? "Bom dia," : h < 18 ? "Boa tarde," : "Boa noite,";
@@ -6720,8 +6710,6 @@ export default function App() {
               <div className={`nav-item ${moradorScreen === "comunicados" ? "active" : ""}`} onClick={() => setMoradorScreen("comunicados")}><span>💬</span>Avisos</div>
               <div className={`nav-item ${moradorScreen === "boletos" ? "active" : ""}`} onClick={() => setMoradorScreen("boletos")}><span>💳</span>Boletos</div>
             </div>
-          </div>
-        </div>
       </div>
 
       {/* ══ VIEW 4: ONBOARDING ════════════════════════════════════════════════ */}
