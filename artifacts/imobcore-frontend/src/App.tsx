@@ -6225,10 +6225,45 @@ export default function App() {
                               return <button key={p} type="button" onClick={()=>setUsuarioForm(f=>({...f,perfil:p}))} style={{ padding:"7px 14px", borderRadius:8, fontSize:11, fontWeight:sel?700:500, cursor:"pointer", border:sel?`2px solid ${cfg.cor}`:"1px solid rgba(255,255,255,.1)", background:sel?`${cfg.cor}22`:"rgba(255,255,255,.03)", color:sel?cfg.cor:"#64748B" }}>{cfg.icon} {cfg.label}</button>;
                             })}
                           </div>
-                          {/* Module preview */}
-                          <div style={{ marginTop:8, fontSize:10, color:"#334155" }}>
-                            Módulos: {PERFIS_CONFIG[usuarioForm.perfil].modulos.join(", ")}
-                          </div>
+                          {/* Card visual de acesso a módulos */}
+                          {(() => {
+                            const ALL_MODULOS: { key:string; label:string; icon:string }[] = [
+                              { key:"chatIA",       label:"Chat IA",       icon:"🤖" },
+                              { key:"insights",     label:"Insights",      icon:"📊" },
+                              { key:"comunicados",  label:"Comunicados",   icon:"📢" },
+                              { key:"ordens",       label:"Ordens",        icon:"📋" },
+                              { key:"financeiro",   label:"Financeiro",    icon:"💰" },
+                              { key:"agua",         label:"Água",          icon:"💧" },
+                              { key:"misp",         label:"MISP",          icon:"🎯" },
+                              { key:"diagnostico",  label:"Diagnóstico",   icon:"🔍" },
+                              { key:"crm",          label:"CRM",           icon:"👥" },
+                              { key:"manutencao",   label:"Manutenção",    icon:"🔧" },
+                              { key:"energia",      label:"Energia",       icon:"⚡" },
+                              { key:"gas",          label:"Gás",           icon:"🔥" },
+                              { key:"encomendas",   label:"Encomendas",    icon:"📦" },
+                              { key:"condominios",  label:"Condomínios",   icon:"🏢" },
+                              { key:"usuarios",     label:"Usuários",      icon:"👤" },
+                              { key:"sseLiveLog",   label:"Live Log",      icon:"📡" },
+                            ];
+                            const perfilMods = new Set(PERFIS_CONFIG[usuarioForm.perfil].modulos);
+                            const perfilCor  = PERFIS_CONFIG[usuarioForm.perfil].cor;
+                            return (
+                              <div style={{ marginTop:10, padding:"10px 12px", background:"rgba(255,255,255,.04)", borderRadius:10, border:`1px solid ${perfilCor}33` }}>
+                                <div style={{ fontSize:10, fontWeight:700, color:perfilCor, marginBottom:8, textTransform:"uppercase" as const, letterSpacing:1 }}>Acesso a Módulos</div>
+                                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:"5px 8px" }}>
+                                  {ALL_MODULOS.map(m => {
+                                    const ok = perfilMods.has(m.key);
+                                    return (
+                                      <div key={m.key} style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color: ok ? "#10b981" : "#ef4444", opacity: ok ? 1 : 0.55 }}>
+                                        <span style={{ fontSize:9 }}>{ok ? "✓" : "✗"}</span>
+                                        <span>{m.icon} {m.label}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </div>
 
                         {[
