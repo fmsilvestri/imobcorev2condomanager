@@ -1,0 +1,201 @@
+Refatore APENAS o arquivo public/index.html do projeto ImobCore. Não altere nenhum arquivo do backend (server.js, routes/, services/, package.json).
+
+═══════════════════════════════════════
+DESIGN SYSTEM — NEUMÓRFICO MODERNO
+═══════════════════════════════════════
+
+Fundo base: #EEEEF4
+Fonte: Nunito (Google Fonts) — pesos 400, 700, 900
+Cor de acento: gradiente #7C5CFC → #A855F7
+Cor de texto principal: #2e2850
+Cor de texto secundário: rgba(100,90,150,0.5)
+
+Variáveis CSS obrigatórias no :root:
+  --bg: #EEEEF4
+  --shadow-d: #c8cad4
+  --shadow-l: #ffffff
+  --purple: #7C5CFC
+  --purple-2: #A855F7
+  --text: #2e2850
+  --text-2: rgba(100,90,150,0.5)
+  --neu-out: 5px 5px 12px var(--shadow-d), -4px -4px 10px var(--shadow-l)
+  --neu-out-lg: 8px 8px 18px var(--shadow-d), -6px -6px 14px var(--shadow-l)
+  --neu-in: inset 3px 3px 7px var(--shadow-d), inset -3px -3px 7px var(--shadow-l)
+  --neu-in-sm: inset 2px 2px 5px var(--shadow-d), inset -2px -2px 4px var(--shadow-l)
+
+═══════════════════════════════════════
+COMPONENTES NEUMÓRFICOS
+═══════════════════════════════════════
+
+.card-neu {
+  background: var(--bg);
+  border-radius: 16px;
+  box-shadow: var(--neu-out);
+}
+
+.card-neu:active, .card-pressed {
+  box-shadow: var(--neu-in);
+}
+
+.btn-neu-sm {
+  background: var(--bg);
+  border-radius: 11px;
+  box-shadow: 4px 4px 8px var(--shadow-d), -3px -3px 7px var(--shadow-l);
+  border: none;
+}
+
+.card-ai-gradient {
+  background: linear-gradient(135deg, #7C5CFC 0%, #A855F7 60%, #C084FC 100%);
+  border-radius: 20px;
+  box-shadow: 6px 8px 20px rgba(124,92,252,0.45), -2px -2px 8px rgba(255,255,255,0.6);
+}
+
+.badge-role {
+  background: linear-gradient(135deg, #7C5CFC, #A855F7);
+  border-radius: 7px;
+  padding: 3px 9px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 3px 3px 8px rgba(124,92,252,0.35);
+}
+
+.alert-accent {
+  box-shadow: var(--neu-in);
+  border-radius: 14px;
+  position: relative;
+}
+.alert-accent::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0; width: 3px;
+  background: linear-gradient(180deg, #FF5A3C, #FF8A70);
+  border-radius: 14px 0 0 14px;
+}
+
+.meter-neu {
+  box-shadow: var(--neu-in-sm);
+  border-radius: 3px;
+  height: 5px;
+}
+
+═══════════════════════════════════════
+VISÃO 1 — PAINEL GESTOR (Desktop)
+═══════════════════════════════════════
+
+Layout: display flex, height 100vh
+Sidebar 220px: fundo var(--bg), box-shadow neu-out lateral
+Itens sidebar: padding 10px 14px, border-radius 12px, ativo = neu-in + texto roxo
+Main: overflow-y auto, padding 24px
+
+KPI Cards (5): grid 1x5, cada card neu-out, padding 16px 18px
+- OSs Abertas (badge laranja se > 0)
+- Saldo Financeiro (verde)
+- Água Média % (azul + mini ring SVG)
+- Alertas MISP (amarelo se > 0)
+- Score Condomínio (roxo)
+
+Seção Chat IA: card-ai-gradient full width, chat bubbles neu-in para usuário, roxo para IA
+Seção OSs: lista neu-out cards, badge urgente vermelho com glow
+Seção Sensores IoT: cards horizontais neu-out, barra meter-neu, valor grande à direita
+Seção MISP: cards neu-out com borda esquerda colorida por nível
+
+═══════════════════════════════════════
+VISÃO 2 — APP SÍNDICO (Mobile 390px max)
+═══════════════════════════════════════
+
+Status bar: fundo var(--bg), texto var(--text), hora bold
+Topbar: logo IC 32px neu-out 10px radius, brand-name bold, 2 btn-neu-sm ícones
+Sem tabs Gestor/Síndico/Morador na topbar — usar switcher global separado
+
+Greeting:
+  - "Boa noite," 11px muted
+  - Nome 20px font-weight 900
+  - badge-role "◆ Síndico"
+  - Nome do condomínio 10px muted
+  - Avatar 44px neu-out radius 15px, gradiente roxo, inicial
+
+Alerta urgente: alert-accent, ícone neu-sm, tag caps vermelha, seta direita
+
+Card IA: card-ai-gradient, orb 42px radius 14px rgba branca, tag + título + sub, seta branca
+
+Seção "Operações & Gestão":
+  - Header: label caps muted + link "ver tudo" roxo
+  - Grid 2x2: 6 cards neu-out
+  - Cada card: icon-wrap 36px neu-out-sm (cor suave), nome bold, badge semântico neu-out-sm
+  - Cards: OSs/Planej (badge laranja), Financeiro (verde), Manutenção (muted), CRM Moradores (azul), Comunicados (laranja), Insights IA (roxo)
+  - Card OSs: ponto vermelho absoluto top-right com glow
+
+Seção "Monitoramento & IoT":
+  - 2 cards horizontais neu-out
+  - Ícone em card colorido neu-sm (azul água / amber gás)
+  - Nome + sub "ESP32 · Online" + meter-neu com fill gradiente
+  - Valor % à direita font-weight 900
+
+Bottom nav: fundo var(--bg), border-top 1px #c8cad4, box-shadow superior suave
+  - 4 items + FAB central
+  - Item ativo: neu-in + label roxo
+  - FAB: 48px neu-out-lg gradiente roxo, margin-top -10px
+
+═══════════════════════════════════════
+VISÃO 3 — APP MORADOR (Mobile 390px)
+═══════════════════════════════════════
+
+Mesmo design base do App Síndico com:
+  - Badge "◆ Morador" (mesma badge-role)
+  - Módulos: Avisos, Minhas Encomendas, Reservar Espaço, Meu Chamado, Financeiro, Visitantes
+  - Sem acesso a: OSs gerais, CRM, Insights IA, MISP
+  - Card IA com texto "Falar com Síndico Virtual"
+
+═══════════════════════════════════════
+TOPBAR GLOBAL (fixa no topo, todas as visões)
+═══════════════════════════════════════
+
+altura 52px, fundo var(--bg), box-shadow neumorfico inferior leve
+Logo ImobCore à esquerda
+Centro: 3 pills neumórficas — "Gestor" | "Síndico" | "Morador"
+  - Inativo: neu-out
+  - Ativo: neu-in + texto roxo
+Direita: badge SSE verde pulsante (@keyframes pulse) + relógio JS
+
+═══════════════════════════════════════
+REALTIME SSE
+═══════════════════════════════════════
+
+Manter função connectSSE() conectando em /api/stream
+Ao receber eventos: chamar loadDashboard() que atualiza TODAS as visões simultaneamente
+loadDashboard() faz fetch /api/dashboard e repopula KPIs, OSs, sensores de todas as visões
+
+═══════════════════════════════════════
+CHAT SÍNDICO VIRTUAL
+═══════════════════════════════════════
+
+POST /api/sindico/chat com body:
+  { message: string, history: Array, condominio_id: string }
+
+Resposta: { reply: string, tokens: number }
+Histórico mantido por visão (deskHistory, sideHistory separados)
+Typing indicator neu-in enquanto aguarda resposta
+Salvar histórico no Supabase já está no backend — não recriar
+
+═══════════════════════════════════════
+DEPENDÊNCIAS (CDN — sem npm)
+═══════════════════════════════════════
+
+Google Fonts: Nunito 400,700,900
+Sem outras dependências externas
+Todo CSS e JS vanilla inline no index.html
+
+═══════════════════════════════════════
+IMPORTANTE
+═══════════════════════════════════════
+
+1. NÃO alterar server.js, routes/, services/, package.json
+2. NÃO alterar variáveis de ambiente
+3. NÃO alterar nomes de rotas ou estrutura de resposta da API
+4. Usar os dados reais retornados por /api/dashboard
+5. Tabelas Supabase reais: reservoirs, sensor_readings, water_readings, condominios, ordens_servico, alertas_publicos, receitas, despesas, comunicados, sindico_historico
+6. Sensor ESP32: device_id = F8:B3:B7:90:9F:78, campos: distancia, nivel, volume (dividir por 100)
+7. Manter CORS headers no backend (já configurado)

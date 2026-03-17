@@ -22,9 +22,21 @@ const fmtTime = () => new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", 
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Nunito:wght@400;700;900&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%;font-family:'Inter',sans-serif;background:var(--c-bg);color:var(--c-text);overflow:hidden}
+/* ── Neumorphic design system for phone views ─────────────────────────── */
+:root{
+  --neu-bg:#EEEEF4;--neu-shadow-d:#c8cad4;--neu-shadow-l:#ffffff;
+  --neu-purple:#7C5CFC;--neu-purple-2:#A855F7;
+  --neu-text:#2e2850;--neu-text-2:rgba(100,90,150,0.5);
+  --neu-out:5px 5px 12px var(--neu-shadow-d),-4px -4px 10px var(--neu-shadow-l);
+  --neu-out-lg:8px 8px 18px var(--neu-shadow-d),-6px -6px 14px var(--neu-shadow-l);
+  --neu-out-sm:3px 3px 7px var(--neu-shadow-d),-3px -3px 7px var(--neu-shadow-l);
+  --neu-in:inset 3px 3px 7px var(--neu-shadow-d),inset -3px -3px 7px var(--neu-shadow-l);
+  --neu-in-sm:inset 2px 2px 5px var(--neu-shadow-d),inset -2px -2px 4px var(--neu-shadow-l);
+  --neu-grad:linear-gradient(135deg,#7C5CFC 0%,#A855F7 60%,#C084FC 100%);
+}
 :root{
   --bg:#070B12;--card-bg:rgba(255,255,255,.04);--card-border:rgba(255,255,255,.08);
   --grad:linear-gradient(135deg,#6366F1,#7C3AED,#A855F7);
@@ -226,75 +238,94 @@ select.form-control option{background:var(--c-bg2)}
 .toast.error{border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.1);color:#F87171}
 .toast.info{border-color:rgba(99,102,241,.3);background:rgba(99,102,241,.1);color:#A5B4FC}
 .toast.warn{border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.1);color:#FCD34D}
-.phone-frame{width:375px;border-radius:48px;background:#000;box-shadow:0 0 0 2px #1a1a2e,0 0 0 8px #0a0a1a,0 30px 80px rgba(0,0,0,.8),0 0 60px rgba(99,102,241,.15),inset 0 0 0 1px rgba(255,255,255,.05);position:relative;overflow:hidden;height:780px}
-.phone-inner{background:#0D1220;height:100%;border-radius:48px;overflow:hidden;display:flex;flex-direction:column;position:relative}
-.phone-notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:120px;height:30px;background:#000;border-radius:0 0 20px 20px;z-index:100}
-.phone-status{height:44px;display:flex;align-items:center;padding:0 24px;justify-content:space-between;font-size:12px;font-weight:600;padding-top:6px;position:relative;z-index:10}
-.phone-content{flex:1;overflow-y:auto;overflow-x:hidden}
-.phone-bottom-nav{height:64px;background:rgba(13,18,32,.98);border-top:1px solid var(--card-border);display:flex;align-items:center;justify-content:space-around;padding:0 8px;flex-shrink:0;position:relative;z-index:300}
-.nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:#475569;cursor:pointer;flex:1;padding:8px 4px;transition:color .15s}
-.nav-item.active{color:var(--indigo)}
-.nav-fab{width:54px;height:54px;border-radius:50%;background:var(--grad);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 20px rgba(99,102,241,.5);margin-top:-18px;flex-shrink:0;transition:transform .15s}
-.nav-fab:hover{transform:scale(1.05)}
-.phone-header{padding:12px 16px 10px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.phone-frame{width:375px;border-radius:52px;background:var(--neu-bg);box-shadow:14px 14px 32px #b0b2c0,-10px -10px 26px #ffffff,0 0 0 1.5px rgba(200,202,212,.6);position:relative;overflow:hidden;height:780px}
+.phone-inner{background:var(--neu-bg);height:100%;border-radius:52px;overflow:hidden;display:flex;flex-direction:column;position:relative;font-family:'Nunito',sans-serif}
+.phone-notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:110px;height:28px;background:var(--neu-bg);border-radius:0 0 18px 18px;z-index:100;box-shadow:0 4px 8px rgba(200,202,212,.4)}
+.phone-status{height:44px;display:flex;align-items:center;padding:0 24px;justify-content:space-between;font-size:12px;font-weight:800;padding-top:6px;position:relative;z-index:10;color:var(--neu-text)}
+.phone-content{flex:1;overflow-y:auto;overflow-x:hidden;background:var(--neu-bg)}
+.phone-bottom-nav{height:68px;background:var(--neu-bg);border-top:1px solid #d4d6e0;box-shadow:0 -3px 12px rgba(124,92,252,.06);display:flex;align-items:center;justify-content:space-around;padding:0 6px;flex-shrink:0;position:relative;z-index:300}
+.nav-item{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--neu-text-2);cursor:pointer;flex:1;padding:6px 4px;transition:all .2s;border-radius:12px}
+.nav-item.active{color:var(--neu-purple);background:var(--neu-bg);box-shadow:var(--neu-in)}
+.nav-fab{width:56px;height:56px;border-radius:50%;background:var(--neu-grad);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:6px 8px 20px rgba(124,92,252,.45),-2px -2px 8px rgba(255,255,255,.7);margin-top:-14px;flex-shrink:0;transition:transform .15s}
+.nav-fab:hover{transform:scale(1.06)}
+/* ── Phone header (neumorphic) ──────────────────────────────────────── */
+.phone-header{padding:0;display:flex;flex-direction:column;flex-shrink:0;background:var(--neu-bg)}
+.ph-topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 16px 8px}
+.ph-logo-row{display:flex;align-items:center;gap:9px}
+.ph-logo-icon{width:34px;height:34px;border-radius:10px;background:var(--neu-grad);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;color:#fff;letter-spacing:-.5px;box-shadow:var(--neu-out-sm)}
+.ph-brand-name{font-size:15px;font-weight:900;color:var(--neu-text)}
+.ph-brand-name span{font-size:11px;color:var(--neu-text-2);font-weight:700}
+.ph-topbar-btns{display:flex;align-items:center;gap:8px}
+.ph-btn-neu{width:34px;height:34px;border-radius:10px;background:var(--neu-bg);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;box-shadow:var(--neu-out-sm);transition:box-shadow .2s;color:var(--neu-text-2);position:relative}
+.ph-btn-neu:hover{box-shadow:var(--neu-in-sm)}
+.ph-bell-dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#EF4444;border:1.5px solid var(--neu-bg)}
+.ph-greeting-section{padding:8px 16px 14px;display:flex;align-items:flex-start;justify-content:space-between}
 .ph-greet-wrap{flex:1;min-width:0}
-.ph-greet-time{font-size:11px;color:#475569;margin-bottom:1px;font-weight:400;letter-spacing:.01em}
-.ph-greet-name{font-size:19px;font-weight:800;line-height:1.15;margin-bottom:3px;color:#F1F5F9}
-.ph-greet-name .accent{color:#818CF8}
-.ph-greet-name .accent-teal{color:#2DD4BF}
-.ph-greet-condo{font-size:11px;color:#334155}
-.ph-header-actions{display:flex;align-items:center;gap:7px;flex-shrink:0}
-.ph-theme-pill{display:flex;align-items:center;justify-content:center;gap:4px;background:#0a1222;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:0 12px;height:32px;cursor:pointer;transition:border-color .2s}
-.ph-theme-pill:hover{border-color:rgba(255,255,255,.2)}
-.ph-bell-btn{width:33px;height:33px;border-radius:50%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative;transition:all .2s;flex-shrink:0}
-.ph-bell-btn:hover{background:rgba(255,255,255,.09)}
+.ph-greet-time{font-size:11px;color:var(--neu-text-2);margin-bottom:3px;font-weight:700}
+.ph-greet-name{font-size:22px;font-weight:900;line-height:1.1;margin-bottom:6px;color:var(--neu-text)}
+.badge-role{display:inline-flex;align-items:center;gap:4px;background:var(--neu-grad);border-radius:8px;padding:3px 10px;font-size:10px;font-weight:900;color:#fff;letter-spacing:.05em;text-transform:uppercase;box-shadow:3px 3px 8px rgba(124,92,252,.35);margin-bottom:5px}
+.ph-greet-condo{font-size:11px;color:var(--neu-text-2);font-weight:600;margin-top:2px}
+.ph-av-lg{width:50px;height:50px;border-radius:15px;background:var(--neu-grad);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900;color:#fff;flex-shrink:0;box-shadow:var(--neu-out);cursor:pointer}
+.ph-av-lg.teal{background:linear-gradient(135deg,#0D9488,#14B8A6)}
+/* bell-shake and old helpers kept for compat */
 .ph-bell-btn.bell-shake{animation:bellShake .4s ease}
-.ph-bell-dot{position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:#EF4444;border:1.5px solid #0a1222}
-.ph-av-sm{width:33px;height:33px;border-radius:50%;background:linear-gradient(135deg,#7C3AED,#6366F1);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0;cursor:pointer;box-shadow:0 2px 10px rgba(99,102,241,.3)}
-.ph-av-sm.teal{background:linear-gradient(135deg,#0D9488,#14B8A6);box-shadow:0 2px 10px rgba(20,184,166,.3)}
-.bell-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:var(--red);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #0D1220;padding:0 3px}
 .bell-shake{animation:bellShake .4s ease}
-.ph-card{margin:0 12px 10px;padding:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px}
-.ph-card.grad-card{background:var(--grad);border:none;cursor:pointer}
-.ph-card.grad-card-teal{background:var(--grad-teal);border:none}
-.ph-card.critical{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);animation:pulse 2s infinite}
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 12px;margin-bottom:10px}
-.module-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px 12px;cursor:pointer;transition:all .15s}
-.module-card:hover{background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.2)}
-.module-card-icon{font-size:22px;margin-bottom:6px}
-.module-card-title{font-size:12px;font-weight:600;color:#CBD5E1;margin-bottom:2px}
-.module-card-sub{font-size:10px;color:#475569}
-.module-card-val{font-size:18px;font-weight:700;margin-top:4px}
-.ph-subscreen{position:absolute;top:0;left:0;right:0;bottom:64px;background:#0D1220;z-index:200;display:flex;flex-direction:column;overflow:hidden;animation:slideLeft .2s ease}
+.bell-badge{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;border-radius:8px;background:#EF4444;color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--neu-bg);padding:0 3px}
+/* ── Cards ──────────────────────────────────────────────────────────── */
+.ph-card{margin:0 14px 12px;padding:16px;background:var(--neu-bg);border-radius:18px;box-shadow:var(--neu-out)}
+.ph-card.grad-card{background:var(--neu-grad);box-shadow:6px 8px 20px rgba(124,92,252,.45),-2px -2px 8px rgba(255,255,255,.7);cursor:pointer;border:none}
+.ph-card.grad-card-teal{background:linear-gradient(135deg,#0D9488,#14B8A6,#2DD4BF);box-shadow:6px 8px 20px rgba(20,184,166,.35),-2px -2px 8px rgba(255,255,255,.6);border:none}
+.ph-card.critical{background:var(--neu-bg);box-shadow:var(--neu-in);position:relative;overflow:hidden}
+.ph-card.critical::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3.5px;background:linear-gradient(180deg,#FF5A3C,#FF8A70);border-radius:18px 0 0 18px}
+/* ── Module grid cards ──────────────────────────────────────────────── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 14px;margin-bottom:12px}
+.module-card{background:var(--neu-bg);border-radius:18px;padding:16px 14px;cursor:pointer;transition:box-shadow .2s;box-shadow:var(--neu-out);position:relative}
+.module-card:active{box-shadow:var(--neu-in)}
+.module-card-icon{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:10px;box-shadow:var(--neu-out-sm);background:var(--neu-bg)}
+.module-card-title{font-size:13px;font-weight:800;color:var(--neu-text);margin-bottom:6px}
+.module-card-sub{display:inline-block;font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;box-shadow:var(--neu-out-sm);background:var(--neu-bg);color:var(--neu-text-2)}
+.module-card-val{font-size:16px;font-weight:900;margin-top:4px}
+/* ── Subscreen ──────────────────────────────────────────────────────── */
+.ph-subscreen{position:absolute;top:0;left:0;right:0;bottom:68px;background:var(--neu-bg);z-index:200;display:flex;flex-direction:column;overflow:hidden;animation:slideLeft .2s ease}
 .ph-subscreen.hidden{display:none}
-.ph-sub-header{padding:16px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--card-border);flex-shrink:0}
-.back-btn{width:32px;height:32px;border-radius:10px;background:rgba(255,255,255,.06);border:none;color:#E2E8F0;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .15s}
-.back-btn:hover{background:rgba(255,255,255,.12)}
-.ph-sub-title{font-size:14px;font-weight:700;flex:1}
-.ph-sub-body{flex:1;overflow-y:auto;padding:12px}
-.ph-sub-footer{padding:10px 12px;border-top:1px solid var(--card-border);flex-shrink:0}
-.ph-os-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:12px;padding:12px;margin-bottom:8px}
-.ph-os-titulo{font-size:13px;font-weight:600;margin-bottom:4px}
-.ph-os-meta{font-size:11px;color:#64748B;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.ph-log-entry{padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:11px}
-.ph-log-time{color:#334155;font-size:10px}
-.ph-fin-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04)}
-.ph-fin-label{font-size:12px;color:#CBD5E1}
-.ph-fin-sub{font-size:10px;color:#475569}
-.ph-fin-val{font-size:13px;font-weight:600}
-.services-list{padding:0 12px;margin-bottom:10px}
-.service-item{display:flex;align-items:center;gap:12px;padding:11px 12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:12px;margin-bottom:6px;cursor:pointer;transition:all .15s}
-.service-item:hover{background:rgba(20,184,166,.06);border-color:rgba(20,184,166,.2)}
-.svc-icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
-.svc-name{flex:1;font-size:13px;font-weight:500}
-.svc-count{padding:2px 8px;border-radius:10px;background:rgba(20,184,166,.15);color:var(--teal);font-size:11px;font-weight:600}
-.morador-nav .nav-item.active{color:var(--teal)}
-.morador-nav .nav-fab{background:var(--grad-teal);box-shadow:0 4px 20px rgba(20,184,166,.5)}
-.sec-header{display:flex;align-items:center;justify-content:space-between;padding:0 12px;margin-bottom:8px}
-.sec-title{font-size:13px;font-weight:700}
-.sec-link{font-size:11px;color:var(--indigo);cursor:pointer}
+.ph-sub-header{padding:16px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #d4d6e0;flex-shrink:0;background:var(--neu-bg)}
+.back-btn{width:34px;height:34px;border-radius:11px;background:var(--neu-bg);border:none;color:var(--neu-text);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:var(--neu-out-sm);transition:box-shadow .15s}
+.back-btn:hover{box-shadow:var(--neu-in-sm)}
+.ph-sub-title{font-size:15px;font-weight:800;flex:1;color:var(--neu-text)}
+.ph-sub-body{flex:1;overflow-y:auto;padding:14px;background:var(--neu-bg)}
+.ph-sub-footer{padding:10px 12px;border-top:1px solid #d4d6e0;flex-shrink:0;background:var(--neu-bg)}
+/* ── List items ─────────────────────────────────────────────────────── */
+.ph-os-item{background:var(--neu-bg);border-radius:14px;box-shadow:var(--neu-out);padding:14px;margin-bottom:10px}
+.ph-os-titulo{font-size:13px;font-weight:800;margin-bottom:4px;color:var(--neu-text)}
+.ph-os-meta{font-size:11px;color:var(--neu-text-2);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ph-log-entry{padding:6px 0;border-bottom:1px solid #d4d6e0;font-size:11px;color:var(--neu-text)}
+.ph-log-time{color:var(--neu-text-2);font-size:10px}
+.ph-fin-item{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #d4d6e0}
+.ph-fin-label{font-size:12px;color:var(--neu-text);font-weight:700}
+.ph-fin-sub{font-size:10px;color:var(--neu-text-2)}
+.ph-fin-val{font-size:13px;font-weight:800;color:var(--neu-text)}
+.services-list{padding:0 14px;margin-bottom:12px}
+.service-item{display:flex;align-items:center;gap:12px;padding:13px 14px;background:var(--neu-bg);border-radius:14px;box-shadow:var(--neu-out);margin-bottom:8px;cursor:pointer;transition:box-shadow .2s}
+.service-item:hover{box-shadow:var(--neu-in)}
+.svc-icon{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;box-shadow:var(--neu-out-sm);background:var(--neu-bg)}
+.svc-name{flex:1;font-size:13px;font-weight:700;color:var(--neu-text)}
+.svc-count{padding:3px 9px;border-radius:9px;font-size:11px;font-weight:800;box-shadow:var(--neu-out-sm);background:var(--neu-bg);color:var(--neu-purple)}
+.morador-nav .nav-item.active{color:var(--neu-purple)}
+.morador-nav .nav-fab{background:var(--neu-grad);box-shadow:6px 8px 20px rgba(124,92,252,.45),-2px -2px 8px rgba(255,255,255,.7)}
+.sec-header{display:flex;align-items:center;justify-content:space-between;padding:0 14px;margin-bottom:10px}
+.sec-title{font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--neu-text-2)}
+.sec-link{font-size:12px;font-weight:800;color:var(--neu-purple);cursor:pointer}
 textarea.fc{width:100%;padding:8px 12px;background:rgba(0,0,0,.3);border:1px solid var(--card-border);border-radius:8px;color:#E2E8F0;font-size:13px;font-family:inherit;resize:none}
 textarea.fc:focus{outline:none;border-color:rgba(99,102,241,.5)}
+.meter-neu{height:5px;border-radius:3px;background:var(--neu-bg);box-shadow:var(--neu-in-sm);overflow:hidden}.meter-neu-fill{height:100%;border-radius:3px;background:var(--neu-grad)}
+/* ── Subscreen neumorphic neutralizer ────────────────────────────────────── */
+.ph-subscreen{color:var(--neu-text)}
+.ph-sub-body,.ph-sub-body *{font-family:'Nunito',sans-serif}
+/* Recharts inside phone views */
+.ph-subscreen .recharts-cartesian-grid-horizontal line,.ph-subscreen .recharts-cartesian-grid-vertical line{stroke:#d4d6e0 !important}
+.ph-subscreen .recharts-tooltip-wrapper .recharts-default-tooltip{background:var(--neu-bg) !important;border:1px solid #d4d6e0 !important;color:var(--neu-text) !important;box-shadow:var(--neu-out) !important}
+/* Textarea and inputs inside subscreens */
+.ph-subscreen textarea,.ph-subscreen input{background:var(--neu-bg) !important;border:1px solid #d4d6e0 !important;color:var(--neu-text) !important;box-shadow:var(--neu-in-sm) !important}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:10px}
 .cal-day{text-align:center;padding:6px 2px;border-radius:8px;font-size:12px;cursor:pointer;transition:all .15s}
 .cal-day.avail{background:rgba(16,185,129,.12);color:#34D399;border:1px solid rgba(16,185,129,.2)}
@@ -6170,22 +6201,33 @@ export default function App() {
               const condo = dash?.condominios?.[0]?.nome || "Residencial Parque das Flores";
               return (
                 <div className="phone-header">
-                  <div className="ph-greet-wrap">
-                    <div className="ph-greet-time">{greet}</div>
-                    <div className="ph-greet-name">{fname} <span className="accent">Síndico</span></div>
-                    <div className="ph-greet-condo">{condo}</div>
+                  <div className="ph-topbar">
+                    <div className="ph-logo-row">
+                      <div className="ph-logo-icon">IC</div>
+                      <div className="ph-brand-name">ImobCore <span>v2</span></div>
+                    </div>
+                    <div className="ph-topbar-btns">
+                      <button className={`ph-btn-neu ${bellShake ? "bell-shake" : ""}`} onClick={() => setBellCount(0)} title="Notificações">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+                        </svg>
+                        {bellCount > 0 && <div className="ph-bell-dot"/>}
+                      </button>
+                      <button className="ph-btn-neu" onClick={() => setView("selector")} title="Trocar interface">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                  <div className="ph-header-actions">
-                    <button className="ph-theme-pill" onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} title="Tema">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" fill="#64748B"/></svg>
-                    </button>
-                    <button className={`ph-bell-btn ${bellShake ? "bell-shake" : ""}`} onClick={() => setBellCount(0)} title="Notificações">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
-                      </svg>
-                      {bellCount > 0 && <div className="ph-bell-dot"/>}
-                    </button>
-                    <div className="ph-av-sm">{fname.charAt(0)}</div>
+                  <div className="ph-greeting-section">
+                    <div className="ph-greet-wrap">
+                      <div className="ph-greet-time">{greet}</div>
+                      <div className="ph-greet-name">{fname}</div>
+                      <div><span className="badge-role">◆ Síndico</span></div>
+                      <div className="ph-greet-condo">{condo}</div>
+                    </div>
+                    <div className="ph-av-lg">{fname.charAt(0).toUpperCase()}</div>
                   </div>
                 </div>
               );
@@ -6193,63 +6235,72 @@ export default function App() {
 
             <div className="phone-content">
               {urgentes > 0 && (
-                <div className="ph-card critical" style={{ margin: "0 12px 8px" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#F87171", marginBottom: 4 }}>⚠️ ATENÇÃO URGENTE</div>
-                  <div style={{ fontSize: 11, color: "#FCA5A5" }}>
-                    {(dash?.ordens_servico || []).find(o => o.prioridade === "urgente" && o.status === "aberta")?.titulo}
+                <div className="ph-card critical" style={{ margin: "0 14px 12px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 8 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 10, background: "var(--neu-bg)", boxShadow: "var(--neu-out-sm)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>⚠️</div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, fontWeight: 900, color: "#FF5A3C", letterSpacing: ".06em", textTransform: "uppercase" as const, marginBottom: 2 }}>Atenção Urgente</div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: "var(--neu-text)" }}>
+                        {(dash?.ordens_servico || []).find(o => o.prioridade === "urgente" && o.status === "aberta")?.titulo || "Ocorrência urgente"}
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--neu-text-2)", marginTop: 2 }}>Agora · Manutenção</div>
+                    </div>
+                    <span style={{ color: "var(--neu-text-2)", fontSize: 14 }}>›</span>
                   </div>
                 </div>
               )}
 
-              <div className="ph-card grad-card" onClick={() => setSindicoScreen("sindico")}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: "rgba(255,255,255,.7)", marginBottom: 2 }}>SÍNDICO VIRTUAL IA</div>
-                    <div style={{ fontSize: 16, fontWeight: 700 }}>Falar com IA 🤖</div>
-                  </div>
-                  <span style={{ fontSize: 28 }}>🤖</span>
+              <div className="ph-card grad-card" onClick={() => setSindicoScreen("sindico")} style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: "rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🤖</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,.75)", letterSpacing: ".06em", textTransform: "uppercase" as const, marginBottom: 2 }}>Síndico Virtual IA</div>
+                  <div style={{ fontSize: 17, fontWeight: 900, color: "#fff", marginBottom: 2 }}>Falar com IA</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.8)" }}>Consultas e análises em tempo real</div>
                 </div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.8)", lineHeight: 1.4 }}>
-                  {mobileMsgs[mobileMsgs.length - 1]?.role === "ai"
-                    ? mobileMsgs[mobileMsgs.length - 1].content.substring(0, 100) + "..."
-                    : "Toque para consultar o Síndico Virtual IA..."}
-                </div>
+                <span style={{ color: "rgba(255,255,255,.8)", fontSize: 18 }}>›</span>
               </div>
 
               {/* ── Seção 1: Operações ────────────────────────────── */}
-              <div className="sec-header"><div className="sec-title">Operações e Gestão</div></div>
+              <div className="sec-header">
+                <div className="sec-title">Operações &amp; Gestão</div>
+                <div className="sec-link">ver tudo</div>
+              </div>
               <div className="grid-2">
                 {[
-                  { icon: "📋", title: "OSs / Planej.", sub: `${osAbertas.length} em aberto`, color: "var(--amber)", screen: "planejamento" },
-                  { icon: "💰", title: "Financeiro", sub: fmtBRL(t?.saldo || 0), color: "var(--green)", screen: "financeiro" },
-                  { icon: "🔧", title: "Manutenção", sub: `${EQUIP_DEMO.length} equipamentos`, color: "var(--indigo)", screen: "manutencao" },
-                  { icon: "👥", title: "CRM Moradores", sub: `${crmMoradores.length} cadastrados`, color: "var(--purple)", screen: "crm" },
-                  { icon: "📢", title: "Comunicados", sub: `${(dash?.comunicados||[]).length} enviados`, color: "#F59E0B", screen: "comunicados" },
-                  { icon: "💡", title: "Insights IA", sub: "Análises em tempo real", color: "#A855F7", screen: "insights" },
+                  { icon: "📋", title: "OSs / Planejamento", badgeColor: "#F59E0B", badgeBg: "rgba(245,158,11,.12)", sub: `${osAbertas.length} em aberto`, dot: true, screen: "planejamento" },
+                  { icon: "💰", title: "Financeiro", badgeColor: "#10B981", badgeBg: "rgba(16,185,129,.12)", sub: fmtBRL(t?.saldo || 0), dot: false, screen: "financeiro" },
+                  { icon: "🔧", title: "Manutenção", badgeColor: "var(--neu-text-2)", badgeBg: "transparent", sub: `${EQUIP_DEMO.length} itens`, dot: false, screen: "manutencao" },
+                  { icon: "👥", title: "CRM Moradores", badgeColor: "#3B82F6", badgeBg: "rgba(59,130,246,.12)", sub: `${crmMoradores.length} cadastros`, dot: false, screen: "crm" },
+                  { icon: "📢", title: "Comunicados", badgeColor: "#F59E0B", badgeBg: "rgba(245,158,11,.12)", sub: `${(dash?.comunicados||[]).length} enviados`, dot: false, screen: "comunicados" },
+                  { icon: "💡", title: "Insights IA", badgeColor: "#7C5CFC", badgeBg: "rgba(124,92,252,.12)", sub: "Tempo real", dot: false, screen: "insights" },
                 ].map(m => (
                   <div key={m.title} className="module-card" onClick={() => setSindicoScreen(m.screen)}>
+                    {m.dot && <div style={{ position: "absolute", top: 12, right: 12, width: 8, height: 8, borderRadius: "50%", background: "#EF4444", boxShadow: "0 0 6px #EF4444" }} />}
                     <div className="module-card-icon">{m.icon}</div>
                     <div className="module-card-title">{m.title}</div>
-                    <div className="module-card-sub" style={{ color: m.color }}>{m.sub}</div>
+                    <div className="module-card-sub" style={{ color: m.badgeColor, background: m.badgeBg, boxShadow: m.badgeBg === "transparent" ? "var(--neu-out-sm)" : "none" }}>{m.sub}</div>
                   </div>
                 ))}
               </div>
 
               {/* ── Seção 2: Monitoramento ─────────────────────────── */}
-              <div className="sec-header" style={{ marginTop: 4 }}><div className="sec-title">Monitoramento & IoT</div></div>
+              <div className="sec-header" style={{ marginTop: 4 }}>
+                <div className="sec-title">Monitoramento &amp; IoT</div>
+                <div className="sec-link">ver tudo</div>
+              </div>
               <div className="grid-2">
                 {[
-                  { icon: "💧", title: "Água & Reserv.", sub: `Nível: ${nivelMedio}%`, color: "var(--cyan)", screen: "agua" },
-                  { icon: "🔥", title: "Gás", sub: `Nível: ${gasLeituras[0]?.nivel ?? 0}%${gasLeituras[0]?.nivel < 20 ? " ⚠️" : ""}`, color: "#F97316", screen: "gas" },
-                  { icon: "⚡", title: "Energia", sub: "284 kWh este mês", color: "#EAB308", screen: "energia" },
-                  { icon: "🚨", title: "MISP", sub: `${t?.alertas_ativos || 0} alertas ativos`, color: "var(--red)", screen: "misp" },
-                  { icon: "📡", title: "Monitor IoT", sub: `${sseCount} eventos SSE`, color: "var(--teal)", screen: "iot" },
-                  { icon: "🤖", title: "Síndico IA", sub: "Chat em tempo real", color: "var(--violet)", screen: "sindico" },
+                  { icon: "💧", title: "Água & Reserv.", sub: `Nível: ${nivelMedio}%`, badgeColor: "#0D9488", badgeBg: "rgba(13,148,136,.1)", screen: "agua" },
+                  { icon: "🔥", title: "Gás", sub: `Nível: ${gasLeituras[0]?.nivel ?? 0}%${(gasLeituras[0]?.nivel ?? 0) < 20 ? " ⚠️" : ""}`, badgeColor: "#F97316", badgeBg: "rgba(249,115,22,.1)", screen: "gas" },
+                  { icon: "⚡", title: "Energia", sub: "284 kWh/mês", badgeColor: "#EAB308", badgeBg: "rgba(234,179,8,.1)", screen: "energia" },
+                  { icon: "🚨", title: "MISP", sub: `${t?.alertas_ativos || 0} alertas`, badgeColor: "#EF4444", badgeBg: "rgba(239,68,68,.1)", screen: "misp" },
+                  { icon: "📡", title: "Monitor IoT", sub: `${sseCount} eventos`, badgeColor: "#0D9488", badgeBg: "rgba(13,148,136,.1)", screen: "iot" },
+                  { icon: "🤖", title: "Síndico IA", sub: "Chat em tempo real", badgeColor: "#7C5CFC", badgeBg: "rgba(124,92,252,.1)", screen: "sindico" },
                 ].map(m => (
                   <div key={m.title} className="module-card" onClick={() => setSindicoScreen(m.screen)}>
                     <div className="module-card-icon">{m.icon}</div>
                     <div className="module-card-title">{m.title}</div>
-                    <div className="module-card-sub" style={{ color: m.color }}>{m.sub}</div>
+                    <div className="module-card-sub" style={{ color: m.badgeColor, background: m.badgeBg, boxShadow: "none" }}>{m.sub}</div>
                   </div>
                 ))}
               </div>
@@ -6272,7 +6323,7 @@ export default function App() {
       {/* ══ VIEW 3: APP MORADOR ════════════════════════════════════════════════ */}
       <div className={`view ${view === "morador" ? "active" : ""}`} style={{ justifyContent: "center", alignItems: "center" }}>
         <div className="phone-frame">
-          <div className="phone-inner" style={{ background: "#0a1520" }}>
+          <div className="phone-inner">
             <div className="phone-notch" />
             <div className="phone-status"><span>{clock}</span><span>📶 4G 🔋</span></div>
             {(() => {
@@ -6284,22 +6335,33 @@ export default function App() {
               const notifs = t?.alertas_ativos || 0;
               return (
                 <div className="phone-header">
-                  <div className="ph-greet-wrap">
-                    <div className="ph-greet-time">{greet}</div>
-                    <div className="ph-greet-name">{fname} <span className="accent-teal">Morador</span></div>
-                    <div className="ph-greet-condo">{condo}</div>
+                  <div className="ph-topbar">
+                    <div className="ph-logo-row">
+                      <div className="ph-logo-icon">IC</div>
+                      <div className="ph-brand-name">ImobCore <span>v2</span></div>
+                    </div>
+                    <div className="ph-topbar-btns">
+                      <button className="ph-btn-neu" title="Notificações">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+                        </svg>
+                        {notifs > 0 && <div className="ph-bell-dot"/>}
+                      </button>
+                      <button className="ph-btn-neu" onClick={() => setView("selector")} title="Trocar interface">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                  <div className="ph-header-actions">
-                    <button className="ph-theme-pill" onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} title="Tema">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" fill="#64748B"/></svg>
-                    </button>
-                    <button className="ph-bell-btn" title="Notificações">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
-                      </svg>
-                      {notifs > 0 && <div className="ph-bell-dot"/>}
-                    </button>
-                    <div className="ph-av-sm teal">{fname.charAt(0)}</div>
+                  <div className="ph-greeting-section">
+                    <div className="ph-greet-wrap">
+                      <div className="ph-greet-time">{greet}</div>
+                      <div className="ph-greet-name">{fname}</div>
+                      <div><span className="badge-role" style={{ background: "linear-gradient(135deg,#0D9488,#14B8A6)" }}>◆ Morador</span></div>
+                      <div className="ph-greet-condo">{condo}</div>
+                    </div>
+                    <div className="ph-av-lg teal">{fname.charAt(0).toUpperCase()}</div>
                   </div>
                 </div>
               );
@@ -6307,47 +6369,49 @@ export default function App() {
 
             <div className="phone-content">
               {/* Comunicado do topo — atualiza via SSE */}
-              <div className="ph-card grad-card-teal" onClick={() => setMoradorScreen("comunicados")} style={{ cursor: "pointer" }}>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.75)", marginBottom: 4 }}>📢 COMUNICADO RECENTE</div>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
-                  {dash?.comunicados?.[0]?.titulo || "Carregando..."}
+              <div className="ph-card grad-card-teal" onClick={() => setMoradorScreen("comunicados")} style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 14 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: "rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>📢</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,.75)", letterSpacing: ".06em", textTransform: "uppercase" as const, marginBottom: 2 }}>Comunicado Recente</div>
+                  <div style={{ fontSize: 15, fontWeight: 900, color: "#fff", marginBottom: 2 }}>
+                    {dash?.comunicados?.[0]?.titulo || "Carregando..."}
+                  </div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.8)" }}>Toque para ver todos</div>
                 </div>
-                <div style={{ fontSize: 11, color: "rgba(255,255,255,.8)", lineHeight: 1.4, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as const }}>
-                  {dash?.comunicados?.[0]?.corpo || "–"}
-                </div>
-                <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", marginTop: 6 }}>
-                  {dash?.comunicados?.[0] ? fmtDate(dash.comunicados[0].created_at) : "–"} · Toque para ver todos
-                </div>
+                <span style={{ color: "rgba(255,255,255,.8)", fontSize: 18 }}>›</span>
               </div>
 
               {/* Status grid */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 12px", marginBottom: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "0 14px", marginBottom: 12 }}>
                 <div className="ph-card" style={{ margin: 0, textAlign: "center", cursor: "pointer" }} onClick={() => setMoradorScreen("agua")}>
-                  <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>💧 Água</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--teal)" }}>{nivelMedio}%</div>
-                  <div style={{ fontSize: 10, color: "#475569" }}>nível médio ↻10s</div>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: "var(--neu-text-2)", marginBottom: 6 }}>💧 Água</div>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: "#0D9488" }}>{nivelMedio}%</div>
+                  <div style={{ fontSize: 10, color: "var(--neu-text-2)", fontWeight: 600 }}>nível médio ↻10s</div>
                 </div>
                 <div className="ph-card" style={{ margin: 0, textAlign: "center", cursor: "pointer" }} onClick={() => setMoradorScreen("misp")}>
-                  <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>🚨 MISP</div>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--amber)" }}>{t?.alertas_ativos || 0}</div>
-                  <div style={{ fontSize: 10, color: "#475569" }}>alertas ativos</div>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: "var(--neu-text-2)", marginBottom: 6 }}>🚨 MISP</div>
+                  <div style={{ fontSize: 26, fontWeight: 900, color: "#F59E0B" }}>{t?.alertas_ativos || 0}</div>
+                  <div style={{ fontSize: 10, color: "var(--neu-text-2)", fontWeight: 600 }}>alertas ativos</div>
                 </div>
               </div>
 
-              <div className="sec-header"><div className="sec-title">Serviços do Condomínio</div></div>
+              <div className="sec-header">
+                <div className="sec-title">Serviços do Condomínio</div>
+                <div className="sec-link">ver tudo</div>
+              </div>
               <div className="services-list">
                 {[
-                  { icon: "📋", name: "Ocorrências", bg: "rgba(20,184,166,.15)", count: String(t?.os_abertas || 0), color: "var(--teal)", screen: null },
-                  { icon: "📅", name: "Reservar Espaço", bg: "rgba(59,130,246,.15)", count: "3 disp.", color: "var(--blue)", screen: "reserva" },
-                  { icon: "💳", name: "Boletos", bg: "rgba(245,158,11,.15)", count: "1 venc.", color: "var(--amber)", screen: "boletos" },
-                  { icon: "🚗", name: "Autorizar Visitante", bg: "rgba(16,185,129,.15)", count: "✓", color: "var(--green)", screen: "visitante" },
-                  { icon: "📢", name: "Comunicados", bg: "rgba(99,102,241,.15)", count: String(dash?.comunicados?.length || 0), color: "var(--indigo)", screen: "comunicados" },
-                  { icon: "🚨", name: "Alertas MISP", bg: "rgba(239,68,68,.15)", count: String(t?.alertas_ativos || 0), color: "var(--red)", screen: "misp" },
+                  { icon: "📋", name: "Ocorrências", count: String(t?.os_abertas || 0), color: "#0D9488", screen: null },
+                  { icon: "📅", name: "Reservar Espaço", count: "3 disp.", color: "#3B82F6", screen: "reserva" },
+                  { icon: "💳", name: "Boletos", count: "1 venc.", color: "#F59E0B", screen: "boletos" },
+                  { icon: "🚗", name: "Autorizar Visitante", count: "✓", color: "#10B981", screen: "visitante" },
+                  { icon: "📢", name: "Comunicados", count: String(dash?.comunicados?.length || 0), color: "#7C5CFC", screen: "comunicados" },
+                  { icon: "🚨", name: "Alertas MISP", count: String(t?.alertas_ativos || 0), color: "#EF4444", screen: "misp" },
                 ].map(s => (
                   <div key={s.name} className="service-item" onClick={() => s.screen && setMoradorScreen(s.screen)}>
-                    <div className="svc-icon" style={{ background: s.bg }}>{s.icon}</div>
+                    <div className="svc-icon">{s.icon}</div>
                     <div className="svc-name">{s.name}</div>
-                    <span className="svc-count" style={{ color: s.color, background: s.bg }}>{s.count}</span>
+                    <span className="svc-count" style={{ color: s.color }}>{s.count}</span>
                   </div>
                 ))}
               </div>
