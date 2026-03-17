@@ -675,6 +675,10 @@ export default function App() {
   const [usuarioForm, setUsuarioForm] = useState({ nome:"", email:"", telefone:"", perfil:"morador" as PerfilKey, unidade:"", status:"ativo" });
   const [showPermsPanel, setShowPermsPanel] = useState(false);
   const [permsCustom, setPermsCustom] = useState<Record<string,boolean>>({});
+  const [usuariosSubtab, setUsuariosSubtab] = useState<"lista"|"permissoes">("lista");
+  const [permTabUserId, setPermTabUserId] = useState<string|null>(null);
+  const [permTabPerms, setPermTabPerms] = useState<Record<string,boolean>>({});
+  const [permTabSaving, setPermTabSaving] = useState(false);
   const [usuariosLoaded, setUsuariosLoaded] = useState(false);
   const [usuarioPermId, setUsuarioPermId] = useState<string|null>(null);
   const [usuarioPermNome, setUsuarioPermNome] = useState("");
@@ -6111,6 +6115,16 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Sub-tab bar: Lista | Permissões */}
+                <div style={{ display:"flex", gap:4, marginBottom:16, borderBottom:"1px solid rgba(255,255,255,.08)", paddingBottom:12 }}>
+                  {([{key:"lista",label:"📋 Lista"},{key:"permissoes",label:"🔐 Permissões"}] as const).map(({key,label}) => (
+                    <button key={key} onClick={()=>setUsuariosSubtab(key)} style={{ padding:"6px 18px", borderRadius:20, fontSize:12, fontWeight:usuariosSubtab===key?700:500, cursor:"pointer", border:usuariosSubtab===key?"1px solid rgba(124,92,252,.5)":"1px solid rgba(255,255,255,.08)", background:usuariosSubtab===key?"rgba(124,92,252,.15)":"rgba(255,255,255,.03)", color:usuariosSubtab===key?"#A78BFA":"#64748B", transition:"all .15s" }}>{label}</button>
+                  ))}
+                </div>
+
+                {/* ── ABA LISTA ── */}
+                {usuariosSubtab === "lista" && <>
+
                 {/* Filtro por perfil — abas */}
                 <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" as const }}>
                   {(["todos","gestor","sindico","morador","zelador"] as const).map(p => {
@@ -6220,6 +6234,107 @@ export default function App() {
                     })}
                   </div>
                 )}
+
+                </>} {/* ── FIM ABA LISTA ── */}
+
+                {/* ── ABA PERMISSÕES ── */}
+                {usuariosSubtab === "permissoes" && (() => {
+                  const ALL_MODS_LABELED: {key:string;label:string;icon:string}[] = [
+                    {key:"chatIA",label:"Chat IA",icon:"🤖"},{key:"insights",label:"Insights",icon:"📊"},
+                    {key:"comunicados",label:"Comunicados",icon:"📢"},{key:"ordens",label:"Ordens",icon:"📋"},
+                    {key:"financeiro",label:"Financeiro",icon:"💰"},{key:"agua",label:"Água",icon:"💧"},
+                    {key:"misp",label:"MISP",icon:"🎯"},{key:"diagnostico",label:"Diagnóstico",icon:"🔍"},
+                    {key:"crm",label:"CRM",icon:"👥"},{key:"manutencao",label:"Manutenção",icon:"🔧"},
+                    {key:"energia",label:"Energia",icon:"⚡"},{key:"gas",label:"Gás",icon:"🔥"},
+                    {key:"encomendas",label:"Encomendas",icon:"📦"},{key:"condominios",label:"Condomínios",icon:"🏢"},
+                    {key:"usuarios",label:"Usuários",icon:"👤"},{key:"sseLiveLog",label:"Live Log",icon:"📡"},
+                  ];
+                  const ALL_MOD_KEYS2 = ALL_MODS_LABELED.map(m=>m.key);
+                  const buildPerms2 = (perfil: PerfilKey, existing?: Record<string,unknown>) => {
+                    const mods = new Set(PERFIS_CONFIG[perfil].modulos);
+                    return ALL_MOD_KEYS2.reduce((acc,k) => {
+                      acc[k] = existing ? (existing[k] === true || (existing[k] === undefined && mods.has(k))) : mods.has(k);
+                      return acc;
+                    }, {} as Record<string,boolean>);
+                  };
+                  const selUser = permTabUserId ? usuarios.find(u=>u.id===permTabUserId) : null;
+                  const selCfg  = selUser ? PERFIS_CONFIG[selUser.perfil] : null;
+                  const enabledCount = Object.values(permTabPerms).filter(Boolean).length;
+
+                  const savePermTab = async () => {
+                    if (!permTabUserId) return;
+                    setPermTabSaving(true);
+                    try {
+                      const r = await fetch(`/api/usuarios/${permTabUserId}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ permissoes_customizadas: permTabPerms }) });
+                      if (!r.ok) throw new Error();
+                      showToast("Permissões salvas ✓","ok");
+                      loadUsuarios();
+                    } catch { showToast("Erro ao salvar permissões","error"); }
+                    finally { setPermTabSaving(false); }
+                  };
+
+                  return (
+                    <div style={{ display:"flex", flexDirection:"column" as const, gap:16 }}>
+                      {/* Dropdown selecionar usuário */}
+                      <div>
+                        <div style={{ fontSize:10, color:"#475569", fontWeight:700, marginBottom:8, textTransform:"uppercase" as const, letterSpacing:1 }}>Selecionar Usuário</div>
+                        <select value={permTabUserId||""} onChange={e=>{
+                          const uid = e.target.value;
+                          setPermTabUserId(uid||null);
+                          const u = usuarios.find(u=>u.id===uid);
+                          if (u) setPermTabPerms(buildPerms2(u.perfil, u.permissoes_customizadas as Record<string,unknown>|undefined));
+                          else setPermTabPerms({});
+                        }} style={{ width:"100%", padding:"10px 14px", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, color:"var(--c-text)", fontSize:13, fontFamily:"inherit", cursor:"pointer", outline:"none" }}>
+                          <option value="">— Selecione um usuário —</option>
+                          {usuarios.map(u=>{
+                            const cfg = PERFIS_CONFIG[u.perfil];
+                            return <option key={u.id} value={u.id}>{cfg.icon} {u.nome} ({cfg.label}) {u.status==="inativo"?"[inativo]":""}</option>;
+                          })}
+                        </select>
+                      </div>
+
+                      {/* Matriz de controle */}
+                      {selUser && selCfg && (
+                        <div style={{ background:"rgba(255,255,255,.03)", borderRadius:12, border:`1px solid ${selCfg.cor}33`, overflow:"hidden" }}>
+                          {/* Header do usuário selecionado */}
+                          <div style={{ padding:"12px 16px", background:`${selCfg.cor}15`, borderBottom:`1px solid ${selCfg.cor}25`, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                              <div style={{ width:36, height:36, borderRadius:"50%", background:selCfg.cor, display:"flex", alignItems:"center", justifyContent:"center", fontWeight:800, fontSize:14, color:"#fff" }}>{selUser.nome.charAt(0).toUpperCase()}</div>
+                              <div>
+                                <div style={{ fontWeight:700, fontSize:13, color:"var(--c-text)" }}>{selUser.nome}</div>
+                                <div style={{ fontSize:11, color:selCfg.cor }}>{selCfg.icon} {selCfg.label} · {selUser.email}</div>
+                              </div>
+                            </div>
+                            <div style={{ fontSize:11, color:"#94a3b8" }}>{enabledCount}/{ALL_MODS_LABELED.length} módulos ativos</div>
+                          </div>
+                          {/* Grid de toggles */}
+                          <div style={{ padding:"14px 16px", display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:"10px 20px" }}>
+                            {ALL_MODS_LABELED.map(m => {
+                              const on = !!permTabPerms[m.key];
+                              return (
+                                <label key={m.key} style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}>
+                                  <div onClick={()=>setPermTabPerms(p=>({...p,[m.key]:!p[m.key]}))} style={{ width:36, height:20, borderRadius:10, background: on?selCfg.cor:"rgba(255,255,255,.1)", position:"relative" as const, flexShrink:0, transition:"background .2s", cursor:"pointer" }}>
+                                    <div style={{ position:"absolute" as const, top:4, left: on?18:4, width:12, height:12, borderRadius:"50%", background:"#fff", transition:"left .15s" }} />
+                                  </div>
+                                  <span style={{ fontSize:12, color: on?"#e2e8f0":"#475569", userSelect:"none" as const }}>{m.icon} {m.label}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                          {/* Botões */}
+                          <div style={{ padding:"10px 16px 14px", display:"flex", gap:10, justifyContent:"flex-end" }}>
+                            <button onClick={()=>{ if(selUser) setPermTabPerms(buildPerms2(selUser.perfil)); }} style={{ padding:"8px 16px", borderRadius:8, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#94a3b8", fontSize:12, cursor:"pointer" }}>↺ Restaurar Padrão</button>
+                            <button onClick={savePermTab} disabled={permTabSaving} style={{ padding:"8px 20px", borderRadius:8, background:selCfg.cor, border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", opacity:permTabSaving?.6:1 }}>{permTabSaving?"Salvando…":"💾 Salvar Permissões"}</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {!permTabUserId && (
+                        <div style={{ textAlign:"center" as const, color:"#475569", fontSize:13, padding:"40px 0" }}>Selecione um usuário para visualizar e editar suas permissões</div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Modal Novo/Editar */}
                 {usuarioModal !== "none" && (
