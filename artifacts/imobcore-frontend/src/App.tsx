@@ -6235,13 +6235,21 @@ export default function App() {
                           { label:"Nome *", key:"nome" as const, placeholder:"Nome completo" },
                           { label:"Email *", key:"email" as const, placeholder:"email@condominio.com" },
                           { label:"Telefone", key:"telefone" as const, placeholder:"(00) 00000-0000" },
-                          { label:"Unidade / Apto", key:"unidade" as const, placeholder:"Ex: 102A, Bloco B / 204" },
                         ].map(({ label, key, placeholder }) => (
                           <div key={key}>
                             <div style={{ fontSize:10, color:"#475569", fontWeight:700, marginBottom:6, textTransform:"uppercase" as const }}>{label}</div>
                             <input value={usuarioForm[key]} onChange={e=>setUsuarioForm(f=>({...f,[key]:e.target.value}))} placeholder={placeholder} style={{ width:"100%", boxSizing:"border-box" as const, padding:"9px 12px", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, color:"var(--c-text)", fontSize:12, fontFamily:"inherit", outline:"none" }} />
                           </div>
                         ))}
+
+                        {/* Unidade — só aparece se perfil = morador */}
+                        {usuarioForm.perfil === "morador" && (
+                          <div>
+                            <div style={{ fontSize:10, color:"#475569", fontWeight:700, marginBottom:6, textTransform:"uppercase" as const }}>Unidade / Apto</div>
+                            <input value={usuarioForm.unidade} onChange={e=>setUsuarioForm(f=>({...f,unidade:e.target.value}))} placeholder="Ex: 102A, Bloco B / 204" style={{ width:"100%", boxSizing:"border-box" as const, padding:"9px 12px", background:"rgba(255,255,255,.05)", border:"1px solid rgba(5,150,105,.3)", borderRadius:8, color:"var(--c-text)", fontSize:12, fontFamily:"inherit", outline:"none" }} />
+                            <div style={{ fontSize:10, color:"#059669", marginTop:4 }}>Campo visível apenas para moradores</div>
+                          </div>
+                        )}
 
                         {/* Status */}
                         <div>
