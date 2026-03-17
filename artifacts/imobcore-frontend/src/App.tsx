@@ -5,6 +5,7 @@ import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tool
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; responsavel?: string; updated_at?: string; created_at: string }
 interface Sensor { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; nivel_atual: number; volume_litros: number }
+interface Reservatorio { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; altura_cm: number; mac_address?: string; cf_url: string; wh_url: string; protocolo: string; porta: number; cf_online: boolean; wh_online: boolean; created_at: string }
 interface Alerta { id: string; origem: string; titulo: string; descricao?: string; tipo: string; nivel: string; cidade: string; bairro: string }
 interface Receita { id: string; descricao: string; valor: number; categoria: string; status: string; created_at?: string }
 interface Despesa { id: string; descricao: string; valor: number; categoria: string; fornecedor?: string; created_at?: string }
@@ -435,6 +436,11 @@ interface Equipamento {
   proxManutencao: string; ultimaManutencao: string; custoManutencao: number;
   descricao: string;
 }
+const RES_DEMO: Reservatorio[] = [
+  { id:"res-1", sensor_id:"sensor_agua", nome:"Caixa Principal", local:"Bloco A – Cobertura", capacidade_litros:15000, altura_cm:200, mac_address:"F8:83:87:90:9F:78", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://imob-core-mobile-12.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443, cf_online:true, wh_online:true, created_at:new Date().toISOString() },
+  { id:"res-2", sensor_id:"sensor_cisterna", nome:"Cisterna Principal", local:"Subsolo", capacidade_litros:50000, altura_cm:200, mac_address:"", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://imob-core-mobile-12.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443, cf_online:true, wh_online:true, created_at:new Date().toISOString() },
+];
+
 const ENC_DEMO: Encomenda[] = [
   { id:"enc-1", condominio_id:"87339066-db1e-4743-a152-095527e66c28", morador_nome:"Dirce", bloco:"Bloco C", unidade:"107", tipos:["pacote","correio"], codigo_rastreio:"43456465", status:"retirado", received_at:"2026-02-26T12:29:00Z", notified_at:"2026-02-26T13:00:00Z", withdrawn_at:"2026-02-27T10:00:00Z", created_at:"2026-02-26T12:29:00Z" },
   { id:"enc-2", condominio_id:"87339066-db1e-4743-a152-095527e66c28", morador_nome:"marcos", bloco:"Bloco C", unidade:"201", tipos:["pacote","correio"], codigo_rastreio:null, status:"retirado", received_at:"2026-02-21T17:02:00Z", notified_at:"2026-02-21T18:00:00Z", withdrawn_at:"2026-02-22T09:00:00Z", created_at:"2026-02-21T17:02:00Z" },
@@ -540,6 +546,55 @@ export default function App() {
   const [aguaTab, setAguaTab] = useState<"reservatorios"|"leituras"|"hidrometro"|"historico"|"fornecedora"|"alertas">("reservatorios");
   const [aguaNovoResModal, setAguaNovoResModal] = useState(false);
   const [aguaNovoResForm, setAguaNovoResForm] = useState({ nome:"", local:"", capacidade:"", mac:"" });
+  // ── Reservatórios state ────────────────────────────────────────────────────
+  const [resList, setResList] = useState<Reservatorio[]>(RES_DEMO);
+  const [resShowForm, setResShowForm] = useState(false);
+  const [resEditId, setResEditId] = useState<string|null>(null);
+  const EMPTY_RES_FORM = { sensor_id:"", nome:"", local:"", capacidade_litros:20000, altura_cm:200, mac_address:"", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://imob-core-mobile-12.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443 };
+  const [resForm, setResForm] = useState(EMPTY_RES_FORM);
+  const [resTesting, setResTesting] = useState<{cf?:boolean;wh?:boolean}>({});
+  const resSave = async () => {
+    if (!resForm.sensor_id.trim()) return;
+    if (resEditId) {
+      setResList(prev => prev.map(r => r.id === resEditId ? { ...r, ...resForm, cf_online:r.cf_online, wh_online:r.wh_online } : r));
+      try { await fetch(`/imobcore/api/reservatorios/${resEditId}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(resForm) }); } catch { /**/ }
+    } else {
+      const novo: Reservatorio = { id:`res-${Date.now()}`, ...resForm, cf_online:false, wh_online:false, created_at:new Date().toISOString() };
+      setResList(prev => [novo, ...prev]);
+      try { await fetch("/imobcore/api/reservatorios", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(novo) }); } catch { /**/ }
+    }
+    setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM);
+  };
+  const resDelete = async (id: string) => {
+    if (!confirm("Excluir reservatório?")) return;
+    setResList(prev => prev.filter(r => r.id !== id));
+    try { await fetch(`/imobcore/api/reservatorios/${id}`, { method:"DELETE" }); } catch { /**/ }
+  };
+  const resEdit = (r: Reservatorio) => {
+    setResEditId(r.id);
+    setResForm({ sensor_id:r.sensor_id, nome:r.nome, local:r.local, capacidade_litros:r.capacidade_litros, altura_cm:r.altura_cm, mac_address:r.mac_address||"", cf_url:r.cf_url, wh_url:r.wh_url, protocolo:r.protocolo, porta:r.porta });
+    setResShowForm(true);
+  };
+  const resTestCF = async (r: Reservatorio) => {
+    setResTesting(p=>({...p,cf:true}));
+    try {
+      const resp = await fetch(r.cf_url, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ test:true, sensor_id:r.sensor_id }), signal:AbortSignal.timeout(5000) });
+      const ok = resp.ok;
+      setResList(prev => prev.map(x => x.id === r.id ? { ...x, cf_online:ok } : x));
+      showToast(ok ? "✅ Cloudflare conectado!" : "❌ Cloudflare sem resposta", ok?"success":"warn");
+    } catch { showToast("❌ Cloudflare inacessível", "warn"); }
+    setResTesting(p=>({...p,cf:false}));
+  };
+  const resTestWH = async (r: Reservatorio) => {
+    setResTesting(p=>({...p,wh:true}));
+    try {
+      const resp = await fetch(r.wh_url, { method:r.protocolo.includes("POST")?"POST":"GET", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ test:true, sensor_id:r.sensor_id }), signal:AbortSignal.timeout(5000) });
+      const ok = resp.ok;
+      setResList(prev => prev.map(x => x.id === r.id ? { ...x, wh_online:ok } : x));
+      showToast(ok ? "✅ Webhook conectado!" : "❌ Webhook sem resposta", ok?"success":"warn");
+    } catch { showToast("❌ Webhook inacessível", "warn"); }
+    setResTesting(p=>({...p,wh:false}));
+  };
   const [aguaNovaLeitModal, setAguaNovaLeitModal] = useState(false);
   const [aguaNovaLeitForm, setAguaNovaLeitForm] = useState({ reservatorio:"Bloco A", nivel:"", distancia:"", obs:"" });
   const [aguaLeituras, setAguaLeituras] = useState([
@@ -4230,7 +4285,7 @@ export default function App() {
             const ultimaLeit = aguaLeituras[0];
 
             const tabDef: [typeof aguaTab, string, string, string][] = [
-              ["reservatorios", "🗂️", `Reservatórios (1)`,   "#3B82F6"],
+              ["reservatorios", "🗂️", `Reservatórios (${resList.length})`, "#3B82F6"],
               ["leituras",      "📋", `Leituras (${aguaLeituras.length})`, "#06B6D4"],
               ["hidrometro",    "🔵", "Hidrômetro (1)",       "#6366F1"],
               ["historico",     "📊", "Histórico",            "#10B981"],
@@ -4363,7 +4418,18 @@ export default function App() {
                 ════════════════════════════════════════════════════ */}
                 {aguaTab === "reservatorios" && (
                   <div>
-                    {/* IoT Sensor Grid (existing) */}
+                    {/* Header row */}
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                      <div>
+                        <div style={{ fontSize:15, fontWeight:800 }}>💧 Caixas d'água</div>
+                        <div style={{ fontSize:11, color:"#475569" }}>IETEC • IoT em tempo real</div>
+                      </div>
+                      <button onClick={() => { setResEditId(null); setResForm(EMPTY_RES_FORM); setResShowForm(!resShowForm); }} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 18px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                        ⚙ Config
+                      </button>
+                    </div>
+
+                    {/* IoT Sensor rings */}
                     {sensores.length > 0 && (
                       <div style={{ marginBottom:16 }}>
                         <div style={{ fontSize:11, color:"#475569", fontWeight:600, marginBottom:10 }}>📡 SENSORES IoT EM TEMPO REAL <span style={{ color:"#334155", fontWeight:400 }}>↻ 10s</span></div>
@@ -4373,57 +4439,129 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Reservoir card matching the image */}
-                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(59,130,246,.25)", borderRadius:12, padding:"16px 20px", maxWidth:500 }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
-                        <div style={{ fontSize:15, fontWeight:800 }}>Bloco A</div>
-                        <div style={{ display:"flex", gap:6 }}>
-                          <span style={{ background:"rgba(16,185,129,.15)", color:"#10B981", border:"1px solid rgba(16,185,129,.3)", borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:700 }}>✅ IoT</span>
-                          <span style={{ background:"rgba(59,130,246,.15)", color:"#3B82F6", border:"1px solid rgba(59,130,246,.3)", borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:700 }}>{(CAPACIDADE/1000).toFixed(0)}k L</span>
-                        </div>
+                    {/* Table */}
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.08)", borderRadius:10, overflow:"hidden", marginBottom:16 }}>
+                      {/* Table header */}
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 90px 80px 36px 36px 130px", padding:"10px 16px", background:"rgba(255,255,255,.04)", fontSize:11, fontWeight:700, color:"#64748B", borderBottom:"1px solid rgba(255,255,255,.06)", letterSpacing:".04em", textTransform:"uppercase" as const }}>
+                        <span>Sensor ID</span><span>Nome</span><span>Local</span><span>Capacidade</span><span>Altura</span><span>CF</span><span>WH</span><span>Ações</span>
                       </div>
-                      <div style={{ fontSize:11, color:"#475569", marginBottom:12, display:"flex", alignItems:"center", gap:4 }}>📍 Bloco A</div>
-                      <div style={{ fontSize:11, color:"#475569", marginBottom:14 }}>Capacidade: {CAPACIDADE.toLocaleString("pt-BR")} L</div>
-
-                      {[
-                        ["Protocolo",            "HTTPS POST"],
-                        ["Porta",                "443"],
-                        ["ID Dispositivo (MAC)", "F8:83:87:90:9F:78"],
-                        ["Ultima Leitura",       `${ultimaLeit?.nivel || 45}%`],
-                        ["Ultima Sinc.",         `${ultimaLeit?.data || "08/02/2026"}, ${ultimaLeit?.hora || "19:37:30"}`],
-                        ["Webhook",              "/api/webhook/sensor"],
-                        ["Cloudflare",           "https://imobcore1.fasil..."],
-                      ].map(([l,v])=>(
-                        <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:11 }}>
-                          <span style={{ color:"#475569" }}>{l}</span>
-                          <span style={{ color:l==="Ultima Leitura"?"#3B82F6":"#94A3B8", fontWeight:600, fontFamily:"monospace" }}>{v}</span>
+                      {resList.length === 0 && (
+                        <div style={{ padding:"32px", textAlign:"center", color:"#475569", fontSize:13 }}>Nenhum reservatório cadastrado</div>
+                      )}
+                      {resList.map((r, i) => (
+                        <div key={r.id} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 90px 80px 36px 36px 130px", padding:"12px 16px", borderBottom: i < resList.length-1 ? "1px solid rgba(255,255,255,.05)" : "none", alignItems:"center", fontSize:12, background: resEditId===r.id ? "rgba(59,130,246,.08)" : "transparent" }}>
+                          <span style={{ fontWeight:700, color:"#E2E8F0" }}>{r.sensor_id}</span>
+                          <span style={{ color:"#94A3B8" }}>{r.nome || "—"}</span>
+                          <span style={{ color:"#64748B" }}>{r.local || "—"}</span>
+                          <span style={{ color:"#94A3B8" }}>{r.capacidade_litros.toLocaleString("pt-BR")}L</span>
+                          <span style={{ color:"#94A3B8" }}>{r.altura_cm}cm</span>
+                          <span><div style={{ width:10, height:10, borderRadius:"50%", background: r.cf_online ? "#10B981" : "#EF4444", boxShadow:`0 0 6px ${r.cf_online?"#10B981":"#EF4444"}` }}/></span>
+                          <span><div style={{ width:10, height:10, borderRadius:"50%", background: r.wh_online ? "#10B981" : "#EF4444", boxShadow:`0 0 6px ${r.wh_online?"#10B981":"#EF4444"}` }}/></span>
+                          <span style={{ display:"flex", gap:8 }}>
+                            <button onClick={() => resEdit(r)} style={{ color:"#3B82F6", background:"none", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", padding:0 }}>Editar</button>
+                            <button onClick={() => resDelete(r.id)} style={{ color:"#EF4444", background:"none", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", padding:0 }}>Excluir</button>
+                          </span>
                         </div>
                       ))}
-
-                      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginTop:16, padding:"12px 0", borderTop:"1px solid rgba(255,255,255,.06)" }}>
-                        {[
-                          { label:"NÍVEL",     val:`${ultimaLeit?.nivel || 45}%`,                           color:"#3B82F6" },
-                          { label:"VOLUME",    val:`${(ultimaLeit?.volume || 22500).toLocaleString("pt-BR")}L`, color:"#06B6D4" },
-                          { label:"DISTÂNCIA", val:`${ultimaLeit?.dist || 55}cm`,                            color:"#A5B4FC" },
-                        ].map(k=>(
-                          <div key={k.label} style={{ textAlign:"center" }}>
-                            <div style={{ fontSize:9, color:"#475569", marginBottom:4, letterSpacing:1 }}>{k.label}</div>
-                            <div style={{ fontSize:18, fontWeight:800, color:k.color }}>{k.val}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{ textAlign:"center", fontSize:9, color:"#334155", marginTop:4 }}>sensor_agua | {ultimaLeit?.data || "08/02/2026"}, {ultimaLeit?.hora || "19:37:30"}</div>
-
-                      {/* Nivel bar */}
-                      <div style={{ marginTop:12 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:"#475569", marginBottom:4 }}>
-                          <span>Nível atual</span><span style={{ fontWeight:700, color:(ultimaLeit?.nivel||45)<30?"#EF4444":(ultimaLeit?.nivel||45)<50?"#F59E0B":"#10B981" }}>{ultimaLeit?.nivel||45}%</span>
-                        </div>
-                        <div style={{ height:8, background:"rgba(255,255,255,.06)", borderRadius:4 }}>
-                          <div style={{ width:`${ultimaLeit?.nivel||45}%`, height:"100%", background:(ultimaLeit?.nivel||45)<30?"#EF4444":(ultimaLeit?.nivel||45)<50?"#F59E0B":"#3B82F6", borderRadius:4, transition:"width .5s" }}/>
-                        </div>
-                      </div>
                     </div>
+
+                    {/* Inline edit/add form */}
+                    {resShowForm && (
+                      <div style={{ background:"rgba(30,40,70,.95)", border:"1px solid rgba(59,130,246,.3)", borderRadius:12, padding:"20px 24px" }}>
+                        <div style={{ fontSize:13, fontWeight:800, color:"#60A5FA", marginBottom:16 }}>
+                          {resEditId ? `✏️ Editando: ${resForm.sensor_id}` : "＋ Novo Reservatório"}
+                        </div>
+
+                        {/* Row 1: Sensor ID + Nome */}
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
+                          <div>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Sensor ID *</div>
+                            <input value={resForm.sensor_id} onChange={e=>setResForm(f=>({...f,sensor_id:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="sensor_agua" />
+                          </div>
+                          <div>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Nome</div>
+                            <input value={resForm.nome} onChange={e=>setResForm(f=>({...f,nome:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="Caixa Principal" />
+                          </div>
+                        </div>
+
+                        {/* Row 2: Local + Capacidade */}
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
+                          <div>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Local</div>
+                            <input value={resForm.local} onChange={e=>setResForm(f=>({...f,local:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="Bloco A, cobertura" />
+                          </div>
+                          <div>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Capacidade (litros)</div>
+                            <input type="number" value={resForm.capacidade_litros} onChange={e=>setResForm(f=>({...f,capacidade_litros:Number(e.target.value)}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="20000" />
+                          </div>
+                        </div>
+
+                        {/* Row 3: Altura + MAC */}
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:20 }}>
+                          <div>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Altura da caixa (cm)</div>
+                            <input type="number" value={resForm.altura_cm} onChange={e=>setResForm(f=>({...f,altura_cm:Number(e.target.value)}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="200" />
+                          </div>
+                          <div>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>MAC Address (opcional)</div>
+                            <input value={resForm.mac_address} onChange={e=>setResForm(f=>({...f,mac_address:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="AA:BB:CC:DD:EE:FF" />
+                          </div>
+                        </div>
+
+                        {/* Cloudflare Worker section */}
+                        <div style={{ marginBottom:20 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0", marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
+                            <span style={{ fontSize:14 }}>☁️</span> Cloudflare Worker
+                          </div>
+                          <div>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>URL do Worker</div>
+                            <input value={resForm.cf_url} onChange={e=>setResForm(f=>({...f,cf_url:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="https://xxx.workers.dev" />
+                          </div>
+                        </div>
+
+                        {/* Webhook section */}
+                        <div style={{ marginBottom:20 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0", marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
+                            <span style={{ fontSize:14 }}>🔗</span> Webhook
+                          </div>
+                          <div style={{ marginBottom:12 }}>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>URL do Webhook</div>
+                            <input value={resForm.wh_url} onChange={e=>setResForm(f=>({...f,wh_url:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="https://seu-app.replit.app/api/webhook" />
+                          </div>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                            <div>
+                              <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Protocolo</div>
+                              <select value={resForm.protocolo} onChange={e=>setResForm(f=>({...f,protocolo:e.target.value}))} style={{ width:"100%", background:"rgba(30,40,70,.98)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }}>
+                                <option>HTTPS POST</option>
+                                <option>HTTP POST</option>
+                                <option>MQTT</option>
+                              </select>
+                            </div>
+                            <div>
+                              <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Porta</div>
+                              <input type="number" value={resForm.porta} onChange={e=>setResForm(f=>({...f,porta:Number(e.target.value)}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="443" />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div style={{ display:"flex", gap:10, flexWrap:"wrap" as const }}>
+                          <button onClick={resSave} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"10px 22px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>Salvar</button>
+                          {resEditId && (() => {
+                            const cur = resList.find(r=>r.id===resEditId);
+                            return cur ? (<>
+                              <button onClick={()=>resTestCF(cur)} disabled={resTesting.cf} style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"10px 18px", color:"#10B981", fontSize:13, fontWeight:700, cursor:"pointer", opacity:resTesting.cf?.5:1 }}>
+                                {resTesting.cf ? "⏳" : "☁️"} Testar CF
+                              </button>
+                              <button onClick={()=>resTestWH(cur)} disabled={resTesting.wh} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:8, padding:"10px 18px", color:"#818CF8", fontSize:13, fontWeight:700, cursor:"pointer", opacity:resTesting.wh?.5:1 }}>
+                                {resTesting.wh ? "⏳" : "🔗"} Testar WH
+                              </button>
+                            </>) : null;
+                          })()}
+                          <button onClick={() => { setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"10px 18px", color:"#64748B", fontSize:13, cursor:"pointer" }}>Cancelar</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

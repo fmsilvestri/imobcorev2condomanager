@@ -734,5 +734,38 @@ router.delete("/encomendas/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ─── Reservatórios ────────────────────────────────────────────────────────
+let reservatorios: object[] = [];
+
+router.get("/reservatorios", async (_req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase.from("reservatorios").select("*").order("created_at", { ascending: false });
+    if (!error && data?.length) reservatorios = data;
+  } catch { /* use in-memory */ }
+  res.json({ reservatorios });
+});
+
+router.post("/reservatorios", async (req: Request, res: Response) => {
+  const doc = { ...req.body, created_at: new Date().toISOString() };
+  reservatorios.unshift(doc);
+  try { await supabase.from("reservatorios").insert(doc); } catch { /* local only */ }
+  res.json({ ok: true, doc });
+});
+
+router.put("/reservatorios/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const updates = req.body;
+  reservatorios = (reservatorios as { id: string }[]).map((r) => r.id === id ? { ...r, ...updates } : r);
+  try { await supabase.from("reservatorios").update(updates).eq("id", id); } catch { /* local only */ }
+  res.json({ ok: true });
+});
+
+router.delete("/reservatorios/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  reservatorios = (reservatorios as { id: string }[]).filter(r => r.id !== id);
+  try { await supabase.from("reservatorios").delete().eq("id", id); } catch { /* local only */ }
+  res.json({ ok: true });
+});
+
 export default router;
 export { broadcast };
