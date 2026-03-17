@@ -578,7 +578,7 @@ export default function App() {
   const resTestCF = async (r: Reservatorio) => {
     setResTesting(p=>({...p,cf:true}));
     try {
-      const resp = await fetch("/imobcore/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.cf_url, method:"POST", payload:{ test:true, sensor_id:r.sensor_id } }) });
+      const resp = await fetch("/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.cf_url, method:"POST", payload:{ test:true, sensor_id:r.sensor_id } }) });
       const data = await resp.json();
       const ok = data.ok as boolean;
       setResList(prev => prev.map(x => x.id === r.id ? { ...x, cf_online:ok } : x));
@@ -589,7 +589,7 @@ export default function App() {
   const resTestWH = async (r: Reservatorio) => {
     setResTesting(p=>({...p,wh:true}));
     try {
-      const resp = await fetch("/imobcore/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.wh_url, method:r.protocolo.includes("POST")?"POST":"GET", payload:{ test:true, sensor_id:r.sensor_id } }) });
+      const resp = await fetch("/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.wh_url, method:r.protocolo.includes("POST")?"POST":"GET", payload:{ test:true, sensor_id:r.sensor_id } }) });
       const data = await resp.json();
       const ok = data.ok as boolean;
       setResList(prev => prev.map(x => x.id === r.id ? { ...x, wh_online:ok } : x));
