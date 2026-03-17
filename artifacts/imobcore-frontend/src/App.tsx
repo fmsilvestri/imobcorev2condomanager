@@ -2549,7 +2549,7 @@ export default function App() {
     if (!sindicoScreen) return null;
 
     const screenTitle: Record<string, string> = {
-      planejamento: "📋 Planejamento / OSs",
+      planejamento: "👤 Meu Perfil",
       sindico: "🤖 Síndico Virtual IA",
       iot: "📡 Monitor IoT",
       agua: "💧 Água & Reservatórios",
@@ -2572,22 +2572,51 @@ export default function App() {
           {sseOnline && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981" }} />}
         </div>
 
-        {/* PLANEJAMENTO: OSs abertas */}
+        {/* USUÁRIO: Perfil do síndico */}
         {sindicoScreen === "planejamento" && (
-          <div className="ph-sub-body">
-            <div style={{ fontSize: 11, color: "#475569", marginBottom: 10 }}>{osAbertas.length} ordens em aberto</div>
-            {osAbertas.length === 0 && <div style={{ textAlign: "center", padding: 30, color: "#334155", fontSize: 12 }}>✅ Nenhuma OS em aberto</div>}
-            {osAbertas.map(o => (
-              <div key={o.id} className="ph-os-item">
-                <div className="ph-os-titulo">{o.titulo}</div>
-                <div className="ph-os-meta">
-                  <span className={`pill ${priPill(o.prioridade)}`}>{o.prioridade}</span>
-                  <span className={`pill ${stsPill(o.status)}`}>{o.status.replace("_", " ")}</span>
-                  {o.unidade && <span style={{ color: "#475569" }}>· {o.unidade}</span>}
-                </div>
-                <div style={{ fontSize: 10, color: "#334155", marginTop: 4 }}>{fmtDate(o.created_at)}</div>
+          <div className="ph-sub-body" style={{ paddingBottom: 32 }}>
+            {/* Avatar + nome */}
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"24px 0 20px" }}>
+              <div style={{ width:80, height:80, borderRadius:"50%", background:"var(--neu-grad)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:34, fontWeight:900, color:"#fff", boxShadow:"var(--neu-out-lg)" }}>
+                S
               </div>
-            ))}
+              <div style={{ fontSize:18, fontWeight:900, color:"var(--neu-text)", fontFamily:"Nunito, sans-serif" }}>Carlos Silva</div>
+              <div style={{ padding:"4px 14px", borderRadius:20, background:"linear-gradient(135deg,var(--neu-purple),var(--neu-purple-2))", color:"#fff", fontSize:11, fontWeight:800, letterSpacing:".06em" }}>🛡️ SÍNDICO</div>
+            </div>
+
+            {/* Info cards */}
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {[
+                { icon:"👤", label:"Nome completo",  value:"Carlos Silva" },
+                { icon:"🏠", label:"Apartamento",    value:"101" },
+                { icon:"🏢", label:"Bloco",           value:"Bloco A" },
+                { icon:"✉️", label:"E-mail",          value:"carlos.silva@email.com" },
+              ].map(f => (
+                <div key={f.label} style={{ background:"var(--neu-bg)", borderRadius:14, boxShadow:"var(--neu-out-sm)", padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
+                  <div style={{ width:40, height:40, borderRadius:12, boxShadow:"var(--neu-in-sm)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
+                    {f.icon}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:10, color:"var(--neu-text-2)", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:".06em", marginBottom:2 }}>{f.label}</div>
+                    <div style={{ fontSize:14, fontWeight:800, color:"var(--neu-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{f.value}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Condomínio */}
+            <div style={{ margin:"16px 0 0", background:"linear-gradient(135deg,rgba(124,92,252,.12),rgba(168,85,247,.08))", border:"1.5px solid rgba(124,92,252,.25)", borderRadius:14, padding:"14px 18px", display:"flex", alignItems:"center", gap:12 }}>
+              <span style={{ fontSize:22 }}>🏘️</span>
+              <div>
+                <div style={{ fontSize:10, color:"var(--neu-purple)", fontWeight:800, textTransform:"uppercase" as const, letterSpacing:".06em" }}>Condomínio</div>
+                <div style={{ fontSize:13, fontWeight:800, color:"var(--neu-text)" }}>Residencial Parque das Flores</div>
+              </div>
+            </div>
+
+            {/* Botão SAIR */}
+            <button onClick={() => setView("login")} style={{ marginTop:24, width:"100%", padding:"16px", borderRadius:16, background:"rgba(239,68,68,.12)", border:"1.5px solid rgba(239,68,68,.3)", color:"#EF4444", fontSize:15, fontWeight:900, fontFamily:"Nunito, sans-serif", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10, boxShadow:"none" }}>
+              🚪 Sair
+            </button>
           </div>
         )}
 
