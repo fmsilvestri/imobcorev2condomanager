@@ -210,11 +210,13 @@ select.form-control option{background:var(--c-bg2)}
 .login-divider{display:flex;align-items:center;gap:12px;margin-bottom:20px}
 .login-divider-line{flex:1;height:1px;background:rgba(255,255,255,.07)}
 .login-divider-text{font-size:10px;font-weight:600;letter-spacing:.1em;color:#334155;text-transform:uppercase}
-.login-quick{display:flex;justify-content:center;gap:32px;margin-bottom:28px}
-.login-quick-btn{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;background:none;border:none;font-family:'Inter',sans-serif}
-.login-quick-icon{width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);display:flex;align-items:center;justify-content:center;font-size:24px;transition:all .2s}
-.login-quick-btn:hover .login-quick-icon{background:rgba(99,102,241,.15);border-color:rgba(99,102,241,.3)}
-.login-quick-label{font-size:10px;font-weight:600;letter-spacing:.1em;color:#475569;text-transform:uppercase}
+.login-quick{display:flex;justify-content:center;gap:36px;margin-bottom:28px}
+.login-quick-btn{display:flex;flex-direction:column;align-items:center;gap:10px;cursor:pointer;background:none;border:none;font-family:'Inter',sans-serif;transition:transform .15s}
+.login-quick-btn:hover{transform:translateY(-2px)}
+.login-quick-icon{width:68px;height:68px;border-radius:50%;background:#060e1c;border:1.5px solid rgba(56,189,248,.35);display:flex;align-items:center;justify-content:center;transition:all .25s;box-shadow:0 0 14px rgba(56,189,248,.08) inset}
+.login-quick-icon.faceid{border-radius:16px}
+.login-quick-btn:hover .login-quick-icon{background:#081628;border-color:rgba(56,189,248,.65);box-shadow:0 0 20px rgba(56,189,248,.18) inset,0 4px 20px rgba(56,189,248,.12)}
+.login-quick-label{font-size:9.5px;font-weight:600;letter-spacing:.12em;color:#4A6080;text-transform:uppercase}
 .login-footer-link{text-align:center;margin-bottom:16px;font-size:13px;color:#475569}
 .login-footer-link a{color:#6366F1;text-decoration:none;font-weight:600;cursor:pointer}
 .login-footer-link a:hover{color:#818CF8}
@@ -3196,11 +3198,39 @@ export default function App() {
             {/* Biometria + Face ID */}
             <div className="login-quick">
               <button className="login-quick-btn" onClick={() => showToast("Autenticação biométrica ativada", "success")}>
-                <div className="login-quick-icon">👆</div>
+                <div className="login-quick-icon">
+                  {/* Fingerprint SVG */}
+                  <svg width="34" height="34" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="32" cy="32" r="3" fill="#38BDF8"/>
+                    <path d="M32 26 C28.7 26 26 28.7 26 32 C26 36 28 38 28 42" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" fill="none"/>
+                    <path d="M32 26 C35.3 26 38 28.7 38 32 C38 36 36 39 35 43" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" fill="none"/>
+                    <path d="M22 34 C22 26.3 26.3 21 32 21 C37.7 21 42 26.3 42 32 C42 38 40 42 38 46" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.8"/>
+                    <path d="M18 33 C18 22.5 24.3 16 32 16 C39.7 16 46 22.5 46 32 C46 39 43 44 40 49" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.55"/>
+                    <path d="M14 30 C14 18 22 11 32 11 C42 11 50 18 50 30 C50 40 46 47 42 52" stroke="#38BDF8" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.3"/>
+                  </svg>
+                </div>
                 <span className="login-quick-label">Biometria</span>
               </button>
               <button className="login-quick-btn" onClick={() => showToast("Face ID ativado", "success")}>
-                <div className="login-quick-icon">🤳</div>
+                <div className="login-quick-icon faceid">
+                  {/* Face ID SVG */}
+                  <svg width="34" height="34" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    {/* Corner brackets */}
+                    <path d="M14 24 L14 14 L24 14" stroke="#38BDF8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M40 14 L50 14 L50 24" stroke="#38BDF8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M50 40 L50 50 L40 50" stroke="#38BDF8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M24 50 L14 50 L14 40" stroke="#38BDF8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    {/* Face: head */}
+                    <circle cx="32" cy="26" r="7" stroke="#38BDF8" strokeWidth="1.7" fill="none"/>
+                    {/* Face: eyes */}
+                    <circle cx="29" cy="25" r="1.2" fill="#38BDF8"/>
+                    <circle cx="35" cy="25" r="1.2" fill="#38BDF8"/>
+                    {/* Face: smile */}
+                    <path d="M29 28.5 Q32 31 35 28.5" stroke="#38BDF8" strokeWidth="1.4" strokeLinecap="round" fill="none"/>
+                    {/* Body arc */}
+                    <path d="M20 47 C20 40 25.4 35 32 35 C38.6 35 44 40 44 47" stroke="#38BDF8" strokeWidth="1.7" strokeLinecap="round" fill="none" opacity="0.8"/>
+                  </svg>
+                </div>
                 <span className="login-quick-label">Face ID</span>
               </button>
             </div>
