@@ -6068,8 +6068,22 @@ export default function App() {
                 {/* Header */}
                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap" as const, gap:8 }}>
                   <div>
-                    <div className="card-title" style={{ marginBottom:2 }}>👥 Usuários</div>
-                    <div style={{ fontSize:11, color:"#475569" }}>{usuarios.length} usuário{usuarios.length !== 1?"s":""} · {usuarios.filter(u=>u.status==="ativo").length} ativo{usuarios.filter(u=>u.status==="ativo").length !== 1?"s":""}</div>
+                    <div className="card-title" style={{ marginBottom:6 }}>👥 Usuários</div>
+                    <div style={{ display:"flex", flexWrap:"wrap" as const, gap:10, alignItems:"center" }}>
+                      {(["gestor","sindico","morador","zelador"] as const).map(p => {
+                        const cfg = PERFIS_CONFIG[p];
+                        const n = usuarios.filter(u => u.perfil === p).length;
+                        return n > 0 ? (
+                          <span key={p} style={{ fontSize:11, fontWeight:600, color: cfg.cor }}>
+                            {cfg.icon} {cfg.label}s: <strong>{n}</strong>
+                          </span>
+                        ) : null;
+                      })}
+                      <span style={{ fontSize:11, color:"#334155", marginLeft:4 }}>
+                        · {usuarios.filter(u=>u.status==="ativo").length} ativo{usuarios.filter(u=>u.status==="ativo").length !== 1?"s":""}
+                        {usuarios.filter(u=>u.status==="inativo").length > 0 && ` · ${usuarios.filter(u=>u.status==="inativo").length} inativo${usuarios.filter(u=>u.status==="inativo").length !== 1?"s":""}`}
+                      </span>
+                    </div>
                   </div>
                   <div style={{ display:"flex", gap:8, alignItems:"center" }}>
                     <button title="Recarregar lista" onClick={loadUsuarios} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 10px", color:"#64748B", fontSize:13, cursor:"pointer" }}>↻</button>
