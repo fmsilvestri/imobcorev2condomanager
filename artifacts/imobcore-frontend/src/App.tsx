@@ -459,6 +459,28 @@ const ENC_DEMO: Encomenda[] = [
   { id:"enc-5", condominio_id:"87339066-db1e-4743-a152-095527e66c28", morador_nome:"Carlos", bloco:"Bloco D", unidade:"501", tipos:["pacote","documento"], codigo_rastreio:"JD987654321", status:"devolvido", received_at:"2026-02-18T14:00:00Z", notified_at:"2026-02-18T14:30:00Z", withdrawn_at:null, returned_at:"2026-02-25T10:00:00Z", created_at:"2026-02-18T14:00:00Z" },
 ];
 
+// ─── Perfis de Usuário ────────────────────────────────────────────────────────
+type PerfilKey = "gestor" | "sindico" | "morador" | "zelador";
+interface PerfilConfig { cor: string; label: string; icon: string; modulos: string[] }
+const PERFIS_CONFIG: Record<PerfilKey, PerfilConfig> = {
+  gestor: {
+    cor: "#7C3CFC", icon: "⚡", label: "Gestor Sistema",
+    modulos: ["chatIA","insights","comunicados","ordens","financeiro","agua","misp","diagnostico","crm","manutencao","energia","gas","encomendas","condominios","usuarios","sseLiveLog"],
+  },
+  sindico: {
+    cor: "#2563EB", icon: "🛡️", label: "Síndico",
+    modulos: ["chatIA","insights","comunicados","ordens","financeiro","agua","misp","diagnostico","crm","manutencao","energia","gas","encomendas"],
+  },
+  morador: {
+    cor: "#059669", icon: "🏠", label: "Morador",
+    modulos: ["comunicados","ordens","encomendas"],
+  },
+  zelador: {
+    cor: "#D97706", icon: "🔧", label: "Zelador",
+    modulos: ["ordens","manutencao","agua","energia","gas","encomendas"],
+  },
+};
+
 // ─── MISP Checklist Items ──────────────────────────────────────────────────────
 const MISP_ITEMS: { id:string; pilar:string; nome:string; desc:string; peso:number }[] = [
   // FINANCEIRO
@@ -641,6 +663,18 @@ export default function App() {
     { id:"cm3", nome:"Jardim Franta",             bloco:"A", apto:"",    email:"fmsilvestri39@gmail.com", telefone:"(48)97700-3311", veiculo:"",       segmentos:["outro"],                    score:68, status:"ativo",  pet:false, homeOffice:true,  pendencias:0, interesses:["Esportes/Lazer"] },
   ]);
   const [crmInquilinos] = useState<typeof crmMoradores>([]);
+  // ── Usuarios state ──────────────────────────────────────────────────────────
+  type Usuario = { id:string; condominio_id:string; nome:string; email:string; telefone?:string; perfil:PerfilKey; unidade?:string; status:string; permissoes_customizadas?:Record<string,unknown>; ultimo_acesso?:string; created_at:string };
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [usuariosLoading, setUsuariosLoading] = useState(false);
+  const [usuariosFiltroStatus, setUsuariosFiltroStatus] = useState<"todos"|"ativo"|"inativo">("todos");
+  const [usuariosFiltroPerfl, setUsuariosFiltroPerfl] = useState<"todos"|PerfilKey>("todos");
+  const [usuariosSearch, setUsuariosSearch] = useState("");
+  const [usuarioModal, setUsuarioModal] = useState<"none"|"new"|"edit">("none");
+  const [usuarioEditId, setUsuarioEditId] = useState<string|null>(null);
+  const [usuarioForm, setUsuarioForm] = useState({ nome:"", email:"", telefone:"", perfil:"morador" as PerfilKey, unidade:"", status:"ativo" });
+  const [usuariosLoaded, setUsuariosLoaded] = useState(false);
+
   // ── Gás state ──────────────────────────────────────────────────────────────
   const [gasNovaLeitModal, setGasNovaLeitModal] = useState(false);
   const [gasNovaLeitForm, setGasNovaLeitForm] = useState({ nivel:"", obs:"" });
@@ -877,6 +911,42 @@ export default function App() {
     setToasts(prev => [...prev, { id, msg, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
   }, []);
+
+  // ── Usuarios callbacks ────────────────────────────────────────────────────
+  const loadUsuarios = useCallback(async () => {
+    if (!condId) return;
+    setUsuariosLoading(true);
+    try {
+      const r = await fetch(`/api/usuarios?condominio_id=${condId}`);
+      const data = await r.json();
+      setUsuarios(Array.isArray(data) ? data : []);
+      setUsuariosLoaded(true);
+    } catch { showToast("Erro ao carregar usuários","error"); }
+    finally { setUsuariosLoading(false); }
+  }, [condId, showToast]);
+
+  const saveUsuario = useCallback(async () => {
+    if (!usuarioForm.nome.trim() || !usuarioForm.email.trim()) { showToast("Nome e email são obrigatórios","warn"); return; }
+    try {
+      const isEdit = usuarioModal === "edit" && usuarioEditId;
+      const url = isEdit ? `/api/usuarios/${usuarioEditId}` : "/api/usuarios";
+      const method = isEdit ? "PUT" : "POST";
+      const body = isEdit ? usuarioForm : { ...usuarioForm, condominio_id: condId };
+      const r = await fetch(url, { method, headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+      if (!r.ok) throw new Error(await r.text());
+      showToast(isEdit ? "Usuário atualizado ✓" : "Usuário criado ✓","ok");
+      setUsuarioModal("none");
+      loadUsuarios();
+    } catch { showToast("Erro ao salvar usuário","error"); }
+  }, [usuarioModal, usuarioEditId, usuarioForm, condId, showToast, loadUsuarios]);
+
+  const deleteUsuario = useCallback(async (id: string) => {
+    try {
+      await fetch(`/api/usuarios/${id}`, { method:"DELETE" });
+      showToast("Usuário desativado","ok");
+      loadUsuarios();
+    } catch { showToast("Erro ao desativar","error"); }
+  }, [showToast, loadUsuarios]);
 
   // ── Bell ──────────────────────────────────────────────────────────────────
   const ringBell = useCallback(() => {
@@ -3869,6 +3939,11 @@ export default function App() {
             <span className="sb-icon">📦</span> Encomendas
             {encList.filter(e=>e.status==="aguardando_retirada").length > 0 && <span className="sb-badge" style={{ background:"#F59E0B" }}>{encList.filter(e=>e.status==="aguardando_retirada").length}</span>}
           </div>
+          <div className="sb-label">Acesso</div>
+          <div className={`sb-item ${panel === "usuarios" ? "active" : ""}`} onClick={() => { setPanel("usuarios"); if (!usuariosLoaded) loadUsuarios(); }}>
+            <span className="sb-icon">👥</span> Usuários
+            <span className="sb-badge" style={{ background:"rgba(37,99,235,.2)", color:"#93C5FD" }}>{usuarios.length || ""}</span>
+          </div>
           <div className="sb-label">Sistema</div>
           <div className={`sb-item ${panel === "supabase" ? "active" : ""}`} onClick={() => setPanel("supabase")}>
             <span className="sb-icon">🗄️</span> SSE Live Log
@@ -5956,6 +6031,218 @@ export default function App() {
                       {!mantAiResult && !mantAiLoading && (
                         <div style={{ fontSize:12, color:"#334155" }}>Clique em "Analisar com IA" para receber um diagnóstico completo dos equipamentos com recomendações do Síndico Virtual.</div>
                       )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* PANEL: USUÁRIOS */}
+          {panel === "usuarios" && (() => {
+            const filtered = usuarios.filter(u => {
+              const q = usuariosSearch.toLowerCase();
+              const matchSearch = !q || u.nome.toLowerCase().includes(q) || u.email.toLowerCase().includes(q) || (u.unidade||"").toLowerCase().includes(q);
+              const matchPerfil = usuariosFiltroPerfl === "todos" || u.perfil === usuariosFiltroPerfl;
+              const matchStatus = usuariosFiltroStatus === "todos" || u.status === usuariosFiltroStatus;
+              return matchSearch && matchPerfil && matchStatus;
+            });
+            const perfilCounts = (["todos","gestor","sindico","morador","zelador"] as const).reduce((acc, p) => {
+              acc[p] = p === "todos" ? usuarios.length : usuarios.filter(u => u.perfil === p).length;
+              return acc;
+            }, {} as Record<string, number>);
+            const openNew = () => {
+              setUsuarioForm({ nome:"", email:"", telefone:"", perfil:"morador", unidade:"", status:"ativo" });
+              setUsuarioEditId(null);
+              setUsuarioModal("new");
+            };
+            const openEdit = (u: typeof usuarios[0]) => {
+              setUsuarioForm({ nome:u.nome, email:u.email, telefone:u.telefone||"", perfil:u.perfil, unidade:u.unidade||"", status:u.status });
+              setUsuarioEditId(u.id);
+              setUsuarioModal("edit");
+            };
+            const fmtDate = (s?: string) => s ? new Date(s).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"}) : "–";
+
+            return (
+              <div className="panel active card">
+                {/* Header */}
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap" as const, gap:8 }}>
+                  <div>
+                    <div className="card-title" style={{ marginBottom:2 }}>👥 Usuários</div>
+                    <div style={{ fontSize:11, color:"#475569" }}>{usuarios.length} usuário{usuarios.length !== 1?"s":""} · {usuarios.filter(u=>u.status==="ativo").length} ativo{usuarios.filter(u=>u.status==="ativo").length !== 1?"s":""}</div>
+                  </div>
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <button title="Recarregar lista" onClick={loadUsuarios} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 10px", color:"#64748B", fontSize:13, cursor:"pointer" }}>↻</button>
+                    <button title="Novo usuário" onClick={openNew} style={{ background:"rgba(37,99,235,.2)", border:"1px solid rgba(37,99,235,.35)", borderRadius:8, padding:"8px 16px", color:"#93C5FD", fontSize:12, fontWeight:700, cursor:"pointer" }}>＋ Novo</button>
+                  </div>
+                </div>
+
+                {/* Filtro por perfil — abas */}
+                <div style={{ display:"flex", gap:6, marginBottom:14, flexWrap:"wrap" as const }}>
+                  {(["todos","gestor","sindico","morador","zelador"] as const).map(p => {
+                    const cfg = p !== "todos" ? PERFIS_CONFIG[p] : null;
+                    const active = usuariosFiltroPerfl === p;
+                    return (
+                      <button key={p} onClick={() => setUsuariosFiltroPerfl(p)} style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontWeight:active?700:500, cursor:"pointer", border: active ? `1px solid ${cfg?.cor||"#7C5CFC"}66` : "1px solid rgba(255,255,255,.08)", background: active ? (cfg?.cor||"#7C5CFC")+"22" : "rgba(255,255,255,.03)", color: active ? (cfg?.cor||"#A5B4FC") : "#64748B", transition:"all .15s" }}>
+                        {cfg ? `${cfg.icon} ${cfg.label}` : "Todos"} <span style={{ opacity:.7 }}>({perfilCounts[p]})</span>
+                      </button>
+                    );
+                  })}
+                  <div style={{ marginLeft:"auto", display:"flex", gap:6 }}>
+                    {(["todos","ativo","inativo"] as const).map(s => (
+                      <button key={s} onClick={() => setUsuariosFiltroStatus(s)} style={{ padding:"5px 12px", borderRadius:20, fontSize:11, fontWeight: usuariosFiltroStatus===s?700:500, cursor:"pointer", border: usuariosFiltroStatus===s ? "1px solid rgba(255,255,255,.2)" : "1px solid rgba(255,255,255,.06)", background: usuariosFiltroStatus===s ? "rgba(255,255,255,.1)" : "rgba(255,255,255,.02)", color: usuariosFiltroStatus===s ? "#E2E8F0" : "#475569" }}>
+                        {s === "todos" ? "Todos status" : s === "ativo" ? "🟢 Ativos" : "🔴 Inativos"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Search */}
+                <div style={{ position:"relative" as const, marginBottom:16 }}>
+                  <input value={usuariosSearch} onChange={e => setUsuariosSearch(e.target.value)} placeholder="🔍  Buscar por nome, email ou unidade…" style={{ width:"100%", boxSizing:"border-box" as const, padding:"9px 14px", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, color:"var(--c-text)", fontSize:12, fontFamily:"inherit", outline:"none" }} />
+                  {usuariosSearch && <button onClick={()=>setUsuariosSearch("")} style={{ position:"absolute" as const, right:10, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", color:"#64748B", cursor:"pointer", fontSize:14 }}>×</button>}
+                </div>
+
+                {/* Loading */}
+                {usuariosLoading && <div style={{ textAlign:"center" as const, padding:40, color:"#475569" }}>Carregando usuários…</div>}
+
+                {/* Empty */}
+                {!usuariosLoading && filtered.length === 0 && (
+                  <div style={{ textAlign:"center" as const, padding:50, color:"#475569" }}>
+                    <div style={{ fontSize:36, marginBottom:12 }}>👥</div>
+                    <div style={{ fontWeight:600, marginBottom:4 }}>{usuariosLoaded ? "Nenhum usuário encontrado" : "Clique em ↻ para carregar"}</div>
+                    <div style={{ fontSize:12 }}>{usuariosSearch ? "Tente outros termos de busca" : "Ajuste os filtros ou crie um novo usuário"}</div>
+                  </div>
+                )}
+
+                {/* Table */}
+                {!usuariosLoading && filtered.length > 0 && (
+                  <div style={{ overflowX:"auto" as const }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse" as const, fontSize:12 }}>
+                      <thead>
+                        <tr style={{ borderBottom:"1px solid rgba(255,255,255,.08)" }}>
+                          {["Usuário","Perfil","Unidade","Status","Último Acesso","Ações"].map(h => (
+                            <th key={h} style={{ textAlign:"left" as const, padding:"8px 12px", color:"#475569", fontWeight:700, fontSize:10, textTransform:"uppercase" as const, letterSpacing:.8, whiteSpace:"nowrap" as const }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map((u, i) => {
+                          const cfg = PERFIS_CONFIG[u.perfil] || PERFIS_CONFIG.morador;
+                          const initials = u.nome.split(" ").slice(0,2).map(w=>w[0]||"").join("").toUpperCase();
+                          return (
+                            <tr key={u.id} style={{ borderBottom:"1px solid rgba(255,255,255,.04)", background: i%2===0 ? "transparent" : "rgba(255,255,255,.015)", transition:"background .15s" }}>
+                              <td style={{ padding:"10px 12px", maxWidth:220 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                  <div style={{ width:34, height:34, borderRadius:"50%", background:`${cfg.cor}22`, border:`2px solid ${cfg.cor}55`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:700, color:cfg.cor, flexShrink:0 }}>{initials}</div>
+                                  <div style={{ minWidth:0 }}>
+                                    <div style={{ fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{u.nome}</div>
+                                    <div style={{ fontSize:10, color:"#475569", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{u.email}</div>
+                                    {u.telefone && <div style={{ fontSize:10, color:"#334155" }}>{u.telefone}</div>}
+                                  </div>
+                                </div>
+                              </td>
+                              <td style={{ padding:"10px 12px", whiteSpace:"nowrap" as const }}>
+                                <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:12, background:`${cfg.cor}22`, color:cfg.cor, border:`1px solid ${cfg.cor}44` }}>{cfg.icon} {cfg.label}</span>
+                              </td>
+                              <td style={{ padding:"10px 12px", color: u.unidade ? "#E2E8F0" : "#334155" }}>{u.unidade || "–"}</td>
+                              <td style={{ padding:"10px 12px" }}>
+                                <span style={{ fontSize:10, fontWeight:700, padding:"3px 8px", borderRadius:12, background: u.status==="ativo" ? "#10B98120" : "#EF444420", color: u.status==="ativo" ? "#10B981" : "#EF4444", border:`1px solid ${u.status==="ativo" ? "#10B98140" : "#EF444440"}` }}>
+                                  {u.status==="ativo" ? "🟢 Ativo" : "🔴 Inativo"}
+                                </span>
+                              </td>
+                              <td style={{ padding:"10px 12px", color:"#475569", fontSize:11, whiteSpace:"nowrap" as const }}>{fmtDate(u.ultimo_acesso)}</td>
+                              <td style={{ padding:"10px 12px", whiteSpace:"nowrap" as const }}>
+                                <div style={{ display:"flex", gap:6 }}>
+                                  <button title="Editar usuário" onClick={() => openEdit(u)} style={{ background:"rgba(37,99,235,.15)", border:"1px solid rgba(37,99,235,.3)", borderRadius:6, padding:"5px 9px", color:"#93C5FD", fontSize:11, cursor:"pointer" }}>✏️</button>
+                                  {u.status === "ativo" && <button title="Desativar usuário" onClick={() => deleteUsuario(u.id)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.25)", borderRadius:6, padding:"5px 9px", color:"#FCA5A5", fontSize:11, cursor:"pointer" }}>🚫</button>}
+                                  {u.status === "inativo" && <button title="Reativar usuário" onClick={() => { fetch(`/api/usuarios/${u.id}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"ativo"})}).then(()=>{ showToast("Usuário reativado","ok"); loadUsuarios(); }); }} style={{ background:"rgba(16,185,129,.1)", border:"1px solid rgba(16,185,129,.25)", borderRadius:6, padding:"5px 9px", color:"#6EE7B7", fontSize:11, cursor:"pointer" }}>✓</button>}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Summary cards by perfil */}
+                {!usuariosLoading && usuarios.length > 0 && (
+                  <div style={{ display:"flex", gap:10, marginTop:20, flexWrap:"wrap" as const }}>
+                    {(["gestor","sindico","morador","zelador"] as const).filter(p => usuarios.some(u=>u.perfil===p)).map(p => {
+                      const cfg = PERFIS_CONFIG[p];
+                      const count = usuarios.filter(u=>u.perfil===p).length;
+                      const ativos = usuarios.filter(u=>u.perfil===p && u.status==="ativo").length;
+                      return (
+                        <div key={p} style={{ flex:"1 1 140px", background:`${cfg.cor}0E`, border:`1px solid ${cfg.cor}30`, borderRadius:10, padding:"12px 14px" }}>
+                          <div style={{ fontSize:18, marginBottom:4 }}>{cfg.icon}</div>
+                          <div style={{ fontSize:13, fontWeight:800, color:cfg.cor }}>{count}</div>
+                          <div style={{ fontSize:10, color:"#64748B" }}>{cfg.label}</div>
+                          <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>{ativos} ativo{ativos!==1?"s":""}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Modal Novo/Editar */}
+                {usuarioModal !== "none" && (
+                  <div style={{ position:"fixed" as const, inset:0, background:"rgba(0,0,0,.7)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={e => { if (e.target===e.currentTarget) setUsuarioModal("none"); }}>
+                    <div style={{ background:"#0D1321", border:"1px solid rgba(255,255,255,.1)", borderRadius:16, padding:28, width:440, maxWidth:"90vw", maxHeight:"85vh", overflowY:"auto" as const }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                        <div style={{ fontSize:16, fontWeight:800 }}>{usuarioModal==="new"?"Novo Usuário":"Editar Usuário"}</div>
+                        <button onClick={()=>setUsuarioModal("none")} style={{ background:"none", border:"none", color:"#64748B", fontSize:18, cursor:"pointer" }}>×</button>
+                      </div>
+
+                      <div style={{ display:"flex", flexDirection:"column" as const, gap:14 }}>
+                        {/* Perfil selector */}
+                        <div>
+                          <div style={{ fontSize:10, color:"#475569", fontWeight:700, marginBottom:8, textTransform:"uppercase" as const }}>Perfil *</div>
+                          <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const }}>
+                            {(["gestor","sindico","morador","zelador"] as const).map(p => {
+                              const cfg = PERFIS_CONFIG[p];
+                              const sel = usuarioForm.perfil === p;
+                              return <button key={p} type="button" onClick={()=>setUsuarioForm(f=>({...f,perfil:p}))} style={{ padding:"7px 14px", borderRadius:8, fontSize:11, fontWeight:sel?700:500, cursor:"pointer", border:sel?`2px solid ${cfg.cor}`:"1px solid rgba(255,255,255,.1)", background:sel?`${cfg.cor}22`:"rgba(255,255,255,.03)", color:sel?cfg.cor:"#64748B" }}>{cfg.icon} {cfg.label}</button>;
+                            })}
+                          </div>
+                          {/* Module preview */}
+                          <div style={{ marginTop:8, fontSize:10, color:"#334155" }}>
+                            Módulos: {PERFIS_CONFIG[usuarioForm.perfil].modulos.join(", ")}
+                          </div>
+                        </div>
+
+                        {[
+                          { label:"Nome *", key:"nome" as const, placeholder:"Nome completo" },
+                          { label:"Email *", key:"email" as const, placeholder:"email@condominio.com" },
+                          { label:"Telefone", key:"telefone" as const, placeholder:"(00) 00000-0000" },
+                          { label:"Unidade / Apto", key:"unidade" as const, placeholder:"Ex: 102A, Bloco B / 204" },
+                        ].map(({ label, key, placeholder }) => (
+                          <div key={key}>
+                            <div style={{ fontSize:10, color:"#475569", fontWeight:700, marginBottom:6, textTransform:"uppercase" as const }}>{label}</div>
+                            <input value={usuarioForm[key]} onChange={e=>setUsuarioForm(f=>({...f,[key]:e.target.value}))} placeholder={placeholder} style={{ width:"100%", boxSizing:"border-box" as const, padding:"9px 12px", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, color:"var(--c-text)", fontSize:12, fontFamily:"inherit", outline:"none" }} />
+                          </div>
+                        ))}
+
+                        {/* Status */}
+                        <div>
+                          <div style={{ fontSize:10, color:"#475569", fontWeight:700, marginBottom:8, textTransform:"uppercase" as const }}>Status</div>
+                          <div style={{ display:"flex", gap:8 }}>
+                            {["ativo","inativo"].map(s => (
+                              <button key={s} type="button" onClick={()=>setUsuarioForm(f=>({...f,status:s}))} style={{ padding:"7px 16px", borderRadius:8, fontSize:11, fontWeight:usuarioForm.status===s?700:500, cursor:"pointer", border:usuarioForm.status===s?"1px solid rgba(255,255,255,.2)":"1px solid rgba(255,255,255,.07)", background:usuarioForm.status===s?"rgba(255,255,255,.1)":"rgba(255,255,255,.02)", color:usuarioForm.status===s?"#E2E8F0":"#475569" }}>
+                                {s==="ativo"?"🟢 Ativo":"🔴 Inativo"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ display:"flex", gap:10, marginTop:24, justifyContent:"flex-end" }}>
+                        <button onClick={()=>setUsuarioModal("none")} style={{ padding:"9px 20px", borderRadius:8, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#64748B", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                        <button onClick={saveUsuario} style={{ padding:"9px 24px", borderRadius:8, background:"rgba(37,99,235,.8)", border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                          {usuarioModal==="new" ? "Criar Usuário" : "Salvar Alterações"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

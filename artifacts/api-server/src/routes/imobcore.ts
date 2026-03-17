@@ -803,5 +803,90 @@ router.delete("/reservatorios/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ─── USUARIOS ─────────────────────────────────────────────────────────────────
+
+// GET /api/usuarios?condominio_id=X&perfil=X&status=X
+router.get("/usuarios", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, perfil, status } = req.query as Record<string, string | undefined>;
+    let q = supabase.from("usuarios").select("id,condominio_id,nome,email,telefone,perfil,unidade,status,permissoes_customizadas,ultimo_acesso,created_at").order("nome", { ascending: true });
+    if (condominio_id) q = q.eq("condominio_id", condominio_id);
+    if (perfil && perfil !== "todos") q = q.eq("perfil", perfil);
+    if (status && status !== "todos") q = q.eq("status", status);
+    const { data, error } = await q;
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    console.error("GET /usuarios error:", err);
+    res.status(500).json({ error: "Erro ao buscar usuários" });
+  }
+});
+
+// POST /api/usuarios
+router.post("/usuarios", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, nome, email, telefone, perfil, unidade, status, permissoes_customizadas } = req.body as {
+      condominio_id: string; nome: string; email: string; telefone?: string;
+      perfil: "gestor" | "sindico" | "morador" | "zelador";
+      unidade?: string; status?: string; permissoes_customizadas?: Record<string, unknown>;
+    };
+    if (!condominio_id || !nome || !email || !perfil) {
+      res.status(400).json({ error: "condominio_id, nome, email e perfil são obrigatórios" });
+      return;
+    }
+    const { data, error } = await supabase.from("usuarios").insert({
+      condominio_id, nome, email, telefone: telefone || null,
+      perfil, unidade: unidade || null,
+      status: status || "ativo",
+      permissoes_customizadas: permissoes_customizadas || null,
+      senha_hash: null,
+    }).select().single();
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (err) {
+    console.error("POST /usuarios error:", err);
+    res.status(500).json({ error: "Erro ao criar usuário" });
+  }
+});
+
+// PUT /api/usuarios/:id
+router.put("/usuarios/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { nome, email, telefone, perfil, unidade, status, permissoes_customizadas } = req.body as {
+      nome?: string; email?: string; telefone?: string;
+      perfil?: "gestor" | "sindico" | "morador" | "zelador";
+      unidade?: string; status?: string; permissoes_customizadas?: Record<string, unknown>;
+    };
+    const updates: Record<string, unknown> = {};
+    if (nome !== undefined) updates.nome = nome;
+    if (email !== undefined) updates.email = email;
+    if (telefone !== undefined) updates.telefone = telefone;
+    if (perfil !== undefined) updates.perfil = perfil;
+    if (unidade !== undefined) updates.unidade = unidade;
+    if (status !== undefined) updates.status = status;
+    if (permissoes_customizadas !== undefined) updates.permissoes_customizadas = permissoes_customizadas;
+    const { data, error } = await supabase.from("usuarios").update(updates).eq("id", id).select().single();
+    if (error) throw error;
+    res.json(data);
+  } catch (err) {
+    console.error("PUT /usuarios/:id error:", err);
+    res.status(500).json({ error: "Erro ao atualizar usuário" });
+  }
+});
+
+// DELETE /api/usuarios/:id — soft delete (status = inativo)
+router.delete("/usuarios/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabase.from("usuarios").update({ status: "inativo" }).eq("id", id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /usuarios/:id error:", err);
+    res.status(500).json({ error: "Erro ao desativar usuário" });
+  }
+});
+
 export default router;
 export { broadcast };
