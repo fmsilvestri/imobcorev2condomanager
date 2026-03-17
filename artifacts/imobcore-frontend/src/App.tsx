@@ -425,7 +425,7 @@ const MANUT_SCHEDULE: { mes: string; items: { equip: string; tipo: "preventiva"|
 ];
 
 export default function App() {
-  const [view, setView] = useState<"login" | "gestor" | "sindico" | "morador" | "onboarding">("login");
+  const [view, setView] = useState<"login" | "selector" | "gestor" | "sindico" | "morador" | "onboarding">("login");
   const [panel, setPanel] = useState("sv-chat");
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [condId, setCondId] = useState<string | null>(null);
@@ -3109,7 +3109,7 @@ export default function App() {
     const handleLogin = () => {
       if (!loginEmail.trim()) { showToast("Informe o e-mail", "warn"); return; }
       if (!loginPass.trim())  { showToast("Informe a senha", "warn"); return; }
-      setView(modeInfo.dest);
+      setView("selector");
     };
 
     return (
@@ -3246,6 +3246,126 @@ export default function App() {
     );
   }
 
+  // ── SELECTOR SCREEN ────────────────────────────────────────────────────────
+  if (view === "selector") {
+    const emailName = loginEmail.split("@")[0] || "Usuário";
+    const displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
+    const avatarLetter = displayName.charAt(0).toUpperCase();
+    const roleLabel = { morador: "MORADOR", sindico: "SÍNDICO", gestor: "GESTOR" }[loginMode];
+    const condoName = dash?.condominios?.[0]?.nome || "Residencial Parque das Flores";
+
+    const options = [
+      {
+        id: "sindico",
+        label: "App Síndico",
+        sub: "Dashboard completo, IoT, IA e gestão",
+        color: "#3B82F6",
+        bg: "rgba(59,130,246,.12)",
+        dest: "sindico" as const,
+        icon: (
+          <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
+            <path d="M16 3 L28 8 L28 17 C28 23 22.5 28.5 16 30 C9.5 28.5 4 23 4 17 L4 8 Z" stroke="#60A5FA" strokeWidth="1.8" fill="none" strokeLinejoin="round"/>
+            <path d="M11 16 L14.5 19.5 L21 13" stroke="#60A5FA" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        ),
+      },
+      {
+        id: "gestor",
+        label: "Painel Admin",
+        sub: "Visão desktop com todos os módulos",
+        color: "#6366F1",
+        bg: "rgba(99,102,241,.12)",
+        dest: "gestor" as const,
+        icon: (
+          <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
+            <rect x="3" y="5" width="26" height="17" rx="2.5" stroke="#818CF8" strokeWidth="1.8" fill="none"/>
+            <path d="M10 28 L22 28" stroke="#818CF8" strokeWidth="1.8" strokeLinecap="round"/>
+            <path d="M16 22 L16 28" stroke="#818CF8" strokeWidth="1.8" strokeLinecap="round"/>
+            <circle cx="16" cy="13" r="4" stroke="#818CF8" strokeWidth="1.5" fill="none"/>
+          </svg>
+        ),
+      },
+      {
+        id: "morador",
+        label: "App Morador",
+        sub: "Boletos, reservas, ocorrências",
+        color: "#10B981",
+        bg: "rgba(16,185,129,.12)",
+        dest: "morador" as const,
+        icon: (
+          <svg width="26" height="26" viewBox="0 0 32 32" fill="none">
+            <path d="M4 14 L16 4 L28 14 L28 28 L4 28 Z" stroke="#34D399" strokeWidth="1.8" fill="none" strokeLinejoin="round"/>
+            <rect x="12" y="20" width="8" height="8" rx="1" stroke="#34D399" strokeWidth="1.5" fill="none"/>
+            <path d="M12 20 L12 24 M20 20 L20 24" stroke="#34D399" strokeWidth="1" strokeLinecap="round" opacity="0.5"/>
+          </svg>
+        ),
+      },
+    ];
+
+    return (
+      <>
+        <style>{CSS}</style>
+        <style>{`
+          .sel-screen{min-height:100vh;background:#060d18;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;font-family:'Inter',sans-serif}
+          .sel-card{width:100%;max-width:380px;display:flex;flex-direction:column;gap:0}
+          .sel-header{display:flex;align-items:center;gap:14px;margin-bottom:28px;padding:0 2px}
+          .sel-avatar{width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#7C3AED,#6366F1);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;flex-shrink:0;box-shadow:0 4px 16px rgba(99,102,241,.35)}
+          .sel-name{font-size:22px;font-weight:800;color:#F1F5F9;line-height:1.1}
+          .sel-role{font-size:11px;font-weight:600;color:#64748B;letter-spacing:.06em;margin-top:3px}
+          .sel-prompt{font-size:14px;color:#94A3B8;margin-bottom:20px;padding:0 2px;font-weight:400;line-height:1.5}
+          .sel-option{display:flex;align-items:center;gap:14px;background:#0d1625;border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:18px 16px;margin-bottom:10px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+          .sel-option:hover{background:#101e30;border-color:rgba(255,255,255,.14);transform:translateY(-1px);box-shadow:0 6px 24px rgba(0,0,0,.25)}
+          .sel-option:active{transform:translateY(0);box-shadow:none}
+          .sel-opt-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+          .sel-opt-body{flex:1;min-width:0}
+          .sel-opt-title{font-size:15px;font-weight:700;color:#F1F5F9;margin-bottom:4px}
+          .sel-opt-sub{font-size:12px;color:#64748B;line-height:1.4}
+          .sel-opt-arrow{font-size:18px;color:#334155;flex-shrink:0;transition:all .2s}
+          .sel-option:hover .sel-opt-arrow{color:#94A3B8;transform:translateX(3px)}
+          .sel-signout{display:block;width:100%;margin-top:10px;padding:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:12px;color:#475569;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .2s}
+          .sel-signout:hover{background:rgba(255,255,255,.07);color:#94A3B8}
+          .sel-footer{text-align:center;font-size:11px;color:#1E3A5F;margin-top:22px;letter-spacing:.04em}
+        `}</style>
+        <div className="sel-screen">
+          <div className="sel-card">
+            {/* Header */}
+            <div className="sel-header">
+              <div className="sel-avatar">{avatarLetter}</div>
+              <div>
+                <div className="sel-name">Olá, {displayName}!</div>
+                <div className="sel-role">{roleLabel} · {condoName}</div>
+              </div>
+            </div>
+
+            <div className="sel-prompt">Escolha como deseja acessar o sistema:</div>
+
+            {/* Options */}
+            {options.map(opt => (
+              <div key={opt.id} className="sel-option" onClick={() => setView(opt.dest)}>
+                <div className="sel-opt-icon" style={{ background: opt.bg }}>
+                  {opt.icon}
+                </div>
+                <div className="sel-opt-body">
+                  <div className="sel-opt-title">{opt.label}</div>
+                  <div className="sel-opt-sub">{opt.sub}</div>
+                </div>
+                <div className="sel-opt-arrow">→</div>
+              </div>
+            ))}
+
+            {/* Sign out */}
+            <button className="sel-signout" onClick={() => { setLoginEmail(""); setLoginPass(""); setView("login"); }}>
+              Sair da conta
+            </button>
+
+            {/* Footer */}
+            <div className="sel-footer">ImobCore SaaS v3.0 · 3 interfaces integradas</div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <style>{CSS}</style>
@@ -3295,8 +3415,8 @@ export default function App() {
         <button className="theme-toggle" onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} title={theme === "dark" ? "Mudar para Tema Claro" : "Mudar para Tema Escuro"}>
           {theme === "dark" ? "☀️ Claro" : "🌙 Escuro"}
         </button>
-        <button className="theme-toggle" style={{ borderColor: "rgba(239,68,68,.3)", color: "#F87171" }} onClick={() => { setLoginEmail(""); setLoginPass(""); setView("login"); }} title="Sair do sistema">
-          🚪 Sair
+        <button className="theme-toggle" style={{ borderColor: "rgba(239,68,68,.3)", color: "#F87171" }} onClick={() => setView("selector")} title="Trocar interface">
+          🔀 Interfaces
         </button>
       </div>
 
