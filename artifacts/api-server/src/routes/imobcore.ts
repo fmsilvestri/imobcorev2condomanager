@@ -1,6 +1,11 @@
 import { Router, type Request, type Response } from "express";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
+import {
+  type Lancamento,
+  calcularIndicadores,
+  calcularFluxoMensal,
+} from "../lib/financeiro.service.js";
 
 const router = Router();
 
@@ -525,35 +530,22 @@ router.get("/financeiro", async (_req: Request, res: Response) => {
 // FINANCEIRO INTELIGENTE — CRUD + Indicadores + IA
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Helper: calcula indicadores a partir dos lançamentos
-async function calcIndicadores(condId: string | undefined) {
+// Helper: busca lançamentos do Supabase e calcula indicadores via financeiro.service
+async function fetchLancamentosDB(condId?: string): Promise<{ all: Lancamento[]; missing: boolean }> {
   let q = supabase.from("lancamentos_financeiros").select("*").order("data", { ascending: false });
   if (condId) q = q.eq("condominio_id", condId);
-  const { data: lancs, error: lErr } = await q;
-  if (lErr && (lErr.message?.includes("does not exist") || lErr.message?.includes("schema cache"))) {
-    return { totalRec: 0, totalDesp: 0, saldo: 0, txInad: 0, vlrInad: 0, score: 100, risco: "baixo", all: [] };
+  const { data, error } = await q;
+  if (error && (error.message?.includes("does not exist") || error.message?.includes("schema cache"))) {
+    return { all: [], missing: true };
   }
-  const all = (lancs || []) as { tipo: string; valor: number; status: string; data: string }[];
+  return { all: (data || []) as Lancamento[], missing: false };
+}
 
-  const receitas = all.filter(l => l.tipo === "receita");
-  const despesas = all.filter(l => l.tipo === "despesa");
-  const totalRec = receitas.reduce((s, r) => s + Number(r.valor), 0);
-  const totalDesp = despesas.reduce((s, d) => s + Number(d.valor), 0);
-  const saldo = totalRec - totalDesp;
-
-  const inadimpl = receitas.filter(r => r.status === "atrasado");
-  const vlrInad = inadimpl.reduce((s, r) => s + Number(r.valor), 0);
-  const txInad = totalRec > 0 ? Math.round((vlrInad / totalRec) * 100) : 0;
-
-  // Score: começa em 100, reduz por critérios
-  let score = 100;
-  if (txInad > 10) score -= 30;
-  if (saldo < 0) score -= 40;
-  if (totalDesp > totalRec) score -= 20;
-  score = Math.max(0, score);
-
-  const risco = score >= 80 ? "baixo" : score >= 60 ? "moderado" : score >= 40 ? "alto" : "critico";
-  return { totalRec, totalDesp, saldo, txInad, vlrInad, score, risco, all };
+async function calcIndicadores(condId: string | undefined) {
+  const { all, missing } = await fetchLancamentosDB(condId);
+  if (missing) return { totalRec: 0, totalDesp: 0, saldo: 0, txInad: 0, vlrInad: 0, score: 100, risco: "baixo", all: [] };
+  const ind = calcularIndicadores(all);
+  return { totalRec: ind.receitas, totalDesp: ind.despesas, saldo: ind.saldo, txInad: ind.txInad, vlrInad: ind.vlrInad, score: ind.score, risco: ind.risco, all };
 }
 
 // GET /api/financeiro/lancamentos
@@ -625,76 +617,25 @@ router.get("/financeiro/resumo", async (req: Request, res: Response) => {
   } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
 });
 
-// GET /api/financeiro/fluxo  — últimos 6 + próximos 3 meses
+// GET /api/financeiro/fluxo  — últimos 6 meses (via financeiro.service)
 router.get("/financeiro/fluxo", async (req: Request, res: Response) => {
   try {
     const { condominio_id } = req.query as { condominio_id?: string };
-    let q = supabase.from("lancamentos_financeiros").select("tipo,valor,data").order("data", { ascending: true });
-    if (condominio_id) q = q.eq("condominio_id", condominio_id);
-    const { data: lancs, error: flErr } = await q;
-    if (flErr && (flErr.message?.includes("does not exist") || flErr.message?.includes("schema cache"))) return res.json({ historico: [] });
-    const all = (lancs || []) as { tipo: string; valor: number; data: string }[];
-
-    const now = new Date();
-    const monthsMap: Record<string, { rec: number; desp: number }> = {};
-    for (let i = 5; i >= 0; i--) {
-      const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-      monthsMap[key] = { rec: 0, desp: 0 };
-    }
-    all.forEach(l => {
-      const key = (l.data || "").slice(0, 7);
-      if (monthsMap[key]) {
-        if (l.tipo === "receita") monthsMap[key].rec += Number(l.valor);
-        else monthsMap[key].desp += Number(l.valor);
-      }
-    });
-    const historico = Object.entries(monthsMap).map(([mes, v]) => ({
-      mes: mes.slice(5) + "/" + mes.slice(2, 4),
-      Receitas: Math.round(v.rec), Despesas: Math.round(v.desp), Resultado: Math.round(v.rec - v.desp),
-    }));
+    const { all, missing } = await fetchLancamentosDB(condominio_id);
+    if (missing) return res.json({ historico: [] });
+    const { historico } = calcularFluxoMensal(all, 6, 0);
     res.json({ historico });
   } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
 });
 
-// GET /api/financeiro/previsao  — projeção 3 meses
+// GET /api/financeiro/previsao  — projeção 3 meses (via financeiro.service / preverFluxo)
 router.get("/financeiro/previsao", async (req: Request, res: Response) => {
   try {
     const { condominio_id } = req.query as { condominio_id?: string };
-    let q = supabase.from("lancamentos_financeiros").select("tipo,valor,data").order("data", { ascending: true });
-    if (condominio_id) q = q.eq("condominio_id", condominio_id);
-    const { data: lancs, error: pvErr } = await q;
-    if (pvErr && (pvErr.message?.includes("does not exist") || pvErr.message?.includes("schema cache"))) return res.json({ avgRec: 0, avgDesp: 0, projecao: [] });
-    const all = (lancs || []) as { tipo: string; valor: number; data: string }[];
-
-    const now = new Date();
-    const monthsMap: Record<string, { rec: number; desp: number }> = {};
-    for (let i = 2; i >= 0; i--) {
-      const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-      monthsMap[key] = { rec: 0, desp: 0 };
-    }
-    all.forEach(l => {
-      const key = (l.data || "").slice(0, 7);
-      if (monthsMap[key]) {
-        if (l.tipo === "receita") monthsMap[key].rec += Number(l.valor);
-        else monthsMap[key].desp += Number(l.valor);
-      }
-    });
-    const vals = Object.values(monthsMap);
-    const avgRec = vals.length ? vals.reduce((s, v) => s + v.rec, 0) / vals.length : 0;
-    const avgDesp = vals.length ? vals.reduce((s, v) => s + v.desp, 0) / vals.length : 0;
-
-    const { totalRec: tr, totalDesp: td } = await calcIndicadores(condominio_id);
-    let saldoProj = tr - td;
-    const projecao = [];
-    for (let i = 1; i <= 3; i++) {
-      const dt = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const label = `${String(dt.getMonth() + 1).padStart(2, "0")}/${String(dt.getFullYear()).slice(2)}`;
-      saldoProj += avgRec - avgDesp;
-      projecao.push({ mes: label, Receitas: Math.round(avgRec), Despesas: Math.round(avgDesp), SaldoProjetado: Math.round(saldoProj) });
-    }
-    res.json({ avgRec: Math.round(avgRec), avgDesp: Math.round(avgDesp), projecao });
+    const { all, missing } = await fetchLancamentosDB(condominio_id);
+    if (missing) return res.json({ avgRec: 0, avgDesp: 0, projecao: [] });
+    const { projecao, avgRec, avgDesp } = calcularFluxoMensal(all, 3, 3);
+    res.json({ avgRec, avgDesp, projecao });
   } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
 });
 

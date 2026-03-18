@@ -1543,7 +1543,9 @@ export default function App() {
       const url = cid ? `/api/dashboard?condominio_id=${cid}` : "/api/dashboard";
       const r = await fetch(url);
       if (!r.ok) { console.warn("dashboard fetch status:", r.status); return; }
-      const d: Dashboard = await r.json();
+      const text = await r.text();
+      if (!text || !text.trim().startsWith("{")) { console.warn("dashboard: empty/invalid response"); return; }
+      const d: Dashboard = JSON.parse(text);
       setDash(d);
       if (forCondId) {
         setCondId(forCondId);
