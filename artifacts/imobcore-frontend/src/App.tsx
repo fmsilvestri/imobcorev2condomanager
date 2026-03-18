@@ -7478,7 +7478,7 @@ Content-Type: application/json
 
                 {/* Tab Bar */}
                 <div style={{ display:"flex", gap:6, marginBottom:20, flexWrap:"wrap" }}>
-                  {([["equip","📋 Equipamentos"],["mapa","🗺️ Mapa"],["plano","📅 Plano"],["os","🔧 OS Integrado"],["qr","📱 QR Codes"],["ia","🤖 Dashboard IA"]] as [typeof mantTab, string][]).map(([k,l]) => (
+                  {([["equip","📋 Equipamentos e Estruturas"],["mapa","🗺️ Mapa"],["plano","📅 Plano"],["os","🔧 OS Integrado"],["qr","📱 QR Codes"],["ia","🤖 Dashboard IA"]] as [typeof mantTab, string][]).map(([k,l]) => (
                     <button key={k} style={tabStyle(k)} onClick={() => setMantTab(k)}>{l}</button>
                   ))}
                 </div>
