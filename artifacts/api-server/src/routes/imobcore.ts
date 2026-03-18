@@ -1056,13 +1056,24 @@ router.get("/equipamentos", async (req: Request, res: Response) => {
   res.json((data || []).map(r => dbToEquip(r as Record<string, unknown>)));
 });
 
+// helper: remove fornecedor_id do payload (fallback quando coluna não existe ainda)
+function stripFornecedorId(p: Record<string, unknown>) {
+  const copy = { ...p };
+  delete copy.fornecedor_id;
+  return copy;
+}
+
 // POST /api/equipamentos — criar novo
 router.post("/equipamentos", async (req: Request, res: Response) => {
   const { condominio_id, ...body } = req.body as Record<string, unknown>;
   if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
   if (!body.nome) return res.status(400).json({ error: "nome obrigatório" });
   const payload = equipToDb(body, String(condominio_id));
-  const { data, error } = await supabase.from("equipamentos").insert(payload).select().single();
+  let { data, error } = await supabase.from("equipamentos").insert(payload).select().single();
+  if (error && error.message.includes("fornecedor_id")) {
+    // coluna ainda não existe — retry sem ela
+    ({ data, error } = await supabase.from("equipamentos").insert(stripFornecedorId(payload)).select().single());
+  }
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true, equipamento: dbToEquip(data as Record<string, unknown>) });
 });
@@ -1074,7 +1085,11 @@ router.put("/equipamentos/:id", async (req: Request, res: Response) => {
   if (!id) return res.status(400).json({ error: "id obrigatório" });
   const payload = equipToDb(body, String(condominio_id || ""));
   delete payload.condominio_id; // não sobrescrever o dono
-  const { data, error } = await supabase.from("equipamentos").update(payload).eq("id", id).select().single();
+  let { data, error } = await supabase.from("equipamentos").update(payload).eq("id", id).select().single();
+  if (error && error.message.includes("fornecedor_id")) {
+    // coluna ainda não existe — retry sem ela
+    ({ data, error } = await supabase.from("equipamentos").update(stripFornecedorId(payload)).eq("id", id).select().single());
+  }
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true, equipamento: dbToEquip(data as Record<string, unknown>) });
 });
