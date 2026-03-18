@@ -169,6 +169,31 @@ async function runMigrations() {
     console.log("✅ Migration 5 (planos_manutencao): OK");
   }
 
+  // ─── Migration 6: Fornecedores e Contatos ───────────────────────────────────
+  const { error: m6Err } = await supabase.from("fornecedores").select("id,nome,categoria").limit(1);
+  if (m6Err) {
+    console.log("⚠️  Migration 6 needed (fornecedores). Run in SQL Editor:");
+    console.log("   CREATE TABLE IF NOT EXISTS fornecedores (");
+    console.log("     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),");
+    console.log("     condominio_id uuid NOT NULL,");
+    console.log("     nome text NOT NULL,");
+    console.log("     categoria text DEFAULT 'Geral',");
+    console.log("     icone text DEFAULT '🏢',");
+    console.log("     telefone text,");
+    console.log("     whatsapp text,");
+    console.log("     email text,");
+    console.log("     endereco text,");
+    console.log("     observacoes text,");
+    console.log("     status text DEFAULT 'ativo',");
+    console.log("     created_at timestamptz DEFAULT now(),");
+    console.log("     updated_at timestamptz DEFAULT now()");
+    console.log("   );");
+    console.log("   CREATE INDEX IF NOT EXISTS idx_fornec_condo ON fornecedores(condominio_id);");
+    console.log();
+  } else {
+    console.log("✅ Migration 6 (fornecedores): OK");
+  }
+
   console.log();
 }
 

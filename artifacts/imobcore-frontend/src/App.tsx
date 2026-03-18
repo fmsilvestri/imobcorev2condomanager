@@ -465,11 +465,11 @@ interface PerfilConfig { cor: string; label: string; icon: string; modulos: stri
 const PERFIS_CONFIG: Record<PerfilKey, PerfilConfig> = {
   gestor: {
     cor: "#7C3CFC", icon: "⚡", label: "Gestor Sistema",
-    modulos: ["chatIA","insights","comunicados","ordens","financeiro","agua","misp","diagnostico","crm","manutencao","energia","gas","encomendas","condominios","usuarios","sseLiveLog"],
+    modulos: ["chatIA","insights","comunicados","ordens","financeiro","agua","misp","diagnostico","crm","manutencao","energia","gas","encomendas","fornecedores","condominios","usuarios","sseLiveLog"],
   },
   sindico: {
     cor: "#2563EB", icon: "🛡️", label: "Síndico",
-    modulos: ["chatIA","insights","comunicados","ordens","financeiro","agua","misp","diagnostico","crm","manutencao","energia","gas","encomendas"],
+    modulos: ["chatIA","insights","comunicados","ordens","financeiro","agua","misp","diagnostico","crm","manutencao","energia","gas","encomendas","fornecedores"],
   },
   morador: {
     cor: "#059669", icon: "🏠", label: "Morador",
@@ -658,9 +658,10 @@ export default function App() {
 
   // Ao trocar condomínio: carregar equipamentos e planos do Supabase
   useEffect(() => {
-    if (!condId) { setEquipList([]); setPlanoList([]); return; }
+    if (!condId) { setEquipList([]); setPlanoList([]); setFornecList([]); return; }
     loadEquipamentos(condId);
     loadPlanos(condId);
+    loadFornecedores(condId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condId]);
 
@@ -886,6 +887,59 @@ export default function App() {
       ...f,
       equipamentos_itens: f.equipamentos_itens.map(e => e.equipId === equipId ? { ...e, custo_previsto: custo } : e)
     }));
+  };
+
+  // ── Fornecedores e Contatos ────────────────────────────────────────────────
+  const FORNEC_CATEGORIAS = ["Geral","Bombas","Elevadores","Elétrico","Hidráulico","Jardinagem","Limpeza","Segurança","Pintura","Estrutural","TI/Câmeras","Climatização","Gás","Portaria","Manutenção","Outros"];
+  const FORNEC_ICONES = ["🏢","🔧","⚡","💧","🛗","🔒","🌿","🧹","🎨","🏗️","📷","❄️","🔥","🚪","🔩","🪛","🛠️","📦","🚛","📞","💡","🔌","🪟","🛁","🚿","🌡️","⚙️","🔑"];
+  type Fornecedor = { id:string; condominio_id:string; nome:string; categoria:string; icone:string; telefone:string; whatsapp:string; email:string; endereco:string; observacoes:string; status:string; created_at:string; updated_at:string };
+  const emptyFornec = (): Omit<Fornecedor,"id"|"condominio_id"|"created_at"|"updated_at"> => ({ nome:"", categoria:"Geral", icone:"🏢", telefone:"", whatsapp:"", email:"", endereco:"", observacoes:"", status:"ativo" });
+  const [fornecList, setFornecList] = useState<Fornecedor[]>([]);
+  const [fornecLoading, setFornecLoading] = useState(false);
+  const [fornecSaving, setFornecSaving] = useState(false);
+  const [fornecSearch, setFornecSearch] = useState("");
+  const [fornecCatFilter, setFornecCatFilter] = useState("todas");
+  const [fornecModal, setFornecModal] = useState(false);
+  const [fornecEditId, setFornecEditId] = useState<string|null>(null);
+  const [fornecForm, setFornecForm] = useState<ReturnType<typeof emptyFornec>>(emptyFornec());
+  const [fornecMsgModal, setFornecMsgModal] = useState<Fornecedor|null>(null);
+  const [fornecMsg, setFornecMsg] = useState("");
+
+  const loadFornecedores = async (cId: string) => {
+    setFornecLoading(true);
+    try {
+      const r = await fetch(`${API}/fornecedores?condominio_id=${cId}`);
+      const d = await r.json();
+      setFornecList(Array.isArray(d) ? d : []);
+    } catch { /* ignore */ }
+    setFornecLoading(false);
+  };
+
+  const fornecSave = async () => {
+    if (!condId || !fornecForm.nome.trim()) return;
+    setFornecSaving(true);
+    try {
+      const url = fornecEditId ? `${API}/fornecedores/${fornecEditId}` : `${API}/fornecedores`;
+      const method = fornecEditId ? "PUT" : "POST";
+      const body = fornecEditId ? fornecForm : { ...fornecForm, condominio_id: condId };
+      await fetch(url, { method, headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+      await loadFornecedores(condId);
+      setFornecModal(false); setFornecEditId(null); setFornecForm(emptyFornec());
+    } catch { /* ignore */ }
+    setFornecSaving(false);
+  };
+
+  const fornecDelete = async (id: string) => {
+    if (!condId) return;
+    await fetch(`${API}/fornecedores/${id}`, { method:"DELETE" });
+    await loadFornecedores(condId);
+  };
+
+  const fornecWhatsApp = (f: Fornecedor, msg?: string) => {
+    const num = (f.whatsapp || f.telefone || "").replace(/\D/g,"");
+    if (!num) return;
+    const text = msg ? encodeURIComponent(msg) : "";
+    window.open(`https://wa.me/55${num}${text ? "?text="+text : ""}`, "_blank");
   };
 
   // ── CRM state ──────────────────────────────────────────────────────────────
@@ -4187,6 +4241,10 @@ export default function App() {
           <div className={`sb-item ${panel === "encomendas" ? "active" : ""}`} onClick={() => { setPanel("encomendas"); fetchEncomendas(); }}>
             <span className="sb-icon">📦</span> Encomendas
             {encList.filter(e=>e.status==="aguardando_retirada").length > 0 && <span className="sb-badge" style={{ background:"#F59E0B" }}>{encList.filter(e=>e.status==="aguardando_retirada").length}</span>}
+          </div>
+          <div className={`sb-item ${panel === "fornecedores" ? "active" : ""}`} onClick={() => { setPanel("fornecedores"); if(condId) loadFornecedores(condId); }}>
+            <span className="sb-icon">🏢</span> Fornecedores
+            {fornecList.length > 0 && <span className="sb-badge" style={{ background:"rgba(16,185,129,.2)", color:"#34D399" }}>{fornecList.length}</span>}
           </div>
           <div className="sb-label">Acesso</div>
           <div className={`sb-item ${panel === "usuarios" ? "active" : ""}`} onClick={() => { setPanel("usuarios"); if (!usuariosLoaded) loadUsuarios(); }}>
@@ -8272,6 +8330,255 @@ export default function App() {
                   </div>
                 </div>
               </div>
+            );
+          })()}
+
+          {/* PANEL: FORNECEDORES E CONTATOS */}
+          {panel === "fornecedores" && (() => {
+            const filteredFornec = fornecList.filter(f => {
+              const matchSearch = !fornecSearch || f.nome.toLowerCase().includes(fornecSearch.toLowerCase()) || (f.email||"").toLowerCase().includes(fornecSearch.toLowerCase()) || (f.telefone||"").includes(fornecSearch);
+              const matchCat = fornecCatFilter === "todas" || f.categoria === fornecCatFilter;
+              return matchSearch && matchCat;
+            });
+            const catCounts = FORNEC_CATEGORIAS.reduce((acc,c) => ({ ...acc, [c]: fornecList.filter(f=>f.categoria===c).length }), {} as Record<string,number>);
+            return (
+            <div style={{ padding:"24px 28px", height:"100%", overflowY:"auto" }}>
+              {/* Header */}
+              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:6 }}>
+                <button onClick={()=>setPanel("sv-chat")} style={{ background:"none", border:"none", color:"#475569", cursor:"pointer", fontSize:18, padding:0 }}>←</button>
+                <div>
+                  <div style={{ fontSize:18, fontWeight:800, color:"#E2E8F0" }}>Fornecedores e Contatos</div>
+                  <div style={{ fontSize:12, color:"#475569" }}>Cadastro de fornecedores, prestadores de serviço e contatos</div>
+                </div>
+                <button onClick={()=>{ setFornecModal(true); setFornecEditId(null); setFornecForm(emptyFornec()); }}
+                  style={{ marginLeft:"auto", background:"linear-gradient(135deg,#7C5CFC,#A78BFA)", border:"none", borderRadius:10, padding:"9px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                  + Novo Fornecedor
+                </button>
+              </div>
+
+              {/* Search + filter row */}
+              <div style={{ display:"flex", gap:10, margin:"16px 0" }}>
+                <div style={{ flex:1, position:"relative" }}>
+                  <span style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", fontSize:14, color:"#475569" }}>🔍</span>
+                  <input value={fornecSearch} onChange={e=>setFornecSearch(e.target.value)}
+                    placeholder="Buscar fornecedor..."
+                    style={{ width:"100%", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:10, padding:"10px 10px 10px 32px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }}/>
+                </div>
+                <select value={fornecCatFilter} onChange={e=>setFornecCatFilter(e.target.value)}
+                  style={{ background:"#1E2132", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, padding:"10px 14px", color:"#E2E8F0", fontSize:13 }}>
+                  <option value="todas">🔽 Todas as categorias</option>
+                  {FORNEC_CATEGORIAS.filter(c=>catCounts[c]>0).map(c=>(
+                    <option key={c} value={c}>{c} ({catCounts[c]})</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Loading / empty */}
+              {fornecLoading && <div style={{ color:"#475569", textAlign:"center", padding:32 }}>Carregando...</div>}
+              {!fornecLoading && fornecList.length === 0 && (
+                <div style={{ textAlign:"center", padding:48 }}>
+                  <div style={{ fontSize:40, marginBottom:12 }}>🏢</div>
+                  <div style={{ color:"#475569", fontSize:14 }}>Nenhum fornecedor cadastrado ainda.</div>
+                  <div style={{ color:"#334155", fontSize:12, marginTop:4 }}>Clique em "+ Novo Fornecedor" para adicionar.</div>
+                </div>
+              )}
+
+              {/* Grid de cards */}
+              {!fornecLoading && (
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(310px,1fr))", gap:16 }}>
+                  {filteredFornec.map(f => {
+                    const hasWa = !!(f.whatsapp || f.telefone);
+                    return (
+                      <div key={f.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:"16px 18px", display:"flex", flexDirection:"column", gap:10 }}>
+                        {/* Card header: icon + name + badges + actions */}
+                        <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+                          <div style={{ background:"rgba(255,255,255,.06)", borderRadius:10, width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>
+                            {f.icone || "🏢"}
+                          </div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontWeight:700, fontSize:14, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.nome}</div>
+                            <span style={{ display:"inline-block", background:"rgba(16,185,129,.12)", color:"#34D399", border:"1px solid rgba(16,185,129,.2)", borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600, marginTop:3 }}>{f.categoria}</span>
+                          </div>
+                          <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                            <button onClick={()=>{ setFornecMsgModal(f); setFornecMsg(""); }}
+                              style={{ background:"rgba(37,211,102,.15)", border:"1px solid rgba(37,211,102,.3)", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:16 }} title="Enviar WhatsApp">
+                              💬
+                            </button>
+                            <button onClick={()=>{ setFornecEditId(f.id); setFornecForm({ nome:f.nome, categoria:f.categoria, icone:f.icone, telefone:f.telefone||"", whatsapp:f.whatsapp||"", email:f.email||"", endereco:f.endereco||"", observacoes:f.observacoes||"", status:f.status }); setFornecModal(true); }}
+                              style={{ background:"rgba(59,130,246,.15)", border:"1px solid rgba(59,130,246,.3)", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:14 }} title="Editar">
+                              ✏️
+                            </button>
+                            <button onClick={()=>{ if(window.confirm('Excluir "' + f.nome + '"?')) fornecDelete(f.id); }}
+                              style={{ background:"rgba(239,68,68,.12)", border:"1px solid rgba(239,68,68,.25)", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:14 }} title="Excluir">
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Contact info */}
+                        <div style={{ display:"flex", flexDirection:"column", gap:4, fontSize:12 }}>
+                          {(f.telefone||f.whatsapp) && (
+                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"#94A3B8" }}>
+                              <span>📞</span> {f.telefone || f.whatsapp}
+                            </div>
+                          )}
+                          {f.email && (
+                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"#94A3B8" }}>
+                              <span>✉️</span> {f.email}
+                            </div>
+                          )}
+                          {f.endereco && (
+                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"#94A3B8" }}>
+                              <span>📍</span> {f.endereco}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* WhatsApp button */}
+                        <button onClick={()=>fornecWhatsApp(f)}
+                          disabled={!hasWa}
+                          style={{ background: hasWa ? "linear-gradient(135deg,#25D366,#128C7E)" : "rgba(255,255,255,.04)", border:"none", borderRadius:9, padding:"9px 14px", color: hasWa ? "#fff" : "#334155", fontSize:13, fontWeight:700, cursor: hasWa ? "pointer":"not-allowed", display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:2 }}>
+                          💬 Enviar WhatsApp
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* ── Modal criar/editar ── */}
+              {fornecModal && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }} onClick={e=>{ if(e.target===e.currentTarget){ setFornecModal(false); }}}>
+                  <div style={{ background:"#1A1B2E", border:"1px solid rgba(255,255,255,.1)", borderRadius:16, padding:"24px 26px", width:"100%", maxWidth:460, maxHeight:"90vh", overflowY:"auto", position:"relative" }}>
+                    <button onClick={()=>setFornecModal(false)} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", color:"#475569", fontSize:20, cursor:"pointer" }}>✕</button>
+                    <div style={{ fontSize:16, fontWeight:800, color:"#E2E8F0", marginBottom:4 }}>
+                      {fornecEditId ? "Editar Fornecedor" : "Novo Fornecedor"}
+                    </div>
+                    <div style={{ fontSize:12, color:"#475569", marginBottom:20 }}>
+                      {fornecEditId ? "Atualize os dados do fornecedor." : "Cadastre um novo fornecedor ou prestador de serviço."}
+                    </div>
+
+                    {/* Nome */}
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:"#64748B", marginBottom:5 }}>NOME / EMPRESA *</div>
+                      <input value={fornecForm.nome} onChange={e=>setFornecForm(f=>({...f,nome:e.target.value}))}
+                        placeholder="Ex: Hidráulica Silva Ltda"
+                        style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(99,102,241,.3)", borderRadius:9, padding:"10px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }}/>
+                    </div>
+
+                    {/* Categoria */}
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:"#64748B", marginBottom:5 }}>CATEGORIA</div>
+                      <select value={fornecForm.categoria} onChange={e=>setFornecForm(f=>({...f,categoria:e.target.value}))}
+                        style={{ width:"100%", background:"#1E2132", border:"1px solid rgba(255,255,255,.12)", borderRadius:9, padding:"10px 12px", color:"#E2E8F0", fontSize:13 }}>
+                        {FORNEC_CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+
+                    {/* Ícone */}
+                    <div style={{ marginBottom:16 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:"#64748B", marginBottom:8 }}>ÍCONE</div>
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:6, background:"rgba(0,0,0,.15)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:8 }}>
+                        {FORNEC_ICONES.map(ic=>(
+                          <button key={ic} onClick={()=>setFornecForm(f=>({...f,icone:ic}))}
+                            style={{ background: fornecForm.icone===ic ? "rgba(124,92,252,.3)" : "rgba(255,255,255,.04)", border: fornecForm.icone===ic ? "1px solid rgba(124,92,252,.5)" : "1px solid transparent", borderRadius:8, padding:6, fontSize:18, cursor:"pointer", textAlign:"center" }}>
+                            {ic}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Telefone + WhatsApp */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#64748B", marginBottom:5 }}>TELEFONE</div>
+                        <input value={fornecForm.telefone} onChange={e=>setFornecForm(f=>({...f,telefone:e.target.value}))}
+                          placeholder="(54) 99999-9999"
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 10px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }}/>
+                      </div>
+                      <div>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#64748B", marginBottom:5 }}>WHATSAPP</div>
+                        <input value={fornecForm.whatsapp} onChange={e=>setFornecForm(f=>({...f,whatsapp:e.target.value}))}
+                          placeholder="(54) 99999-9999"
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 10px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }}/>
+                      </div>
+                    </div>
+
+                    {/* E-mail */}
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:"#64748B", marginBottom:5 }}>E-MAIL</div>
+                      <input type="email" value={fornecForm.email} onChange={e=>setFornecForm(f=>({...f,email:e.target.value}))}
+                        placeholder="contato@empresa.com.br"
+                        style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 10px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }}/>
+                    </div>
+
+                    {/* Endereço */}
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:"#64748B", marginBottom:5 }}>ENDEREÇO</div>
+                      <input value={fornecForm.endereco} onChange={e=>setFornecForm(f=>({...f,endereco:e.target.value}))}
+                        placeholder="Rua, número, bairro..."
+                        style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 10px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }}/>
+                    </div>
+
+                    {/* Observações */}
+                    <div style={{ marginBottom:22 }}>
+                      <div style={{ fontSize:11, fontWeight:700, color:"#64748B", marginBottom:5 }}>OBSERVAÇÕES</div>
+                      <textarea value={fornecForm.observacoes} onChange={e=>setFornecForm(f=>({...f,observacoes:e.target.value}))}
+                        rows={3} placeholder="Observações adicionais..."
+                        style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 10px", color:"#E2E8F0", fontSize:13, resize:"vertical", boxSizing:"border-box" }}/>
+                    </div>
+
+                    {/* Botões */}
+                    <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+                      <button onClick={()=>{ setFornecModal(false); setFornecEditId(null); setFornecForm(emptyFornec()); }}
+                        style={{ background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:9, padding:"10px 20px", color:"#94A3B8", fontSize:13, cursor:"pointer" }}>
+                        Cancelar
+                      </button>
+                      <button onClick={fornecSave} disabled={fornecSaving || !fornecForm.nome.trim()}
+                        style={{ background: fornecSaving||!fornecForm.nome.trim() ? "#334155" : "linear-gradient(135deg,#3B82F6,#60A5FA)", border:"none", borderRadius:9, padding:"10px 22px", color:"#fff", fontSize:13, fontWeight:700, cursor: fornecSaving||!fornecForm.nome.trim() ? "not-allowed":"pointer" }}>
+                        {fornecSaving ? "Salvando..." : fornecEditId ? "Atualizar" : "Cadastrar"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Modal enviar mensagem WhatsApp ── */}
+              {fornecMsgModal && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }} onClick={e=>{ if(e.target===e.currentTarget) setFornecMsgModal(null); }}>
+                  <div style={{ background:"#1A1B2E", border:"1px solid rgba(37,211,102,.2)", borderRadius:16, padding:"24px 26px", width:"100%", maxWidth:420, position:"relative" }}>
+                    <button onClick={()=>setFornecMsgModal(null)} style={{ position:"absolute", top:14, right:16, background:"none", border:"none", color:"#475569", fontSize:20, cursor:"pointer" }}>✕</button>
+                    <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0", marginBottom:4 }}>💬 Enviar WhatsApp</div>
+                    <div style={{ fontSize:12, color:"#475569", marginBottom:16 }}>
+                      Para: <strong style={{ color:"#E2E8F0" }}>{fornecMsgModal.nome}</strong> · {fornecMsgModal.whatsapp||fornecMsgModal.telefone}
+                    </div>
+                    {/* Sugestões de mensagem */}
+                    <div style={{ fontSize:11, fontWeight:700, color:"#64748B", marginBottom:8 }}>MODELOS RÁPIDOS</div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:6, marginBottom:14 }}>
+                      {[
+                        "Olá! Precisamos de um orçamento para serviço no condomínio. Poderia nos atender?",
+                        "Bom dia! Gostaríamos de agendar uma visita técnica. Qual sua disponibilidade?",
+                        "Olá! Verificamos uma pendência em nosso contrato. Pode entrar em contato conosco?",
+                        "Bom dia! Precisamos de um serviço urgente no condomínio. Por favor, nos ligue.",
+                      ].map((tmpl,i)=>(
+                        <button key={i} onClick={()=>setFornecMsg(tmpl)}
+                          style={{ background: fornecMsg===tmpl ? "rgba(37,211,102,.12)" : "rgba(255,255,255,.04)", border: fornecMsg===tmpl ? "1px solid rgba(37,211,102,.3)" : "1px solid rgba(255,255,255,.07)", borderRadius:8, padding:"8px 12px", color: fornecMsg===tmpl ? "#34D399" : "#94A3B8", fontSize:12, cursor:"pointer", textAlign:"left" }}>
+                          {tmpl}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ fontSize:11, fontWeight:700, color:"#64748B", marginBottom:6 }}>MENSAGEM PERSONALIZADA</div>
+                    <textarea value={fornecMsg} onChange={e=>setFornecMsg(e.target.value)}
+                      rows={4} placeholder="Escreva sua mensagem..."
+                      style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 10px", color:"#E2E8F0", fontSize:13, resize:"vertical", boxSizing:"border-box", marginBottom:16 }}/>
+                    <button onClick={()=>{ fornecWhatsApp(fornecMsgModal, fornecMsg || undefined); setFornecMsgModal(null); }}
+                      style={{ width:"100%", background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", borderRadius:10, padding:"11px", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                      💬 Abrir WhatsApp
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
             );
           })()}
 

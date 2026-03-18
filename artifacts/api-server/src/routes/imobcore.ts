@@ -1086,6 +1086,44 @@ router.delete("/equipamentos/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ─── FORNECEDORES E CONTATOS ──────────────────────────────────────────────────
+
+// GET /api/fornecedores?condominio_id=X
+router.get("/fornecedores", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+  const { data, error } = await supabase.from("fornecedores").select("*").eq("condominio_id", condId).order("nome", { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// POST /api/fornecedores
+router.post("/fornecedores", async (req: Request, res: Response) => {
+  const { condominio_id, ...body } = req.body as Record<string, unknown>;
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  if (!body.nome) return res.status(400).json({ error: "nome obrigatório" });
+  const { data, error } = await supabase.from("fornecedores").insert({ condominio_id, ...body, updated_at: new Date().toISOString() }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, fornecedor: data });
+});
+
+// PUT /api/fornecedores/:id
+router.put("/fornecedores/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { condominio_id: _cid, id: _id, created_at: _ca, ...body } = req.body as Record<string, unknown>;
+  const { data, error } = await supabase.from("fornecedores").update({ ...body, updated_at: new Date().toISOString() }).eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, fornecedor: data });
+});
+
+// DELETE /api/fornecedores/:id
+router.delete("/fornecedores/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { error } = await supabase.from("fornecedores").delete().eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 // ─── PLANOS DE MANUTENÇÃO ─────────────────────────────────────────────────────
 
 // GET /api/planos?condominio_id=X
