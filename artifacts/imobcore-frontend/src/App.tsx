@@ -5806,20 +5806,15 @@ export default function App() {
             const scoreEquipLabel = scoreEquip >= 80 ? "Excelente" : scoreEquip >= 60 ? "Bom" : "Crítico";
 
             // Mapa pins positions (SVG 500×340)
-            const mapPins = [
-              { id:"eq1", x:120, y:80,  label:"Elev A" },
-              { id:"eq2", x:380, y:80,  label:"Elev B" },
-              { id:"eq3", x:250, y:280, label:"Bomba P" },
-              { id:"eq4", x:250, y:310, label:"Cisterna" },
-              { id:"eq5", x:100, y:30,  label:"CxÁ A" },
-              { id:"eq6", x:400, y:30,  label:"CxÁ B" },
-              { id:"eq7", x:250, y:170, label:"CFTV" },
-              { id:"eq8", x:80,  y:290, label:"Gerador" },
-              { id:"eq9", x:60,  y:230, label:"Portão A" },
-              { id:"eq10",x:440, y:230, label:"Portão B" },
-              { id:"eq11",x:250, y:40,  label:"Incêndio" },
-              { id:"eq12",x:250, y:10,  label:"Solar" },
-            ];
+            // Gera pins do mapa dinamicamente a partir dos equipamentos reais
+            const MAP_W = 500, MAP_H = 340, MAP_COLS = 6;
+            const mapPins = equipList.map((eq, i) => {
+              const col = i % MAP_COLS;
+              const row = Math.floor(i / MAP_COLS);
+              const x = 55 + col * Math.floor((MAP_W - 80) / (MAP_COLS - 1 || 1));
+              const y = 50 + row * 80;
+              return { id: eq.id, x, y, label: eq.nome.slice(0, 8) };
+            });
 
             const tabStyle = (t: string) => ({
               padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", borderRadius: 8,
@@ -6030,8 +6025,9 @@ export default function App() {
 
                           {/* PINS */}
                           {mapPins.map(pin => {
-                            const eq = equipList.find(e => e.id === pin.id)!;
-                            const col = stColor[eq.status];
+                            const eq = equipList.find(e => e.id === pin.id);
+                            if (!eq) return null;
+                            const col = stColor[eq.status] || "#475569";
                             const isHov = mantMapHover === pin.id;
                             return (
                               <g key={pin.id} style={{ cursor:"pointer" }} onClick={() => setMantSelEquip(eq)} onMouseEnter={()=>setMantMapHover(pin.id)} onMouseLeave={()=>setMantMapHover(null)}>
@@ -6041,7 +6037,7 @@ export default function App() {
                                   <g>
                                     <rect x={pin.x-55} y={pin.y-52} width="110" height="46" fill="#0F172A" stroke={col} strokeWidth="1" rx="5"/>
                                     <text x={pin.x} y={pin.y-36} textAnchor="middle" fill="#fff" fontSize="9" fontWeight="bold">{eq.nome.slice(0,18)}</text>
-                                    <text x={pin.x} y={pin.y-23} textAnchor="middle" fill={col} fontSize="8">{stLabel[eq.status]}</text>
+                                    <text x={pin.x} y={pin.y-23} textAnchor="middle" fill={col} fontSize="8">{stLabel[eq.status] || eq.status}</text>
                                     <text x={pin.x} y={pin.y-12} textAnchor="middle" fill="#475569" fontSize="7">Manut: {eq.proxManutencao}</text>
                                   </g>
                                 )}
@@ -6066,12 +6062,19 @@ export default function App() {
                         ))}
                         <div style={{ height:1, background:"rgba(255,255,255,.06)", margin:"8px 0" }}/>
                         <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", marginBottom:4 }}>POR ÁREA</div>
-                        {[["Torre A",["eq1","eq5","eq9"]],["Torre B",["eq2","eq6","eq10"]],["Subsolo",["eq4","eq8"]],["Cobertura",["eq5","eq6","eq12"]],["Comum",["eq3","eq7","eq11"]]].map(([area, ids]) => (
-                          <div key={area as string} style={{ fontSize:11, display:"flex", justifyContent:"space-between", color:"#64748B" }}>
-                            <span>{area as string}</span>
-                            <span style={{ color:"#94A3B8" }}>{(ids as string[]).length}</span>
-                          </div>
-                        ))}
+                        {equipList.length === 0
+                          ? <div style={{ fontSize:10, color:"#334155" }}>Nenhum equipamento</div>
+                          : Object.entries(equipList.reduce((acc, e) => {
+                              const key = (e.local || "Sem localização").split(/[–,-]/)[0].trim().slice(0, 16);
+                              acc[key] = (acc[key] || 0) + 1;
+                              return acc;
+                            }, {} as Record<string,number>)).slice(0, 6).map(([area, count]) => (
+                              <div key={area} style={{ fontSize:11, display:"flex", justifyContent:"space-between", color:"#64748B" }}>
+                                <span>{area}</span>
+                                <span style={{ color:"#94A3B8" }}>{count}</span>
+                              </div>
+                            ))
+                        }
                         <div style={{ height:1, background:"rgba(255,255,255,.06)", margin:"8px 0" }}/>
                         <div style={{ fontSize:10, color:"#475569" }}>Clique em qualquer pin para ver detalhes completos do equipamento.</div>
                       </div>
