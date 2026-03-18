@@ -6275,26 +6275,35 @@ export default function App() {
             });
 
             const tabStyle = (t: string) => ({
-              padding: "7px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", borderRadius: 8,
-              background: mantTab === t ? "rgba(99,102,241,.25)" : "transparent",
-              color: mantTab === t ? "#A5B4FC" : "#475569",
-              border: mantTab === t ? "1px solid rgba(99,102,241,.3)" : "1px solid transparent",
+              padding: "8px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", borderRadius: 8,
+              background: mantTab === t ? "rgba(99,102,241,.35)" : "rgba(255,255,255,.04)",
+              color: mantTab === t ? "#C4B5FD" : "#94A3B8",
+              border: mantTab === t ? "1px solid rgba(99,102,241,.6)" : "1px solid rgba(255,255,255,.08)",
+              boxShadow: mantTab === t ? "0 0 12px rgba(99,102,241,.2)" : "none",
               transition: "all .15s",
             });
 
             return (
               <div style={{ padding: 20 }}>
                 {/* Header */}
-                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16, flexWrap:"wrap", gap:12 }}>
                   <div>
-                    <div style={{ fontSize:20, fontWeight:800 }}>🏗️ Gestão da Manutenção</div>
-                    <div style={{ fontSize:12, color:"#475569", marginTop:2 }}>
-                      {equipList.length} equipamentos · {nOp} operacionais · {nAt} atenção · {nMt} em manutenção · {nIn} inativos
+                    <div style={{ fontSize:20, fontWeight:800, color:"var(--c-text)" }}>🏗️ Gestão da Manutenção</div>
+                    <div style={{ display:"flex", gap:8, marginTop:8, flexWrap:"wrap" }}>
+                      {([
+                        { label:`${equipList.length} total`,  col:"#64748B" },
+                        { label:`${nOp} operacionais`,        col:"#10B981" },
+                        { label:`${nAt} atenção`,             col:"#F59E0B" },
+                        { label:`${nMt} manutenção`,          col:"#EF4444" },
+                        { label:`${nIn} inativos`,            col:"#475569" },
+                      ] as {label:string;col:string}[]).map(s => (
+                        <span key={s.label} style={{ background:`${s.col}22`, color:s.col, border:`1px solid ${s.col}55`, borderRadius:20, padding:"3px 10px", fontSize:11, fontWeight:700 }}>{s.label}</span>
+                      ))}
                     </div>
                   </div>
                   <div style={{ display:"flex", gap:8 }}>
-                    <span style={{ background:scoreEquipColor+"22", color:scoreEquipColor, borderRadius:20, padding:"4px 12px", fontSize:12, fontWeight:700, border:`1px solid ${scoreEquipColor}44` }}>
-                      Score {scoreEquip}/100 · {scoreEquipLabel}
+                    <span style={{ background:scoreEquipColor+"22", color:scoreEquipColor, borderRadius:20, padding:"6px 16px", fontSize:13, fontWeight:800, border:`1px solid ${scoreEquipColor}55`, boxShadow:`0 0 14px ${scoreEquipColor}33` }}>
+                      Score {isNaN(scoreEquip) ? "—" : scoreEquip}/100 · {isNaN(scoreEquip) ? "—" : scoreEquipLabel}
                     </span>
                   </div>
                 </div>
@@ -6355,43 +6364,45 @@ export default function App() {
                     )}
 
                     {/* Table */}
-                    <div style={{ overflowX:"auto" }}>
+                    <div style={{ overflowX:"auto", borderRadius:10, border:"1px solid rgba(255,255,255,.08)" }}>
                       <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                         <thead>
-                          <tr style={{ borderBottom:"1px solid rgba(255,255,255,.08)" }}>
-                            {["#","Equipamento","Categoria","Local","Status","Vida Útil","Fabricante","Próx. Manut.","Ação"].map(h => (
-                              <th key={h} style={{ padding:"8px 10px", textAlign:"left", color:"#475569", fontWeight:600, fontSize:11, whiteSpace:"nowrap" }}>{h}</th>
+                          <tr style={{ background:"rgba(99,102,241,.12)", borderBottom:"2px solid rgba(99,102,241,.3)" }}>
+                            {["#","Equipamento","Categoria","Local","Status","Vida Útil","Fabricante","Próx. Manut.","Ações"].map(h => (
+                              <th key={h} style={{ padding:"11px 12px", textAlign:"left", color:"#C4B5FD", fontWeight:700, fontSize:11, whiteSpace:"nowrap", textTransform:"uppercase", letterSpacing:".05em" }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {filtered.map((e, i) => (
-                            <tr key={e.id} style={{ borderBottom:"1px solid rgba(255,255,255,.04)", transition:"background .1s" }}
-                              onMouseEnter={ev=>(ev.currentTarget.style.background="rgba(255,255,255,.03)")}
-                              onMouseLeave={ev=>(ev.currentTarget.style.background="")}>
-                              <td style={{ padding:"10px 10px", color:"#475569" }}>{i+1}</td>
-                              <td style={{ padding:"10px 10px", fontWeight:600 }}>{e.catIcon} {e.nome}</td>
-                              <td style={{ padding:"10px 10px", color:"#94A3B8" }}>{e.categoria}</td>
-                              <td style={{ padding:"10px 10px", color:"#64748B", maxWidth:130 }}>{e.local}</td>
-                              <td style={{ padding:"10px 10px" }}>
-                                <span style={{ background:stColor[e.status]+"22", color:stColor[e.status], border:`1px solid ${stColor[e.status]}44`, borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:700, whiteSpace:"nowrap" }}>
-                                  {stLabel[e.status]}
+                            <tr key={e.id} style={{ borderBottom:"1px solid rgba(255,255,255,.05)", transition:"background .1s", background: i%2===0 ? "rgba(255,255,255,.01)" : "transparent" }}
+                              onMouseEnter={ev=>(ev.currentTarget.style.background="rgba(99,102,241,.08)")}
+                              onMouseLeave={ev=>(ev.currentTarget.style.background= i%2===0 ? "rgba(255,255,255,.01)" : "transparent")}>
+                              <td style={{ padding:"12px 12px", color:"#64748B", fontWeight:600, fontSize:12 }}>{i+1}</td>
+                              <td style={{ padding:"12px 12px", fontWeight:700, color:"#E2E8F0", fontSize:13 }}>{e.catIcon} {e.nome}</td>
+                              <td style={{ padding:"12px 12px" }}>
+                                <span style={{ background:"rgba(255,255,255,.06)", color:"#94A3B8", borderRadius:6, padding:"3px 8px", fontSize:11, fontWeight:600 }}>{e.categoria}</span>
+                              </td>
+                              <td style={{ padding:"12px 12px", color:"#CBD5E1", maxWidth:130 }}>{e.local}</td>
+                              <td style={{ padding:"12px 12px" }}>
+                                <span style={{ background:stColor[e.status]+"33", color:stColor[e.status], border:`1px solid ${stColor[e.status]}66`, borderRadius:20, padding:"4px 10px", fontSize:11, fontWeight:800, whiteSpace:"nowrap" }}>
+                                  {e.status === "operacional" ? "✅" : e.status === "atencao" ? "⚠️" : e.status === "manutencao" ? "🔧" : "⬛"} {stLabel[e.status]}
                                 </span>
                               </td>
-                              <td style={{ padding:"10px 10px", minWidth:100 }}>
-                                <div style={{ height:6, background:"rgba(255,255,255,.06)", borderRadius:3 }}>
-                                  <div style={{ width:`${vidaPct(e)}%`, height:"100%", background:vidaColor(vidaPct(e)), borderRadius:3 }} />
+                              <td style={{ padding:"12px 12px", minWidth:110 }}>
+                                <div style={{ height:8, background:"rgba(255,255,255,.08)", borderRadius:4, marginBottom:4 }}>
+                                  <div style={{ width:`${vidaPct(e)}%`, height:"100%", background:vidaColor(vidaPct(e)), borderRadius:4, boxShadow:`0 0 6px ${vidaColor(vidaPct(e))}66` }} />
                                 </div>
-                                <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{vidaPct(e)}%</div>
+                                <div style={{ fontSize:10, color:vidaColor(vidaPct(e)), fontWeight:700 }}>{vidaPct(e)}% utilizado</div>
                               </td>
-                              <td style={{ padding:"10px 10px", color:"#64748B" }}>{e.fabricante}</td>
-                              <td style={{ padding:"10px 10px", color:"#64748B", whiteSpace:"nowrap" }}>{e.proxManutencao}</td>
-                              <td style={{ padding:"10px 10px" }}>
-                                <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const }}>
-                                  <button title="Ver detalhes do equipamento" onClick={()=>setMantSelEquip(e)} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:6, padding:"4px 8px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>Ver</button>
-                                  <button title="Editar equipamento" onClick={()=>equipEdit(e)} style={{ background:"rgba(59,130,246,.15)", border:"1px solid rgba(59,130,246,.3)", borderRadius:6, padding:"4px 8px", color:"#60A5FA", fontSize:11, cursor:"pointer" }}>✏️</button>
-                                  <button title="Duplicar equipamento — cria novo cadastro com as mesmas configurações" onClick={()=>equipDuplicate(e)} style={{ background:"rgba(245,158,11,.12)", border:"1px solid rgba(245,158,11,.3)", borderRadius:6, padding:"4px 8px", color:"#FBBF24", fontSize:11, cursor:"pointer" }}>📋</button>
-                                  <button title="Excluir equipamento" onClick={()=>equipDelete(e.id)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:6, padding:"4px 8px", color:"#F87171", fontSize:11, cursor:"pointer" }}>🗑️</button>
+                              <td style={{ padding:"12px 12px", color:"#94A3B8" }}>{e.fabricante}</td>
+                              <td style={{ padding:"12px 12px", color:"#CBD5E1", whiteSpace:"nowrap", fontWeight:600 }}>{e.proxManutencao}</td>
+                              <td style={{ padding:"12px 10px" }}>
+                                <div style={{ display:"flex", gap:5, flexWrap:"wrap" as const }}>
+                                  <button title="Ver detalhes do equipamento" onClick={()=>setMantSelEquip(e)} style={{ background:"rgba(99,102,241,.22)", border:"1px solid rgba(99,102,241,.5)", borderRadius:7, padding:"5px 10px", color:"#C4B5FD", fontSize:11, cursor:"pointer", fontWeight:700, whiteSpace:"nowrap" }}>👁 Ver</button>
+                                  <button title="Editar equipamento" onClick={()=>equipEdit(e)} style={{ background:"rgba(59,130,246,.22)", border:"1px solid rgba(59,130,246,.5)", borderRadius:7, padding:"5px 10px", color:"#93C5FD", fontSize:11, cursor:"pointer", fontWeight:700, whiteSpace:"nowrap" }}>✏️ Editar</button>
+                                  <button title="Duplicar equipamento — cria novo cadastro com as mesmas configurações" onClick={()=>equipDuplicate(e)} style={{ background:"rgba(245,158,11,.2)", border:"1px solid rgba(245,158,11,.5)", borderRadius:7, padding:"5px 10px", color:"#FCD34D", fontSize:11, cursor:"pointer", fontWeight:700, whiteSpace:"nowrap" }}>📋 Copiar</button>
+                                  <button title="Excluir equipamento" onClick={()=>equipDelete(e.id)} style={{ background:"rgba(239,68,68,.15)", border:"1px solid rgba(239,68,68,.4)", borderRadius:7, padding:"5px 10px", color:"#FCA5A5", fontSize:11, cursor:"pointer", fontWeight:700, whiteSpace:"nowrap" }}>🗑️</button>
                                 </div>
                               </td>
                             </tr>
