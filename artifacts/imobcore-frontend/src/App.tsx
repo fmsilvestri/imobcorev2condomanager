@@ -638,6 +638,115 @@ export default function App() {
     setDiagAutoLoading(false);
   };
 
+  const exportDiagPDF = (answers: Record<string,string>, aiText: string) => {
+    const calc = (() => {
+      let total = 0, max = 0;
+      const pilarObt: Record<string,number> = {}, pilarMax: Record<string,number> = {};
+      MISP_ITEMS.forEach(it => {
+        max += it.peso;
+        pilarMax[it.pilar] = (pilarMax[it.pilar]||0) + it.peso;
+        if (answers[it.id] === "sim") { total += it.peso; pilarObt[it.pilar] = (pilarObt[it.pilar]||0) + it.peso; }
+        else if (answers[it.id] === "parcial") { const v = Math.round(it.peso*0.5); total += v; pilarObt[it.pilar] = (pilarObt[it.pilar]||0) + v; }
+      });
+      const score = max > 0 ? Math.round((total/max)*100) : 0;
+      const nivel = score >= 80 ? "Excelente" : score >= 60 ? "Bom" : score >= 40 ? "Regular" : "Crítico";
+      const nivelColor = score >= 80 ? "#059669" : score >= 60 ? "#D97706" : score >= 40 ? "#EA580C" : "#DC2626";
+      const radarData = MISP_PILARES.map(p => ({ pilar: p, score: pilarMax[p] ? Math.round((pilarObt[p]||0)/pilarMax[p]*100) : 0 }));
+      const answered = MISP_ITEMS.filter(it => answers[it.id]).length;
+      return { score, nivel, nivelColor, radarData, answered };
+    })();
+    const condNome = dash?.condominios?.find(c => c.id === condId)?.nome || "Condomínio";
+    const dataHoje = new Date().toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" });
+    const criticais = MISP_ITEMS.filter(it => answers[it.id]==="nao" && it.peso>=4);
+    const parciais = MISP_ITEMS.filter(it => answers[it.id]==="parcial" && it.peso>=3);
+    const positivos = MISP_ITEMS.filter(it => answers[it.id]==="sim" && it.peso>=4);
+
+    const pilarRows = MISP_PILARES.map(p => {
+      const items = MISP_ITEMS.filter(it => it.pilar === p);
+      const data = calc.radarData.find(r => r.pilar === p);
+      const scorePilar = data?.score ?? 0;
+      const barColor = scorePilar >= 80 ? "#059669" : scorePilar >= 60 ? "#D97706" : "#DC2626";
+      const icon = MISP_PILAR_ICONS[p] || "";
+      const itemRows = items.map(it => {
+        const ans = answers[it.id];
+        const ansLabel = ans === "sim" ? "✅ Sim" : ans === "parcial" ? "⚠️ Parcial" : ans === "nao" ? "❌ Não" : "— Não respondido";
+        const ansColor = ans === "sim" ? "#059669" : ans === "parcial" ? "#D97706" : ans === "nao" ? "#DC2626" : "#94A3B8";
+        return `<tr><td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#1e293b;">${it.nome}<br><span style="font-size:10px;color:#64748b;">${it.desc}</span></td><td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:11px;font-weight:700;color:${ansColor};">${ansLabel}</td><td style="padding:6px 8px;border-bottom:1px solid #f1f5f9;text-align:center;font-size:11px;color:#475569;">${it.peso}</td></tr>`;
+      }).join("");
+      return `<div style="margin-bottom:20px;page-break-inside:avoid;"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span style="font-size:18px;">${icon}</span><span style="font-size:14px;font-weight:700;color:#1e293b;">${p}</span><span style="margin-left:auto;font-size:13px;font-weight:800;color:${barColor};">${scorePilar}%</span></div><div style="background:#f1f5f9;border-radius:4px;height:6px;margin-bottom:10px;"><div style="background:${barColor};width:${scorePilar}%;height:6px;border-radius:4px;"></div></div><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="text-align:left;font-size:10px;color:#64748b;padding:4px 8px;background:#f8fafc;">Item</th><th style="font-size:10px;color:#64748b;padding:4px 8px;background:#f8fafc;width:100px;">Resposta</th><th style="font-size:10px;color:#64748b;padding:4px 8px;background:#f8fafc;width:50px;">Peso</th></tr></thead><tbody>${itemRows}</tbody></table></div>`;
+    }).join("");
+
+    const itemListHTML = (items: typeof MISP_ITEMS, color: string, prefix: string) => items.length > 0
+      ? items.map(it => `<div style="padding:6px 10px;margin-bottom:4px;border-left:3px solid ${color};background:${color}0d;border-radius:0 6px 6px 0;"><span style="font-weight:600;font-size:11px;color:#1e293b;">${prefix} ${it.nome}</span><span style="float:right;font-size:10px;color:#64748b;">${MISP_PILAR_ICONS[it.pilar]} ${it.pilar}</span></div>`).join("")
+      : `<p style="color:#94a3b8;font-size:11px;font-style:italic;">Nenhum item.</p>`;
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Diagnóstico MISP – ${condNome}</title><style>
+      *{margin:0;padding:0;box-sizing:border-box;}
+      body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#1e293b;padding:32px;max-width:900px;margin:0 auto;}
+      h1{font-size:22px;font-weight:900;color:#1e293b;margin-bottom:2px;}
+      h2{font-size:15px;font-weight:700;color:#334155;margin:24px 0 10px;padding-bottom:6px;border-bottom:2px solid #e2e8f0;}
+      .meta{font-size:12px;color:#64748b;margin-bottom:24px;}
+      .score-hero{text-align:center;padding:24px;border:2px solid ${calc.nivelColor}44;border-radius:12px;background:${calc.nivelColor}08;margin-bottom:24px;}
+      .score-num{font-size:64px;font-weight:900;color:${calc.nivelColor};line-height:1;}
+      .score-nivel{font-size:20px;font-weight:700;color:${calc.nivelColor};margin:4px 0;}
+      .score-sub{font-size:12px;color:#64748b;}
+      .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;}
+      .kpi{border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center;}
+      .kpi-val{font-size:20px;font-weight:800;}
+      .kpi-label{font-size:10px;color:#64748b;margin-top:3px;}
+      .pilar-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:24px;}
+      .pilar-card{border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;}
+      .section{margin-bottom:20px;}
+      @media print{body{padding:16px;}h2{page-break-after:avoid;}}
+    </style></head><body>
+      <h1>🫀 Diagnóstico de Saúde do Condomínio</h1>
+      <div class="meta">${condNome} &nbsp;·&nbsp; ${dataHoje} &nbsp;·&nbsp; ${calc.answered} de ${MISP_ITEMS.length} itens respondidos</div>
+
+      <div class="score-hero">
+        <div class="score-num">${calc.score}</div>
+        <div class="score-nivel">${calc.nivel}</div>
+        <div class="score-sub">Score MISP (0–100)</div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi"><div class="kpi-val" style="color:${calc.nivelColor}">${calc.score}/100</div><div class="kpi-label">Score Total</div></div>
+        <div class="kpi"><div class="kpi-val" style="color:#DC2626">${criticais.length}</div><div class="kpi-label">Itens Críticos</div></div>
+        <div class="kpi"><div class="kpi-val" style="color:#D97706">${parciais.length}</div><div class="kpi-label">Itens Parciais</div></div>
+        <div class="kpi"><div class="kpi-val" style="color:#6366F1">${Math.round(calc.answered/MISP_ITEMS.length*100)}%</div><div class="kpi-label">% Preenchido</div></div>
+      </div>
+
+      <h2>📡 Score por Pilar</h2>
+      <div class="pilar-grid">${MISP_PILARES.map(p => {
+        const d = calc.radarData.find(r => r.pilar===p); const s = d?.score??0;
+        const c = s>=80?"#059669":s>=60?"#D97706":"#DC2626";
+        return `<div class="pilar-card"><div style="font-size:12px;font-weight:700;color:#334155;">${MISP_PILAR_ICONS[p]} ${p}</div><div style="font-size:18px;font-weight:900;color:${c};margin:4px 0;">${s}%</div><div style="background:#e2e8f0;border-radius:3px;height:5px;"><div style="background:${c};width:${s}%;height:5px;border-radius:3px;"></div></div></div>`;
+      }).join("")}</div>
+
+      <h2>🚨 Itens Críticos (Não respondido, peso ≥ 4)</h2>
+      ${itemListHTML(criticais, "#DC2626", "❌")}
+
+      <h2>⚠️ Itens em Atenção (Parcial, peso ≥ 3)</h2>
+      ${itemListHTML(parciais, "#D97706", "⚠️")}
+
+      <h2>✅ Pontos Fortes (Sim, peso ≥ 4)</h2>
+      ${itemListHTML(positivos, "#059669", "✅")}
+
+      <h2>📋 Checklist Completo por Pilar</h2>
+      ${pilarRows}
+
+      ${aiText ? `<h2>🤖 Análise do Síndico Virtual</h2><div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px;font-size:12px;line-height:1.8;color:#334155;white-space:pre-wrap;">${aiText}</div>` : ""}
+
+      <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;text-align:center;">
+        Gerado pelo ImobCore v2 &nbsp;·&nbsp; ${dataHoje} &nbsp;·&nbsp; Sistema de Gestão Inteligente de Condomínios
+      </div>
+
+      <script>window.onload=()=>{window.print();}</script>
+    </body></html>`;
+
+    const w = window.open("", "_blank", "width=1000,height=800");
+    if (w) { w.document.write(html); w.document.close(); }
+  };
+
   // ── MISP Checklist state ────────────────────────────────────────────────────
   const [mispTab, setMispTab] = useState<"checklist"|"resultado"|"historico"|"automatico">("automatico");
   const [mispActivePilar, setMispActivePilar] = useState("Financeiro");
@@ -5526,7 +5635,7 @@ export default function App() {
                       }} style={{ background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.4)", borderRadius:10, padding:"10px 20px", color:"#A5B4FC", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
                         {mispAiLoading ? "⏳ Analisando..." : "🤖 Análise IA – Síndico Virtual"}
                       </button>
-                      <button title="Imprimir ou exportar como PDF" onClick={()=>window.print()} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"10px 20px", color:"#94A3B8", fontSize:13, cursor:"pointer" }}>🖨️ Exportar PDF</button>
+                      <button title="Exportar relatório detalhado do diagnóstico em PDF" onClick={()=>exportDiagPDF(mispAnswers, mispAiResult)} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"10px 20px", color:"#94A3B8", fontSize:13, cursor:"pointer" }}>🖨️ Exportar PDF</button>
                     </div>
 
                     {mispAiResult && (
