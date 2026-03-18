@@ -1102,6 +1102,7 @@ export default function App() {
   // Sub-screen navigation
   const [sindicoScreen, setSindicoScreen] = useState<string | null>(null);
   const [moradorScreen, setMoradorScreen] = useState<string | null>(null);
+  const [sindicoTheme, setSindicoTheme] = useState<"light" | "dark">("light");
 
   // Chat
   const [deskMsgs, setDeskMsgs] = useState<ChatMsg[]>([]);
@@ -8755,7 +8756,7 @@ export default function App() {
       </div>
 
       {/* ══ VIEW 2: APP SÍNDICO ════════════════════════════════════════════════ */}
-      <div className={`view ${view === "sindico" ? "active" : ""}`} style={{ flexDirection:"column", background:"var(--neu-bg)", overflow:"hidden", fontFamily:"'Nunito', sans-serif", position:"relative", height:"100vh", marginTop:0 }}>
+      <div className={`view ${view === "sindico" ? "active" : ""}`} style={{ flexDirection:"column", overflow:"hidden", fontFamily:"'Nunito', sans-serif", position:"relative", height:"100vh", marginTop:0, ...(sindicoTheme === "dark" ? { background:"#1E1B35", "--neu-bg":"#1E1B35", "--neu-shadow-d":"#141228", "--neu-shadow-l":"#2a2650", "--neu-text":"#E2E8F0", "--neu-text-2":"rgba(190,180,240,0.55)", "--neu-purple":"#A584FC", "--card-border":"rgba(255,255,255,.08)", "--neu-out-sm":"3px 3px 8px #141228,-2px -2px 6px #2a2650", "--neu-in-sm":"inset 3px 3px 7px #141228,inset -2px -2px 5px #2a2650", "--neu-out":"5px 5px 14px #141228,-4px -4px 11px #2a2650", "--neu-grad":"linear-gradient(135deg,#A584FC,#7C5CFC)" } as React.CSSProperties : { background:"#EEEEF4" }) }}>
             {(() => {
               const h = new Date().getHours();
               const greet = h < 12 ? "Bom dia," : h < 18 ? "Boa tarde," : "Boa noite,";
@@ -8776,10 +8777,15 @@ export default function App() {
                         </svg>
                         {bellCount > 0 && <div className="ph-bell-dot"/>}
                       </button>
-                      <button className="ph-btn-neu" onClick={() => setView("selector")} title="Trocar interface">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/>
+                      <button className="ph-btn-neu" onClick={() => setSindicoTheme(t => t === "light" ? "dark" : "light")} title={sindicoTheme === "dark" ? "Tema Claro" : "Tema Escuro"} style={{ fontSize:16 }}>
+                        {sindicoTheme === "dark" ? "☀️" : "🌙"}
+                      </button>
+                      <button onClick={() => setView("selector")} title="Trocar interface"
+                        style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, padding:"6px 10px", borderRadius:12, background:"var(--neu-bg)", border:"none", boxShadow:"var(--neu-out-sm)", cursor:"pointer", color:"var(--neu-text-2)", transition:"box-shadow .2s", minWidth:64 }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--neu-purple)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
                         </svg>
+                        <span style={{ fontSize:9, fontWeight:700, letterSpacing:".03em", color:"var(--neu-text-2)", lineHeight:1 }}>Trocar</span>
                       </button>
                     </div>
                   </div>
