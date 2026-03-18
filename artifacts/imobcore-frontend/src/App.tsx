@@ -1345,18 +1345,27 @@ export default function App() {
     if (!resForm.sensor_id.trim()) return;
     if (resEditId) {
       setResList(prev => prev.map(r => r.id === resEditId ? { ...r, ...resForm, cf_online:r.cf_online, wh_online:r.wh_online } : r));
-      try { await fetch(`/imobcore/api/reservatorios/${resEditId}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(resForm) }); } catch { /**/ }
+      try {
+        const r = await fetch(`/api/reservatorios/${resEditId}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(resForm) });
+        if (!r.ok) console.error("PUT reservatorio failed", await r.text());
+      } catch (e) { console.error("PUT reservatorio error", e); }
     } else {
       const novo: Reservatorio = { id:`res-${Date.now()}`, ...resForm, cf_online:false, wh_online:false, created_at:new Date().toISOString() };
       setResList(prev => [novo, ...prev]);
-      try { await fetch("/imobcore/api/reservatorios", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(novo) }); } catch { /**/ }
+      try {
+        const r = await fetch("/api/reservatorios", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(novo) });
+        if (!r.ok) console.error("POST reservatorio failed", await r.text());
+      } catch (e) { console.error("POST reservatorio error", e); }
     }
     setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM);
   };
   const resDelete = async (id: string) => {
     if (!confirm("Excluir reservatório?")) return;
     setResList(prev => prev.filter(r => r.id !== id));
-    try { await fetch(`/imobcore/api/reservatorios/${id}`, { method:"DELETE" }); } catch { /**/ }
+    try {
+      const r = await fetch(`/api/reservatorios/${id}`, { method:"DELETE" });
+      if (!r.ok) console.error("DELETE reservatorio failed", await r.text());
+    } catch (e) { console.error("DELETE reservatorio error", e); }
   };
   const resEdit = (r: Reservatorio) => {
     setResEditId(r.id);

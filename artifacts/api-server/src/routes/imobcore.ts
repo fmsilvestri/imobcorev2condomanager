@@ -1257,6 +1257,30 @@ router.delete("/encomendas/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ─── Webhook receptor de sensores IoT (Cloudflare Worker → ImobCore) ─────────
+router.post("/webhook/sensor", async (req: Request, res: Response) => {
+  try {
+    const payload = req.body as {
+      sensor_id?: string; nivel?: number; distancia_cm?: number;
+      temperatura?: number; pressao?: number; timestamp?: string;
+      mac_address?: string; [key: string]: unknown;
+    };
+    if (!payload || !payload.sensor_id) {
+      res.status(400).json({ ok: false, error: "sensor_id required" });
+      return;
+    }
+    const doc = { ...payload, received_at: new Date().toISOString() };
+    try {
+      await supabase.from("sensor_leituras").insert(doc);
+    } catch { /* table may not exist yet — continue */ }
+    broadcast("sensor_leitura", doc);
+    res.json({ ok: true, received_at: doc.received_at });
+  } catch (err) {
+    console.error("webhook/sensor error:", err);
+    res.status(500).json({ ok: false, error: "internal error" });
+  }
+});
+
 // ─── Reservatórios: proxy URL tester (avoids CORS on client) ──────────────
 router.post("/reservatorios/test-url", async (req: Request, res: Response) => {
   const { url, method = "POST", payload } = req.body as { url: string; method: string; payload: object };
