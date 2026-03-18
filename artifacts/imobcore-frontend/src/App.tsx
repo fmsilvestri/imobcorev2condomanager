@@ -7339,25 +7339,20 @@ export default function App() {
             const totalSolar = anoFiltrado.reduce((s, m) => s + m.solar, 0);
             const tarifa = 0.89;
             const economia = Math.round(Math.min(totalConsumo, totalSolar) * tarifa * 0.067);
-            const estEquipMes = 3360;
+            // ── Equipment estimation — derivada do módulo Manutenção ──────────
+            const equipConsumoRaw = equipList
+              .filter(eq => eq.consumoKwh > 0)
+              .map(eq => ({ nome: eq.nome, icone: eq.catIcon, kWhMes: Math.round(eq.consumoKwh * eq.horasDia * 30) }))
+              .filter(eq => eq.kWhMes > 0)
+              .sort((a, b) => b.kWhMes - a.kWhMes);
+            const totalEquipKwh = equipConsumoRaw.reduce((s, e) => s + e.kWhMes, 0);
+            const equipConsumo = equipConsumoRaw.map(eq => ({ ...eq, pct: totalEquipKwh > 0 ? Math.round((eq.kWhMes / totalEquipKwh) * 100) : 0 }));
+            const estEquipMes = totalEquipKwh;
 
             // ── Status atual (última ocorrência) ──────────────────────────────
             const lastOc = energiaOcorrencias[0];
             const statusAtual = lastOc?.tipo === "retorno" ? "normal" : lastOc?.tipo || "—";
             const statusColor = { normal:"#10B981", queda:"#F59E0B", falta:"#EF4444", oscilacao:"#F97316" }[statusAtual] || "#475569";
-
-            // ── Equipment estimation ──────────────────────────────────────────
-            const equipConsumo = [
-              { nome:"Iluminação Áreas Comuns", icone:"💡", kWhMes:890,  pct:26 },
-              { nome:"Elevadores (2)",           icone:"🛗", kWhMes:640,  pct:19 },
-              { nome:"Bombas d'Água",            icone:"💧", kWhMes:480,  pct:14 },
-              { nome:"Piscina + Aquecimento",    icone:"🏊", kWhMes:420,  pct:13 },
-              { nome:"Sistema CFTV",             icone:"📷", kWhMes:230,  pct:7  },
-              { nome:"Portões + Automação",      icone:"🚗", kWhMes:180,  pct:5  },
-              { nome:"Gerador (standby)",        icone:"⚡", kWhMes:160,  pct:5  },
-              { nome:"Aquecedor Solar Aux.",     icone:"☀️", kWhMes:200,  pct:6  },
-              { nome:"Outros / Escritório",      icone:"🖥️", kWhMes:160,  pct:5  },
-            ];
 
             // ── Alertas inteligentes ──────────────────────────────────────────
             const alertas = [
@@ -7572,39 +7567,59 @@ export default function App() {
                 ═══════════════════════════════════════════════════════════ */}
                 {energiaTab === "equipamentos" && (
                   <div>
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
-                      <div style={{ background:"rgba(6,182,212,.08)", border:"1px solid rgba(6,182,212,.2)", borderRadius:12, padding:"14px 18px" }}>
-                        <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>Est. Total Mensal</div>
-                        <div style={{ fontSize:24, fontWeight:800, color:"#06B6D4" }}>{equipConsumo.reduce((s,e)=>s+e.kWhMes,0).toLocaleString("pt-BR")} kWh</div>
-                      </div>
-                      <div style={{ background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.2)", borderRadius:12, padding:"14px 18px" }}>
-                        <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>Custo Estimado Mensal</div>
-                        <div style={{ fontSize:24, fontWeight:800, color:"#F59E0B" }}>R$ {Math.round(equipConsumo.reduce((s,e)=>s+e.kWhMes,0)*tarifa).toLocaleString("pt-BR")}</div>
-                      </div>
+                    {/* Origem dos dados */}
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, padding:"8px 12px", background:"rgba(99,102,241,.07)", border:"1px solid rgba(99,102,241,.2)", borderRadius:8 }}>
+                      <span style={{ fontSize:14 }}>🔧</span>
+                      <span style={{ fontSize:11, color:"#A5B4FC" }}>Dados calculados a partir do <strong>cadastro de equipamentos</strong> do Módulo Manutenção · consumo × horas/dia × 30 dias</span>
+                      <button onClick={() => setPanel("manutencao")} style={{ marginLeft:"auto", background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.35)", borderRadius:6, padding:"4px 10px", color:"#A5B4FC", fontSize:10, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const }}>Ver equipamentos →</button>
                     </div>
-                    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                      {equipConsumo.map(eq => (
-                        <div key={eq.nome} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"12px 16px" }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                              <span style={{ fontSize:18 }}>{eq.icone}</span>
-                              <div>
-                                <div style={{ fontSize:13, fontWeight:600 }}>{eq.nome}</div>
-                                <div style={{ fontSize:10, color:"#475569" }}>R$ {Math.round(eq.kWhMes*tarifa)}/mês</div>
-                              </div>
-                            </div>
-                            <div style={{ textAlign:"right" }}>
-                              <div style={{ fontSize:16, fontWeight:800, color:"#06B6D4" }}>{eq.kWhMes.toLocaleString("pt-BR")}</div>
-                              <div style={{ fontSize:9, color:"#475569" }}>kWh/mês</div>
-                            </div>
+
+                    {equipConsumo.length === 0 ? (
+                      <div style={{ textAlign:"center", padding:"40px 20px", color:"#475569" }}>
+                        <div style={{ fontSize:32, marginBottom:10 }}>🔌</div>
+                        <div style={{ fontSize:14, fontWeight:600, marginBottom:6 }}>Nenhum equipamento com consumo cadastrado</div>
+                        <div style={{ fontSize:12, marginBottom:16 }}>Cadastre equipamentos com <strong>consumo (kWh)</strong> e <strong>horas/dia</strong> no Módulo Manutenção para ver a estimativa aqui.</div>
+                        <button onClick={() => setPanel("manutencao")} style={{ background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.35)", borderRadius:8, padding:"8px 18px", color:"#A5B4FC", fontSize:12, fontWeight:700, cursor:"pointer" }}>🔧 Ir para Manutenção</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+                          <div style={{ background:"rgba(6,182,212,.08)", border:"1px solid rgba(6,182,212,.2)", borderRadius:12, padding:"14px 18px" }}>
+                            <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>Est. Total Mensal</div>
+                            <div style={{ fontSize:24, fontWeight:800, color:"#06B6D4" }}>{totalEquipKwh.toLocaleString("pt-BR")} kWh</div>
+                            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>{equipConsumo.length} equipamento{equipConsumo.length !== 1 ? "s" : ""} com consumo</div>
                           </div>
-                          <div style={{ height:6, background:"rgba(255,255,255,.06)", borderRadius:3 }}>
-                            <div style={{ width:`${eq.pct}%`, height:"100%", background:`hsl(${220-eq.pct*1.5},70%,60%)`, borderRadius:3 }}/>
+                          <div style={{ background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.2)", borderRadius:12, padding:"14px 18px" }}>
+                            <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>Custo Estimado Mensal</div>
+                            <div style={{ fontSize:24, fontWeight:800, color:"#F59E0B" }}>R$ {Math.round(totalEquipKwh * tarifa).toLocaleString("pt-BR")}</div>
+                            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>@ R$ {tarifa}/kWh</div>
                           </div>
-                          <div style={{ fontSize:9, color:"#475569", marginTop:3 }}>{eq.pct}% do total estimado</div>
                         </div>
-                      ))}
-                    </div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                          {equipConsumo.map(eq => (
+                            <div key={eq.nome} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"12px 16px" }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                  <span style={{ fontSize:18 }}>{eq.icone}</span>
+                                  <div>
+                                    <div style={{ fontSize:13, fontWeight:600 }}>{eq.nome}</div>
+                                    <div style={{ fontSize:10, color:"#475569" }}>R$ {Math.round(eq.kWhMes * tarifa).toLocaleString("pt-BR")}/mês</div>
+                                  </div>
+                                </div>
+                                <div style={{ textAlign:"right" as const }}>
+                                  <div style={{ fontSize:16, fontWeight:800, color:"#06B6D4" }}>{eq.kWhMes.toLocaleString("pt-BR")}</div>
+                                  <div style={{ fontSize:9, color:"#475569" }}>kWh/mês</div>
+                                </div>
+                              </div>
+                              <div style={{ height:6, background:"rgba(255,255,255,.06)", borderRadius:3 }}>
+                                <div style={{ width:`${eq.pct}%`, height:"100%", background:`hsl(${220 - eq.pct * 1.5},70%,60%)`, borderRadius:3 }}/>
+                              </div>
+                              <div style={{ fontSize:9, color:"#475569", marginTop:3 }}>{eq.pct}% do total estimado</div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 
