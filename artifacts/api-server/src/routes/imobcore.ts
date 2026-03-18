@@ -1314,24 +1314,40 @@ router.get("/reservatorios", async (_req: Request, res: Response) => {
 });
 
 router.post("/reservatorios", async (req: Request, res: Response) => {
-  const doc = { ...req.body, created_at: new Date().toISOString() };
-  reservatorios.unshift(doc);
-  try { await supabase.from("reservatorios").insert(doc); } catch { /* local only */ }
-  res.json({ ok: true, doc });
+  // Strip client-generated id so Supabase uses gen_random_uuid()
+  const { id: _clientId, ...body } = req.body;
+  const localDoc = { ...req.body, created_at: new Date().toISOString() };
+  reservatorios.unshift(localDoc);
+  const { data: inserted, error } = await supabase
+    .from("reservatorios")
+    .insert({ ...body, created_at: localDoc.created_at })
+    .select()
+    .single();
+  if (error) {
+    console.error("[reservatorios POST] Supabase error:", error.message, error.code);
+    return res.json({ ok: true, doc: localDoc });
+  }
+  // Update in-memory record with real UUID from Supabase
+  reservatorios = (reservatorios as { id: string }[]).map(r =>
+    r.id === _clientId ? inserted : r
+  );
+  res.json({ ok: true, doc: inserted });
 });
 
 router.put("/reservatorios/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   const updates = req.body;
   reservatorios = (reservatorios as { id: string }[]).map((r) => r.id === id ? { ...r, ...updates } : r);
-  try { await supabase.from("reservatorios").update(updates).eq("id", id); } catch { /* local only */ }
+  const { error } = await supabase.from("reservatorios").update(updates).eq("id", id);
+  if (error) console.error("[reservatorios PUT] Supabase error:", error.message, error.code);
   res.json({ ok: true });
 });
 
 router.delete("/reservatorios/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   reservatorios = (reservatorios as { id: string }[]).filter(r => r.id !== id);
-  try { await supabase.from("reservatorios").delete().eq("id", id); } catch { /* local only */ }
+  const { error } = await supabase.from("reservatorios").delete().eq("id", id);
+  if (error) console.error("[reservatorios DELETE] Supabase error:", error.message, error.code);
   res.json({ ok: true });
 });
 

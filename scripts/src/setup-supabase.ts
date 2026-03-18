@@ -297,6 +297,73 @@ CREATE TABLE IF NOT EXISTS orcamento_anual (
     console.log("✅ Migration 10 (lancamentos_financeiros, orcamento_anual): OK");
   }
 
+  // ─── Migration 11: Reservatórios IoT + Sensor Leituras ──────────────────────
+  const { error: m11Err } = await supabase.from("reservatorios").select("id").limit(1);
+  if (m11Err) {
+    console.log("⚠️  Migration 11 needed (reservatorios + sensor_leituras). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    console.log(`
+CREATE TABLE IF NOT EXISTS reservatorios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  sensor_id TEXT,
+  nome TEXT NOT NULL,
+  local TEXT,
+  capacidade_litros NUMERIC DEFAULT 10000,
+  altura_cm NUMERIC DEFAULT 200,
+  mac_address TEXT,
+  cf_url TEXT,
+  wh_url TEXT,
+  protocolo TEXT DEFAULT 'HTTP POST JSON',
+  porta INT DEFAULT 80,
+  cf_online BOOLEAN DEFAULT false,
+  wh_online BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_reservatorios_condo ON reservatorios(condominio_id);
+
+CREATE TABLE IF NOT EXISTS sensor_leituras (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sensor_id TEXT,
+  nivel NUMERIC,
+  distancia_cm NUMERIC,
+  temperatura NUMERIC,
+  pressao NUMERIC,
+  mac_address TEXT,
+  received_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sensor_leituras_sensor ON sensor_leituras(sensor_id, received_at DESC);
+`);
+    console.log();
+  } else {
+    console.log("✅ Migration 11 (reservatorios, sensor_leituras): OK");
+  }
+
+  // ─── Migration 11b: Reservatórios — colunas IoT adicionais ──────────────────
+  const { error: m11bErr } = await supabase.from("reservatorios")
+    .select("altura_cm, mac_address, cf_url, wh_url, protocolo, porta, cf_online, wh_online, sensor_id, condominio_id").limit(1);
+  if (m11bErr) {
+    console.log("⚠️  Migration 11b needed (reservatorios extra columns). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    console.log(`
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS condominio_id UUID;
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS sensor_id TEXT;
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS local TEXT;
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS capacidade_litros NUMERIC DEFAULT 10000;
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS altura_cm NUMERIC DEFAULT 200;
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS mac_address TEXT;
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS cf_url TEXT;
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS wh_url TEXT;
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS protocolo TEXT DEFAULT 'HTTP POST JSON';
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS porta INT DEFAULT 80;
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS cf_online BOOLEAN DEFAULT false;
+ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS wh_online BOOLEAN DEFAULT false;
+`);
+    console.log();
+  } else {
+    console.log("✅ Migration 11b (reservatorios columns): OK");
+  }
+
   console.log();
 }
 
@@ -370,6 +437,35 @@ CREATE TABLE IF NOT EXISTS sindico_historico (
   tokens_input INT DEFAULT 0, tokens_output INT DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER PUBLICATION supabase_realtime ADD TABLE sensores, ordens_servico, alertas_publicos, comunicados, sindico_historico;
+CREATE TABLE IF NOT EXISTS reservatorios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  sensor_id TEXT,
+  nome TEXT NOT NULL,
+  local TEXT,
+  capacidade_litros NUMERIC DEFAULT 10000,
+  altura_cm NUMERIC DEFAULT 200,
+  mac_address TEXT,
+  cf_url TEXT,
+  wh_url TEXT,
+  protocolo TEXT DEFAULT 'HTTP POST JSON',
+  porta INT DEFAULT 80,
+  cf_online BOOLEAN DEFAULT false,
+  wh_online BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_reservatorios_condo ON reservatorios(condominio_id);
+CREATE TABLE IF NOT EXISTS sensor_leituras (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  sensor_id TEXT,
+  nivel NUMERIC,
+  distancia_cm NUMERIC,
+  temperatura NUMERIC,
+  pressao NUMERIC,
+  mac_address TEXT,
+  received_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_sensor_leituras_sensor ON sensor_leituras(sensor_id, received_at DESC);
   `;
   console.log(sql);
 }

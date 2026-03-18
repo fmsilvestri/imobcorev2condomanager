@@ -1350,11 +1350,18 @@ export default function App() {
         if (!r.ok) console.error("PUT reservatorio failed", await r.text());
       } catch (e) { console.error("PUT reservatorio error", e); }
     } else {
-      const novo: Reservatorio = { id:`res-${Date.now()}`, ...resForm, cf_online:false, wh_online:false, created_at:new Date().toISOString() };
+      const tempId = `res-${Date.now()}`;
+      const novo: Reservatorio = { id:tempId, ...resForm, cf_online:false, wh_online:false, created_at:new Date().toISOString() };
       setResList(prev => [novo, ...prev]);
       try {
         const r = await fetch("/api/reservatorios", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(novo) });
-        if (!r.ok) console.error("POST reservatorio failed", await r.text());
+        if (!r.ok) { console.error("POST reservatorio failed", await r.text()); }
+        else {
+          const json = await r.json();
+          if (json.doc?.id && json.doc.id !== tempId) {
+            setResList(prev => prev.map(x => x.id === tempId ? { ...x, id: json.doc.id } : x));
+          }
+        }
       } catch (e) { console.error("POST reservatorio error", e); }
     }
     setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM);
