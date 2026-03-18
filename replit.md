@@ -109,3 +109,6 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. Always 
 - AI-generated comunicados (announcements)
 - AI insights generation
 - 3-view interface: Gestor desktop + Síndico mobile + Morador mobile
+- Equipment management (CRUD) with Supabase persistence (tabela: equipamentos)
+- Maintenance plans CRUD (tabela: planos_manutencao) with equipment selection, per-equipment cost, and auto-calculated budget forecast
+- Smart diagnostic scoring with AI analysis (tabelas: score_condominio, insights_ia)

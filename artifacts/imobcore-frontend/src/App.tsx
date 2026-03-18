@@ -656,10 +656,11 @@ export default function App() {
       .catch(() => {});
   }, [condId]);
 
-  // Ao trocar condomínio: carregar equipamentos do Supabase
+  // Ao trocar condomínio: carregar equipamentos e planos do Supabase
   useEffect(() => {
-    if (!condId) { setEquipList([]); return; }
+    if (!condId) { setEquipList([]); setPlanoList([]); return; }
     loadEquipamentos(condId);
+    loadPlanos(condId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condId]);
 
@@ -822,6 +823,71 @@ export default function App() {
   const [mantAiResult, setMantAiResult] = useState<string>("");
   const [mantMapHover, setMantMapHover] = useState<string|null>(null);
   const [mantPlanMonth, setMantPlanMonth] = useState(5); // index in MANUT_SCHEDULE (current=Mar/26)
+
+  // ── Planos de Manutenção CRUD ───────────────────────────────────────────────
+  type PlanoEquipItem = { equipId: string; equipNome: string; custo_previsto: number };
+  type PlanoManut = {
+    id: string; codigo: string; nome: string; tipo: string; periodicidade: string;
+    equipamentos_itens: PlanoEquipItem[]; custo_total: number; tempo_estimado_min: number;
+    proxima_execucao: string; instrucoes: string; status: string;
+  };
+  const emptyPlanoForm = (): Omit<PlanoManut,"id"> => ({
+    codigo:"", nome:"", tipo:"preventiva", periodicidade:"mensal",
+    equipamentos_itens:[], custo_total:0, tempo_estimado_min:0,
+    proxima_execucao:"", instrucoes:"", status:"ativo"
+  });
+  const [planoList, setPlanoList] = useState<PlanoManut[]>([]);
+  const [planoShowEdit, setPlanoShowEdit] = useState(false);
+  const [planoEditId, setPlanoEditId] = useState<string|null>(null);
+  const [planoForm, setPlanoForm] = useState<Omit<PlanoManut,"id">>(emptyPlanoForm());
+  const [planoSaving, setPlanoSaving] = useState(false);
+  const [planoLoading, setPlanoLoading] = useState(false);
+
+  const loadPlanos = async (cId: string) => {
+    setPlanoLoading(true);
+    try {
+      const r = await fetch(`${API}/planos?condominio_id=${cId}`);
+      const d = await r.json();
+      setPlanoList(Array.isArray(d) ? d : []);
+    } catch { /* ignore */ }
+    setPlanoLoading(false);
+  };
+
+  const planoSave = async () => {
+    if (!condId || !planoForm.nome.trim()) return;
+    setPlanoSaving(true);
+    const url = planoEditId ? `${API}/planos/${planoEditId}` : `${API}/planos`;
+    const method = planoEditId ? "PUT" : "POST";
+    const body = planoEditId ? planoForm : { ...planoForm, condominio_id: condId };
+    await fetch(url, { method, headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+    await loadPlanos(condId);
+    setPlanoShowEdit(false);
+    setPlanoEditId(null);
+    setPlanoForm(emptyPlanoForm());
+    setPlanoSaving(false);
+  };
+
+  const planoDelete = async (id: string) => {
+    if (!condId) return;
+    await fetch(`${API}/planos/${id}`, { method:"DELETE" });
+    await loadPlanos(condId);
+  };
+
+  const planoToggleEquip = (eq: { id: string; nome: string }) => {
+    const exists = planoForm.equipamentos_itens.find(e => e.equipId === eq.id);
+    const newItens = exists
+      ? planoForm.equipamentos_itens.filter(e => e.equipId !== eq.id)
+      : [...planoForm.equipamentos_itens, { equipId: eq.id, equipNome: eq.nome, custo_previsto: 0 }];
+    setPlanoForm(f => ({ ...f, equipamentos_itens: newItens }));
+  };
+
+  const planoSetEquipCusto = (equipId: string, custo: number) => {
+    setPlanoForm(f => ({
+      ...f,
+      equipamentos_itens: f.equipamentos_itens.map(e => e.equipId === equipId ? { ...e, custo_previsto: custo } : e)
+    }));
+  };
+
   // ── CRM state ──────────────────────────────────────────────────────────────
   const [crmTab, setCrmTab] = useState<"moradores"|"inquilinos">("moradores");
   const [crmSearch, setCrmSearch] = useState("");
@@ -6083,129 +6149,270 @@ export default function App() {
                 )}
 
                 {/* ── ABA 3: PLANO DE MANUTENÇÃO ────────────────────────── */}
-                {mantTab === "plano" && (
-                  <div>
-                    {/* Alertas vencidos */}
-                    {equipList.filter(e => e.proxManutencao <= new Date().toISOString().slice(0,10)).length > 0 && (
-                      <div style={{ background:"rgba(239,68,68,.08)", border:"1px solid rgba(239,68,68,.2)", borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:12 }}>
-                        🔴 <strong>{equipList.filter(e=>e.proxManutencao<=new Date().toISOString().slice(0,10)).length} manutenção(ões) vencida(s):</strong>{" "}
-                        {equipList.filter(e=>e.proxManutencao<=new Date().toISOString().slice(0,10)).map(e=>e.nome).join(", ")}
+                {mantTab === "plano" && (() => {
+                    const planoCustoTotal = planoForm.equipamentos_itens.reduce((s,e)=>s+(Number(e.custo_previsto)||0),0);
+                    const TIPOS_PLANO = ["preventiva","corretiva","preditiva","inspeção"];
+                    const PERIODS = ["diário","semanal","quinzenal","mensal","bimestral","trimestral","semestral","anual"];
+                    const tipoColor: Record<string,string> = { preventiva:"#10B981", corretiva:"#EF4444", preditiva:"#3B82F6", "inspeção":"#F59E0B" };
+                    const aresList = [...new Set(equipList.map(e=>e.local))].filter(Boolean);
+                    return (
+                    <div>
+                      {/* Header */}
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:800, color:"#E2E8F0" }}>📅 Planos de Manutenção</div>
+                          <div style={{ fontSize:11, color:"#475569", marginTop:2 }}>Crie, edite e gerencie planos preventivos e corretivos</div>
+                        </div>
+                        <button onClick={()=>{ setPlanoShowEdit(true); setPlanoEditId(null); setPlanoForm(emptyPlanoForm()); }}
+                          style={{ background:"linear-gradient(135deg,#7C5CFC,#A78BFA)", border:"none", borderRadius:10, padding:"8px 16px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                          + Novo Plano
+                        </button>
                       </div>
-                    )}
 
-                    {/* Calendário 12 meses */}
-                    <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", marginBottom:10 }}>📅 CALENDÁRIO DE MANUTENÇÃO – 12 MESES</div>
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:20 }}>
-                      {MANUT_SCHEDULE.map((m, i) => {
-                        const total = m.items.reduce((s,it)=>s+it.custo, 0);
-                        const hasCorr = m.items.some(it=>it.tipo==="corretiva");
-                        const isCurr = i === currMonthIdx;
-                        return (
-                          <div key={m.mes} onClick={()=>setMantPlanMonth(i)} style={{ background: isCurr ? "rgba(99,102,241,.12)" : "rgba(255,255,255,.02)", border: isCurr ? "1px solid rgba(99,102,241,.3)" : "1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"10px 12px", cursor:"pointer", transition:"all .15s" }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                              <span style={{ fontSize:12, fontWeight:isCurr?800:600, color:isCurr?"#A5B4FC":"#94A3B8" }}>{m.mes}</span>
-                              {hasCorr && <span style={{ background:"rgba(239,68,68,.15)", color:"#EF4444", fontSize:9, borderRadius:4, padding:"1px 5px" }}>CORR</span>}
+                      {/* Resumo orçamentário */}
+                      {planoList.length > 0 && (
+                        <div style={{ display:"flex", gap:10, marginBottom:18 }}>
+                          {[
+                            { label:"Total planos", val:planoList.length, color:"#A5B4FC" },
+                            { label:"Orçamento previsto", val:"R$ "+planoList.reduce((s,p)=>s+(Number(p.custo_total)||0),0).toLocaleString("pt-BR",{minimumFractionDigits:2}), color:"#10B981" },
+                            { label:"Equipamentos cobertos", val:new Set(planoList.flatMap(p=>(p.equipamentos_itens||[]).map(e=>e.equipId))).size, color:"#F59E0B" },
+                            { label:"Próxima execução", val:planoList.filter(p=>p.proxima_execucao).sort((a,b)=>a.proxima_execucao.localeCompare(b.proxima_execucao))[0]?.proxima_execucao||"—", color:"#38BDF8" },
+                          ].map(k=>(
+                            <div key={k.label} style={{ flex:1, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"10px 12px" }}>
+                              <div style={{ fontSize:10, color:"#475569" }}>{k.label}</div>
+                              <div style={{ fontSize:16, fontWeight:800, color:k.color, marginTop:2 }}>{k.val}</div>
                             </div>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:4 }}>{m.items.length} serviço{m.items.length!==1?"s":""}</div>
-                            <div style={{ fontSize:13, fontWeight:700, color: hasCorr?"#EF4444":"#10B981" }}>{fmtBRLFull(total)}</div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Lista de planos */}
+                      {planoLoading && <div style={{ color:"#475569", fontSize:12, textAlign:"center", padding:20 }}>Carregando planos...</div>}
+                      {!planoLoading && planoList.length === 0 && !planoShowEdit && (
+                        <div style={{ background:"rgba(255,255,255,.02)", border:"1px dashed rgba(255,255,255,.1)", borderRadius:12, padding:32, textAlign:"center" }}>
+                          <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+                          <div style={{ color:"#475569", fontSize:13 }}>Nenhum plano de manutenção criado ainda.</div>
+                          <div style={{ color:"#334155", fontSize:11, marginTop:4 }}>Clique em "+ Novo Plano" para começar.</div>
+                        </div>
+                      )}
+
+                      {!planoShowEdit && planoList.map(p => {
+                        const tc = tipoColor[p.tipo]||"#94A3B8";
+                        const itvens: PlanoEquipItem[] = Array.isArray(p.equipamentos_itens) ? p.equipamentos_itens : [];
+                        return (
+                          <div key={p.id} style={{ background:"rgba(255,255,255,.025)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"14px 16px", marginBottom:10 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                              <div>
+                                <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                                  {p.codigo && <span style={{ fontSize:10, color:"#475569", background:"rgba(255,255,255,.05)", borderRadius:4, padding:"1px 6px" }}>{p.codigo}</span>}
+                                  <span style={{ fontSize:14, fontWeight:700, color:"#E2E8F0" }}>{p.nome}</span>
+                                  <span style={{ background:tc+"22", color:tc, fontSize:10, borderRadius:4, padding:"2px 7px", fontWeight:700, border:`1px solid ${tc}44` }}>{p.tipo}</span>
+                                  <span style={{ fontSize:10, color:"#64748B", background:"rgba(255,255,255,.04)", borderRadius:4, padding:"2px 6px" }}>{p.periodicidade}</span>
+                                </div>
+                                {p.instrucoes && <div style={{ fontSize:11, color:"#475569", marginTop:4 }}>{p.instrucoes}</div>}
+                              </div>
+                              <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                                <button onClick={()=>{ setPlanoEditId(p.id); setPlanoForm({ codigo:p.codigo||"", nome:p.nome, tipo:p.tipo, periodicidade:p.periodicidade, equipamentos_itens:itvens, custo_total:p.custo_total, tempo_estimado_min:p.tempo_estimado_min, proxima_execucao:p.proxima_execucao||"", instrucoes:p.instrucoes||"", status:p.status }); setPlanoShowEdit(true); }}
+                                  style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.25)", borderRadius:7, padding:"5px 10px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>✏️ Editar</button>
+                                <button onClick={()=>{ if(confirm(`Excluir plano "${p.nome}"?`)) planoDelete(p.id); }}
+                                  style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:7, padding:"5px 10px", color:"#EF4444", fontSize:11, cursor:"pointer" }}>🗑️</button>
+                              </div>
+                            </div>
+                            {/* Equipamentos do plano */}
+                            {itvens.length > 0 && (
+                              <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+                                {itvens.map(it=>(
+                                  <div key={it.equipId} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:6, padding:"3px 10px", fontSize:11 }}>
+                                    <span style={{ color:"#94A3B8" }}>{it.equipNome}</span>
+                                    {it.custo_previsto > 0 && <span style={{ color:"#F59E0B", marginLeft:6 }}>R$ {Number(it.custo_previsto).toLocaleString("pt-BR",{minimumFractionDigits:2})}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {/* Rodapé plano */}
+                            <div style={{ display:"flex", gap:14, fontSize:11, color:"#475569", borderTop:"1px solid rgba(255,255,255,.05)", paddingTop:8 }}>
+                              {p.proxima_execucao && <span>📅 Próxima: <strong style={{ color:"#E2E8F0" }}>{p.proxima_execucao}</strong></span>}
+                              {p.tempo_estimado_min > 0 && <span>⏱ {p.tempo_estimado_min} min</span>}
+                              <span style={{ marginLeft:"auto", color:"#10B981", fontWeight:700, fontSize:13 }}>
+                                {Number(p.custo_total||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
+                              </span>
+                            </div>
                           </div>
                         );
                       })}
-                    </div>
 
-                    {/* Detalhe mês selecionado */}
-                    {currSched && (
-                      <div style={{ background:"rgba(99,102,241,.05)", border:"1px solid rgba(99,102,241,.15)", borderRadius:12, padding:"14px 16px", marginBottom:20 }}>
-                        <div style={{ fontSize:13, fontWeight:700, color:"#A5B4FC", marginBottom:10 }}>📋 {currSched.mes} — Detalhamento</div>
-                        {currSched.items.map((item,i) => (
-                          <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:12 }}>
-                            <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                              <span style={{ background:item.tipo==="preventiva"?"rgba(16,185,129,.15)":"rgba(239,68,68,.15)", color:item.tipo==="preventiva"?"#10B981":"#EF4444", fontSize:9, borderRadius:4, padding:"2px 6px", fontWeight:700 }}>{item.tipo.toUpperCase()}</span>
-                              {item.equip}
+                      {/* ── Formulário criar/editar ──────────────────────── */}
+                      {planoShowEdit && (
+                        <div style={{ background:"rgba(255,255,255,.025)", border:"1px solid rgba(99,102,241,.2)", borderRadius:14, padding:"20px 20px 24px" }}>
+                          <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0", marginBottom:2 }}>
+                            {planoEditId ? "✏️ Editar Plano" : "➕ Criar Plano"}
+                          </div>
+                          <div style={{ fontSize:11, color:"#475569", marginBottom:18 }}>
+                            {planoEditId ? "Atualize os dados do plano de manutenção" : "Criar plano preventivo"}
+                          </div>
+
+                          {/* Linha 1: Código + Nome */}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:12, marginBottom:12 }}>
+                            <div>
+                              <div style={{ fontSize:10, fontWeight:700, color:"#64748B", marginBottom:5 }}>CÓDIGO</div>
+                              <input value={planoForm.codigo} onChange={e=>setPlanoForm(f=>({...f,codigo:e.target.value}))}
+                                placeholder="Ex: PM-001"
+                                style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }}/>
                             </div>
-                            <span style={{ color:"#F59E0B", fontWeight:600 }}>{fmtBRLFull(item.custo)}</span>
+                            <div>
+                              <div style={{ fontSize:10, fontWeight:700, color:"#64748B", marginBottom:5 }}>NOME *</div>
+                              <input value={planoForm.nome} onChange={e=>setPlanoForm(f=>({...f,nome:e.target.value}))}
+                                placeholder="Ex: Manutenção preventiva bombas"
+                                style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }}/>
+                            </div>
                           </div>
-                        ))}
-                        <div style={{ display:"flex", justifyContent:"flex-end", marginTop:8, fontSize:13, fontWeight:700, color:"#F59E0B" }}>
-                          Total: {fmtBRLFull(currSched.items.reduce((s,i)=>s+i.custo,0))}
-                        </div>
-                      </div>
-                    )}
 
-                    {/* Gráfico de custo mensal */}
-                    <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", marginBottom:10 }}>📊 CUSTO DE MANUTENÇÃO – 12 MESES (Preventiva vs Corretiva)</div>
-                    <ResponsiveContainer width="100%" height={220}>
-                      <LineChart data={schedCostData} margin={{ top:4, right:10, bottom:4, left:0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
-                        <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false}/>
-                        <YAxis tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false} tickFormatter={(v:number)=>v>=1000?`${(v/1000).toFixed(1)}k`:`${v}`} width={45}/>
-                        <Tooltip formatter={(v:number)=>fmtBRLFull(v)} contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }}/>
-                        <Legend wrapperStyle={{ fontSize:10, color:"#475569" }}/>
-                        <Line type="monotone" dataKey="Preventiva" stroke="#10B981" strokeWidth={2} dot={{ r:3 }}/>
-                        <Line type="monotone" dataKey="Corretiva" stroke="#EF4444" strokeWidth={2} dot={{ r:3 }}/>
-                      </LineChart>
-                    </ResponsiveContainer>
-                    <div style={{ fontSize:10, color:"#475569", marginTop:8 }}>
-                      Total preventivo 12m: {fmtBRLFull(schedCostData.reduce((s,m)=>s+m.Preventiva,0))} · Total corretivo: {fmtBRLFull(schedCostData.reduce((s,m)=>s+m.Corretiva,0))}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── ABA 4: OS INTEGRADO ───────────────────────────────── */}
-                {mantTab === "os" && (
-                  <div>
-                    {/* MTTR / MTBF KPIs */}
-                    <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap" }}>
-                      {[
-                        { label:"MTTR", val:"4.2 dias", desc:"Tempo médio de reparo", color:"#06B6D4" },
-                        { label:"MTBF", val:"38 dias", desc:"Tempo médio entre falhas", color:"#10B981" },
-                        { label:"Disponibilidade", val:"89%", desc:"Equipamentos operacionais", color:"#A5B4FC" },
-                        { label:"OS Abertas (equip.)", val:`${(dash?.ordens_servico||[]).filter(o=>o.status==="aberta").length}`, desc:"OSs vinculadas a equipamentos", color:"#F59E0B" },
-                      ].map(k => (
-                        <div key={k.label} style={{ flex:1, minWidth:150, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"12px 16px" }}>
-                          <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
-                          <div style={{ fontSize:22, fontWeight:800, color:k.color }}>{k.val}</div>
-                          <div style={{ fontSize:10, color:"#334155", marginTop:2 }}>{k.desc}</div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Associação equip → OS */}
-                    <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", marginBottom:10 }}>🔗 HISTÓRICO DE OS POR EQUIPAMENTO</div>
-                    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                      {equipList.filter(e=>e.status!=="operacional").map(e => (
-                        <div key={e.id} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"12px 14px" }}>
-                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
-                            <div style={{ fontWeight:600, fontSize:13 }}>{e.catIcon} {e.nome}</div>
-                            <span style={{ background:stColor[e.status]+"22", color:stColor[e.status], fontSize:10, borderRadius:12, padding:"2px 8px", border:`1px solid ${stColor[e.status]}44` }}>{stLabel[e.status]}</span>
+                          {/* Linha 2: Tipo + Periodicidade */}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+                            <div>
+                              <div style={{ fontSize:10, fontWeight:700, color:"#64748B", marginBottom:5 }}>TIPO</div>
+                              <select value={planoForm.tipo} onChange={e=>setPlanoForm(f=>({...f,tipo:e.target.value}))}
+                                style={{ width:"100%", background:"#1E2132", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:13 }}>
+                                {TIPOS_PLANO.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <div style={{ fontSize:10, fontWeight:700, color:"#64748B", marginBottom:5 }}>PERIODICIDADE</div>
+                              <select value={planoForm.periodicidade} onChange={e=>setPlanoForm(f=>({...f,periodicidade:e.target.value}))}
+                                style={{ width:"100%", background:"#1E2132", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:13 }}>
+                                {PERIODS.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                              </select>
+                            </div>
                           </div>
-                          <div style={{ fontSize:11, color:"#475569" }}>Local: {e.local} · Última OS: {e.ultimaManutencao} · Próxima: {e.proxManutencao}</div>
-                          <div style={{ fontSize:11, color:"#64748B", marginTop:4 }}>{e.descricao}</div>
-                          <button onClick={()=>setPanel("operacao")} style={{ marginTop:8, background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)", borderRadius:6, padding:"4px 12px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>
-                            Ver OSs no módulo de OS →
-                          </button>
+
+                          {/* Equipamentos */}
+                          <div style={{ marginBottom:14 }}>
+                            <div style={{ fontSize:10, fontWeight:700, color:"#64748B", marginBottom:8 }}>EQUIPAMENTOS</div>
+                            {equipList.length === 0 && (
+                              <div style={{ color:"#334155", fontSize:11 }}>Nenhum equipamento cadastrado. Vá para a aba Equipamentos.</div>
+                            )}
+                            <div style={{ maxHeight:220, overflowY:"auto", background:"rgba(0,0,0,.15)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"6px 10px" }}>
+                              {equipList.map(eq=>{
+                                const sel = planoForm.equipamentos_itens.find(e=>e.equipId===eq.id);
+                                return (
+                                  <div key={eq.id} style={{ borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                                    <div style={{ display:"flex", alignItems:"center", gap:10, padding:"8px 2px" }}>
+                                      <input type="checkbox" checked={!!sel} onChange={()=>planoToggleEquip({id:eq.id,nome:eq.nome})}
+                                        style={{ accentColor:"#7C5CFC", width:15, height:15, cursor:"pointer", flexShrink:0 }}/>
+                                      <span style={{ fontSize:12, color:sel?"#E2E8F0":"#64748B", fontWeight:sel?600:400 }}>
+                                        {eq.catIcon} {eq.nome}
+                                      </span>
+                                      <span style={{ fontSize:10, color:"#334155", marginLeft:"auto" }}>{eq.local}</span>
+                                    </div>
+                                    {sel && (
+                                      <div style={{ display:"flex", alignItems:"center", gap:8, padding:"4px 26px 8px", background:"rgba(124,92,252,.06)", borderRadius:6, marginBottom:4 }}>
+                                        <span style={{ fontSize:11, color:"#64748B" }}>Custo previsto (R$):</span>
+                                        <input type="number" min="0" step="0.01"
+                                          value={sel.custo_previsto||""}
+                                          onChange={e=>planoSetEquipCusto(eq.id, Number(e.target.value))}
+                                          placeholder="0,00"
+                                          style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(99,102,241,.25)", borderRadius:6, padding:"5px 8px", color:"#F59E0B", fontSize:12, width:120, fontWeight:600 }}/>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Áreas */}
+                          {aresList.length > 0 && (
+                            <div style={{ marginBottom:14 }}>
+                              <div style={{ fontSize:10, fontWeight:700, color:"#64748B", marginBottom:8 }}>ÁREAS COBERTAS</div>
+                              <div style={{ background:"rgba(0,0,0,.1)", border:"1px solid rgba(255,255,255,.06)", borderRadius:8, padding:"8px 10px" }}>
+                                <div style={{ fontSize:11, color:"#475569" }}>
+                                  {planoForm.equipamentos_itens.length > 0
+                                    ? [...new Set(planoForm.equipamentos_itens.map(ei=>equipList.find(e=>e.id===ei.equipId)?.local||"").filter(Boolean))].map(area=>(
+                                      <span key={area} style={{ display:"inline-block", background:"rgba(124,92,252,.15)", color:"#A5B4FC", borderRadius:6, padding:"2px 10px", fontSize:11, marginRight:6, marginBottom:4, border:"1px solid rgba(124,92,252,.2)" }}>{area}</span>
+                                    ))
+                                    : <span style={{ color:"#334155" }}>Selecione equipamentos para ver as áreas</span>
+                                  }
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Tempo + Previsão orçamentária */}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+                            <div>
+                              <div style={{ fontSize:10, fontWeight:700, color:"#64748B", marginBottom:5 }}>TEMPO ESTIMADO (MIN)</div>
+                              <input type="number" min="0" value={planoForm.tempo_estimado_min||""}
+                                onChange={e=>setPlanoForm(f=>({...f,tempo_estimado_min:Number(e.target.value)}))}
+                                style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }}/>
+                            </div>
+                            <div>
+                              <div style={{ fontSize:10, fontWeight:700, color:"#64748B", marginBottom:5 }}>CUSTO ESTIMADO (R$)</div>
+                              <div style={{ background:"rgba(16,185,129,.08)", border:"1px solid rgba(16,185,129,.2)", borderRadius:8, padding:"8px 10px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                                <span style={{ color:"#10B981", fontWeight:800, fontSize:16 }}>
+                                  {planoCustoTotal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
+                                </span>
+                                <span style={{ fontSize:10, color:"#059669" }}>auto-calculado</span>
+                              </div>
+                              {planoForm.equipamentos_itens.filter(e=>e.custo_previsto>0).length > 0 && (
+                                <div style={{ fontSize:10, color:"#334155", marginTop:4 }}>
+                                  {planoForm.equipamentos_itens.filter(e=>e.custo_previsto>0).length} equip. × valores definidos
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Próxima execução */}
+                          <div style={{ marginBottom:14 }}>
+                            <div style={{ fontSize:10, fontWeight:700, color:"#64748B", marginBottom:5 }}>PRÓXIMA EXECUÇÃO</div>
+                            <input type="date" value={planoForm.proxima_execucao}
+                              onChange={e=>setPlanoForm(f=>({...f,proxima_execucao:e.target.value}))}
+                              style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:13, colorScheme:"dark" }}/>
+                          </div>
+
+                          {/* Instruções gerais */}
+                          <div style={{ marginBottom:20 }}>
+                            <div style={{ fontSize:10, fontWeight:700, color:"#64748B", marginBottom:5 }}>INSTRUÇÕES GERAIS</div>
+                            <textarea value={planoForm.instrucoes}
+                              onChange={e=>setPlanoForm(f=>({...f,instrucoes:e.target.value}))}
+                              rows={3} placeholder="Procedimentos, EPIs necessários, observações..."
+                              style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:13, resize:"vertical", boxSizing:"border-box" }}/>
+                          </div>
+
+                          {/* Previsão orçamentária detalhada */}
+                          {planoForm.equipamentos_itens.length > 0 && (
+                            <div style={{ background:"rgba(16,185,129,.05)", border:"1px solid rgba(16,185,129,.15)", borderRadius:10, padding:"12px 14px", marginBottom:18 }}>
+                              <div style={{ fontSize:11, fontWeight:700, color:"#10B981", marginBottom:8 }}>💰 PREVISÃO ORÇAMENTÁRIA</div>
+                              {planoForm.equipamentos_itens.map(it=>(
+                                <div key={it.equipId} style={{ display:"flex", justifyContent:"space-between", fontSize:12, padding:"4px 0", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                                  <span style={{ color:"#94A3B8" }}>{it.equipNome}</span>
+                                  <span style={{ color: it.custo_previsto>0?"#F59E0B":"#334155", fontWeight:it.custo_previsto>0?600:400 }}>
+                                    {it.custo_previsto>0 ? it.custo_previsto.toLocaleString("pt-BR",{style:"currency",currency:"BRL"}) : "—"}
+                                  </span>
+                                </div>
+                              ))}
+                              <div style={{ display:"flex", justifyContent:"space-between", marginTop:8, fontWeight:800, fontSize:14 }}>
+                                <span style={{ color:"#E2E8F0" }}>TOTAL</span>
+                                <span style={{ color:"#10B981" }}>{planoCustoTotal.toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Botões */}
+                          <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+                            <button onClick={()=>{ setPlanoShowEdit(false); setPlanoEditId(null); setPlanoForm(emptyPlanoForm()); }}
+                              style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 18px", color:"#94A3B8", fontSize:13, cursor:"pointer" }}>
+                              Cancelar
+                            </button>
+                            <button onClick={planoSave} disabled={planoSaving||!planoForm.nome.trim()}
+                              style={{ background: planoSaving||!planoForm.nome.trim() ? "#334155" : "linear-gradient(135deg,#7C5CFC,#A78BFA)", border:"none", borderRadius:9, padding:"9px 20px", color:"#fff", fontSize:13, fontWeight:700, cursor: planoSaving||!planoForm.nome.trim() ? "not-allowed":"pointer" }}>
+                              {planoSaving ? "Salvando..." : planoEditId ? "💾 Salvar Alterações" : "✅ Criar Plano"}
+                            </button>
+                          </div>
                         </div>
-                      ))}
+                      )}
                     </div>
-
-                    {/* Todas as OSs recentes */}
-                    <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", margin:"20px 0 10px" }}>📋 OSs RECENTES DO SISTEMA</div>
-                    {(dash?.ordens_servico||[]).slice(0,8).map(os => (
-                      <div key={os.id} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:12 }}>
-                        <div>
-                          <span style={{ color:"#475569", marginRight:6 }}>#{os.numero}</span>
-                          <span style={{ fontWeight:600 }}>{os.titulo}</span>
-                        </div>
-                        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                          <span style={{ color:"#64748B" }}>{os.categoria}</span>
-                          <span style={{ background:os.status==="aberta"?"rgba(239,68,68,.15)":os.status==="concluida"?"rgba(16,185,129,.15)":"rgba(245,158,11,.15)", color:os.status==="aberta"?"#EF4444":os.status==="concluida"?"#10B981":"#F59E0B", fontSize:10, borderRadius:10, padding:"2px 8px" }}>{os.status}</span>
-                        </div>
-                      </div>
-                    ))}
-                    {(dash?.ordens_servico||[]).length === 0 && <div style={{ color:"#334155", fontSize:12 }}>Nenhuma OS no sistema.</div>}
-                  </div>
-                )}
-
+                    );
+                  })()}
                 {/* ── ABA 5: QR CODES ───────────────────────────────────── */}
                 {mantTab === "qr" && (
                   <div>

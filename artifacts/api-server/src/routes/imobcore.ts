@@ -1086,6 +1086,52 @@ router.delete("/equipamentos/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ─── PLANOS DE MANUTENÇÃO ─────────────────────────────────────────────────────
+
+// GET /api/planos?condominio_id=X
+router.get("/planos", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+  const { data, error } = await supabase.from("planos_manutencao").select("*").eq("condominio_id", condId).order("created_at", { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// POST /api/planos
+router.post("/planos", async (req: Request, res: Response) => {
+  const { condominio_id, ...body } = req.body as Record<string, unknown>;
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  if (!body.nome) return res.status(400).json({ error: "nome obrigatório" });
+  const itens = Array.isArray(body.equipamentos_itens) ? body.equipamentos_itens : [];
+  const custoTotal = itens.reduce((s: number, it: Record<string,unknown>) => s + (Number(it.custo_previsto) || 0), 0);
+  const { data, error } = await supabase.from("planos_manutencao").insert({
+    condominio_id, ...body, equipamentos_itens: itens, custo_total: custoTotal, updated_at: new Date().toISOString()
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, plano: data });
+});
+
+// PUT /api/planos/:id
+router.put("/planos/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { condominio_id: _cid, ...body } = req.body as Record<string, unknown>;
+  const itens = Array.isArray(body.equipamentos_itens) ? body.equipamentos_itens : [];
+  const custoTotal = itens.reduce((s: number, it: Record<string,unknown>) => s + (Number(it.custo_previsto) || 0), 0);
+  const { data, error } = await supabase.from("planos_manutencao").update({
+    ...body, equipamentos_itens: itens, custo_total: custoTotal, updated_at: new Date().toISOString()
+  }).eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, plano: data });
+});
+
+// DELETE /api/planos/:id
+router.delete("/planos/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { error } = await supabase.from("planos_manutencao").delete().eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 // ─── DIAGNÓSTICO INTELIGENTE ─────────────────────────────────────────────────
 
 // GET /api/diagnostico/ultimo?condominio_id=X — último resultado salvo para este condomínio

@@ -144,6 +144,31 @@ async function runMigrations() {
     console.log("✅ Migration 4 (equipamentos extra columns): OK");
   }
 
+  // ─── Migration 5: Planos de Manutenção ──────────────────────────────────────
+  const { error: m5Err } = await supabase.from("planos_manutencao").select("id").limit(1);
+  if (m5Err) {
+    console.log("⚠️  Migration 5 needed (planos_manutencao). Run in SQL Editor:");
+    console.log("   CREATE TABLE IF NOT EXISTS planos_manutencao (");
+    console.log("     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),");
+    console.log("     condominio_id uuid NOT NULL,");
+    console.log("     codigo text, nome text NOT NULL,");
+    console.log("     tipo text DEFAULT 'preventiva',");
+    console.log("     periodicidade text DEFAULT 'mensal',");
+    console.log("     equipamentos_itens jsonb DEFAULT '[]',");
+    console.log("     custo_total numeric(10,2) DEFAULT 0,");
+    console.log("     tempo_estimado_min int DEFAULT 0,");
+    console.log("     proxima_execucao date,");
+    console.log("     instrucoes text,");
+    console.log("     status text DEFAULT 'ativo',");
+    console.log("     created_at timestamptz DEFAULT now(),");
+    console.log("     updated_at timestamptz DEFAULT now()");
+    console.log("   );");
+    console.log("   CREATE INDEX IF NOT EXISTS idx_planos_condo ON planos_manutencao(condominio_id);");
+    console.log();
+  } else {
+    console.log("✅ Migration 5 (planos_manutencao): OK");
+  }
+
   console.log();
 }
 
