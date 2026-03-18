@@ -450,7 +450,7 @@ interface Equipamento {
   vidaUtilAnos: number; instaladoHa: number; consumoKwh: number; horasDia: number;
   status: "operacional" | "atencao" | "manutencao" | "inativo";
   proxManutencao: string; ultimaManutencao: string; custoManutencao: number;
-  descricao: string;
+  descricao: string; fornecedor_id?: string;
 }
 const RES_DEMO: Reservatorio[] = [
   { id:"res-1", sensor_id:"sensor_agua", nome:"Caixa Principal", local:"Bloco A – Cobertura", capacidade_litros:15000, altura_cm:200, mac_address:"F8:83:87:90:9F:78", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://imob-core-mobile-12.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443, cf_online:true, wh_online:true, created_at:new Date().toISOString() },
@@ -599,7 +599,7 @@ export default function App() {
   const [equipSaving, setEquipSaving] = useState(false);
   const [equipEditId, setEquipEditId] = useState<string|null>(null);
   const [equipShowEdit, setEquipShowEdit] = useState(false);
-  const EMPTY_EQ: { nome:string; categoria:string; catIcon:string; local:string; fabricante:string; modelo:string; serie:string; dataInstalacao:string; vidaUtilAnos:number; instaladoHa:number; consumoKwh:number; horasDia:number; status:"operacional"|"atencao"|"manutencao"|"inativo"; proxManutencao:string; ultimaManutencao:string; custoManutencao:number; descricao:string } = { nome:"", categoria:"elevador", catIcon:"🛗", local:"", fabricante:"", modelo:"", serie:"", dataInstalacao:"", vidaUtilAnos:10, instaladoHa:0, consumoKwh:0, horasDia:8, status:"operacional", proxManutencao:"", ultimaManutencao:"", custoManutencao:0, descricao:"" };
+  const EMPTY_EQ: { nome:string; categoria:string; catIcon:string; local:string; fabricante:string; modelo:string; serie:string; dataInstalacao:string; vidaUtilAnos:number; instaladoHa:number; consumoKwh:number; horasDia:number; status:"operacional"|"atencao"|"manutencao"|"inativo"; proxManutencao:string; ultimaManutencao:string; custoManutencao:number; descricao:string; fornecedor_id:string } = { nome:"", categoria:"elevador", catIcon:"🛗", local:"", fabricante:"", modelo:"", serie:"", dataInstalacao:"", vidaUtilAnos:10, instaladoHa:0, consumoKwh:0, horasDia:8, status:"operacional", proxManutencao:"", ultimaManutencao:"", custoManutencao:0, descricao:"", fornecedor_id:"" };
   const [equipForm, setEquipForm] = useState(EMPTY_EQ);
 
   const loadEquipamentos = async (cid: string) => {
@@ -644,13 +644,13 @@ export default function App() {
 
   const equipEdit = (e: Equipamento) => {
     setEquipEditId(e.id);
-    setEquipForm({ nome:e.nome, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:e.serie, dataInstalacao:e.dataInstalacao, vidaUtilAnos:e.vidaUtilAnos, instaladoHa:e.instaladoHa, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:e.status, proxManutencao:e.proxManutencao, ultimaManutencao:e.ultimaManutencao, custoManutencao:e.custoManutencao, descricao:e.descricao });
+    setEquipForm({ nome:e.nome, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:e.serie, dataInstalacao:e.dataInstalacao, vidaUtilAnos:e.vidaUtilAnos, instaladoHa:e.instaladoHa, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:e.status, proxManutencao:e.proxManutencao, ultimaManutencao:e.ultimaManutencao, custoManutencao:e.custoManutencao, descricao:e.descricao, fornecedor_id:e.fornecedor_id||"" });
     setEquipShowEdit(true);
   };
 
   const equipDuplicate = (e: Equipamento) => {
     setEquipEditId(null);
-    setEquipForm({ nome:`${e.nome} (Cópia)`, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:"", dataInstalacao:new Date().toISOString().slice(0,10), vidaUtilAnos:e.vidaUtilAnos, instaladoHa:0, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:"operacional", proxManutencao:e.proxManutencao, ultimaManutencao:"", custoManutencao:e.custoManutencao, descricao:e.descricao });
+    setEquipForm({ nome:`${e.nome} (Cópia)`, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:"", dataInstalacao:new Date().toISOString().slice(0,10), vidaUtilAnos:e.vidaUtilAnos, instaladoHa:0, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:"operacional", proxManutencao:e.proxManutencao, ultimaManutencao:"", custoManutencao:e.custoManutencao, descricao:e.descricao, fornecedor_id:e.fornecedor_id||"" });
     setEquipShowEdit(true);
     showToast("Equipamento duplicado — revise e salve", "success");
   };
@@ -6395,7 +6395,22 @@ export default function App() {
                                 </div>
                                 <div style={{ fontSize:10, color:vidaColor(vidaPct(e)), fontWeight:700 }}>{vidaPct(e)}% utilizado</div>
                               </td>
-                              <td style={{ padding:"12px 12px", color:"#94A3B8" }}>{e.fabricante}</td>
+                              <td style={{ padding:"12px 12px" }}>
+                                {(() => {
+                                  const fv = e.fornecedor_id ? fornecList.find(f=>f.id===e.fornecedor_id) : null;
+                                  return fv ? (
+                                    <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+                                      <span style={{ fontSize:14 }}>{fv.icone}</span>
+                                      <div>
+                                        <div style={{ fontSize:11, fontWeight:700, color:"#34D399" }}>{fv.nome}</div>
+                                        <div style={{ fontSize:9, color:"#64748B" }}>{e.fabricante || fv.categoria}</div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <span style={{ color:"#94A3B8", fontSize:12 }}>{e.fabricante || <span style={{ color:"#334155" }}>—</span>}</span>
+                                  );
+                                })()}
+                              </td>
                               <td style={{ padding:"12px 12px", whiteSpace:"nowrap" }}>
                                 <span style={{ background:"rgba(16,185,129,.12)", color:"#34D399", border:"1px solid rgba(16,185,129,.3)", borderRadius:6, padding:"3px 9px", fontSize:11, fontWeight:700 }}>
                                   {e.custoManutencao > 0 ? `R$ ${e.custoManutencao.toLocaleString("pt-BR", { minimumFractionDigits:2 })}` : "—"}
@@ -6454,6 +6469,33 @@ export default function App() {
                               </select>
                             </div>
                           </div>
+                          {/* Fornecedor vinculado */}
+                          <div style={{ marginTop:12 }}>
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>🏢 Fornecedor Vinculado</div>
+                            <select value={equipForm.fornecedor_id} onChange={e=>setEquipForm(f=>({...f,fornecedor_id:e.target.value}))} style={{ width:"100%", background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color: equipForm.fornecedor_id ? "#fff" : "#64748B", fontSize:12, boxSizing:"border-box" as const }}>
+                              <option value="">— Nenhum fornecedor vinculado —</option>
+                              {fornecList.map(f => (
+                                <option key={f.id} value={f.id}>{f.icone} {f.nome} · {f.categoria}</option>
+                              ))}
+                            </select>
+                            {fornecList.length === 0 && (
+                              <div style={{ fontSize:10, color:"#64748B", marginTop:4 }}>Cadastre fornecedores no módulo Fornecedores para vincular aqui.</div>
+                            )}
+                            {equipForm.fornecedor_id && (() => {
+                              const fv = fornecList.find(f=>f.id===equipForm.fornecedor_id);
+                              return fv ? (
+                                <div style={{ marginTop:8, display:"flex", alignItems:"center", gap:8, background:"rgba(16,185,129,.08)", border:"1px solid rgba(16,185,129,.25)", borderRadius:8, padding:"8px 12px" }}>
+                                  <span style={{ fontSize:18 }}>{fv.icone}</span>
+                                  <div>
+                                    <div style={{ fontSize:12, fontWeight:700, color:"#34D399" }}>{fv.nome}</div>
+                                    <div style={{ fontSize:10, color:"#64748B" }}>{fv.telefone || fv.email || fv.categoria}</div>
+                                  </div>
+                                  <a href={`tel:${fv.telefone}`} style={{ marginLeft:"auto", color:"#34D399", fontSize:11, textDecoration:"none" }}>{fv.telefone}</a>
+                                </div>
+                              ) : null;
+                            })()}
+                          </div>
+
                           <div style={{ marginTop:12 }}>
                             <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Descrição</div>
                             <textarea value={equipForm.descricao} onChange={e=>setEquipForm(f=>({...f,descricao:e.target.value}))} rows={3} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const, resize:"vertical" as const }} />

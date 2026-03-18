@@ -1018,6 +1018,7 @@ function dbToEquip(row: Record<string, unknown>) {
     ultimaManutencao:  row.ultima_manutencao ? String(row.ultima_manutencao) : "",
     custoManutencao:   Number(row.custo_manutencao || 0),
     descricao:         String(row.descricao || ""),
+    fornecedor_id:     row.fornecedor_id ? String(row.fornecedor_id) : undefined,
   };
 }
 
@@ -1041,6 +1042,7 @@ function equipToDb(body: Record<string, unknown>, condominioId: string) {
   if (body.ultimaManutencao!== undefined)payload.ultima_manutencao   = body.ultimaManutencao || null;
   if (body.custoManutencao!== undefined) payload.custo_manutencao    = body.custoManutencao;
   if (body.descricao      !== undefined) payload.descricao           = body.descricao;
+  if (body.fornecedor_id  !== undefined) payload.fornecedor_id       = body.fornecedor_id || null;
   payload.updated_at = new Date().toISOString();
   return payload;
 }
