@@ -904,6 +904,8 @@ export default function App() {
   const [fornecForm, setFornecForm] = useState<ReturnType<typeof emptyFornec>>(emptyFornec());
   const [fornecMsgModal, setFornecMsgModal] = useState<Fornecedor|null>(null);
   const [fornecMsg, setFornecMsg] = useState("");
+  const [sindFornecDetail, setSindFornecDetail] = useState<string|null>(null);
+  const [morFornecDetail, setMorFornecDetail] = useState<string|null>(null);
 
   const loadFornecedores = async (cId: string) => {
     setFornecLoading(true);
@@ -3119,6 +3121,7 @@ export default function App() {
       crm: "👥 CRM – Moradores",
       comunicados: "📢 Comunicados",
       insights: "💡 Insights & Análises",
+      fornecedores: "🏢 Fornecedores e Contatos",
     };
 
     return (
@@ -3567,6 +3570,63 @@ export default function App() {
             </div>
           </>
         )}
+        {sindicoScreen === "fornecedores" && (() => {
+          const sfDetail = sindFornecDetail ? fornecList.find(f=>f.id===sindFornecDetail) : null;
+          return (
+            <div className="ph-sub-body" style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:10 }}>
+              {fornecList.length === 0 && (
+                <div style={{ textAlign:"center", padding:32, color:"#475569", fontSize:13 }}>
+                  <div style={{ fontSize:32, marginBottom:8 }}>🏢</div>
+                  Nenhum fornecedor cadastrado.
+                </div>
+              )}
+              {sfDetail ? (
+                <div>
+                  <button onClick={()=>setSindFornecDetail(null)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"6px 12px", color:"#A5B4FC", fontSize:12, cursor:"pointer", marginBottom:14 }}>← Voltar</button>
+                  <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:16 }}>
+                    <div style={{ background:"rgba(255,255,255,.08)", borderRadius:12, width:52, height:52, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>{sfDetail.icone||"🏢"}</div>
+                    <div>
+                      <div style={{ fontWeight:800, fontSize:16, color:"#E2E8F0" }}>{sfDetail.nome}</div>
+                      <span style={{ background:"rgba(16,185,129,.12)", color:"#34D399", border:"1px solid rgba(16,185,129,.2)", borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600 }}>{sfDetail.categoria}</span>
+                    </div>
+                  </div>
+                  {([
+                    sfDetail.telefone   ? { icon:"📞", label:"Telefone",  val:sfDetail.telefone   } : null,
+                    sfDetail.whatsapp   ? { icon:"💬", label:"WhatsApp",  val:sfDetail.whatsapp   } : null,
+                    sfDetail.email      ? { icon:"✉️",  label:"E-mail",   val:sfDetail.email      } : null,
+                    sfDetail.endereco   ? { icon:"📍", label:"Endereço",  val:sfDetail.endereco   } : null,
+                    sfDetail.observacoes? { icon:"📝", label:"Obs.",      val:sfDetail.observacoes} : null,
+                  ] as ({icon:string;label:string;val:string}|null)[]).filter(Boolean).map((r, i) => r && (
+                    <div key={i} style={{ display:"flex", gap:10, padding:"10px 0", borderBottom:"1px solid rgba(255,255,255,.05)", fontSize:13 }}>
+                      <span style={{ fontSize:16 }}>{r.icon}</span>
+                      <div><div style={{ fontSize:10, color:"#475569", fontWeight:700 }}>{r.label}</div><div style={{ color:"#E2E8F0" }}>{r.val}</div></div>
+                    </div>
+                  ))}
+                  <button onClick={()=>fornecWhatsApp(sfDetail)} disabled={!(sfDetail.whatsapp||sfDetail.telefone)}
+                    style={{ marginTop:18, width:"100%", background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", borderRadius:12, padding:"12px", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                    💬 Enviar WhatsApp
+                  </button>
+                </div>
+              ) : (
+                fornecList.map(f => (
+                  <div key={f.id} onClick={()=>setSindFornecDetail(f.id)}
+                    style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"12px 14px", cursor:"pointer", display:"flex", gap:12, alignItems:"center" }}>
+                    <div style={{ background:"rgba(255,255,255,.07)", borderRadius:10, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{f.icone||"🏢"}</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontWeight:700, fontSize:13, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.nome}</div>
+                      <div style={{ fontSize:11, color:"#475569" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
+                    </div>
+                    <button onClick={e=>{ e.stopPropagation(); fornecWhatsApp(f); }} disabled={!(f.whatsapp||f.telefone)}
+                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"rgba(255,255,255,.05)", border:"none", borderRadius:8, padding:"7px 10px", color:"#fff", fontSize:11, fontWeight:600, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0 }}>
+                      💬 WA
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          );
+        })()}
+
       </div>
     );
   };
@@ -3582,6 +3642,7 @@ export default function App() {
       comunicados: "📢 Comunicados",
       misp: "🚨 Alertas Públicos",
       encomendas: "📦 Minhas Encomendas",
+      fornecedores: "🏢 Fornecedores e Contatos",
     };
 
     return (
@@ -3814,6 +3875,64 @@ export default function App() {
                   </div>
                 );
               })}
+            </div>
+          );
+        })()}
+
+        {/* MORADOR: Fornecedores (read-only) */}
+        {moradorScreen === "fornecedores" && (() => {
+          const mfDetail = morFornecDetail ? fornecList.find(f=>f.id===morFornecDetail) : null;
+          return (
+            <div className="ph-sub-body" style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:10 }}>
+              {fornecList.length === 0 && (
+                <div style={{ textAlign:"center", padding:32, color:"#475569", fontSize:13 }}>
+                  <div style={{ fontSize:32, marginBottom:8 }}>🏢</div>
+                  Nenhum fornecedor disponível.
+                </div>
+              )}
+              {mfDetail ? (
+                <div>
+                  <button onClick={()=>setMorFornecDetail(null)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"6px 12px", color:"#A5B4FC", fontSize:12, cursor:"pointer", marginBottom:14 }}>← Voltar</button>
+                  <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:16 }}>
+                    <div style={{ background:"rgba(255,255,255,.08)", borderRadius:12, width:52, height:52, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>{mfDetail.icone||"🏢"}</div>
+                    <div>
+                      <div style={{ fontWeight:800, fontSize:16, color:"#E2E8F0" }}>{mfDetail.nome}</div>
+                      <span style={{ background:"rgba(16,185,129,.12)", color:"#34D399", border:"1px solid rgba(16,185,129,.2)", borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600 }}>{mfDetail.categoria}</span>
+                    </div>
+                  </div>
+                  {([
+                    mfDetail.telefone    ? { icon:"📞", label:"Telefone",  val:mfDetail.telefone    } : null,
+                    mfDetail.whatsapp    ? { icon:"💬", label:"WhatsApp",  val:mfDetail.whatsapp    } : null,
+                    mfDetail.email       ? { icon:"✉️",  label:"E-mail",   val:mfDetail.email       } : null,
+                    mfDetail.endereco    ? { icon:"📍", label:"Endereço",  val:mfDetail.endereco    } : null,
+                    mfDetail.observacoes ? { icon:"📝", label:"Obs.",      val:mfDetail.observacoes } : null,
+                  ] as ({icon:string;label:string;val:string}|null)[]).filter(Boolean).map((r, i) => r && (
+                    <div key={i} style={{ display:"flex", gap:10, padding:"10px 0", borderBottom:"1px solid rgba(255,255,255,.05)", fontSize:13 }}>
+                      <span style={{ fontSize:16 }}>{r.icon}</span>
+                      <div><div style={{ fontSize:10, color:"#475569", fontWeight:700 }}>{r.label}</div><div style={{ color:"#E2E8F0" }}>{r.val}</div></div>
+                    </div>
+                  ))}
+                  <button onClick={()=>fornecWhatsApp(mfDetail)} disabled={!(mfDetail.whatsapp||mfDetail.telefone)}
+                    style={{ marginTop:18, width:"100%", background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", borderRadius:12, padding:"12px", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                    💬 Enviar WhatsApp
+                  </button>
+                </div>
+              ) : (
+                fornecList.map(f => (
+                  <div key={f.id} onClick={()=>setMorFornecDetail(f.id)}
+                    style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"12px 14px", cursor:"pointer", display:"flex", gap:12, alignItems:"center" }}>
+                    <div style={{ background:"rgba(255,255,255,.07)", borderRadius:10, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{f.icone||"🏢"}</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontWeight:700, fontSize:13, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.nome}</div>
+                      <div style={{ fontSize:11, color:"#475569" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
+                    </div>
+                    <button onClick={e=>{ e.stopPropagation(); fornecWhatsApp(f); }} disabled={!(f.whatsapp||f.telefone)}
+                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"rgba(255,255,255,.05)", border:"none", borderRadius:8, padding:"7px 10px", color:"#fff", fontSize:11, fontWeight:600, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0 }}>
+                      💬 WA
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           );
         })()}
@@ -8710,8 +8829,9 @@ export default function App() {
                   { icon: "👥", title: "CRM Moradores", badgeColor: "#3B82F6", badgeBg: "rgba(59,130,246,.12)", sub: `${crmMoradores.length} cadastros`, dot: false, screen: "crm" },
                   { icon: "📢", title: "Comunicados", badgeColor: "#F59E0B", badgeBg: "rgba(245,158,11,.12)", sub: `${(dash?.comunicados||[]).length} enviados`, dot: false, screen: "comunicados" },
                   { icon: "💡", title: "Insights IA", badgeColor: "#7C5CFC", badgeBg: "rgba(124,92,252,.12)", sub: "Tempo real", dot: false, screen: "insights" },
+                  { icon: "🏢", title: "Fornecedores", badgeColor: "#10B981", badgeBg: "rgba(16,185,129,.12)", sub: `${fornecList.length} cadastros`, dot: false, screen: "fornecedores" },
                 ].map(m => (
-                  <div key={m.title} className="module-card" onClick={() => setSindicoScreen(m.screen)}>
+                  <div key={m.title} className="module-card" onClick={() => { setSindicoScreen(m.screen); setSindFornecDetail(null); }}>
                     {m.dot && <div style={{ position: "absolute", top: 12, right: 12, width: 8, height: 8, borderRadius: "50%", background: "#EF4444", boxShadow: "0 0 6px #EF4444" }} />}
                     <div className="module-card-icon">{m.icon}</div>
                     <div className="module-card-title">{m.title}</div>
@@ -8839,8 +8959,9 @@ export default function App() {
                   { icon: "📦", name: "Minhas Encomendas", count: String(encList.filter(e=>e.morador_nome.toLowerCase().includes("fabio")||e.unidade==="101A").filter(e=>e.status!=="retirado"&&e.status!=="devolvido").length || "0"), color: "#F59E0B", screen: "encomendas" },
                   { icon: "📢", name: "Comunicados", count: String(dash?.comunicados?.length || 0), color: "#7C5CFC", screen: "comunicados" },
                   { icon: "🚨", name: "Alertas MISP", count: String(t?.alertas_ativos || 0), color: "#EF4444", screen: "misp" },
+                  { icon: "🏢", name: "Fornecedores", count: String(fornecList.length), color: "#10B981", screen: "fornecedores" },
                 ].map(s => (
-                  <div key={s.name} className="service-item" onClick={() => s.screen && setMoradorScreen(s.screen)}>
+                  <div key={s.name} className="service-item" onClick={() => { if (s.screen) { setMoradorScreen(s.screen); setMorFornecDetail(null); } }}>
                     <div className="svc-icon">{s.icon}</div>
                     <div className="svc-name">{s.name}</div>
                     <span className="svc-count" style={{ color: s.color }}>{s.count}</span>
