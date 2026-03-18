@@ -122,6 +122,11 @@ html,body,#root{height:100%;font-family:'Inter',sans-serif;background:var(--c-bg
 .msg.ai .msg-bubble{background:rgba(99,102,241,.12);border:1px solid rgba(99,102,241,.2);color:#C7D2FE}
 .msg.user .msg-bubble{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#E2E8F0}
 .msg-time{font-size:10px;color:#475569;margin-top:2px}
+/* ── Gestor chat: theme-aware overrides ─────────────────────────────── */
+.gestor-chat .chat-area{background:var(--c-input);border-color:var(--c-input-border)}
+.gestor-chat .msg.ai .msg-bubble,.ai-panel .msg.ai .msg-bubble{color:var(--c-text);background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.25)}
+.gestor-chat .msg.user .msg-bubble,.ai-panel .msg.user .msg-bubble{color:var(--c-text);background:var(--c-surface2);border-color:var(--c-input-border)}
+.gestor-chat .msg-time,.ai-panel .msg-time{color:var(--c-text-faint)}
 .chat-input-row{display:flex;gap:8px}
 .chat-input{flex:1;padding:10px 14px;background:var(--c-input);border:1px solid var(--c-input-border);border-radius:10px;color:var(--c-text);font-size:13px;font-family:inherit;resize:none;transition:border-color .15s}
 .chat-input:focus{outline:none;border-color:rgba(99,102,241,.5)}
@@ -4400,24 +4405,26 @@ export default function App() {
               <span className={`status-badge ${sseOnline ? "badge-online" : "badge-offline"}`}>● {sseOnline ? "online" : "offline"}</span>
               <span style={{ marginLeft: "auto", fontSize: 11, color: "#475569" }}>{tokenInfo}</span>
             </div>
-            <div className="chat-chips">
-              {[["📊 Resumo executivo", "Faça um resumo executivo do condomínio agora"], ["🔴 OSs urgentes", "Quais são as OSs urgentes pendentes?"], ["💧 Água + IoT", "Como está a situação da água e sensores IoT?"], ["💰 Financeiro", "Análise financeira completa"], ["⭐ Score", "Como melhorar o score do condomínio?"]].map(([l, m]) => (
-                <button key={l} className="chip" onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setSideMsgs(p => [...p, { role: "user", content: m, time: fmtTime() }]); }}>{l}</button>
-              ))}
-            </div>
-            <div className="chat-area" ref={el => { if (el) el.scrollTop = el.scrollHeight; }}>
-              {deskMsgs.map((m, i) => (
-                <div key={i} className={`msg ${m.role}`}>
-                  <div className="msg-bubble">{m.content}</div>
-                  <div className="msg-time">{m.time}</div>
-                </div>
-              ))}
-              {deskTyping && <TypingIndicator />}
-            </div>
-            <div className="chat-input-row">
-              <textarea className="chat-input" value={deskInput} onChange={e => setDeskInput(e.target.value)} placeholder="Digite sua mensagem..." rows={2}
-                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(deskInput, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setDeskInput(""); } }} />
-              <button className="btn-send" disabled={deskTyping} onClick={() => { sendChat(deskInput, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setDeskInput(""); }}>Enviar</button>
+            <div className="gestor-chat">
+              <div className="chat-chips">
+                {[["📊 Resumo executivo", "Faça um resumo executivo do condomínio agora"], ["🔴 OSs urgentes", "Quais são as OSs urgentes pendentes?"], ["💧 Água + IoT", "Como está a situação da água e sensores IoT?"], ["💰 Financeiro", "Análise financeira completa"], ["⭐ Score", "Como melhorar o score do condomínio?"]].map(([l, m]) => (
+                  <button key={l} className="chip" onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setSideMsgs(p => [...p, { role: "user", content: m, time: fmtTime() }]); }}>{l}</button>
+                ))}
+              </div>
+              <div className="chat-area" ref={el => { if (el) el.scrollTop = el.scrollHeight; }}>
+                {deskMsgs.map((m, i) => (
+                  <div key={i} className={`msg ${m.role}`}>
+                    <div className="msg-bubble">{m.content}</div>
+                    <div className="msg-time">{m.time}</div>
+                  </div>
+                ))}
+                {deskTyping && <TypingIndicator />}
+              </div>
+              <div className="chat-input-row">
+                <textarea className="chat-input" value={deskInput} onChange={e => setDeskInput(e.target.value)} placeholder="Digite sua mensagem..." rows={2}
+                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(deskInput, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setDeskInput(""); } }} />
+                <button className="btn-send" disabled={deskTyping} onClick={() => { sendChat(deskInput, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setDeskInput(""); }}>Enviar</button>
+              </div>
             </div>
           </div>
 
@@ -4425,7 +4432,7 @@ export default function App() {
           <div className={`panel ${panel === "sv-insights" ? "active" : ""} card`}>
             <div className="card-title">💡 Insights do Condomínio</div>
             {insightsLoading && <div style={{ color: "#94A3B8", textAlign: "center", padding: 30 }}>🔮 Gerando insights via IA...</div>}
-            {insights && <div style={{ fontSize: 13, lineHeight: 1.6, color: "#CBD5E1", whiteSpace: "pre-wrap" }}>{insights}</div>}
+            {insights && <div style={{ fontSize: 13, lineHeight: 1.6, color: "var(--c-text)", whiteSpace: "pre-wrap" }}>{insights}</div>}
             {!insights && !insightsLoading && <div style={{ color: "#475569", fontSize: 13, textAlign: "center", padding: 30 }}>Clique para gerar análise automática via IA</div>}
             <button className="btn btn-primary" onClick={async () => {
               setInsightsLoading(true); setInsights("");
