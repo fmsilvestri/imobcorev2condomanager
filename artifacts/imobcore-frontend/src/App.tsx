@@ -587,26 +587,55 @@ export default function App() {
   const [mantCatFilter, setMantCatFilter] = useState("todos");
   const [mantStatusFilter, setMantStatusFilter] = useState("todos");
   const [mantSelEquip, setMantSelEquip] = useState<Equipamento | null>(null);
-  // ── Equipamentos CRUD ───────────────────────────────────────────────────────
-  const [equipList, setEquipList] = useState<Equipamento[]>(EQUIP_DEMO);
+  // ── Equipamentos CRUD (persistido no Supabase) ──────────────────────────────
+  const [equipList, setEquipList] = useState<Equipamento[]>([]);
+  const [equipLoading, setEquipLoading] = useState(false);
+  const [equipSaving, setEquipSaving] = useState(false);
   const [equipEditId, setEquipEditId] = useState<string|null>(null);
   const [equipShowEdit, setEquipShowEdit] = useState(false);
   const EMPTY_EQ: { nome:string; categoria:string; catIcon:string; local:string; fabricante:string; modelo:string; serie:string; dataInstalacao:string; vidaUtilAnos:number; instaladoHa:number; consumoKwh:number; horasDia:number; status:"operacional"|"atencao"|"manutencao"|"inativo"; proxManutencao:string; ultimaManutencao:string; custoManutencao:number; descricao:string } = { nome:"", categoria:"elevador", catIcon:"🛗", local:"", fabricante:"", modelo:"", serie:"", dataInstalacao:"", vidaUtilAnos:10, instaladoHa:0, consumoKwh:0, horasDia:8, status:"operacional", proxManutencao:"", ultimaManutencao:"", custoManutencao:0, descricao:"" };
   const [equipForm, setEquipForm] = useState(EMPTY_EQ);
-  const equipSave = () => {
-    if (!equipForm.nome.trim()) return;
-    if (equipEditId) {
-      setEquipList(prev => prev.map(e => e.id === equipEditId ? { ...e, ...equipForm } : e));
-    } else {
-      setEquipList(prev => [{ id:`eq${Date.now()}`, ...equipForm }, ...prev]);
-    }
+
+  const loadEquipamentos = async (cid: string) => {
+    setEquipLoading(true);
+    try {
+      const r = await fetch(`/api/equipamentos?condominio_id=${cid}`);
+      const d = await r.json();
+      if (r.ok && Array.isArray(d)) setEquipList(d);
+    } catch { /* silent */ }
+    setEquipLoading(false);
+  };
+
+  const equipSave = async () => {
+    if (!equipForm.nome.trim() || !condId) return;
+    setEquipSaving(true);
+    try {
+      if (equipEditId) {
+        const r = await fetch(`/api/equipamentos/${equipEditId}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id: condId, ...equipForm }) });
+        const d = await r.json();
+        if (r.ok) { setEquipList(prev => prev.map(e => e.id === equipEditId ? d.equipamento : e)); showToast("Equipamento atualizado!", "success"); }
+        else showToast("Erro: " + d.error, "error");
+      } else {
+        const r = await fetch("/api/equipamentos", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id: condId, ...equipForm }) });
+        const d = await r.json();
+        if (r.ok) { setEquipList(prev => [d.equipamento, ...prev]); showToast("Equipamento cadastrado!", "success"); }
+        else showToast("Erro: " + d.error, "error");
+      }
+    } catch { showToast("Erro ao salvar equipamento", "error"); }
+    setEquipSaving(false);
     setEquipShowEdit(false); setEquipEditId(null); setEquipForm(EMPTY_EQ);
   };
-  const equipDelete = (id: string) => {
+
+  const equipDelete = async (id: string) => {
     if (!confirm("Excluir equipamento permanentemente?")) return;
-    setEquipList(prev => prev.filter(e => e.id !== id));
-    if (mantSelEquip?.id === id) setMantSelEquip(null);
+    try {
+      const r = await fetch(`/api/equipamentos/${id}`, { method:"DELETE" });
+      const d = await r.json();
+      if (r.ok) { setEquipList(prev => prev.filter(e => e.id !== id)); if (mantSelEquip?.id === id) setMantSelEquip(null); showToast("Equipamento excluído", "success"); }
+      else showToast("Erro: " + d.error, "error");
+    } catch { showToast("Erro ao excluir equipamento", "error"); }
   };
+
   const equipEdit = (e: Equipamento) => {
     setEquipEditId(e.id);
     setEquipForm({ nome:e.nome, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:e.serie, dataInstalacao:e.dataInstalacao, vidaUtilAnos:e.vidaUtilAnos, instaladoHa:e.instaladoHa, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:e.status, proxManutencao:e.proxManutencao, ultimaManutencao:e.ultimaManutencao, custoManutencao:e.custoManutencao, descricao:e.descricao });
@@ -625,6 +654,13 @@ export default function App() {
       .then(r => r.json())
       .then(d => { if (d.ok && d.resultado) setDiagAutoResult(d.resultado); })
       .catch(() => {});
+  }, [condId]);
+
+  // Ao trocar condomínio: carregar equipamentos do Supabase
+  useEffect(() => {
+    if (!condId) { setEquipList([]); return; }
+    loadEquipamentos(condId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condId]);
 
   const calcDiagAuto = async () => {
@@ -5908,7 +5944,8 @@ export default function App() {
                           ))}
                         </tbody>
                       </table>
-                      {filtered.length === 0 && <div style={{ textAlign:"center", color:"#334155", padding:30, fontSize:13 }}>Nenhum equipamento encontrado</div>}
+                      {equipLoading && <div style={{ textAlign:"center", color:"#475569", padding:30, fontSize:13 }}>⏳ Carregando equipamentos...</div>}
+                      {!equipLoading && filtered.length === 0 && <div style={{ textAlign:"center", color:"#334155", padding:30, fontSize:13 }}>Nenhum equipamento encontrado</div>}
                     </div>
 
                     {/* Add new / Novo Equipamento button */}
@@ -5952,7 +5989,7 @@ export default function App() {
                             <textarea value={equipForm.descricao} onChange={e=>setEquipForm(f=>({...f,descricao:e.target.value}))} rows={3} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const, resize:"vertical" as const }} />
                           </div>
                           <div style={{ display:"flex", gap:10, marginTop:18 }}>
-                            <button title="Salvar alterações do equipamento" onClick={equipSave} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"10px 24px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>Salvar</button>
+                            <button title="Salvar alterações do equipamento" disabled={equipSaving} onClick={equipSave} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"10px 24px", color:"#fff", fontSize:13, fontWeight:700, cursor:equipSaving?"not-allowed":"pointer", opacity:equipSaving?.7:1 }}>{equipSaving ? "⏳ Salvando..." : "💾 Salvar"}</button>
                             <button title="Cancelar sem salvar" onClick={()=>setEquipShowEdit(false)} style={{ background:"transparent", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"10px 18px", color:"#64748B", fontSize:13, cursor:"pointer" }}>Cancelar</button>
                             {equipEditId && <button title="Excluir este equipamento permanentemente" onClick={()=>{ equipDelete(equipEditId); setEquipShowEdit(false); }} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.3)", borderRadius:8, padding:"10px 18px", color:"#F87171", fontSize:13, cursor:"pointer", marginLeft:"auto" }}>🗑️ Excluir</button>}
                           </div>

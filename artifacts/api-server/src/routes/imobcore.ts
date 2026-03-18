@@ -995,6 +995,97 @@ router.delete("/usuarios/:id", async (req: Request, res: Response) => {
   }
 });
 
+// ─── EQUIPAMENTOS (Módulo Manutenção) ────────────────────────────────────────
+
+// Mapeia row do Supabase → objeto frontend (Equipamento)
+function dbToEquip(row: Record<string, unknown>) {
+  return {
+    id:                String(row.id),
+    nome:              String(row.nome || ""),
+    categoria:         String(row.categoria || "elevador"),
+    catIcon:           String(row.cat_icon || "⚙️"),
+    local:             String(row.localizacao || ""),
+    fabricante:        String(row.fabricante || ""),
+    modelo:            String(row.modelo || ""),
+    serie:             String(row.serie || ""),
+    dataInstalacao:    row.data_instalacao ? String(row.data_instalacao) : "",
+    vidaUtilAnos:      row.vida_util_meses ? Math.round(Number(row.vida_util_meses) / 12) : Number(row.vida_util_anos || 0),
+    instaladoHa:       Number(row.instalado_ha || 0),
+    consumoKwh:        Number(row.consumo_eletrico_kwh ?? row.consumo_kwh ?? 0),
+    horasDia:          Number(row.horas_uso_dia ?? row.horas_dia ?? 8),
+    status:            String(row.status || "operacional").toLowerCase().replace(" ", "") as "operacional"|"atencao"|"manutencao"|"inativo",
+    proxManutencao:    row.prox_manutencao ? String(row.prox_manutencao) : "",
+    ultimaManutencao:  row.ultima_manutencao ? String(row.ultima_manutencao) : "",
+    custoManutencao:   Number(row.custo_manutencao || 0),
+    descricao:         String(row.descricao || ""),
+  };
+}
+
+// Mapeia objeto frontend → payload Supabase
+function equipToDb(body: Record<string, unknown>, condominioId: string) {
+  const payload: Record<string, unknown> = { condominio_id: condominioId };
+  if (body.nome           !== undefined) payload.nome                = body.nome;
+  if (body.categoria      !== undefined) payload.categoria           = body.categoria;
+  if (body.catIcon        !== undefined) payload.cat_icon            = body.catIcon;
+  if (body.local          !== undefined) payload.localizacao         = body.local;
+  if (body.fabricante     !== undefined) payload.fabricante          = body.fabricante;
+  if (body.modelo         !== undefined) payload.modelo              = body.modelo;
+  if (body.serie          !== undefined) payload.serie               = body.serie;
+  if (body.dataInstalacao !== undefined) payload.data_instalacao     = body.dataInstalacao || null;
+  if (body.vidaUtilAnos   !== undefined) payload.vida_util_meses     = Math.round(Number(body.vidaUtilAnos) * 12);
+  if (body.instaladoHa    !== undefined) payload.instalado_ha        = body.instaladoHa;
+  if (body.consumoKwh     !== undefined) payload.consumo_eletrico_kwh= body.consumoKwh;
+  if (body.horasDia       !== undefined) payload.horas_uso_dia       = body.horasDia;
+  if (body.status         !== undefined) payload.status              = body.status;
+  if (body.proxManutencao !== undefined) payload.prox_manutencao     = body.proxManutencao || null;
+  if (body.ultimaManutencao!== undefined)payload.ultima_manutencao   = body.ultimaManutencao || null;
+  if (body.custoManutencao!== undefined) payload.custo_manutencao    = body.custoManutencao;
+  if (body.descricao      !== undefined) payload.descricao           = body.descricao;
+  payload.updated_at = new Date().toISOString();
+  return payload;
+}
+
+// GET /api/equipamentos?condominio_id=X
+router.get("/equipamentos", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+  const { data, error } = await supabase.from("equipamentos").select("*").eq("condominio_id", condId).order("created_at", { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json((data || []).map(r => dbToEquip(r as Record<string, unknown>)));
+});
+
+// POST /api/equipamentos — criar novo
+router.post("/equipamentos", async (req: Request, res: Response) => {
+  const { condominio_id, ...body } = req.body as Record<string, unknown>;
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  if (!body.nome) return res.status(400).json({ error: "nome obrigatório" });
+  const payload = equipToDb(body, String(condominio_id));
+  const { data, error } = await supabase.from("equipamentos").insert(payload).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, equipamento: dbToEquip(data as Record<string, unknown>) });
+});
+
+// PUT /api/equipamentos/:id — atualizar
+router.put("/equipamentos/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { condominio_id, ...body } = req.body as Record<string, unknown>;
+  if (!id) return res.status(400).json({ error: "id obrigatório" });
+  const payload = equipToDb(body, String(condominio_id || ""));
+  delete payload.condominio_id; // não sobrescrever o dono
+  const { data, error } = await supabase.from("equipamentos").update(payload).eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, equipamento: dbToEquip(data as Record<string, unknown>) });
+});
+
+// DELETE /api/equipamentos/:id
+router.delete("/equipamentos/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: "id obrigatório" });
+  const { error } = await supabase.from("equipamentos").delete().eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 // ─── DIAGNÓSTICO INTELIGENTE ─────────────────────────────────────────────────
 
 // GET /api/diagnostico/ultimo?condominio_id=X — último resultado salvo para este condomínio

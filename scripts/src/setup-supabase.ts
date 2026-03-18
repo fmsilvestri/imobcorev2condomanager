@@ -126,6 +126,24 @@ async function runMigrations() {
     console.log("✅ Migration 3 (diagnostico tables): OK");
   }
 
+  // ── Migration 4: Equipamentos — colunas extras para Manutenção ─────────────
+  const { error: m4Err } = await supabase.from("equipamentos").select("cat_icon, modelo, serie, instalado_ha, prox_manutencao, ultima_manutencao, custo_manutencao").limit(1);
+  if (m4Err) {
+    console.log("⚠️  Migration 4 needed (equipamentos extra columns). Run in SQL Editor:");
+    [
+      "ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS cat_icon text DEFAULT '⚙️'",
+      "ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS modelo text",
+      "ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS serie text",
+      "ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS instalado_ha int DEFAULT 0",
+      "ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS prox_manutencao date",
+      "ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS ultima_manutencao date",
+      "ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS custo_manutencao numeric(10,2) DEFAULT 0",
+    ].forEach(m => console.log("   " + m + ";"));
+    console.log();
+  } else {
+    console.log("✅ Migration 4 (equipamentos extra columns): OK");
+  }
+
   console.log();
 }
 
