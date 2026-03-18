@@ -602,6 +602,17 @@ export default function App() {
   const [equipSaving, setEquipSaving] = useState(false);
   const [equipEditId, setEquipEditId] = useState<string|null>(null);
   const [equipShowEdit, setEquipShowEdit] = useState(false);
+  const EQUIP_CAT_ICONS: Record<string, string> = {
+    elevador: "🛗", hidraulico: "💧", eletrico: "⚡", seguranca: "🔒",
+    limpeza: "🧹", estrutural: "🏗️", piscina: "🏊", gerador: "🔋",
+    climatizacao: "❄️", incendio: "🔥", portaria: "🚪", outros: "📦",
+  };
+  const EQUIP_CATS: [string, string][] = [
+    ["elevador","🛗 Elevador"], ["hidraulico","💧 Hidráulico"], ["eletrico","⚡ Elétrico"],
+    ["seguranca","🔒 Segurança"], ["limpeza","🧹 Limpeza"], ["estrutural","🏗️ Estrutural"],
+    ["piscina","🏊 Piscina"], ["climatizacao","❄️ Climatização"], ["incendio","🔥 Incêndio"],
+    ["portaria","🚪 Portaria"], ["gerador","🔋 Gerador"], ["outros","📦 Outros"],
+  ];
   const EMPTY_EQ: { nome:string; categoria:string; catIcon:string; local:string; fabricante:string; modelo:string; serie:string; dataInstalacao:string; vidaUtilAnos:number; instaladoHa:number; consumoKwh:number; horasDia:number; status:"operacional"|"atencao"|"manutencao"|"inativo"; proxManutencao:string; ultimaManutencao:string; custoManutencao:number; descricao:string; fornecedor_id:string; quantidade:number } = { nome:"", categoria:"elevador", catIcon:"🛗", local:"", fabricante:"", modelo:"", serie:"", dataInstalacao:"", vidaUtilAnos:10, instaladoHa:0, consumoKwh:0, horasDia:8, status:"operacional", proxManutencao:"", ultimaManutencao:"", custoManutencao:0, descricao:"", fornecedor_id:"", quantidade:1 };
   const [equipForm, setEquipForm] = useState(EMPTY_EQ);
 
@@ -610,7 +621,10 @@ export default function App() {
     try {
       const r = await fetch(`/api/equipamentos?condominio_id=${cid}`);
       const d = await r.json();
-      if (r.ok && Array.isArray(d)) setEquipList(d);
+      if (r.ok && Array.isArray(d)) setEquipList(d.map((e: Equipamento) => ({
+        ...e,
+        catIcon: EQUIP_CAT_ICONS[e.categoria] ?? e.catIcon ?? "📦",
+      })));
     } catch { /* silent */ }
     setEquipLoading(false);
   };
@@ -7525,7 +7539,8 @@ Content-Type: application/json
                       <input value={mantSearch} onChange={e=>setMantSearch(e.target.value)}
                         placeholder="🔍 Buscar equipamento..." style={{ flex:1, minWidth:180, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 12px", color:"#fff", fontSize:12 }} />
                       <select value={mantCatFilter} onChange={e=>setMantCatFilter(e.target.value)} style={{ background:"#1e293b", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 10px", color:"#94A3B8", fontSize:12 }}>
-                        {cats.map(c => <option key={c} value={c}>{c === "todos" ? "Todas categorias" : c}</option>)}
+                        <option value="todos">🗂️ Todas categorias</option>
+                        {cats.filter(c=>c!=="todos").map(c => <option key={c} value={c}>{(EQUIP_CAT_ICONS[c]||"📦")} {c.charAt(0).toUpperCase()+c.slice(1)}</option>)}
                       </select>
                       <select value={mantStatusFilter} onChange={e=>setMantStatusFilter(e.target.value)} style={{ background:"#1e293b", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 10px", color:"#94A3B8", fontSize:12 }}>
                         {["todos","operacional","atencao","manutencao","inativo"].map(s => <option key={s} value={s}>{s==="todos"?"Todos status":stLabel[s as keyof typeof stLabel]||s}</option>)}
@@ -7581,9 +7596,17 @@ Content-Type: application/json
                               onMouseEnter={ev=>(ev.currentTarget.style.background="rgba(99,102,241,.08)")}
                               onMouseLeave={ev=>(ev.currentTarget.style.background= i%2===0 ? "rgba(255,255,255,.01)" : "transparent")}>
                               <td style={{ padding:"12px 12px", color:"#64748B", fontWeight:600, fontSize:12 }}>{i+1}</td>
-                              <td style={{ padding:"12px 12px", fontWeight:700, color:"#E2E8F0", fontSize:13 }}>{e.catIcon} {e.nome}</td>
+                              <td style={{ padding:"10px 12px" }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+                                  <span style={{ fontSize:18, lineHeight:1, width:32, height:32, background:"rgba(99,102,241,.18)", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, border:"1px solid rgba(99,102,241,.25)" }}>{e.catIcon}</span>
+                                  <div>
+                                    <div style={{ fontWeight:700, color:"#E2E8F0", fontSize:13 }}>{e.nome}</div>
+                                    {e.modelo && <div style={{ fontSize:10, color:"#64748B", marginTop:1 }}>{e.modelo}</div>}
+                                  </div>
+                                </div>
+                              </td>
                               <td style={{ padding:"12px 12px" }}>
-                                <span style={{ background:"rgba(255,255,255,.06)", color:"#94A3B8", borderRadius:6, padding:"3px 8px", fontSize:11, fontWeight:600 }}>{e.categoria}</span>
+                                <span style={{ background:"rgba(255,255,255,.06)", color:"#94A3B8", borderRadius:6, padding:"3px 8px", fontSize:11, fontWeight:600 }}>{EQUIP_CAT_ICONS[e.categoria]||"📦"} {e.categoria}</span>
                               </td>
                               <td style={{ padding:"12px 12px", color:"#CBD5E1", maxWidth:130 }}>{e.local}</td>
                               <td style={{ padding:"12px 12px" }}>
@@ -7652,8 +7675,8 @@ Content-Type: application/json
                             ))}
                             <div>
                               <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Categoria</div>
-                              <select value={equipForm.categoria} onChange={e=>setEquipForm(f=>({...f,categoria:e.target.value}))} style={{ width:"100%", background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }}>
-                                {["elevador","hidraulico","eletrico","seguranca","limpeza","estrutural","outros"].map(c=><option key={c} value={c}>{c}</option>)}
+                              <select value={equipForm.categoria} onChange={e=>setEquipForm(f=>({...f,categoria:e.target.value,catIcon:EQUIP_CAT_ICONS[e.target.value]||"📦"}))} style={{ width:"100%", background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }}>
+                                {EQUIP_CATS.map(([v,l])=><option key={v} value={v}>{l}</option>)}
                               </select>
                             </div>
                             <div>
