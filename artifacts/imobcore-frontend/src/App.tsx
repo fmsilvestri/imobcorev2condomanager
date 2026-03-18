@@ -607,6 +607,20 @@ export default function App() {
     limpeza: "🧹", estrutural: "🏗️", piscina: "🏊", gerador: "🔋",
     climatizacao: "❄️", incendio: "🔥", portaria: "🚪", outros: "📦",
   };
+  const EQUIP_CAT_COLORS: Record<string, { bg: string; border: string; text: string }> = {
+    elevador:     { bg:"rgba(99,102,241,.22)",  border:"rgba(99,102,241,.45)",  text:"#A5B4FC" },
+    hidraulico:   { bg:"rgba(14,165,233,.22)",  border:"rgba(14,165,233,.45)",  text:"#7DD3FC" },
+    eletrico:     { bg:"rgba(234,179,8,.22)",   border:"rgba(234,179,8,.45)",   text:"#FDE047" },
+    seguranca:    { bg:"rgba(239,68,68,.22)",   border:"rgba(239,68,68,.45)",   text:"#FCA5A5" },
+    limpeza:      { bg:"rgba(16,185,129,.22)",  border:"rgba(16,185,129,.45)",  text:"#6EE7B7" },
+    estrutural:   { bg:"rgba(180,83,9,.28)",    border:"rgba(180,83,9,.5)",     text:"#FCD34D" },
+    piscina:      { bg:"rgba(6,182,212,.22)",   border:"rgba(6,182,212,.45)",   text:"#67E8F9" },
+    climatizacao: { bg:"rgba(139,92,246,.22)",  border:"rgba(139,92,246,.45)",  text:"#C4B5FD" },
+    incendio:     { bg:"rgba(249,115,22,.22)",  border:"rgba(249,115,22,.45)",  text:"#FDBA74" },
+    portaria:     { bg:"rgba(107,114,128,.22)", border:"rgba(107,114,128,.45)", text:"#D1D5DB" },
+    gerador:      { bg:"rgba(20,184,166,.22)",  border:"rgba(20,184,166,.45)",  text:"#5EEAD4" },
+    outros:       { bg:"rgba(100,116,139,.22)", border:"rgba(100,116,139,.45)", text:"#CBD5E1" },
+  };
   const EQUIP_CATS: [string, string][] = [
     ["elevador","🛗 Elevador"], ["hidraulico","💧 Hidráulico"], ["eletrico","⚡ Elétrico"],
     ["seguranca","🔒 Segurança"], ["limpeza","🧹 Limpeza"], ["estrutural","🏗️ Estrutural"],
@@ -5149,9 +5163,9 @@ export default function App() {
                               {osEquipLinks.length > 0 && (
                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                                   {osEquipLinks.map(eq => (
-                                    <div key={eq.id} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(99,102,241,.15)", border: "1px solid rgba(99,102,241,.3)", borderRadius: 6, padding: "4px 8px" }}>
+                                    <div key={eq.id} style={{ display: "flex", alignItems: "center", gap: 5, background: (EQUIP_CAT_COLORS[eq.categoria]??EQUIP_CAT_COLORS["outros"]).bg, border: `1px solid ${(EQUIP_CAT_COLORS[eq.categoria]??EQUIP_CAT_COLORS["outros"]).border}`, borderRadius: 6, padding: "4px 8px" }}>
                                       <span style={{ fontSize: 13 }}>{eq.catIcon}</span>
-                                      <span style={{ fontSize: 11, color: "#C7D2FE", fontWeight: 600, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{eq.nome}</span>
+                                      <span style={{ fontSize: 11, color: (EQUIP_CAT_COLORS[eq.categoria]??EQUIP_CAT_COLORS["outros"]).text, fontWeight: 600, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{eq.nome}</span>
                                       <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusColors[eq.status] || "#475569", flexShrink: 0 }} />
                                       <button onClick={() => setOsEquipLinks(p => p.filter(e => e.id !== eq.id))} style={{ background: "none", border: "none", color: "#64748B", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0, marginLeft: 2 }}>✕</button>
                                     </div>
@@ -7597,16 +7611,21 @@ Content-Type: application/json
                               onMouseLeave={ev=>(ev.currentTarget.style.background= i%2===0 ? "rgba(255,255,255,.01)" : "transparent")}>
                               <td style={{ padding:"12px 12px", color:"#64748B", fontWeight:600, fontSize:12 }}>{i+1}</td>
                               <td style={{ padding:"10px 12px" }}>
-                                <div style={{ display:"flex", alignItems:"center", gap:9 }}>
-                                  <span style={{ fontSize:18, lineHeight:1, width:32, height:32, background:"rgba(99,102,241,.18)", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, border:"1px solid rgba(99,102,241,.25)" }}>{e.catIcon}</span>
-                                  <div>
-                                    <div style={{ fontWeight:700, color:"#E2E8F0", fontSize:13 }}>{e.nome}</div>
-                                    {e.modelo && <div style={{ fontSize:10, color:"#64748B", marginTop:1 }}>{e.modelo}</div>}
-                                  </div>
-                                </div>
+                                {(() => {
+                                  const cc = EQUIP_CAT_COLORS[e.categoria] ?? EQUIP_CAT_COLORS["outros"];
+                                  return (
+                                    <div style={{ display:"flex", alignItems:"center", gap:9 }}>
+                                      <span style={{ fontSize:20, lineHeight:1, width:36, height:36, background:cc.bg, borderRadius:10, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, border:`1.5px solid ${cc.border}`, boxShadow:`0 0 8px ${cc.border}` }}>{e.catIcon}</span>
+                                      <div>
+                                        <div style={{ fontWeight:700, color:"#E2E8F0", fontSize:13 }}>{e.nome}</div>
+                                        {e.modelo && <div style={{ fontSize:10, color:"#64748B", marginTop:1 }}>{e.modelo}</div>}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               </td>
                               <td style={{ padding:"12px 12px" }}>
-                                <span style={{ background:"rgba(255,255,255,.06)", color:"#94A3B8", borderRadius:6, padding:"3px 8px", fontSize:11, fontWeight:600 }}>{EQUIP_CAT_ICONS[e.categoria]||"📦"} {e.categoria}</span>
+                                {(() => { const cc = EQUIP_CAT_COLORS[e.categoria] ?? EQUIP_CAT_COLORS["outros"]; return <span style={{ background:cc.bg, color:cc.text, border:`1px solid ${cc.border}`, borderRadius:6, padding:"3px 8px", fontSize:11, fontWeight:700 }}>{EQUIP_CAT_ICONS[e.categoria]||"📦"} {e.categoria}</span>; })()}
                               </td>
                               <td style={{ padding:"12px 12px", color:"#CBD5E1", maxWidth:130 }}>{e.local}</td>
                               <td style={{ padding:"12px 12px" }}>
