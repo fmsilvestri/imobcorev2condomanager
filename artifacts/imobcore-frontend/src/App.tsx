@@ -450,7 +450,7 @@ interface Equipamento {
   vidaUtilAnos: number; instaladoHa: number; consumoKwh: number; horasDia: number;
   status: "operacional" | "atencao" | "manutencao" | "inativo";
   proxManutencao: string; ultimaManutencao: string; custoManutencao: number;
-  descricao: string; fornecedor_id?: string;
+  descricao: string; fornecedor_id?: string; quantidade: number;
 }
 const RES_DEMO: Reservatorio[] = [
   { id:"res-1", sensor_id:"sensor_agua", nome:"Caixa Principal", local:"Bloco A – Cobertura", capacidade_litros:15000, altura_cm:200, mac_address:"F8:83:87:90:9F:78", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://imob-core-mobile-12.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443, cf_online:true, wh_online:true, created_at:new Date().toISOString() },
@@ -538,18 +538,18 @@ const MISP_PILAR_ICONS: Record<string,string> = { "Financeiro":"💰","Seguranç
 const MISP_PILAR_COLORS: Record<string,string> = { "Financeiro":"#10B981","Segurança":"#EF4444","Manutenção":"#3B82F6","Infraestrutura":"#F59E0B","Sustentabilidade":"#06B6D4","Gestão":"#8B5CF6" };
 
 const EQUIP_DEMO: Equipamento[] = [
-  { id:"eq1", nome:"Elevador Torre A", categoria:"elevador", catIcon:"🛗", local:"Torre A – Poço", fabricante:"OTIS", modelo:"Gen2 MRL", serie:"OT-2021-0841", dataInstalacao:"2021-03-15", vidaUtilAnos:20, instaladoHa:4, consumoKwh:5.2, horasDia:12, status:"operacional", proxManutencao:"2026-04-10", ultimaManutencao:"2026-01-10", custoManutencao:2400, descricao:"Elevador sem casa de máquinas, 10 paradas." },
-  { id:"eq2", nome:"Elevador Torre B", categoria:"elevador", catIcon:"🛗", local:"Torre B – Poço", fabricante:"ThyssenKrupp", modelo:"Evolution 200", serie:"TK-2019-3312", dataInstalacao:"2019-08-20", vidaUtilAnos:20, instaladoHa:6, consumoKwh:5.8, horasDia:10, status:"manutencao", proxManutencao:"2026-03-28", ultimaManutencao:"2025-12-20", custoManutencao:2400, descricao:"Em manutenção corretiva – cabo de tração." },
-  { id:"eq3", nome:"Bomba Piscina Principal", categoria:"piscina", catIcon:"🏊", local:"Casa de Bombas – Piscina", fabricante:"Pentair", modelo:"SuperFlo VS", serie:"PNT-2022-0115", dataInstalacao:"2022-01-10", vidaUtilAnos:10, instaladoHa:3, consumoKwh:1.1, horasDia:8, status:"operacional", proxManutencao:"2026-06-01", ultimaManutencao:"2025-12-01", custoManutencao:800, descricao:"Bomba de velocidade variável 1.5CV." },
-  { id:"eq4", nome:"Bomba Cisterna Principal", categoria:"hidraulico", catIcon:"💧", local:"Subsolo – Cisterna", fabricante:"Schneider", modelo:"BCC-2000", serie:"SCH-2020-7743", dataInstalacao:"2020-05-18", vidaUtilAnos:12, instaladoHa:5, consumoKwh:2.2, horasDia:6, status:"atencao", proxManutencao:"2026-04-05", ultimaManutencao:"2025-10-05", custoManutencao:1200, descricao:"Vibração elevada detectada. Verificar rolamentos." },
-  { id:"eq5", nome:"Caixa d'Água Torre A", categoria:"hidraulico", catIcon:"🪣", local:"Telhado Torre A", fabricante:"Eternit", modelo:"Fortlev 5000L", serie:"ET-2018-9901", dataInstalacao:"2018-09-01", vidaUtilAnos:15, instaladoHa:7, consumoKwh:0, horasDia:0, status:"operacional", proxManutencao:"2026-09-01", ultimaManutencao:"2025-09-01", custoManutencao:400, descricao:"Limpeza semestral programada." },
-  { id:"eq6", nome:"Caixa d'Água Torre B", categoria:"hidraulico", catIcon:"🪣", local:"Telhado Torre B", fabricante:"Eternit", modelo:"Fortlev 5000L", serie:"ET-2018-9902", dataInstalacao:"2018-09-01", vidaUtilAnos:15, instaladoHa:7, consumoKwh:0, horasDia:0, status:"operacional", proxManutencao:"2026-09-01", ultimaManutencao:"2025-09-01", custoManutencao:400, descricao:"Limpeza semestral programada." },
-  { id:"eq7", nome:"Sistema CFTV – 12 câmeras", categoria:"seguranca", catIcon:"📷", local:"Várias áreas comuns", fabricante:"Hikvision", modelo:"DS-2CD2T47G2", serie:"HK-2023-0044", dataInstalacao:"2023-06-12", vidaUtilAnos:8, instaladoHa:2, consumoKwh:0.08, horasDia:24, status:"operacional", proxManutencao:"2026-12-12", ultimaManutencao:"2025-12-12", custoManutencao:600, descricao:"12 câmeras IP 4MP com visão noturna." },
-  { id:"eq8", nome:"Gerador de Emergência", categoria:"eletrico", catIcon:"⚡", local:"Garagem – Subsolo", fabricante:"Stemac", modelo:"GTA 45", serie:"ST-2020-1122", dataInstalacao:"2020-11-30", vidaUtilAnos:15, instaladoHa:5, consumoKwh:30, horasDia:0, status:"operacional", proxManutencao:"2026-05-30", ultimaManutencao:"2025-11-30", custoManutencao:1800, descricao:"45 kVA diesel. Teste mensal obrigatório." },
-  { id:"eq9", nome:"Portão Garagem Bloco A", categoria:"eletrico", catIcon:"🚗", local:"Acesso Garagem A", fabricante:"PPA", modelo:"DZ Turbo", serie:"PPA-2021-5510", dataInstalacao:"2021-07-22", vidaUtilAnos:10, instaladoHa:4, consumoKwh:0.4, horasDia:10, status:"operacional", proxManutencao:"2026-07-22", ultimaManutencao:"2025-07-22", custoManutencao:350, descricao:"Motor deslizante 1/3 HP." },
-  { id:"eq10", nome:"Portão Garagem Bloco B", categoria:"eletrico", catIcon:"🚗", local:"Acesso Garagem B", fabricante:"PPA", modelo:"DZ Turbo", serie:"PPA-2021-5511", dataInstalacao:"2021-07-22", vidaUtilAnos:10, instaladoHa:4, consumoKwh:0.4, horasDia:10, status:"inativo", proxManutencao:"2026-03-20", ultimaManutencao:"2025-06-15", custoManutencao:350, descricao:"Motor queimado – peça em pedido." },
-  { id:"eq11", nome:"Central de Incêndio", categoria:"seguranca", catIcon:"🔥", local:"Térreo – Hall", fabricante:"ADEMCO", modelo:"Vista 128", serie:"AD-2019-8832", dataInstalacao:"2019-03-10", vidaUtilAnos:12, instaladoHa:7, consumoKwh:0.1, horasDia:24, status:"operacional", proxManutencao:"2026-03-10", ultimaManutencao:"2025-09-10", custoManutencao:900, descricao:"Central endereçável 128 zonas. Vistoria semestral." },
-  { id:"eq12", nome:"Aquecedor Solar – Cobertura", categoria:"eletrico", catIcon:"☀️", local:"Cobertura", fabricante:"Heliotek", modelo:"TS-30", serie:"HT-2020-3301", dataInstalacao:"2020-04-05", vidaUtilAnos:15, instaladoHa:5, consumoKwh:1.5, horasDia:6, status:"atencao", proxManutencao:"2026-04-05", ultimaManutencao:"2025-10-05", custoManutencao:700, descricao:"30 coletores – eficiência reduzida (incrustação)." },
+  { id:"eq1", nome:"Elevador Torre A", categoria:"elevador", catIcon:"🛗", local:"Torre A – Poço", fabricante:"OTIS", modelo:"Gen2 MRL", serie:"OT-2021-0841", dataInstalacao:"2021-03-15", vidaUtilAnos:20, instaladoHa:4, consumoKwh:5.2, horasDia:12, status:"operacional", proxManutencao:"2026-04-10", ultimaManutencao:"2026-01-10", custoManutencao:2400, descricao:"Elevador sem casa de máquinas, 10 paradas.", quantidade:1 },
+  { id:"eq2", nome:"Elevador Torre B", categoria:"elevador", catIcon:"🛗", local:"Torre B – Poço", fabricante:"ThyssenKrupp", modelo:"Evolution 200", serie:"TK-2019-3312", dataInstalacao:"2019-08-20", vidaUtilAnos:20, instaladoHa:6, consumoKwh:5.8, horasDia:10, status:"manutencao", proxManutencao:"2026-03-28", ultimaManutencao:"2025-12-20", custoManutencao:2400, descricao:"Em manutenção corretiva – cabo de tração.", quantidade:1 },
+  { id:"eq3", nome:"Bomba Piscina Principal", categoria:"piscina", catIcon:"🏊", local:"Casa de Bombas – Piscina", fabricante:"Pentair", modelo:"SuperFlo VS", serie:"PNT-2022-0115", dataInstalacao:"2022-01-10", vidaUtilAnos:10, instaladoHa:3, consumoKwh:1.1, horasDia:8, status:"operacional", proxManutencao:"2026-06-01", ultimaManutencao:"2025-12-01", custoManutencao:800, descricao:"Bomba de velocidade variável 1.5CV.", quantidade:1 },
+  { id:"eq4", nome:"Bomba Cisterna Principal", categoria:"hidraulico", catIcon:"💧", local:"Subsolo – Cisterna", fabricante:"Schneider", modelo:"BCC-2000", serie:"SCH-2020-7743", dataInstalacao:"2020-05-18", vidaUtilAnos:12, instaladoHa:5, consumoKwh:2.2, horasDia:6, status:"atencao", proxManutencao:"2026-04-05", ultimaManutencao:"2025-10-05", custoManutencao:1200, descricao:"Vibração elevada detectada. Verificar rolamentos.", quantidade:1 },
+  { id:"eq5", nome:"Caixa d'Água Torre A", categoria:"hidraulico", catIcon:"🪣", local:"Telhado Torre A", fabricante:"Eternit", modelo:"Fortlev 5000L", serie:"ET-2018-9901", dataInstalacao:"2018-09-01", vidaUtilAnos:15, instaladoHa:7, consumoKwh:0, horasDia:0, status:"operacional", proxManutencao:"2026-09-01", ultimaManutencao:"2025-09-01", custoManutencao:400, descricao:"Limpeza semestral programada.", quantidade:1 },
+  { id:"eq6", nome:"Caixa d'Água Torre B", categoria:"hidraulico", catIcon:"🪣", local:"Telhado Torre B", fabricante:"Eternit", modelo:"Fortlev 5000L", serie:"ET-2018-9902", dataInstalacao:"2018-09-01", vidaUtilAnos:15, instaladoHa:7, consumoKwh:0, horasDia:0, status:"operacional", proxManutencao:"2026-09-01", ultimaManutencao:"2025-09-01", custoManutencao:400, descricao:"Limpeza semestral programada.", quantidade:1 },
+  { id:"eq7", nome:"Sistema CFTV – 12 câmeras", categoria:"seguranca", catIcon:"📷", local:"Várias áreas comuns", fabricante:"Hikvision", modelo:"DS-2CD2T47G2", serie:"HK-2023-0044", dataInstalacao:"2023-06-12", vidaUtilAnos:8, instaladoHa:2, consumoKwh:0.08, horasDia:24, status:"operacional", proxManutencao:"2026-12-12", ultimaManutencao:"2025-12-12", custoManutencao:600, descricao:"12 câmeras IP 4MP com visão noturna.", quantidade:1 },
+  { id:"eq8", nome:"Gerador de Emergência", categoria:"eletrico", catIcon:"⚡", local:"Garagem – Subsolo", fabricante:"Stemac", modelo:"GTA 45", serie:"ST-2020-1122", dataInstalacao:"2020-11-30", vidaUtilAnos:15, instaladoHa:5, consumoKwh:30, horasDia:0, status:"operacional", proxManutencao:"2026-05-30", ultimaManutencao:"2025-11-30", custoManutencao:1800, descricao:"45 kVA diesel. Teste mensal obrigatório.", quantidade:1 },
+  { id:"eq9", nome:"Portão Garagem Bloco A", categoria:"eletrico", catIcon:"🚗", local:"Acesso Garagem A", fabricante:"PPA", modelo:"DZ Turbo", serie:"PPA-2021-5510", dataInstalacao:"2021-07-22", vidaUtilAnos:10, instaladoHa:4, consumoKwh:0.4, horasDia:10, status:"operacional", proxManutencao:"2026-07-22", ultimaManutencao:"2025-07-22", custoManutencao:350, descricao:"Motor deslizante 1/3 HP.", quantidade:1 },
+  { id:"eq10", nome:"Portão Garagem Bloco B", categoria:"eletrico", catIcon:"🚗", local:"Acesso Garagem B", fabricante:"PPA", modelo:"DZ Turbo", serie:"PPA-2021-5511", dataInstalacao:"2021-07-22", vidaUtilAnos:10, instaladoHa:4, consumoKwh:0.4, horasDia:10, status:"inativo", proxManutencao:"2026-03-20", ultimaManutencao:"2025-06-15", custoManutencao:350, descricao:"Motor queimado – peça em pedido.", quantidade:1 },
+  { id:"eq11", nome:"Central de Incêndio", categoria:"seguranca", catIcon:"🔥", local:"Térreo – Hall", fabricante:"ADEMCO", modelo:"Vista 128", serie:"AD-2019-8832", dataInstalacao:"2019-03-10", vidaUtilAnos:12, instaladoHa:7, consumoKwh:0.1, horasDia:24, status:"operacional", proxManutencao:"2026-03-10", ultimaManutencao:"2025-09-10", custoManutencao:900, descricao:"Central endereçável 128 zonas. Vistoria semestral.", quantidade:1 },
+  { id:"eq12", nome:"Aquecedor Solar – Cobertura", categoria:"eletrico", catIcon:"☀️", local:"Cobertura", fabricante:"Heliotek", modelo:"TS-30", serie:"HT-2020-3301", dataInstalacao:"2020-04-05", vidaUtilAnos:15, instaladoHa:5, consumoKwh:1.5, horasDia:6, status:"atencao", proxManutencao:"2026-04-05", ultimaManutencao:"2025-10-05", custoManutencao:700, descricao:"30 coletores – eficiência reduzida (incrustação).", quantidade:1 },
 ];
 
 const MANUT_SCHEDULE: { mes: string; items: { equip: string; tipo: "preventiva"|"corretiva"; custo: number }[] }[] = [
@@ -599,7 +599,7 @@ export default function App() {
   const [equipSaving, setEquipSaving] = useState(false);
   const [equipEditId, setEquipEditId] = useState<string|null>(null);
   const [equipShowEdit, setEquipShowEdit] = useState(false);
-  const EMPTY_EQ: { nome:string; categoria:string; catIcon:string; local:string; fabricante:string; modelo:string; serie:string; dataInstalacao:string; vidaUtilAnos:number; instaladoHa:number; consumoKwh:number; horasDia:number; status:"operacional"|"atencao"|"manutencao"|"inativo"; proxManutencao:string; ultimaManutencao:string; custoManutencao:number; descricao:string; fornecedor_id:string } = { nome:"", categoria:"elevador", catIcon:"🛗", local:"", fabricante:"", modelo:"", serie:"", dataInstalacao:"", vidaUtilAnos:10, instaladoHa:0, consumoKwh:0, horasDia:8, status:"operacional", proxManutencao:"", ultimaManutencao:"", custoManutencao:0, descricao:"", fornecedor_id:"" };
+  const EMPTY_EQ: { nome:string; categoria:string; catIcon:string; local:string; fabricante:string; modelo:string; serie:string; dataInstalacao:string; vidaUtilAnos:number; instaladoHa:number; consumoKwh:number; horasDia:number; status:"operacional"|"atencao"|"manutencao"|"inativo"; proxManutencao:string; ultimaManutencao:string; custoManutencao:number; descricao:string; fornecedor_id:string; quantidade:number } = { nome:"", categoria:"elevador", catIcon:"🛗", local:"", fabricante:"", modelo:"", serie:"", dataInstalacao:"", vidaUtilAnos:10, instaladoHa:0, consumoKwh:0, horasDia:8, status:"operacional", proxManutencao:"", ultimaManutencao:"", custoManutencao:0, descricao:"", fornecedor_id:"", quantidade:1 };
   const [equipForm, setEquipForm] = useState(EMPTY_EQ);
 
   const loadEquipamentos = async (cid: string) => {
@@ -644,13 +644,13 @@ export default function App() {
 
   const equipEdit = (e: Equipamento) => {
     setEquipEditId(e.id);
-    setEquipForm({ nome:e.nome, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:e.serie, dataInstalacao:e.dataInstalacao, vidaUtilAnos:e.vidaUtilAnos, instaladoHa:e.instaladoHa, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:e.status, proxManutencao:e.proxManutencao, ultimaManutencao:e.ultimaManutencao, custoManutencao:e.custoManutencao, descricao:e.descricao, fornecedor_id:e.fornecedor_id||"" });
+    setEquipForm({ nome:e.nome, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:e.serie, dataInstalacao:e.dataInstalacao, vidaUtilAnos:e.vidaUtilAnos, instaladoHa:e.instaladoHa, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:e.status, proxManutencao:e.proxManutencao, ultimaManutencao:e.ultimaManutencao, custoManutencao:e.custoManutencao, descricao:e.descricao, fornecedor_id:e.fornecedor_id||"", quantidade:e.quantidade||1 });
     setEquipShowEdit(true);
   };
 
   const equipDuplicate = (e: Equipamento) => {
     setEquipEditId(null);
-    setEquipForm({ nome:`${e.nome} (Cópia)`, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:"", dataInstalacao:new Date().toISOString().slice(0,10), vidaUtilAnos:e.vidaUtilAnos, instaladoHa:0, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:"operacional", proxManutencao:e.proxManutencao, ultimaManutencao:"", custoManutencao:e.custoManutencao, descricao:e.descricao, fornecedor_id:e.fornecedor_id||"" });
+    setEquipForm({ nome:`${e.nome} (Cópia)`, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:"", dataInstalacao:new Date().toISOString().slice(0,10), vidaUtilAnos:e.vidaUtilAnos, instaladoHa:0, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:"operacional", proxManutencao:e.proxManutencao, ultimaManutencao:"", custoManutencao:e.custoManutencao, descricao:e.descricao, fornecedor_id:e.fornecedor_id||"", quantidade:e.quantidade||1 });
     setEquipShowEdit(true);
     showToast("Equipamento duplicado — revise e salve", "success");
   };
@@ -6551,10 +6551,10 @@ export default function App() {
                             <button title="Fechar" onClick={()=>setEquipShowEdit(false)} style={{ background:"none", border:"none", color:"#475569", fontSize:20, cursor:"pointer" }}>✕</button>
                           </div>
                           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-                            {([["Nome *","nome","text",""],["Local","local","text",""],["Fabricante","fabricante","text",""],["Modelo","modelo","text",""],["Nº Série","serie","text",""],["Data Instalação","dataInstalacao","date",""],["Vida Útil (anos)","vidaUtilAnos","number",""],["Instalado há (anos)","instaladoHa","number",""],["Consumo kWh/h","consumoKwh","number",""],["Horas/dia","horasDia","number",""],["Custo Manutenção R$","custoManutencao","number",""],["Próx. Manutenção","proxManutencao","date",""],["Última Manutenção","ultimaManutencao","date",""]] as [string,string,string,string][]).map(([label,key,type]) => (
+                            {([["Nome *","nome","text",""],["Local","local","text",""],["Fabricante","fabricante","text",""],["Modelo","modelo","text",""],["Nº Série","serie","text",""],["Data Instalação","dataInstalacao","date",""],["Vida Útil (anos)","vidaUtilAnos","number",""],["Instalado há (anos)","instaladoHa","number",""],["Quantidade (unid.)","quantidade","number",""],["Consumo kWh/h (unit.)","consumoKwh","number",""],["Horas/dia","horasDia","number",""],["Custo Manutenção R$ (unit.)","custoManutencao","number",""],["Próx. Manutenção","proxManutencao","date",""],["Última Manutenção","ultimaManutencao","date",""]] as [string,string,string,string][]).map(([label,key,type]) => (
                               <div key={key}>
                                 <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>{label}</div>
-                                <input type={type} value={String(equipForm[key as keyof typeof equipForm]||"")} onChange={e=>setEquipForm(f=>({...f,[key]:type==="number"?Number(e.target.value):e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} />
+                                <input type={type} min={type==="number"?"0":undefined} value={String(equipForm[key as keyof typeof equipForm]||"")} onChange={e=>setEquipForm(f=>({...f,[key]:type==="number"?Number(e.target.value):e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} />
                               </div>
                             ))}
                             <div>
@@ -6573,6 +6573,26 @@ export default function App() {
                               </select>
                             </div>
                           </div>
+                          {/* ── Totais calculados ─────────────────────────── */}
+                          {(equipForm.quantidade > 1) && (
+                            <div style={{ marginTop:12, background:"rgba(99,102,241,.08)", border:"1px solid rgba(99,102,241,.25)", borderRadius:10, padding:"12px 16px", display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+                              <div style={{ textAlign:"center" }}>
+                                <div style={{ fontSize:10, color:"#94A3B8", marginBottom:3 }}>Qtd. Cadastrada</div>
+                                <div style={{ fontSize:20, fontWeight:800, color:"#A5B4FC" }}>{equipForm.quantidade}</div>
+                                <div style={{ fontSize:10, color:"#64748B" }}>unidades</div>
+                              </div>
+                              <div style={{ textAlign:"center" }}>
+                                <div style={{ fontSize:10, color:"#94A3B8", marginBottom:3 }}>Consumo Total</div>
+                                <div style={{ fontSize:20, fontWeight:800, color:"#06B6D4" }}>{(equipForm.consumoKwh * equipForm.quantidade).toFixed(2)}</div>
+                                <div style={{ fontSize:10, color:"#64748B" }}>kWh/h ({equipForm.consumoKwh} × {equipForm.quantidade})</div>
+                              </div>
+                              <div style={{ textAlign:"center" }}>
+                                <div style={{ fontSize:10, color:"#94A3B8", marginBottom:3 }}>Custo Total Manutenção</div>
+                                <div style={{ fontSize:20, fontWeight:800, color:"#F59E0B" }}>R$ {(equipForm.custoManutencao * equipForm.quantidade).toLocaleString("pt-BR",{minimumFractionDigits:2})}</div>
+                                <div style={{ fontSize:10, color:"#64748B" }}>R$ {equipForm.custoManutencao} × {equipForm.quantidade}</div>
+                              </div>
+                            </div>
+                          )}
                           {/* Fornecedor vinculado */}
                           <div style={{ marginTop:12 }}>
                             <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>🏢 Fornecedor Vinculado</div>

@@ -1019,6 +1019,7 @@ function dbToEquip(row: Record<string, unknown>) {
     custoManutencao:   Number(row.custo_manutencao || 0),
     descricao:         String(row.descricao || ""),
     fornecedor_id:     row.fornecedor_id ? String(row.fornecedor_id) : undefined,
+    quantidade:        Number(row.quantidade ?? 1),
   };
 }
 
@@ -1043,6 +1044,7 @@ function equipToDb(body: Record<string, unknown>, condominioId: string) {
   if (body.custoManutencao!== undefined) payload.custo_manutencao    = body.custoManutencao;
   if (body.descricao      !== undefined) payload.descricao           = body.descricao;
   if (body.fornecedor_id  !== undefined) payload.fornecedor_id       = body.fornecedor_id || null;
+  if (body.quantidade     !== undefined) payload.quantidade          = Math.max(1, Number(body.quantidade) || 1);
   payload.updated_at = new Date().toISOString();
   return payload;
 }
@@ -1056,10 +1058,11 @@ router.get("/equipamentos", async (req: Request, res: Response) => {
   res.json((data || []).map(r => dbToEquip(r as Record<string, unknown>)));
 });
 
-// helper: remove fornecedor_id do payload (fallback quando coluna não existe ainda)
-function stripFornecedorId(p: Record<string, unknown>) {
+// helper: remove colunas opcionais ainda não migradas (fornecedor_id, quantidade)
+function stripOptionalCols(p: Record<string, unknown>) {
   const copy = { ...p };
   delete copy.fornecedor_id;
+  delete copy.quantidade;
   return copy;
 }
 
@@ -1070,9 +1073,9 @@ router.post("/equipamentos", async (req: Request, res: Response) => {
   if (!body.nome) return res.status(400).json({ error: "nome obrigatório" });
   const payload = equipToDb(body, String(condominio_id));
   let { data, error } = await supabase.from("equipamentos").insert(payload).select().single();
-  if (error && error.message.includes("fornecedor_id")) {
-    // coluna ainda não existe — retry sem ela
-    ({ data, error } = await supabase.from("equipamentos").insert(stripFornecedorId(payload)).select().single());
+  if (error && (error.message.includes("fornecedor_id") || error.message.includes("quantidade"))) {
+    // colunas ainda não migradas — retry sem elas
+    ({ data, error } = await supabase.from("equipamentos").insert(stripOptionalCols(payload)).select().single());
   }
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true, equipamento: dbToEquip(data as Record<string, unknown>) });
@@ -1086,9 +1089,9 @@ router.put("/equipamentos/:id", async (req: Request, res: Response) => {
   const payload = equipToDb(body, String(condominio_id || ""));
   delete payload.condominio_id; // não sobrescrever o dono
   let { data, error } = await supabase.from("equipamentos").update(payload).eq("id", id).select().single();
-  if (error && error.message.includes("fornecedor_id")) {
-    // coluna ainda não existe — retry sem ela
-    ({ data, error } = await supabase.from("equipamentos").update(stripFornecedorId(payload)).eq("id", id).select().single());
+  if (error && (error.message.includes("fornecedor_id") || error.message.includes("quantidade"))) {
+    // colunas ainda não migradas — retry sem elas
+    ({ data, error } = await supabase.from("equipamentos").update(stripOptionalCols(payload)).eq("id", id).select().single());
   }
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true, equipamento: dbToEquip(data as Record<string, unknown>) });

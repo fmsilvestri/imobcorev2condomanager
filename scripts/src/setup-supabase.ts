@@ -144,6 +144,17 @@ async function runMigrations() {
     console.log("✅ Migration 4 (equipamentos extra columns): OK");
   }
 
+  // ─── Migration 4b: Equipamentos — fornecedor_id + quantidade ────────────────
+  const { error: m4bErr } = await supabase.from("equipamentos").select("fornecedor_id, quantidade").limit(1);
+  if (m4bErr) {
+    console.log("⚠️  Migration 4b needed (equipamentos fornecedor_id + quantidade). Run in SQL Editor:");
+    console.log("   ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS fornecedor_id uuid REFERENCES fornecedores(id) ON DELETE SET NULL;");
+    console.log("   ALTER TABLE equipamentos ADD COLUMN IF NOT EXISTS quantidade int NOT NULL DEFAULT 1;");
+    console.log();
+  } else {
+    console.log("✅ Migration 4b (equipamentos fornecedor_id + quantidade): OK");
+  }
+
   // ─── Migration 5: Planos de Manutenção ──────────────────────────────────────
   const { error: m5Err } = await supabase.from("planos_manutencao").select("id").limit(1);
   if (m5Err) {
