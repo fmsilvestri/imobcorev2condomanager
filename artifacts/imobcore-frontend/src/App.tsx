@@ -1152,7 +1152,7 @@ export default function App() {
     { id:"g17", nivel:80, data:"20/01/2026", hora:"08:00", foto:true,  obs:"Início do período" },
   ]);
   // ── Água state ─────────────────────────────────────────────────────────────
-  const [aguaTab, setAguaTab] = useState<"reservatorios"|"leituras"|"hidrometro"|"historico"|"fornecedora"|"alertas">("reservatorios");
+  const [aguaTab, setAguaTab] = useState<"reservatorios"|"leituras"|"hidrometro"|"historico"|"fornecedora"|"alertas"|"integracao">("reservatorios");
   const [aguaNovoResModal, setAguaNovoResModal] = useState(false);
   const [aguaNovoResForm, setAguaNovoResForm] = useState({ nome:"", local:"", capacidade:"", mac:"" });
   // ── Reservatórios state ────────────────────────────────────────────────────
@@ -1162,6 +1162,55 @@ export default function App() {
   const EMPTY_RES_FORM = { sensor_id:"", nome:"", local:"", capacidade_litros:20000, altura_cm:200, mac_address:"", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://imob-core-mobile-12.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443 };
   const [resForm, setResForm] = useState(EMPTY_RES_FORM);
   const [resTesting, setResTesting] = useState<{cf?:boolean;wh?:boolean}>({});
+  // Per-reservoir testing (used in integration tab)
+  const [resPerTesting, setResPerTesting] = useState<Record<string,{cf:boolean;wh:boolean}>>({});
+  // Global integration config (used in the integration tab form)
+  const [cfGlobalUrl, setCfGlobalUrl] = useState("https://imobcore1.fmsilvestri39.workers.dev");
+  const [whGlobalUrl, setWhGlobalUrl] = useState("https://imob-core-mobile-12.replit.app/api/webhook");
+  const [whGlobalProtocolo, setWhGlobalProtocolo] = useState("HTTPS POST");
+  const [whGlobalPorta, setWhGlobalPorta] = useState(443);
+  const [cfTestLog, setCfTestLog] = useState<{id:string; ok:boolean; status:number; ts:string}[]>([]);
+  const [whTestLog, setWhTestLog] = useState<{id:string; ok:boolean; status:number; ts:string}[]>([]);
+
+  const resTestCFById = async (r: Reservatorio) => {
+    setResPerTesting(p => ({ ...p, [r.id]: { cf: true, wh: p[r.id]?.wh ?? false } }));
+    try {
+      const resp = await fetch("/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.cf_url, method:"POST", payload:{ test:true, sensor_id:r.sensor_id, timestamp:new Date().toISOString() } }) });
+      const data = await resp.json();
+      const ok = data.ok as boolean;
+      setResList(prev => prev.map(x => x.id === r.id ? { ...x, cf_online:ok } : x));
+      setCfTestLog(p => [{ id:r.id, ok, status:data.status||0, ts:new Date().toLocaleTimeString("pt-BR") }, ...p].slice(0,20));
+      showToast(ok ? `✅ CF ${r.nome}: HTTP ${data.status}` : `❌ CF ${r.nome}: HTTP ${data.status||"timeout"}`, ok?"success":"warn");
+    } catch { showToast(`❌ CF ${r.nome}: inacessível`, "warn"); }
+    setResPerTesting(p => ({ ...p, [r.id]: { cf: false, wh: p[r.id]?.wh ?? false } }));
+  };
+  const resTestWHById = async (r: Reservatorio) => {
+    setResPerTesting(p => ({ ...p, [r.id]: { cf: p[r.id]?.cf ?? false, wh: true } }));
+    try {
+      const resp = await fetch("/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.wh_url, method:r.protocolo.includes("POST")?"POST":"GET", payload:{ test:true, sensor_id:r.sensor_id, nivel:50, timestamp:new Date().toISOString() } }) });
+      const data = await resp.json();
+      const ok = data.ok as boolean;
+      setResList(prev => prev.map(x => x.id === r.id ? { ...x, wh_online:ok } : x));
+      setWhTestLog(p => [{ id:r.id, ok, status:data.status||0, ts:new Date().toLocaleTimeString("pt-BR") }, ...p].slice(0,20));
+      showToast(ok ? `✅ WH ${r.nome}: HTTP ${data.status}` : `❌ WH ${r.nome}: HTTP ${data.status||"timeout"}`, ok?"success":"warn");
+    } catch { showToast(`❌ WH ${r.nome}: inacessível`, "warn"); }
+    setResPerTesting(p => ({ ...p, [r.id]: { cf: p[r.id]?.cf ?? false, wh: false } }));
+  };
+  const applyGlobalCF = () => {
+    setResList(prev => prev.map(r => ({ ...r, cf_url: cfGlobalUrl })));
+    showToast("☁️ URL Cloudflare aplicada a todos os reservatórios", "success");
+  };
+  const applyGlobalWH = () => {
+    setResList(prev => prev.map(r => ({ ...r, wh_url: whGlobalUrl, protocolo: whGlobalProtocolo, porta: whGlobalPorta })));
+    showToast("🔗 Webhook aplicado a todos os reservatórios", "success");
+  };
+  const testAllCF = async () => {
+    for (const r of resList) await resTestCFById(r);
+  };
+  const testAllWH = async () => {
+    for (const r of resList) await resTestWHById(r);
+  };
+
   const resSave = async () => {
     if (!resForm.sensor_id.trim()) return;
     if (resEditId) {
@@ -5283,6 +5332,8 @@ export default function App() {
             const autonomia = volTotal > 0 ? Math.round(volTotal / 4500) : 5;
             const ultimaLeit = aguaLeituras[0];
 
+            const cfOnlineCount = resList.filter(r=>r.cf_online).length;
+            const whOnlineCount = resList.filter(r=>r.wh_online).length;
             const tabDef: [typeof aguaTab, string, string, string][] = [
               ["reservatorios", "🗂️", `Reservatórios (${resList.length})`, "#3B82F6"],
               ["leituras",      "📋", `Leituras (${aguaLeituras.length})`, "#06B6D4"],
@@ -5290,6 +5341,7 @@ export default function App() {
               ["historico",     "📊", "Histórico",            "#10B981"],
               ["fornecedora",   "🏢", "Fornecedora",          "#F59E0B"],
               ["alertas",       "🔔", "Alertas Inteligentes", "#EF4444"],
+              ["integracao",    "☁️", `Integração CF/WH`, "#8B5CF6"],
             ];
 
             const tabBtn = (id: typeof aguaTab, icon: string, label: string, col: string) => (
@@ -5794,6 +5846,256 @@ export default function App() {
                     </div>
                   </div>
                 )}
+
+                {/* ════════════════════════════════════════════════════
+                    ABA: INTEGRAÇÃO CLOUDFLARE / WEBHOOK
+                ════════════════════════════════════════════════════ */}
+                {aguaTab === "integracao" && (
+                  <div style={{ display:"flex", flexDirection:"column", gap:18 }}>
+
+                    {/* ── Status geral ── */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+                      {[
+                        { icon:"☁️", label:"Cloudflare Worker", val:`${cfOnlineCount}/${resList.length} online`, color:"#8B5CF6", bg:"rgba(139,92,246,.1)", border:"rgba(139,92,246,.25)", ok: cfOnlineCount === resList.length },
+                        { icon:"🔗", label:"Webhooks ativos",   val:`${whOnlineCount}/${resList.length} online`, color:"#06B6D4", bg:"rgba(6,182,212,.1)",  border:"rgba(6,182,212,.25)",  ok: whOnlineCount === resList.length },
+                        { icon:"📡", label:"Reservatórios IoT", val:`${resList.length} cadastrados`,             color:"#3B82F6", bg:"rgba(59,130,246,.1)", border:"rgba(59,130,246,.25)", ok: true },
+                      ].map(s => (
+                        <div key={s.label} style={{ background:s.bg, border:`1px solid ${s.border}`, borderRadius:12, padding:"14px 16px", display:"flex", alignItems:"center", gap:12 }}>
+                          <div style={{ fontSize:28 }}>{s.icon}</div>
+                          <div>
+                            <div style={{ fontSize:10, color:"#475569", fontWeight:600 }}>{s.label}</div>
+                            <div style={{ fontSize:18, fontWeight:800, color:s.ok?s.color:"#EF4444" }}>{s.val}</div>
+                          </div>
+                          <div style={{ marginLeft:"auto", width:10, height:10, borderRadius:"50%", background:s.ok?"#10B981":"#EF4444", boxShadow:`0 0 8px ${s.ok?"#10B981":"#EF4444"}` }} />
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* ── Cloudflare Worker config ── */}
+                    <div style={{ background:"rgba(139,92,246,.06)", border:"1px solid rgba(139,92,246,.2)", borderRadius:14, padding:"20px 22px" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+                        <div style={{ width:38, height:38, borderRadius:10, background:"rgba(139,92,246,.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>☁️</div>
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:800, color:"#C4B5FD" }}>Cloudflare Worker</div>
+                          <div style={{ fontSize:11, color:"#475569" }}>Proxy IoT — recebe dados do sensor e repassa ao ImobCore</div>
+                        </div>
+                        <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
+                          <button onClick={testAllCF} style={{ padding:"7px 14px", borderRadius:8, background:"rgba(139,92,246,.15)", border:"1px solid rgba(139,92,246,.3)", color:"#C4B5FD", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                            ⚡ Testar todos
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* URL global config */}
+                      <div style={{ marginBottom:14 }}>
+                        <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, marginBottom:6 }}>URL do Worker (global)</div>
+                        <div style={{ display:"flex", gap:8 }}>
+                          <input value={cfGlobalUrl} onChange={e=>setCfGlobalUrl(e.target.value)}
+                            style={{ flex:1, background:"rgba(0,0,0,.3)", border:"1px solid rgba(139,92,246,.3)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:12, fontFamily:"monospace", outline:"none" }}
+                            placeholder="https://imobcore1.fmsilvestri39.workers.dev" />
+                          <button onClick={applyGlobalCF} style={{ padding:"9px 16px", borderRadius:8, background:"rgba(139,92,246,.2)", border:"1px solid rgba(139,92,246,.35)", color:"#C4B5FD", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap" as const }}>
+                            Aplicar a todos
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Payload preview */}
+                      <div style={{ marginBottom:16 }}>
+                        <div style={{ fontSize:11, color:"#64748B", marginBottom:6 }}>📦 Payload enviado pelo sensor:</div>
+                        <pre style={{ background:"rgba(0,0,0,.4)", border:"1px solid rgba(255,255,255,.06)", borderRadius:8, padding:"12px 14px", fontSize:11, color:"#A5B4FC", margin:0, overflowX:"auto" as const }}>
+{`{
+  "sensor_id": "sensor_agua",
+  "nivel": 72,
+  "volume_litros": 10800,
+  "distancia_cm": 56,
+  "timestamp": "2026-03-18T17:30:00Z",
+  "mac": "F8:83:87:90:9F:78"
+}`}
+                        </pre>
+                      </div>
+
+                      {/* Per-reservoir CF status */}
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        <div style={{ fontSize:11, color:"#64748B", fontWeight:600 }}>Status por reservatório:</div>
+                        {resList.map(r => {
+                          const testing = resPerTesting[r.id]?.cf;
+                          return (
+                            <div key={r.id} style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(0,0,0,.25)", border:`1px solid rgba(139,92,246,.15)`, borderRadius:10, padding:"10px 14px" }}>
+                              <div style={{ width:8, height:8, borderRadius:"50%", background:r.cf_online?"#10B981":"#EF4444", boxShadow:`0 0 6px ${r.cf_online?"#10B981":"#EF4444"}`, flexShrink:0 }} />
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0" }}>{r.nome || r.sensor_id}</div>
+                                <div style={{ fontSize:10, color:"#475569", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{r.cf_url}</div>
+                              </div>
+                              <span style={{ fontSize:9, fontWeight:800, padding:"2px 7px", borderRadius:5, background:r.cf_online?"rgba(16,185,129,.15)":"rgba(239,68,68,.12)", color:r.cf_online?"#6EE7B7":"#FCA5A5", border:`1px solid ${r.cf_online?"rgba(16,185,129,.3)":"rgba(239,68,68,.25)"}` }}>
+                                {r.cf_online ? "✓ ONLINE" : "✗ OFFLINE"}
+                              </span>
+                              <button onClick={()=>resTestCFById(r)} disabled={testing}
+                                style={{ padding:"5px 12px", borderRadius:7, background:"rgba(139,92,246,.15)", border:"1px solid rgba(139,92,246,.3)", color:"#C4B5FD", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:testing?.6:1 }}>
+                                {testing ? "⏳" : "☁️ Testar"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* CF test log */}
+                      {cfTestLog.length > 0 && (
+                        <div style={{ marginTop:14 }}>
+                          <div style={{ fontSize:10, color:"#475569", fontWeight:600, marginBottom:6 }}>📋 Log de testes (Cloudflare):</div>
+                          <div style={{ display:"flex", flexDirection:"column", gap:3, maxHeight:120, overflowY:"auto" }}>
+                            {cfTestLog.slice(0,8).map((l,i) => (
+                              <div key={i} style={{ display:"flex", gap:8, fontSize:10, padding:"3px 8px", background:"rgba(0,0,0,.2)", borderRadius:5 }}>
+                                <span style={{ color:l.ok?"#6EE7B7":"#FCA5A5", fontWeight:700 }}>{l.ok?"✓":"✗"}</span>
+                                <span style={{ color:"#64748B" }}>{l.ts}</span>
+                                <span style={{ color:"#94A3B8" }}>{resList.find(r=>r.id===l.id)?.nome || l.id}</span>
+                                <span style={{ marginLeft:"auto", fontFamily:"monospace", color:l.ok?"#6EE7B7":"#FCA5A5" }}>HTTP {l.status}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Webhook config ── */}
+                    <div style={{ background:"rgba(6,182,212,.05)", border:"1px solid rgba(6,182,212,.2)", borderRadius:14, padding:"20px 22px" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+                        <div style={{ width:38, height:38, borderRadius:10, background:"rgba(6,182,212,.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🔗</div>
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:800, color:"#67E8F9" }}>Webhook de Retorno</div>
+                          <div style={{ fontSize:11, color:"#475569" }}>ImobCore recebe os dados processados do Cloudflare via webhook</div>
+                        </div>
+                        <button onClick={testAllWH} style={{ marginLeft:"auto", padding:"7px 14px", borderRadius:8, background:"rgba(6,182,212,.15)", border:"1px solid rgba(6,182,212,.3)", color:"#67E8F9", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                          ⚡ Testar todos
+                        </button>
+                      </div>
+
+                      {/* URL + Protocol + Port */}
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:8, marginBottom:14 }}>
+                        <div>
+                          <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, marginBottom:6 }}>URL do Webhook (global)</div>
+                          <input value={whGlobalUrl} onChange={e=>setWhGlobalUrl(e.target.value)}
+                            style={{ width:"100%", background:"rgba(0,0,0,.3)", border:"1px solid rgba(6,182,212,.25)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:12, fontFamily:"monospace", outline:"none", boxSizing:"border-box" as const }}
+                            placeholder="https://seu-app.replit.app/api/webhook" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, marginBottom:6 }}>Protocolo</div>
+                          <select value={whGlobalProtocolo} onChange={e=>setWhGlobalProtocolo(e.target.value)}
+                            style={{ background:"rgba(6,22,45,.98)", border:"1px solid rgba(6,182,212,.25)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:12, cursor:"pointer" }}>
+                            <option>HTTPS POST</option>
+                            <option>HTTP POST</option>
+                            <option>MQTT</option>
+                          </select>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:11, color:"#94A3B8", fontWeight:600, marginBottom:6 }}>Porta</div>
+                          <input type="number" value={whGlobalPorta} onChange={e=>setWhGlobalPorta(Number(e.target.value))}
+                            style={{ width:80, background:"rgba(0,0,0,.3)", border:"1px solid rgba(6,182,212,.25)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:12, fontFamily:"monospace", outline:"none" }}
+                            placeholder="443" />
+                        </div>
+                      </div>
+                      <button onClick={applyGlobalWH} style={{ marginBottom:16, padding:"8px 16px", borderRadius:8, background:"rgba(6,182,212,.15)", border:"1px solid rgba(6,182,212,.3)", color:"#67E8F9", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                        Aplicar a todos os reservatórios
+                      </button>
+
+                      {/* Endpoint interno */}
+                      <div style={{ marginBottom:16, background:"rgba(0,0,0,.25)", border:"1px solid rgba(255,255,255,.06)", borderRadius:8, padding:"12px 14px" }}>
+                        <div style={{ fontSize:11, color:"#64748B", marginBottom:8 }}>📡 Endpoint ImobCore (para configurar no Cloudflare Worker):</div>
+                        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" as const }}>
+                          <code style={{ fontSize:12, color:"#67E8F9", fontFamily:"monospace", background:"rgba(6,182,212,.1)", borderRadius:6, padding:"4px 10px", border:"1px solid rgba(6,182,212,.2)" }}>
+                            POST /api/webhook/sensor
+                          </code>
+                          <span style={{ fontSize:11, color:"#475569" }}>— aceita leituras do sensor em JSON</span>
+                        </div>
+                        <div style={{ marginTop:10 }}>
+                          <div style={{ fontSize:10, color:"#475569", marginBottom:6 }}>📦 Formato esperado:</div>
+                          <pre style={{ background:"rgba(0,0,0,.4)", borderRadius:6, padding:"8px 12px", fontSize:10, color:"#A5B4FC", margin:0 }}>
+{`POST /api/webhook/sensor
+Content-Type: application/json
+
+{
+  "sensor_id": "sensor_agua",
+  "nivel": 72,
+  "volume_litros": 10800,
+  "distancia_cm": 56,
+  "timestamp": "2026-03-18T17:30:00Z"
+}`}
+                          </pre>
+                        </div>
+                      </div>
+
+                      {/* Per-reservoir WH status */}
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        <div style={{ fontSize:11, color:"#64748B", fontWeight:600 }}>Status por reservatório:</div>
+                        {resList.map(r => {
+                          const testing = resPerTesting[r.id]?.wh;
+                          return (
+                            <div key={r.id} style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(0,0,0,.25)", border:`1px solid rgba(6,182,212,.12)`, borderRadius:10, padding:"10px 14px" }}>
+                              <div style={{ width:8, height:8, borderRadius:"50%", background:r.wh_online?"#10B981":"#EF4444", boxShadow:`0 0 6px ${r.wh_online?"#10B981":"#EF4444"}`, flexShrink:0 }} />
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0" }}>{r.nome || r.sensor_id}</div>
+                                <div style={{ display:"flex", gap:8, fontSize:10, color:"#475569", marginTop:2 }}>
+                                  <span>{r.protocolo}</span>
+                                  <span>:{r.porta}</span>
+                                  <span style={{ color:"#334155", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{r.wh_url}</span>
+                                </div>
+                              </div>
+                              <span style={{ fontSize:9, fontWeight:800, padding:"2px 7px", borderRadius:5, background:r.wh_online?"rgba(16,185,129,.15)":"rgba(239,68,68,.12)", color:r.wh_online?"#6EE7B7":"#FCA5A5", border:`1px solid ${r.wh_online?"rgba(16,185,129,.3)":"rgba(239,68,68,.25)"}` }}>
+                                {r.wh_online ? "✓ ONLINE" : "✗ OFFLINE"}
+                              </span>
+                              <button onClick={()=>resTestWHById(r)} disabled={testing}
+                                style={{ padding:"5px 12px", borderRadius:7, background:"rgba(6,182,212,.12)", border:"1px solid rgba(6,182,212,.25)", color:"#67E8F9", fontSize:10, fontWeight:700, cursor:"pointer", fontFamily:"inherit", opacity:testing?.6:1 }}>
+                                {testing ? "⏳" : "🔗 Testar"}
+                              </button>
+                              <button onClick={()=>resEdit(r)} style={{ padding:"5px 8px", borderRadius:7, background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)", color:"#A5B4FC", fontSize:10, cursor:"pointer" }}>
+                                ✏️
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* WH test log */}
+                      {whTestLog.length > 0 && (
+                        <div style={{ marginTop:14 }}>
+                          <div style={{ fontSize:10, color:"#475569", fontWeight:600, marginBottom:6 }}>📋 Log de testes (Webhook):</div>
+                          <div style={{ display:"flex", flexDirection:"column", gap:3, maxHeight:120, overflowY:"auto" }}>
+                            {whTestLog.slice(0,8).map((l,i) => (
+                              <div key={i} style={{ display:"flex", gap:8, fontSize:10, padding:"3px 8px", background:"rgba(0,0,0,.2)", borderRadius:5 }}>
+                                <span style={{ color:l.ok?"#6EE7B7":"#FCA5A5", fontWeight:700 }}>{l.ok?"✓":"✗"}</span>
+                                <span style={{ color:"#64748B" }}>{l.ts}</span>
+                                <span style={{ color:"#94A3B8" }}>{resList.find(r=>r.id===l.id)?.nome || l.id}</span>
+                                <span style={{ marginLeft:"auto", fontFamily:"monospace", color:l.ok?"#6EE7B7":"#FCA5A5" }}>HTTP {l.status}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Guia de integração ── */}
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:"18px 22px" }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#94A3B8", marginBottom:14 }}>📖 Como configurar a integração</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                        {[
+                          { n:1, title:"Cloudflare Worker recebe do sensor", desc:"O sensor IoT (ESP32 / Raspberry Pi) envia leitura em JSON para o Cloudflare Worker via HTTPS POST.", color:"#8B5CF6" },
+                          { n:2, title:"Worker repassa ao ImobCore", desc:`O Worker em imobcore1.fmsilvestri39.workers.dev encaminha os dados via POST para o endpoint /api/webhook/sensor deste sistema.`, color:"#6366F1" },
+                          { n:3, title:"ImobCore processa e atualiza dashboard", desc:"O servidor atualiza o nível do reservatório, dispara alertas automáticos e notifica o síndico via SSE.", color:"#3B82F6" },
+                          { n:4, title:"Teste a conexão", desc:"Use os botões '⚡ Testar' acima para verificar que cada etapa está respondendo corretamente.", color:"#10B981" },
+                        ].map(s => (
+                          <div key={s.n} style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
+                            <div style={{ width:26, height:26, borderRadius:"50%", background:s.color+"22", border:`1px solid ${s.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, fontWeight:800, color:s.color, flexShrink:0 }}>{s.n}</div>
+                            <div>
+                              <div style={{ fontSize:12, fontWeight:700, color:"#CBD5E1" }}>{s.title}</div>
+                              <div style={{ fontSize:11, color:"#475569", marginTop:2, lineHeight:1.5 }}>{s.desc}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                  </div>
+                )}
+
               </div>
             );
           })()}
