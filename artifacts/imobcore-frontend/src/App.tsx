@@ -3723,46 +3723,86 @@ export default function App() {
 
         {/* ── MANUTENÇÃO ───────────────────────────────────────────────── */}
         {sindicoScreen === "manutencao" && (() => {
-          const nextMonth = MANUT_SCHEDULE[0];
-          const totalCusto = nextMonth?.items.reduce((s, i) => s + i.custo, 0) ?? 0;
+          const orcTotal = planoList.reduce((s,p) => s + (Number(p.custo_total)||0), 0);
+          const equipCobertos = new Set(planoList.flatMap(p => (p.equipamentos_itens||[]).map(e => e.equipId))).size;
+          const proxExec = planoList.filter(p=>p.proxima_execucao).sort((a,b)=>a.proxima_execucao.localeCompare(b.proxima_execucao))[0]?.proxima_execucao || "—";
+          const planosAtivos = planoList.filter(p => p.status !== "inativo");
           return (
             <div className="ph-sub-body">
-              {/* Quick stats */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+              {/* ── Dashboard Stats ── */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
                 {[
-                  { label: "Equipamentos", val: String(equipList.length), icon: "🔧", color: "#6366F1" },
-                  { label: "Próx. Mês", val: String(nextMonth?.items.length ?? 0), icon: "📅", color: "#F59E0B" },
-                  { label: "Custo Est.", val: `R$${(totalCusto/1000).toFixed(1)}k`, icon: "💰", color: "#10B981" },
+                  { label: "Total Planos", val: String(planoList.length), icon: "📋", color: "#7C5CFC" },
+                  { label: "Orçamento", val: orcTotal >= 1000 ? `R$${(orcTotal/1000).toFixed(1)}k` : `R$${orcTotal.toFixed(0)}`, icon: "💰", color: "#10B981" },
+                  { label: "Equip. Cobertos", val: String(equipCobertos), icon: "🔧", color: "#F59E0B" },
+                  { label: "Próx. Execução", val: proxExec !== "—" ? proxExec.slice(5).split("-").reverse().join("/") : "—", icon: "📅", color: "#38BDF8" },
                 ].map(k => (
                   <div key={k.label} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
                     <div style={{ fontSize: 18, marginBottom: 2 }}>{k.icon}</div>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: k.color }}>{k.val}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: k.color }}>{k.val}</div>
                     <div style={{ fontSize: 9, color: "#475569" }}>{k.label}</div>
                   </div>
                 ))}
               </div>
-              {/* Upcoming maintenance */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#F59E0B", marginBottom: 8 }}>📅 Próximas Manutenções – {nextMonth?.mes}</div>
-              {nextMonth?.items.map((it, i) => (
-                <div key={i} className="ph-os-item" style={{ marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>{it.equip}</span>
-                    <span style={{ fontSize: 10, color: it.tipo === "preventiva" ? "#10B981" : "#F59E0B", fontWeight: 600 }}>{it.tipo}</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "#475569" }}>Custo estimado: R${it.custo.toLocaleString("pt-BR")}</div>
-                </div>
-              ))}
-              {/* Equipment list */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", margin: "14px 0 8px" }}>⚙️ Equipamentos Cadastrados</div>
+
+              {/* ── Planos de Manutenção ── */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#A5B4FC", marginBottom: 8 }}>📋 Planos de Manutenção</div>
+              {planosAtivos.length === 0 ? (
+                <div style={{ textAlign:"center", padding:"24px 0", color:"#475569", fontSize:12 }}>Nenhum plano cadastrado</div>
+              ) : (
+                planosAtivos.map(p => {
+                  const tipoCor = p.tipo === "preventiva" ? { bg:"rgba(16,185,129,.15)", c:"#34D399" } : { bg:"rgba(245,158,11,.15)", c:"#F59E0B" };
+                  const periCor = { bg:"rgba(99,102,241,.12)", c:"#A5B4FC" };
+                  return (
+                    <div key={p.id} className="ph-os-item" style={{ marginBottom: 10, padding: "12px 12px 10px" }}>
+                      {/* Header */}
+                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
+                        {p.codigo && <span style={{ fontSize:9, color:"#64748B", fontWeight:700 }}>#{p.codigo}</span>}
+                        <span style={{ fontSize:12, fontWeight:700, flex:1 }}>{p.nome}</span>
+                      </div>
+                      {/* Badges */}
+                      <div style={{ display:"flex", gap:4, marginBottom:8 }}>
+                        <span style={{ fontSize:9, padding:"2px 7px", borderRadius:8, fontWeight:700, background:tipoCor.bg, color:tipoCor.c }}>{p.tipo}</span>
+                        <span style={{ fontSize:9, padding:"2px 7px", borderRadius:8, fontWeight:700, background:periCor.bg, color:periCor.c }}>{p.periodicidade}</span>
+                      </div>
+                      {/* Equipment items */}
+                      {(p.equipamentos_itens||[]).length > 0 && (
+                        <div style={{ display:"flex", flexWrap:"wrap" as const, gap:4, marginBottom:8 }}>
+                          {(p.equipamentos_itens||[]).map((ei,i) => (
+                            <span key={i} style={{ fontSize:9, padding:"2px 7px", borderRadius:6, background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.08)", color:"#94A3B8" }}>
+                              {ei.equipNome} <span style={{ color:"#10B981" }}>{ei.custo_previsto > 0 ? `R$${ei.custo_previsto.toLocaleString("pt-BR")}` : ""}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {/* Footer */}
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"#64748B" }}>
+                          <span>📅</span>
+                          <span>Próxima: <span style={{ color:"#38BDF8", fontWeight:600 }}>{p.proxima_execucao || "—"}</span></span>
+                        </div>
+                        <span style={{ fontSize:11, fontWeight:700, color:"#10B981" }}>
+                          {p.custo_total > 0 ? `R$ ${Number(p.custo_total).toLocaleString("pt-BR",{minimumFractionDigits:2})}` : ""}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+
+              {/* ── Equipamentos Resumo ── */}
+              <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", margin: "14px 0 8px" }}>⚙️ Equipamentos ({equipList.length})</div>
               {equipList.map(eq => (
                 <div key={eq.id} className="ph-os-item" style={{ marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>{eq.nome}</span>
-                    <span style={{ fontSize: 10, padding: "1px 6px", borderRadius: 8, fontWeight: 600,
-                      background: eq.status === "operacional" ? "rgba(16,185,129,.15)" : "rgba(239,68,68,.15)",
-                      color: eq.status === "operacional" ? "#34D399" : "#F87171" }}>{eq.status}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems:"center" }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600 }}>{eq.nome}</div>
+                      <div style={{ fontSize: 10, color: "#64748B", marginTop:2 }}>{eq.categoria} · {eq.local}</div>
+                    </div>
+                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, fontWeight: 600,
+                      background: eq.status === "operacional" ? "rgba(16,185,129,.15)" : eq.status === "manutencao" ? "rgba(245,158,11,.15)" : "rgba(239,68,68,.15)",
+                      color: eq.status === "operacional" ? "#34D399" : eq.status === "manutencao" ? "#F59E0B" : "#F87171" }}>{eq.status}</span>
                   </div>
-                  <div style={{ fontSize: 10, color: "#64748B" }}>{eq.categoria} · {eq.local}</div>
                 </div>
               ))}
             </div>
