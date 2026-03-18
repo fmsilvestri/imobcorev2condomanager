@@ -10569,7 +10569,7 @@ Content-Type: application/json
               </div>
               <div className="grid-2">
                 {[
-                  { icon: "📋", title: "OSs / Planejamento", badgeColor: "#F59E0B", badgeBg: "rgba(245,158,11,.12)", sub: `${osAbertas.length} em aberto`, dot: true, screen: "planejamento" },
+                  { icon: "📋", title: "Usuário", badgeColor: "#F59E0B", badgeBg: "rgba(245,158,11,.12)", sub: `${osAbertas.length} em aberto`, dot: true, screen: "planejamento" },
                   { icon: "💰", title: "Financeiro", badgeColor: "#10B981", badgeBg: "rgba(16,185,129,.12)", sub: fmtBRL(t?.saldo || 0), dot: false, screen: "financeiro" },
                   { icon: "🔧", title: "Manutenção", badgeColor: "var(--neu-text-2)", badgeBg: "transparent", sub: `${equipList.length} itens`, dot: false, screen: "manutencao" },
                   { icon: "👥", title: "CRM Moradores", badgeColor: "#3B82F6", badgeBg: "rgba(59,130,246,.12)", sub: `${crmMoradores.length} cadastros`, dot: false, screen: "crm" },
