@@ -4660,56 +4660,63 @@ export default function App() {
                 urgentes: allOs.filter(o => o.prioridade === "urgente" && o.status !== "fechada").length,
               };
               const catIcon: Record<string, string> = { hidraulica: "💧", eletrica: "⚡", estrutural: "🏗️", limpeza: "🧹", seguranca: "🔒", equipamento: "⚙️", outros: "📋" };
+              const catColor: Record<string, string> = { hidraulica: "#3B82F6", eletrica: "#EAB308", estrutural: "#F97316", limpeza: "#14B8A6", seguranca: "#8B5CF6", equipamento: "#6366F1", outros: "#64748B" };
+              const priColor: Record<string, string> = { urgente: "#EF4444", alta: "#F59E0B", media: "#3B82F6", baixa: "#10B981" };
+              const priLabel: Record<string, string> = { urgente: "🔴 URGENTE", alta: "🟡 Alta", media: "🔵 Média", baixa: "🟢 Baixa" };
+              const stsColor: Record<string, string> = { aberta: "#F59E0B", em_andamento: "#06B6D4", fechada: "#10B981" };
+              const stsLabel: Record<string, string> = { aberta: "● Aberta", em_andamento: "▶ Em andamento", fechada: "✓ Concluída" };
+              const stsIcon: Record<string, string> = { aberta: "📋", em_andamento: "🔄", fechada: "✅" };
               const fmtDate = (d?: string) => d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "–";
 
               return (
                 <>
                   {/* ── Stats Bar ── */}
-                  <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
                     {[
-                      { label: "Total", val: stats.total, color: "#94A3B8" },
-                      { label: "Abertas", val: stats.abertas, color: "#F59E0B" },
-                      { label: "Em andamento", val: stats.andamento, color: "#06B6D4" },
-                      { label: "Concluídas", val: stats.concluidas, color: "#10B981" },
-                      { label: "🔴 Urgentes", val: stats.urgentes, color: "#EF4444" },
+                      { icon: "📊", label: "Total", val: stats.total, color: "#94A3B8", bg: "rgba(148,163,184,.1)", border: "rgba(148,163,184,.2)" },
+                      { icon: "📋", label: "Abertas", val: stats.abertas, color: "#F59E0B", bg: "rgba(245,158,11,.1)", border: "rgba(245,158,11,.3)" },
+                      { icon: "🔄", label: "Em andamento", val: stats.andamento, color: "#06B6D4", bg: "rgba(6,182,212,.1)", border: "rgba(6,182,212,.3)" },
+                      { icon: "✅", label: "Concluídas", val: stats.concluidas, color: "#10B981", bg: "rgba(16,185,129,.1)", border: "rgba(16,185,129,.3)" },
+                      { icon: "🚨", label: "Urgentes", val: stats.urgentes, color: "#EF4444", bg: "rgba(239,68,68,.12)", border: "rgba(239,68,68,.35)" },
                     ].map(s => (
-                      <div key={s.label} style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 10, padding: "8px 14px", minWidth: 90, textAlign: "center" }}>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: s.color }}>{s.val}</div>
-                        <div style={{ fontSize: 10, color: "#475569", marginTop: 2 }}>{s.label}</div>
+                      <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.border}`, borderRadius: 12, padding: "10px 16px", minWidth: 100, textAlign: "center", flex: "1 1 90px" }}>
+                        <div style={{ fontSize: 18, marginBottom: 2 }}>{s.icon}</div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.val}</div>
+                        <div style={{ fontSize: 10, color: s.color, marginTop: 3, fontWeight: 600, opacity: .8 }}>{s.label}</div>
                       </div>
                     ))}
-                    <button onClick={openCriarOS} style={{ marginLeft: "auto", padding: "0 18px", background: "linear-gradient(135deg,#6366F1,#818CF8)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", letterSpacing: ".02em" }}>
+                    <button onClick={openCriarOS} style={{ marginLeft: "auto", padding: "0 20px", background: "linear-gradient(135deg,#6366F1,#818CF8)", border: "none", borderRadius: 12, color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", letterSpacing: ".03em", boxShadow: "0 4px 14px rgba(99,102,241,.4)" }}>
                       + Nova OS
                     </button>
                   </div>
 
                   {/* ── Toolbar ── */}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
                     <input
                       placeholder="🔍 Buscar por título, unidade, responsável..."
                       value={osSearch} onChange={e => setOsSearch(e.target.value)}
-                      style={{ flex: 1, minWidth: 200, padding: "7px 12px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, color: "#F1F5F9", fontSize: 12, fontFamily: "inherit", outline: "none" }}
+                      style={{ flex: 1, minWidth: 200, padding: "8px 12px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 9, color: "#F1F5F9", fontSize: 12, fontFamily: "inherit", outline: "none" }}
                     />
                     {(["status","categoria","prioridade"] as const).map(key => (
                       <select key={key} value={osFilter[key]} onChange={e => setOsFilter(f => ({ ...f, [key]: e.target.value }))}
-                        style={{ padding: "7px 10px", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, color: "#94A3B8", fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>
+                        style={{ padding: "8px 10px", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 9, color: "#CBD5E1", fontSize: 11, fontFamily: "inherit", cursor: "pointer" }}>
                         <option value="todos">Todos {key === "status" ? "status" : key === "categoria" ? "categorias" : "prioridades"}</option>
-                        {key === "status" && ["aberta","em_andamento","fechada"].map(v => <option key={v} value={v}>{v.replace("_"," ")}</option>)}
-                        {key === "categoria" && ["hidraulica","eletrica","estrutural","limpeza","seguranca","equipamento","outros"].map(v => <option key={v} value={v}>{v}</option>)}
-                        {key === "prioridade" && ["baixa","media","alta","urgente"].map(v => <option key={v} value={v}>{v}</option>)}
+                        {key === "status" && [["aberta","📋 Aberta"],["em_andamento","🔄 Em andamento"],["fechada","✅ Concluída"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                        {key === "categoria" && [["hidraulica","💧 Hidráulica"],["eletrica","⚡ Elétrica"],["estrutural","🏗️ Estrutural"],["limpeza","🧹 Limpeza"],["seguranca","🔒 Segurança"],["equipamento","⚙️ Equipamento"],["outros","📋 Outros"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                        {key === "prioridade" && [["baixa","🟢 Baixa"],["media","🔵 Média"],["alta","🟡 Alta"],["urgente","🔴 Urgente"]].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
                     ))}
-                    <div style={{ display: "flex", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, overflow: "hidden" }}>
+                    <div style={{ display: "flex", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 9, overflow: "hidden" }}>
                       {(["tabela","cards"] as const).map(m => (
                         <button key={m} onClick={() => setOsViewMode(m)}
-                          style={{ padding: "7px 12px", background: osViewMode === m ? "rgba(99,102,241,.3)" : "transparent", border: "none", color: osViewMode === m ? "#A5B4FC" : "#475569", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>
+                          style={{ padding: "8px 14px", background: osViewMode === m ? "rgba(99,102,241,.35)" : "transparent", border: "none", color: osViewMode === m ? "#A5B4FC" : "#475569", cursor: "pointer", fontSize: 14, fontFamily: "inherit" }}>
                           {m === "tabela" ? "☰" : "⊞"}
                         </button>
                       ))}
                     </div>
                     {(osSearch || osFilter.status !== "todos" || osFilter.categoria !== "todos" || osFilter.prioridade !== "todos") && (
                       <button onClick={() => { setOsSearch(""); setOsFilter({ status: "todos", categoria: "todos", prioridade: "todos" }); }}
-                        style={{ padding: "7px 10px", background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.2)", borderRadius: 8, color: "#FCA5A5", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
+                        style={{ padding: "8px 12px", background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.25)", borderRadius: 9, color: "#FCA5A5", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>
                         ✕ Limpar filtros
                       </button>
                     )}
@@ -4717,103 +4724,143 @@ export default function App() {
 
                   {/* ── Resultados ── */}
                   {displayed.length === 0 ? (
-                    <div style={{ textAlign: "center", padding: "48px 0", color: "#334155" }}>
-                      <div style={{ fontSize: 36, marginBottom: 10 }}>{allOs.length === 0 ? "✅" : "🔍"}</div>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>{allOs.length === 0 ? "Nenhuma OS cadastrada" : "Nenhuma OS encontrada"}</div>
-                      <div style={{ fontSize: 12, marginTop: 4 }}>{allOs.length === 0 ? "Crie a primeira ordem de serviço" : "Tente ajustar os filtros"}</div>
-                      {allOs.length === 0 && <button onClick={openCriarOS} style={{ marginTop: 16, padding: "9px 20px", background: "rgba(99,102,241,.15)", border: "1px solid rgba(99,102,241,.25)", borderRadius: 9, color: "#A5B4FC", cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>+ Nova OS</button>}
+                    <div style={{ textAlign: "center", padding: "60px 0", color: "#334155" }}>
+                      <div style={{ fontSize: 48, marginBottom: 12 }}>{allOs.length === 0 ? "✅" : "🔍"}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#64748B" }}>{allOs.length === 0 ? "Nenhuma OS cadastrada" : "Nenhuma OS encontrada"}</div>
+                      <div style={{ fontSize: 12, marginTop: 6, color: "#334155" }}>{allOs.length === 0 ? "Crie a primeira ordem de serviço" : "Tente ajustar os filtros"}</div>
+                      {allOs.length === 0 && <button onClick={openCriarOS} style={{ marginTop: 20, padding: "10px 24px", background: "linear-gradient(135deg,#6366F1,#818CF8)", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "inherit", fontSize: 13 }}>+ Nova OS</button>}
                     </div>
                   ) : osViewMode === "tabela" ? (
                     /* ── Tabela ── */
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th style={{ width: 70 }}>#</th>
-                            <th>Título</th>
-                            <th style={{ width: 90 }}>Cat.</th>
-                            <th style={{ width: 90 }}>Prioridade</th>
-                            <th style={{ width: 100 }}>Status</th>
-                            <th style={{ width: 80 }}>Unidade</th>
-                            <th style={{ width: 100 }}>Responsável</th>
-                            <th style={{ width: 80 }}>Data</th>
-                            <th style={{ width: 140 }}>Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {displayed.map(o => (
-                            <tr key={o.id} style={{ cursor: "pointer" }} onClick={() => openEditarOS(o)}>
-                              <td><span style={{ fontFamily: "monospace", fontSize: 11, color: "#6366F1", fontWeight: 700 }}>OS-{String(o.numero || "?").padStart(3, "0")}</span></td>
-                              <td>
-                                <div style={{ fontWeight: 500, fontSize: 13 }}>{o.titulo}</div>
-                                {o.descricao && <div style={{ fontSize: 10, color: "#475569", marginTop: 1, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.descricao}</div>}
-                                {Array.isArray(o.equipamento_ids) && o.equipamento_ids.length > 0 && (
-                                  <div style={{ display: "flex", gap: 4, marginTop: 3, flexWrap: "wrap" }}>
-                                    {equipList.filter(eq => (o.equipamento_ids || []).includes(eq.id)).slice(0, 3).map(eq => (
-                                      <span key={eq.id} style={{ fontSize: 9, background: "rgba(99,102,241,.15)", color: "#A5B4FC", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>{eq.catIcon} {eq.nome.slice(0, 18)}</span>
-                                    ))}
-                                    {o.equipamento_ids.length > 3 && <span style={{ fontSize: 9, color: "#475569" }}>+{o.equipamento_ids.length - 3}</span>}
-                                  </div>
-                                )}
-                              </td>
-                              <td><span style={{ fontSize: 12 }}>{catIcon[o.categoria] || "📋"} <span style={{ fontSize: 10, color: "#64748B" }}>{o.categoria}</span></span></td>
-                              <td><span className={`pill ${priPill(o.prioridade)}`}>{o.prioridade}</span></td>
-                              <td><span className={`pill ${stsPill(o.status)}`}>{o.status.replace("_", " ")}</span></td>
-                              <td style={{ fontSize: 11, color: "#64748B" }}>{o.unidade || "–"}</td>
-                              <td style={{ fontSize: 11, color: "#64748B" }}>{o.responsavel || "–"}</td>
-                              <td style={{ fontSize: 10, color: "#475569" }}>{fmtDate(o.created_at)}</td>
-                              <td onClick={e => e.stopPropagation()}>
-                                <div style={{ display: "flex", gap: 4 }}>
-                                  {o.status === "aberta" && <button title="Iniciar atendimento desta OS" className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "em_andamento")}>▶</button>}
-                                  {o.status === "em_andamento" && <button title="Marcar OS como concluída" className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "fechada")}>✓</button>}
-                                  {o.status !== "aberta" && o.status !== "em_andamento" && <button title="Reabrir esta OS" className="btn btn-sm" style={{ background: "rgba(100,116,139,.15)", color: "#94A3B8" }} onClick={() => updateOSStatus(o.id, "aberta")}>↺</button>}
-                                  <button title="Editar ordem de serviço" className="btn btn-sm" style={{ background: "rgba(99,102,241,.12)", color: "#A5B4FC" }} onClick={() => openEditarOS(o)}>✏️</button>
-                                  <button title="Excluir ordem de serviço" className="btn btn-sm btn-danger" onClick={() => setOsDeleteId(o.id)}>🗑</button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {/* Header */}
+                      <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 130px 130px 160px 90px auto", gap: 8, padding: "6px 14px", background: "rgba(255,255,255,.03)", borderRadius: 8, fontSize: 10, fontWeight: 700, color: "#475569", textTransform: "uppercase", letterSpacing: ".06em" }}>
+                        <div>#</div><div>Título</div><div>Categoria</div><div>Prioridade</div><div>Status</div><div>Unidade</div><div>Ações</div>
+                      </div>
+                      {displayed.map(o => {
+                        const pc = priColor[o.prioridade] || "#475569";
+                        const sc = stsColor[o.status] || "#475569";
+                        const cc = catColor[o.categoria] || "#475569";
+                        return (
+                          <div key={o.id} onClick={() => openEditarOS(o)}
+                            style={{ display: "grid", gridTemplateColumns: "80px 1fr 130px 130px 160px 90px auto", gap: 8, padding: "10px 14px", background: "rgba(255,255,255,.025)", border: `1px solid rgba(255,255,255,.06)`, borderLeft: `3px solid ${pc}`, borderRadius: 10, cursor: "pointer", alignItems: "center", transition: "background .12s" }}>
+                            {/* Nº */}
+                            <div style={{ fontFamily: "monospace", fontSize: 12, color: "#818CF8", fontWeight: 800 }}>OS‑{String(o.numero || "?").padStart(3, "0")}</div>
+                            {/* Título */}
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: 13, color: "#F1F5F9" }}>{o.titulo}</div>
+                              {o.descricao && <div style={{ fontSize: 10, color: "#475569", marginTop: 2, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{o.descricao}</div>}
+                              {Array.isArray(o.equipamento_ids) && o.equipamento_ids.length > 0 && (
+                                <div style={{ display: "flex", gap: 3, marginTop: 4, flexWrap: "wrap" as const }}>
+                                  {equipList.filter(eq => (o.equipamento_ids || []).includes(eq.id)).slice(0, 2).map(eq => (
+                                    <span key={eq.id} style={{ fontSize: 9, background: "rgba(99,102,241,.2)", color: "#C7D2FE", borderRadius: 4, padding: "1px 5px", fontWeight: 700 }}>{eq.catIcon} {eq.nome.slice(0, 14)}</span>
+                                  ))}
+                                  {(o.equipamento_ids || []).length > 2 && <span style={{ fontSize: 9, color: "#6366F1", fontWeight: 700 }}>+{(o.equipamento_ids || []).length - 2}</span>}
                                 </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                              )}
+                            </div>
+                            {/* Categoria */}
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: 18, background: cc + "22", borderRadius: 8, width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{catIcon[o.categoria] || "📋"}</span>
+                              <span style={{ fontSize: 10, color: cc, fontWeight: 700 }}>{o.categoria}</span>
+                            </div>
+                            {/* Prioridade */}
+                            <div>
+                              <span style={{ fontSize: 10, fontWeight: 800, color: pc, background: pc + "22", border: `1px solid ${pc}55`, borderRadius: 6, padding: "3px 8px", whiteSpace: "nowrap" as const }}>{priLabel[o.prioridade] || o.prioridade}</span>
+                            </div>
+                            {/* Status */}
+                            <div>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: sc, background: sc + "22", border: `1px solid ${sc}44`, borderRadius: 6, padding: "3px 9px", whiteSpace: "nowrap" as const }}>{stsLabel[o.status] || o.status}</span>
+                            </div>
+                            {/* Unidade */}
+                            <div style={{ fontSize: 11, color: "#94A3B8" }}>{o.unidade || <span style={{ color: "#334155" }}>–</span>}</div>
+                            {/* Ações */}
+                            <div onClick={e => e.stopPropagation()} style={{ display: "flex", gap: 4 }}>
+                              {o.status === "aberta" && (
+                                <button title="Iniciar" onClick={() => updateOSStatus(o.id, "em_andamento")}
+                                  style={{ padding: "5px 10px", borderRadius: 7, background: "rgba(6,182,212,.15)", border: "1px solid rgba(6,182,212,.3)", color: "#67E8F9", cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700 }}>▶ Iniciar</button>
+                              )}
+                              {o.status === "em_andamento" && (
+                                <button title="Concluir" onClick={() => updateOSStatus(o.id, "fechada")}
+                                  style={{ padding: "5px 10px", borderRadius: 7, background: "rgba(16,185,129,.15)", border: "1px solid rgba(16,185,129,.3)", color: "#6EE7B7", cursor: "pointer", fontSize: 11, fontFamily: "inherit", fontWeight: 700 }}>✓ Concluir</button>
+                              )}
+                              {o.status === "fechada" && (
+                                <button title="Reabrir" onClick={() => updateOSStatus(o.id, "aberta")}
+                                  style={{ padding: "5px 10px", borderRadius: 7, background: "rgba(100,116,139,.12)", border: "1px solid rgba(100,116,139,.2)", color: "#94A3B8", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>↺ Reabrir</button>
+                              )}
+                              <button title="Editar" onClick={() => openEditarOS(o)}
+                                style={{ padding: "5px 8px", borderRadius: 7, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.25)", color: "#A5B4FC", cursor: "pointer", fontSize: 12 }}>✏️</button>
+                              <button title="Excluir" onClick={() => setOsDeleteId(o.id)}
+                                style={{ padding: "5px 8px", borderRadius: 7, background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.2)", color: "#FCA5A5", cursor: "pointer", fontSize: 12 }}>🗑</button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     /* ── Cards ── */
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
-                      {displayed.map(o => (
-                        <div key={o.id} onClick={() => openEditarOS(o)}
-                          style={{ background: "rgba(255,255,255,.03)", border: `1px solid ${o.prioridade === "urgente" ? "rgba(239,68,68,.3)" : "rgba(255,255,255,.07)"}`, borderRadius: 12, padding: "14px 16px", cursor: "pointer", transition: "border-color .15s" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                            <span style={{ fontFamily: "monospace", fontSize: 10, color: "#6366F1", fontWeight: 700 }}>OS-{String(o.numero || "?").padStart(3, "0")}</span>
-                            <div style={{ display: "flex", gap: 4 }}>
-                              <span className={`pill ${priPill(o.prioridade)}`} style={{ fontSize: 9 }}>{o.prioridade}</span>
-                              <span className={`pill ${stsPill(o.status)}`} style={{ fontSize: 9 }}>{o.status.replace("_"," ")}</span>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 14 }}>
+                      {displayed.map(o => {
+                        const pc = priColor[o.prioridade] || "#475569";
+                        const sc = stsColor[o.status] || "#475569";
+                        const cc = catColor[o.categoria] || "#475569";
+                        return (
+                          <div key={o.id} onClick={() => openEditarOS(o)}
+                            style={{ background: "rgba(15,23,42,.8)", border: `1px solid ${pc}44`, borderRadius: 14, overflow: "hidden", cursor: "pointer", transition: "border-color .15s, transform .12s" }}>
+                            {/* Topo colorido */}
+                            <div style={{ height: 4, background: `linear-gradient(90deg, ${pc}, ${cc})` }} />
+                            <div style={{ padding: "14px 16px" }}>
+                              {/* Header */}
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <div style={{ width: 36, height: 36, borderRadius: 10, background: cc + "22", border: `1px solid ${cc}44`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{catIcon[o.categoria] || "📋"}</div>
+                                  <div>
+                                    <div style={{ fontFamily: "monospace", fontSize: 10, color: "#818CF8", fontWeight: 800 }}>OS‑{String(o.numero || "?").padStart(3, "0")}</div>
+                                    <div style={{ fontSize: 10, color: cc, fontWeight: 700 }}>{o.categoria}</div>
+                                  </div>
+                                </div>
+                                <span style={{ fontSize: 9, fontWeight: 800, color: pc, background: pc + "22", border: `1px solid ${pc}55`, borderRadius: 6, padding: "3px 7px", whiteSpace: "nowrap" as const }}>{priLabel[o.prioridade] || o.prioridade}</span>
+                              </div>
+                              {/* Título */}
+                              <div style={{ fontSize: 13, fontWeight: 700, color: "#F1F5F9", marginBottom: 5, lineHeight: 1.3 }}>{o.titulo}</div>
+                              {/* Descrição */}
+                              {o.descricao && <div style={{ fontSize: 11, color: "#64748B", marginBottom: 8, lineHeight: 1.5 }}>{o.descricao.slice(0, 90)}{o.descricao.length > 90 ? "…" : ""}</div>}
+                              {/* Equipamentos */}
+                              {Array.isArray(o.equipamento_ids) && o.equipamento_ids.length > 0 && (
+                                <div style={{ display: "flex", gap: 4, marginBottom: 9, flexWrap: "wrap" as const }}>
+                                  {equipList.filter(eq => (o.equipamento_ids || []).includes(eq.id)).slice(0, 3).map(eq => (
+                                    <span key={eq.id} style={{ fontSize: 9, background: "rgba(99,102,241,.2)", color: "#C7D2FE", borderRadius: 5, padding: "2px 7px", fontWeight: 700 }}>{eq.catIcon} {eq.nome.slice(0, 16)}</span>
+                                  ))}
+                                  {(o.equipamento_ids || []).length > 3 && <span style={{ fontSize: 9, color: "#6366F1", fontWeight: 700 }}>+{(o.equipamento_ids || []).length - 3}</span>}
+                                </div>
+                              )}
+                              {/* Meta: unidade + responsável */}
+                              {(o.unidade || o.responsavel) && (
+                                <div style={{ display: "flex", gap: 10, fontSize: 10, color: "#64748B", marginBottom: 10 }}>
+                                  {o.unidade && <span>🏠 {o.unidade}</span>}
+                                  {o.responsavel && <span>👤 {o.responsavel}</span>}
+                                </div>
+                              )}
+                              {/* Status + ações */}
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, borderTop: "1px solid rgba(255,255,255,.06)", paddingTop: 10 }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: sc, background: sc + "22", border: `1px solid ${sc}44`, borderRadius: 6, padding: "3px 8px" }}>{stsIcon[o.status] || "●"} {stsLabel[o.status]?.split(" ").slice(1).join(" ") || o.status}</span>
+                                <div style={{ display: "flex", gap: 5 }} onClick={e => e.stopPropagation()}>
+                                  {o.status === "aberta" && (
+                                    <button onClick={() => updateOSStatus(o.id, "em_andamento")}
+                                      style={{ padding: "5px 10px", borderRadius: 7, background: "rgba(6,182,212,.15)", border: "1px solid rgba(6,182,212,.3)", color: "#67E8F9", cursor: "pointer", fontSize: 10, fontFamily: "inherit", fontWeight: 700 }}>▶ Iniciar</button>
+                                  )}
+                                  {o.status === "em_andamento" && (
+                                    <button onClick={() => updateOSStatus(o.id, "fechada")}
+                                      style={{ padding: "5px 10px", borderRadius: 7, background: "rgba(16,185,129,.15)", border: "1px solid rgba(16,185,129,.3)", color: "#6EE7B7", cursor: "pointer", fontSize: 10, fontFamily: "inherit", fontWeight: 700 }}>✓ Concluir</button>
+                                  )}
+                                  <button onClick={() => setOsDeleteId(o.id)}
+                                    style={{ padding: "5px 8px", borderRadius: 7, background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.2)", color: "#FCA5A5", cursor: "pointer", fontSize: 11 }}>🗑</button>
+                                </div>
+                              </div>
                             </div>
                           </div>
-                          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{o.titulo}</div>
-                          {o.descricao && <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, lineHeight: 1.5 }}>{o.descricao.slice(0, 80)}{o.descricao.length > 80 ? "…" : ""}</div>}
-                          {Array.isArray(o.equipamento_ids) && o.equipamento_ids.length > 0 && (
-                            <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
-                              {equipList.filter(eq => (o.equipamento_ids || []).includes(eq.id)).slice(0, 3).map(eq => (
-                                <span key={eq.id} style={{ fontSize: 9, background: "rgba(99,102,241,.15)", color: "#A5B4FC", borderRadius: 4, padding: "2px 6px", fontWeight: 600 }}>{eq.catIcon} {eq.nome.slice(0, 16)}</span>
-                              ))}
-                              {o.equipamento_ids.length > 3 && <span style={{ fontSize: 9, color: "#64748B" }}>+{o.equipamento_ids.length - 3}</span>}
-                            </div>
-                          )}
-                          <div style={{ display: "flex", gap: 8, fontSize: 10, color: "#64748B", marginBottom: 10 }}>
-                            <span>{catIcon[o.categoria] || "📋"} {o.categoria}</span>
-                            {o.unidade && <span>🏠 {o.unidade}</span>}
-                            {o.responsavel && <span>👤 {o.responsavel}</span>}
-                          </div>
-                          <div style={{ display: "flex", gap: 4, justifyContent: "space-between", alignItems: "center" }}>
-                            <span style={{ fontSize: 10, color: "#334155" }}>{fmtDate(o.created_at)}</span>
-                            <div style={{ display: "flex", gap: 4 }} onClick={e => e.stopPropagation()}>
-                              {o.status === "aberta" && <button className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "em_andamento")}>Iniciar</button>}
-                              {o.status === "em_andamento" && <button className="btn btn-sm btn-success" onClick={() => updateOSStatus(o.id, "fechada")}>Concluir</button>}
-                              <button className="btn btn-sm btn-danger" onClick={() => setOsDeleteId(o.id)}>🗑</button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
