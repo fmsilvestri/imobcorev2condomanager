@@ -129,10 +129,22 @@ router.get("/dashboard", async (req: Request, res: Response) => {
 // POST /api/sindico/chat - Coração do Síndico Virtual IA
 router.post("/sindico/chat", async (req: Request, res: Response) => {
   try {
-    const { message, history = [], condominio_id } = req.body as {
-      message: string;
-      history: { role: string; content: string }[];
+    const {
+      message,
+      history = [],
+      condominio_id,
+      tipo,
+      saldo: saldoCtx,
+      score: scoreCtx,
+      inadimplencia: inadCtx,
+    } = req.body as {
+      message?: string;
+      history?: { role: string; content: string }[];
       condominio_id?: string;
+      tipo?: string;
+      saldo?: number;
+      score?: number;
+      inadimplencia?: number;
     };
 
     const condIdCtx = condominio_id || "";
@@ -164,6 +176,104 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
     const totalReceitas = (receitas || []).reduce((s: number, r: { valor: number }) => s + Number(r.valor), 0);
     const totalDespesas = (despesas || []).reduce((s: number, d: { valor: number }) => s + Number(d.valor), 0);
     const saldo = totalReceitas - totalDespesas;
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // MODO: tipo === "financeiro"  — análise financeira completa via Síndico IA
+    // Chamada: POST /api/sindico/chat { tipo:"financeiro", saldo, score, inadimplencia, condominio_id }
+    // ══════════════════════════════════════════════════════════════════════════
+    if (tipo === "financeiro") {
+      // Busca dados reais de lancamentos para enriquecer o contexto
+      const { all: lancs } = await fetchLancamentosDB(condominio_id);
+      const ind = calcularIndicadores(lancs);
+      const { historico } = calcularFluxoMensal(lancs, 6, 0);
+
+      // Preferência: dados passados pelo cliente (calculados no frontend) ou dados do DB
+      const saldoFinal = saldoCtx ?? ind.saldo;
+      const scoreFinal = scoreCtx ?? ind.score;
+      const inadFinal  = inadCtx  ?? ind.txInad;
+
+      // Resumo por categoria de despesa
+      const despCat: Record<string, number> = {};
+      lancs.filter(l => l.tipo === "despesa").forEach(l => {
+        const cat = l.categoria || "outros";
+        despCat[cat] = (despCat[cat] || 0) + Number(l.valor);
+      });
+      const topDespesas = Object.entries(despCat)
+        .sort((a, b) => b[1] - a[1]).slice(0, 5)
+        .map(([c, v]) => `  • ${c}: R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`)
+        .join("\n") || "  • Sem dados de despesas cadastrados";
+
+      // Receitas em aberto (inadimplentes)
+      const inadimplentes = lancs.filter(l => l.tipo === "receita" && l.status === "atrasado");
+
+      // Fluxo histórico textual
+      const fluxoTxt = historico
+        .map(m => `  ${m.mes}: Receitas R$${m.Receitas.toLocaleString("pt-BR")} | Despesas R$${m.Despesas.toLocaleString("pt-BR")} | Resultado R$${m.Resultado.toLocaleString("pt-BR")}`)
+        .join("\n") || "  Sem histórico de lançamentos";
+
+      const cond = (await supabase.from("condominios").select("nome,cidade,sindico_nome,unidades").limit(1).single()).data;
+
+      const riscoBadge = scoreFinal >= 80 ? "🟢 BAIXO" : scoreFinal >= 60 ? "🟡 MODERADO" : scoreFinal >= 40 ? "🔴 ALTO" : "⛔ CRÍTICO";
+
+      const userMsg = message || "Analise a situação financeira do condomínio e forneça um relatório executivo completo com recomendações prioritárias.";
+
+      const finSystemPrompt = `Você é o Síndico Virtual IA do ${cond?.nome || "condomínio"} em ${cond?.cidade || "Florianópolis"} — especialista em gestão financeira condominial.
+
+MÓDULO FINANCEIRO INTELIGENTE — DADOS ATUAIS (${new Date().toLocaleDateString("pt-BR")}):
+
+📊 INDICADORES PRINCIPAIS:
+  • Score de Saúde Financeira: ${scoreFinal}/100 — Risco ${riscoBadge}
+  • Saldo em Caixa: R$ ${saldoFinal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} ${saldoFinal >= 0 ? "✅" : "⚠️ NEGATIVO"}
+  • Receitas Totais: R$ ${ind.receitas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+  • Despesas Totais: R$ ${ind.despesas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+  • Taxa de Inadimplência: ${inadFinal}% (R$ ${ind.vlrInad.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em aberto, ${inadimplentes.length} lançamentos)
+  • Total de Lançamentos: ${lancs.length} (${lancs.filter(l=>l.tipo==="receita").length} receitas · ${lancs.filter(l=>l.tipo==="despesa").length} despesas)
+
+💸 TOP CATEGORIAS DE DESPESA:
+${topDespesas}
+
+📈 FLUXO DE CAIXA — ÚLTIMOS 6 MESES:
+${fluxoTxt}
+
+🏢 CONTEXTO DO CONDOMÍNIO:
+  • Unidades: ${cond?.unidades || "—"} | Síndico: ${cond?.sindico_nome || "—"}
+
+INSTRUÇÕES:
+- Seja o síndico financeiro ideal: preciso, direto, baseado nos dados reais acima
+- Estruture com seções claras (ANÁLISE, RISCOS, RECOMENDAÇÕES quando pertinente)
+- Priorize ações de maior impacto financeiro
+- Use linguagem profissional com emojis moderados
+- Máximo 600 palavras`;
+
+      const aiResponse = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1200,
+        system: finSystemPrompt,
+        messages: [
+          ...(history || []).slice(-6).map(h => ({ role: h.role as "user" | "assistant", content: h.content })),
+          { role: "user" as const, content: userMsg },
+        ],
+      });
+
+      const reply = aiResponse.content[0].type === "text" ? aiResponse.content[0].text : "";
+      const tokens = { input: aiResponse.usage.input_tokens, output: aiResponse.usage.output_tokens };
+
+      // Salva no histórico do Síndico (best-effort)
+      try {
+        await supabase.from("sindico_historico").insert({
+          condominio_id: condominio_id || cond?.id,
+          sessao_id: `fin_${Date.now()}`,
+          pergunta: userMsg,
+          resposta: reply,
+          tokens_input: tokens.input,
+          tokens_output: tokens.output,
+        });
+      } catch { /* ignore */ }
+
+      broadcast("sindico_chat", { tipo: "financeiro", reply, timestamp: new Date().toISOString() });
+      return res.json({ reply, tokens, score: scoreFinal, saldo: saldoFinal, inadimplencia: inadFinal, risco: riscoBadge });
+    }
+    // ══════════════════════════════════════════════════════════════════════════
 
     const osUrgentes = (osAbertas || []).filter((o: { prioridade: string }) => o.prioridade === "urgente");
 
@@ -247,6 +357,8 @@ Você tem acesso completo aos dados de manutenção acima. Use-os para:
 - Estimar consumo energético e oportunidades de economia
 
 Responda de forma profissional, objetiva e útil. Use emojis moderadamente. Máximo 500 palavras por resposta.`;
+
+    if (!message) return res.status(400).json({ error: "Campo 'message' obrigatório para o chat geral do Síndico" });
 
     const messages = [
       ...history.slice(-10).map((h) => ({

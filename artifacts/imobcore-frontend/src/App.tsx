@@ -11,7 +11,7 @@ interface Receita { id: string; descricao: string; valor: number; categoria: str
 interface Despesa { id: string; descricao: string; valor: number; categoria: string; fornecedor?: string; created_at?: string }
 interface Lancamento { id: string; condominio_id?: string; tipo: "receita"|"despesa"; categoria: string; subcategoria?: string; descricao: string; valor: number; data: string; competencia?: string; status: "previsto"|"pago"|"atrasado"; created_at?: string }
 interface OrcamentoEntry { id: string; categoria: string; mes: number; valor_previsto: number; valor_real: number }
-interface FinanceiroInsight { score: number; inadimplencia: number; saldo: number; risco: string; analise: string; riscos: string; recomendacoes: string; gerado_em: string }
+interface FinanceiroInsight { score: number; inadimplencia: number; saldo: number; risco: string; analise: string; riscos: string; recomendacoes: string; gerado_em: string; reply?: string }
 interface Comunicado { id: string; titulo: string; corpo: string; gerado_por_ia: boolean; created_at: string }
 interface ChatMsg { role: "user" | "ai"; content: string; time: string }
 interface PiscinaLeitura { id: string; condominio_id: string; ph: number; cloro: number; temperatura?: number; alcalinidade?: number; dureza_calcica?: number; status: "ok" | "alerta"; observacoes?: string; created_at: string; }
@@ -1231,13 +1231,39 @@ export default function App() {
     if (r.ok) { finFetchLancamentos(); showToast("Removido", "success"); }
   };
 
-  const finGerarInsights = async () => {
+  const finGerarInsights = async (pergunta?: string) => {
     setFinInsightLoading(true);
     try {
-      const cid = dash?.condominios?.[0]?.id;
-      const r = await fetch("/api/financeiro/insights", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id: cid }) });
-      if (r.ok) setFinInsight(await r.json());
-      else showToast("Erro ao gerar insights", "warn");
+      const cid = condId || dash?.condominios?.[0]?.id;
+      const body: Record<string, unknown> = {
+        tipo: "financeiro",
+        condominio_id: cid,
+      };
+      if (pergunta) body.message = pergunta;
+      const r = await fetch("/api/sindico/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        // Monta FinanceiroInsight a partir da resposta do Síndico Virtual
+        const reply: string = data.reply || "";
+        const analise = reply.match(/ANÁLISE[:\s]+([\s\S]+?)(?=RISCOS|RECOMENDAÇÕES|$)/i)?.[1]?.trim() || reply.slice(0, 600);
+        const riscos = reply.match(/RISCOS[:\s]+([\s\S]+?)(?=RECOMENDAÇÕES|$)/i)?.[1]?.trim() || "";
+        const recomendacoes = reply.match(/RECOMENDAÇÕES[:\s]+([\s\S]+)/i)?.[1]?.trim() || "";
+        setFinInsight({
+          score: data.score ?? 0,
+          inadimplencia: data.inadimplencia ?? 0,
+          saldo: data.saldo ?? 0,
+          risco: typeof data.risco === "string" ? data.risco.replace(/[🟢🟡🔴⛔]\s*/g, "").toLowerCase() : "—",
+          analise: analise || reply,
+          riscos,
+          recomendacoes,
+          gerado_em: new Date().toISOString(),
+          reply,
+        });
+      } else { showToast("Erro ao gerar insights", "warn"); }
     } catch { showToast("Erro ao gerar insights", "warn"); }
     setFinInsightLoading(false);
   };
@@ -5749,17 +5775,43 @@ export default function App() {
                   {/* ══════════════ ABA: INSIGHTS IA ══════════════ */}
                   {finTab === "insights" && (
                     <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                      {/* Trigger button */}
-                      <div style={{ background:"linear-gradient(135deg, rgba(245,158,11,.08), rgba(251,191,36,.05))", border:"1px solid rgba(245,158,11,.2)", borderRadius:14, padding:"20px 22px", display:"flex", alignItems:"center", gap:16 }}>
-                        <div style={{ fontSize:40 }}>🤖</div>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:14, fontWeight:800, color:"#FCD34D" }}>Síndico Virtual — Análise Financeira</div>
-                          <div style={{ fontSize:12, color:"#475569", marginTop:4 }}>Análise automática com IA baseada nos seus lançamentos: score, riscos e recomendações personalizadas</div>
+                      {/* Trigger + pergunta personalizada */}
+                      <div style={{ background:"linear-gradient(135deg, rgba(245,158,11,.08), rgba(251,191,36,.05))", border:"1px solid rgba(245,158,11,.2)", borderRadius:14, padding:"20px 22px" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:14 }}>
+                          <div style={{ fontSize:40 }}>🤖</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:14, fontWeight:800, color:"#FCD34D" }}>Síndico Virtual — Análise Financeira</div>
+                            <div style={{ fontSize:12, color:"#475569", marginTop:2 }}>IA com contexto completo dos seus lançamentos · Powered by Claude</div>
+                          </div>
+                          <button onClick={() => finGerarInsights()} disabled={finInsightLoading}
+                            style={{ padding:"10px 20px", borderRadius:10, background: finInsightLoading ? "rgba(245,158,11,.2)" : "#F59E0B", border:"none", color: finInsightLoading ? "#FCD34D" : "#000", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" as const }}>
+                            {finInsightLoading ? "⏳ Analisando..." : "⚡ Relatório Completo"}
+                          </button>
                         </div>
-                        <button onClick={finGerarInsights} disabled={finInsightLoading}
-                          style={{ padding:"10px 22px", borderRadius:10, background: finInsightLoading ? "rgba(245,158,11,.2)" : "#F59E0B", border:"none", color: finInsightLoading ? "#FCD34D" : "#000", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" as const, opacity:finInsightLoading?.8:1 }}>
-                          {finInsightLoading ? "⏳ Analisando..." : "⚡ Gerar Análise"}
-                        </button>
+                        {/* Campo de pergunta personalizada */}
+                        <div style={{ display:"flex", gap:8 }}>
+                          <input
+                            id="fin-pergunta"
+                            placeholder="Pergunte algo específico ao Síndico (ex: como reduzir custos com manutenção?)"
+                            style={{ flex:1, background:"rgba(0,0,0,.3)", border:"1px solid rgba(245,158,11,.3)", borderRadius:8, padding:"9px 14px", color:"#E2E8F0", fontSize:12, outline:"none" }}
+                            onKeyDown={e => { if (e.key === "Enter") { const v = (e.target as HTMLInputElement).value.trim(); if (v) { finGerarInsights(v); (e.target as HTMLInputElement).value = ""; } } }}
+                          />
+                          <button
+                            onClick={() => { const el = document.getElementById("fin-pergunta") as HTMLInputElement; const v = el?.value.trim(); if (v) { finGerarInsights(v); el.value = ""; } else finGerarInsights(); }}
+                            disabled={finInsightLoading}
+                            style={{ padding:"9px 16px", borderRadius:8, background:"rgba(245,158,11,.15)", border:"1px solid rgba(245,158,11,.3)", color:"#FCD34D", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                            Perguntar
+                          </button>
+                        </div>
+                        {/* Chips de perguntas rápidas */}
+                        <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const, marginTop:10 }}>
+                          {["Onde posso reduzir despesas?", "Como melhorar a inadimplência?", "Qual a previsão para os próximos 3 meses?", "Compare receitas x despesas por categoria"].map(q => (
+                            <button key={q} onClick={() => finGerarInsights(q)} disabled={finInsightLoading}
+                              style={{ padding:"4px 10px", borderRadius:20, background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.2)", color:"#F59E0B", fontSize:10, cursor:"pointer", transition:"background .15s" }}>
+                              {q}
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
                       {/* Result */}
@@ -5780,30 +5832,38 @@ export default function App() {
                             ))}
                           </div>
 
-                          {/* Análise */}
-                          <div style={{ background:"rgba(245,158,11,.05)", border:"1px solid rgba(245,158,11,.15)", borderRadius:12, padding:"18px 20px" }}>
-                            <div style={{ fontSize:12, fontWeight:700, color:"#FCD34D", marginBottom:10 }}>📋 ANÁLISE GERAL</div>
-                            <div style={{ fontSize:13, color:"#CBD5E1", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>{finInsight.analise}</div>
-                          </div>
-
-                          {/* Riscos */}
-                          {finInsight.riscos && (
-                            <div style={{ background:"rgba(239,68,68,.05)", border:"1px solid rgba(239,68,68,.15)", borderRadius:12, padding:"18px 20px" }}>
-                              <div style={{ fontSize:12, fontWeight:700, color:"#FCA5A5", marginBottom:10 }}>🚨 RISCOS IDENTIFICADOS</div>
-                              <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finInsight.riscos}</div>
+                          {/* Resposta completa do Síndico — exibe seções ou texto corrido */}
+                          {finInsight.reply && !finInsight.riscos && !finInsight.recomendacoes ? (
+                            <div style={{ background:"rgba(245,158,11,.05)", border:"1px solid rgba(245,158,11,.15)", borderRadius:12, padding:"18px 20px" }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:"#FCD34D", marginBottom:10 }}>🤖 SÍNDICO VIRTUAL</div>
+                              <div style={{ fontSize:13, color:"#CBD5E1", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>{finInsight.reply}</div>
                             </div>
-                          )}
-
-                          {/* Recomendações */}
-                          {finInsight.recomendacoes && (
-                            <div style={{ background:"rgba(16,185,129,.05)", border:"1px solid rgba(16,185,129,.15)", borderRadius:12, padding:"18px 20px" }}>
-                              <div style={{ fontSize:12, fontWeight:700, color:"#6EE7B7", marginBottom:10 }}>✅ RECOMENDAÇÕES</div>
-                              <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finInsight.recomendacoes}</div>
-                            </div>
+                          ) : (
+                            <>
+                              {/* Análise */}
+                              <div style={{ background:"rgba(245,158,11,.05)", border:"1px solid rgba(245,158,11,.15)", borderRadius:12, padding:"18px 20px" }}>
+                                <div style={{ fontSize:12, fontWeight:700, color:"#FCD34D", marginBottom:10 }}>📋 ANÁLISE GERAL</div>
+                                <div style={{ fontSize:13, color:"#CBD5E1", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>{finInsight.analise}</div>
+                              </div>
+                              {/* Riscos */}
+                              {finInsight.riscos && (
+                                <div style={{ background:"rgba(239,68,68,.05)", border:"1px solid rgba(239,68,68,.15)", borderRadius:12, padding:"18px 20px" }}>
+                                  <div style={{ fontSize:12, fontWeight:700, color:"#FCA5A5", marginBottom:10 }}>🚨 RISCOS IDENTIFICADOS</div>
+                                  <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finInsight.riscos}</div>
+                                </div>
+                              )}
+                              {/* Recomendações */}
+                              {finInsight.recomendacoes && (
+                                <div style={{ background:"rgba(16,185,129,.05)", border:"1px solid rgba(16,185,129,.15)", borderRadius:12, padding:"18px 20px" }}>
+                                  <div style={{ fontSize:12, fontWeight:700, color:"#6EE7B7", marginBottom:10 }}>✅ RECOMENDAÇÕES</div>
+                                  <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finInsight.recomendacoes}</div>
+                                </div>
+                              )}
+                            </>
                           )}
 
                           <div style={{ fontSize:10, color:"#334155", textAlign:"right" as const }}>
-                            Análise gerada em {new Date(finInsight.gerado_em).toLocaleString("pt-BR")} pelo Síndico Virtual
+                            Análise gerada em {new Date(finInsight.gerado_em).toLocaleString("pt-BR")} · Síndico Virtual (Claude)
                           </div>
                         </>
                       )}
