@@ -6433,8 +6433,112 @@ export default function App() {
                       {!equipLoading && filtered.length === 0 && <div style={{ textAlign:"center", color:"#334155", padding:30, fontSize:13 }}>Nenhum equipamento encontrado</div>}
                     </div>
 
-                    {/* Add new / Novo Equipamento button */}
-                    <div style={{ marginTop:12, display:"flex", justifyContent:"flex-end" }}>
+                    {/* Bottom toolbar */}
+                    <div style={{ marginTop:12, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+                      <button
+                        title="Exportar PDF com resumo completo de todos os equipamentos"
+                        onClick={() => {
+                          const condNome = dash?.condominios?.find(c=>c.id===condId)?.nome ?? "Condomínio";
+                          const now = new Date().toLocaleString("pt-BR");
+                          const scoreColor = scoreEquipColor;
+
+                          const statusIcon = (s: string) => s==="operacional"?"✅":s==="atencao"?"⚠️":s==="manutencao"?"🔧":"⬛";
+                          const vidaUtilColor = (p: number) => p < 50 ? "#16a34a" : p < 75 ? "#d97706" : "#dc2626";
+
+                          const rows = equipList.map((e, i) => {
+                            const pct = Math.min(100, Math.round((e.instaladoHa / e.vidaUtilAnos) * 100));
+                            const fv = e.fornecedor_id ? fornecList.find(f=>f.id===e.fornecedor_id) : null;
+                            const stC = e.status==="operacional"?"#16a34a":e.status==="atencao"?"#d97706":e.status==="manutencao"?"#dc2626":"#6b7280";
+                            const vc  = vidaUtilColor(pct);
+                            return `
+                              <tr style="background:${i%2===0?"#f8fafc":"#ffffff"}">
+                                <td>${i+1}</td>
+                                <td><strong>${e.catIcon} ${e.nome}</strong><br/><span style="color:#6b7280;font-size:10px">${e.modelo||""}</span></td>
+                                <td>${e.categoria}</td>
+                                <td>${e.local}</td>
+                                <td><span style="color:${stC};font-weight:700">${statusIcon(e.status)} ${stC==="#16a34a"?"Operacional":e.status==="atencao"?"Atenção":e.status==="manutencao"?"Manutenção":"Inativo"}</span></td>
+                                <td>
+                                  <div style="background:#e2e8f0;border-radius:4px;height:7px;width:80px">
+                                    <div style="width:${pct}%;height:100%;background:${vc};border-radius:4px"></div>
+                                  </div>
+                                  <span style="font-size:10px;color:${vc};font-weight:700">${pct}%</span>
+                                </td>
+                                <td>${fv ? `${fv.icone} ${fv.nome}` : (e.fabricante||"—")}</td>
+                                <td style="color:#16a34a;font-weight:700">${e.custoManutencao>0?`R$ ${e.custoManutencao.toLocaleString("pt-BR",{minimumFractionDigits:2})}`:"—"}</td>
+                                <td>${e.proxManutencao||"—"}</td>
+                                <td style="font-size:10px;color:#6b7280">${e.descricao?e.descricao.slice(0,60)+(e.descricao.length>60?"…":""):"—"}</td>
+                              </tr>`;
+                          }).join("");
+
+                          const totalCusto = equipList.reduce((s,e)=>s+e.custoManutencao,0);
+                          const alertas = equipList.filter(e=>e.status!=="operacional");
+
+                          const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+                            <title>Relatório de Equipamentos — ${condNome}</title>
+                            <style>
+                              *{box-sizing:border-box;margin:0;padding:0}
+                              body{font-family:Arial,sans-serif;color:#1e293b;padding:28px;font-size:12px}
+                              .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #6366f1}
+                              .logo{font-size:22px;font-weight:900;color:#6366f1}
+                              .logo span{font-size:11px;display:block;color:#64748b;font-weight:400}
+                              .score{text-align:right}
+                              .score-num{font-size:36px;font-weight:900;color:${scoreColor}}
+                              .score-lbl{font-size:11px;color:${scoreColor};font-weight:700}
+                              .chips{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+                              .chip{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid}
+                              h2{font-size:14px;color:#374151;margin:20px 0 10px;border-bottom:1px solid #e2e8f0;padding-bottom:6px}
+                              table{width:100%;border-collapse:collapse;margin-bottom:20px}
+                              th{background:#6366f122;color:#4338ca;text-align:left;padding:8px 8px;font-size:10px;font-weight:700;text-transform:uppercase;border-bottom:2px solid #6366f133}
+                              td{padding:7px 8px;border-bottom:1px solid #f1f5f9;vertical-align:top}
+                              .summary{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+                              .sum-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;text-align:center}
+                              .sum-val{font-size:24px;font-weight:900}
+                              .sum-lbl{font-size:10px;color:#64748b;margin-top:2px}
+                              .alert-box{background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;padding:12px;margin-bottom:16px}
+                              .footer{margin-top:24px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;text-align:center}
+                              @media print{body{padding:16px}}
+                            </style>
+                          </head><body>
+                            <div class="header">
+                              <div>
+                                <div class="logo">🏗️ ImobCore<span>Relatório de Equipamentos</span></div>
+                                <div style="margin-top:8px;font-size:12px;color:#374151"><strong>${condNome}</strong></div>
+                                <div style="font-size:11px;color:#94a3b8;margin-top:2px">Gerado em ${now}</div>
+                              </div>
+                              <div class="score">
+                                <div class="score-num">${isNaN(scoreEquip)?0:scoreEquip}/100</div>
+                                <div class="score-lbl">Saúde — ${isNaN(scoreEquip)?"—":scoreEquipLabel}</div>
+                              </div>
+                            </div>
+
+                            <div class="summary">
+                              <div class="sum-card"><div class="sum-val" style="color:#6366f1">${equipList.length}</div><div class="sum-lbl">Total Cadastrado</div></div>
+                              <div class="sum-card"><div class="sum-val" style="color:#16a34a">${nOp}</div><div class="sum-lbl">Operacionais</div></div>
+                              <div class="sum-card"><div class="sum-val" style="color:#d97706">${nAt+nMt}</div><div class="sum-lbl">Com Pendências</div></div>
+                              <div class="sum-card"><div class="sum-val" style="color:#16a34a">R$ ${totalCusto.toLocaleString("pt-BR",{minimumFractionDigits:2})}</div><div class="sum-lbl">Custo Total Manutenção</div></div>
+                            </div>
+
+                            ${alertas.length>0?`<div class="alert-box"><strong>⚠️ ${alertas.length} equipamento(s) requerem atenção:</strong> ${alertas.map(e=>`${e.catIcon} ${e.nome} (${e.status})`).join(" · ")}</div>`:""}
+
+                            <h2>📋 Base Completa de Equipamentos</h2>
+                            <table>
+                              <thead><tr>
+                                <th>#</th><th>Equipamento</th><th>Categoria</th><th>Local</th>
+                                <th>Status</th><th>Vida Útil</th><th>Fabricante/Fornecedor</th>
+                                <th>Custo Manut.</th><th>Próx. Manut.</th><th>Observações</th>
+                              </tr></thead>
+                              <tbody>${rows}</tbody>
+                            </table>
+
+                            <div class="footer">ImobCore v2 — Plataforma de Gestão Inteligente de Condomínios · ${now}</div>
+                          </body></html>`;
+
+                          const w = window.open("","_blank","width=1100,height=750");
+                          if (w) { w.document.write(html); w.document.close(); w.print(); }
+                        }}
+                        style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.4)", borderRadius:8, padding:"8px 16px", color:"#A5B4FC", fontSize:12, fontWeight:700, cursor:"pointer" }}
+                      >📄 Exportar PDF</button>
+
                       <button title="Cadastrar um novo equipamento no sistema" onClick={()=>{ setEquipEditId(null); setEquipForm(EMPTY_EQ); setEquipShowEdit(true); }} style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"8px 18px", color:"#34D399", fontSize:12, fontWeight:700, cursor:"pointer" }}>＋ Novo Equipamento</button>
                     </div>
 
