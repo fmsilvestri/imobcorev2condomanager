@@ -1193,7 +1193,7 @@ export default function App() {
   const [aguaNovoResModal, setAguaNovoResModal] = useState(false);
   const [aguaNovoResForm, setAguaNovoResForm] = useState({ nome:"", local:"", capacidade:"", mac:"" });
   // ── Reservatórios state ────────────────────────────────────────────────────
-  const [resList, setResList] = useState<Reservatorio[]>(RES_DEMO);
+  const [resList, setResList] = useState<Reservatorio[]>([]);
   const [resShowForm, setResShowForm] = useState(false);
   const [resEditId, setResEditId] = useState<string|null>(null);
   const EMPTY_RES_FORM = { sensor_id:"", nome:"", local:"", capacidade_litros:20000, altura_cm:200, mac_address:"", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://imob-core-mobile-12.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443 };
@@ -1342,27 +1342,35 @@ export default function App() {
   };
 
   const resSave = async () => {
-    if (!resForm.sensor_id.trim()) return;
+    if (!resForm.sensor_id.trim()) { showToast("⚠️ Preencha o Sensor ID", "warn"); return; }
+    if (!resForm.nome.trim()) { showToast("⚠️ Preencha o Nome do reservatório", "warn"); return; }
     if (resEditId) {
       setResList(prev => prev.map(r => r.id === resEditId ? { ...r, ...resForm, cf_online:r.cf_online, wh_online:r.wh_online } : r));
       try {
         const r = await fetch(`/api/reservatorios/${resEditId}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(resForm) });
-        if (!r.ok) console.error("PUT reservatorio failed", await r.text());
-      } catch (e) { console.error("PUT reservatorio error", e); }
+        if (!r.ok) { console.error("PUT reservatorio failed", await r.text()); showToast("❌ Erro ao atualizar", "error"); }
+        else showToast("✅ Reservatório atualizado", "success");
+      } catch (e) { console.error("PUT reservatorio error", e); showToast("❌ Erro de conexão", "error"); }
     } else {
       const tempId = `res-${Date.now()}`;
       const novo: Reservatorio = { id:tempId, ...resForm, cf_online:false, wh_online:false, created_at:new Date().toISOString() };
       setResList(prev => [novo, ...prev]);
       try {
         const r = await fetch("/api/reservatorios", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(novo) });
-        if (!r.ok) { console.error("POST reservatorio failed", await r.text()); }
-        else {
+        if (!r.ok) {
+          console.error("POST reservatorio failed", await r.text());
+          showToast("❌ Erro ao salvar reservatório", "error");
+        } else {
           const json = await r.json();
           if (json.doc?.id && json.doc.id !== tempId) {
             setResList(prev => prev.map(x => x.id === tempId ? { ...x, id: json.doc.id } : x));
           }
+          showToast("✅ Reservatório salvo com sucesso", "success");
         }
-      } catch (e) { console.error("POST reservatorio error", e); }
+      } catch (e) {
+        console.error("POST reservatorio error", e);
+        showToast("❌ Erro de conexão ao salvar", "error");
+      }
     }
     setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM);
   };
@@ -1717,6 +1725,18 @@ export default function App() {
     const refresh = setInterval(() => loadDashboard(), 10000);
     return () => { clearInterval(clock); clearInterval(refresh); };
   }, [loadDashboard]);
+
+  // ── Carregar reservatórios da API ─────────────────────────────────────────
+  useEffect(() => {
+    fetch("/api/reservatorios")
+      .then(r => r.json())
+      .then(json => {
+        if (json.reservatorios && json.reservatorios.length > 0) {
+          setResList(json.reservatorios);
+        }
+      })
+      .catch(() => {/* mantém vazio */});
+  }, []);
 
   // ── Theme: apply CSS custom properties ───────────────────────────────────
   useEffect(() => {
