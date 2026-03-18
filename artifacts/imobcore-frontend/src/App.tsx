@@ -649,8 +649,11 @@ export default function App() {
   };
   // ── Diagnóstico Automático (IA + dados reais) ───────────────────────────────
   type DiagAutoResult = { score: { total:number; nivel:string; financeiro:number; manutencao:number; iot:number; gestao:number }; dados: { inadimplencia_pct:number; os_atrasadas:number; os_urgentes:number; sensores_offline:number; nivel_medio_agua:number; saldo_positivo:boolean }; insights: { tipo:string; mensagem:string; prioridade:string }[]; ia_analise:string; calculado_em:string };
+  type DiagHistorico = { id:string; condominio_id:string; score_total:number; nivel:string; score_financeiro:number|null; score_manutencao:number|null; score_iot:number|null; score_gestao:number|null; dados:{ inadimplencia_pct:number; os_atrasadas:number; os_urgentes:number; sensores_offline:number; nivel_medio_agua:number; saldo_positivo:boolean }|null; insights:{ tipo:string; mensagem:string; prioridade:string }[]|null; ia_analise:string|null; calculado_em:string };
   const [diagAutoResult, setDiagAutoResult] = useState<DiagAutoResult | null>(null);
   const [diagAutoLoading, setDiagAutoLoading] = useState(false);
+  const [diagHistorico, setDiagHistorico] = useState<DiagHistorico[]>([]);
+  const [diagHistLoading, setDiagHistLoading] = useState(false);
 
   // Ao trocar condomínio: resetar resultado e carregar último salvo do Supabase
   useEffect(() => {
@@ -664,13 +667,24 @@ export default function App() {
 
   // Ao trocar condomínio: carregar equipamentos e planos do Supabase
   useEffect(() => {
-    if (!condId) { setEquipList([]); setPlanoList([]); setFornecList([]); setPiscinaList([]); return; }
+    if (!condId) { setEquipList([]); setPlanoList([]); setFornecList([]); setPiscinaList([]); setDiagHistorico([]); return; }
     loadEquipamentos(condId);
     loadPlanos(condId);
     loadFornecedores(condId);
     loadPiscina(condId);
+    loadDiagHistorico(condId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condId]);
+
+  const loadDiagHistorico = async (cId: string) => {
+    setDiagHistLoading(true);
+    try {
+      const r = await fetch(`/api/diagnostico/historico?condominio_id=${cId}`);
+      const d = await r.json();
+      if (r.ok) setDiagHistorico(Array.isArray(d) ? d : []);
+    } catch { /* ignore */ }
+    setDiagHistLoading(false);
+  };
 
   const calcDiagAuto = async () => {
     if (!condId) { showToast("Selecione um condomínio primeiro", "warn"); return; }
@@ -678,7 +692,11 @@ export default function App() {
     try {
       const r = await fetch("/api/diagnostico/calcular", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ condominio_id: condId }) });
       const d = await r.json();
-      if (!r.ok) { showToast("Erro: " + d.error, "error"); } else { setDiagAutoResult(d); showToast("✅ Diagnóstico calculado!", "success"); }
+      if (!r.ok) { showToast("Erro: " + d.error, "error"); } else {
+        setDiagAutoResult(d);
+        showToast("✅ Diagnóstico calculado e salvo!", "success");
+        loadDiagHistorico(condId);
+      }
     } catch { showToast("Erro ao calcular diagnóstico", "error"); }
     setDiagAutoLoading(false);
   };
@@ -5970,60 +5988,218 @@ export default function App() {
                 )}
 
                 {/* ── TELA 3: HISTÓRICO ── */}
-                {mispTab === "historico" && (
+                {mispTab === "historico" && (() => {
+                  const nivelC = (s: number) => s >= 80 ? "#10B981" : s >= 60 ? "#F59E0B" : s >= 40 ? "#F97316" : "#EF4444";
+
+                  const generateDiagPDF = (h: DiagHistorico, condNome: string) => {
+                    const nc = nivelC(h.score_total);
+                    const pilares = [
+                      { label:"Financeiro", score: h.score_financeiro ?? 0, icon:"💰" },
+                      { label:"Manutenção", score: h.score_manutencao ?? 0, icon:"🔧" },
+                      { label:"IoT/Sensores", score: h.score_iot ?? 0, icon:"💧" },
+                      { label:"Gestão", score: h.score_gestao ?? 0, icon:"📊" },
+                    ];
+                    const pilarRows = pilares.map(p => {
+                      const pc = nivelC(p.score);
+                      return `<tr><td>${p.icon} ${p.label}</td><td style="font-weight:700;color:${pc}">${p.score}/100</td><td><div style="height:8px;background:#e2e8f0;border-radius:4px;width:200px"><div style="width:${p.score}%;height:100%;background:${pc};border-radius:4px"></div></div></td></tr>`;
+                    }).join("");
+                    const dadosRows = h.dados ? [
+                      ["Inadimplência", `${h.dados.inadimplencia_pct?.toFixed(1) ?? 0}%`],
+                      ["OS Atrasadas", String(h.dados.os_atrasadas ?? 0)],
+                      ["OS Urgentes", String(h.dados.os_urgentes ?? 0)],
+                      ["Sensores Offline", String(h.dados.sensores_offline ?? 0)],
+                      ["Nível Médio Água", `${h.dados.nivel_medio_agua ?? 0}%`],
+                      ["Saldo Financeiro", h.dados.saldo_positivo ? "Positivo ✅" : "Negativo ❌"],
+                    ].map(([k,v]) => `<tr><td>${k}</td><td style="font-weight:600">${v}</td></tr>`).join("") : "";
+                    const insightRows = (h.insights || []).map(i => {
+                      const ic = i.prioridade === "alta" ? "#dc2626" : i.prioridade === "media" ? "#d97706" : "#16a34a";
+                      return `<tr><td style="color:${ic};font-weight:700;text-transform:uppercase;font-size:11px">${i.prioridade}</td><td style="color:#374151;font-weight:600;font-size:11px">${i.tipo}</td><td style="font-size:12px">${i.mensagem}</td></tr>`;
+                    }).join("");
+                    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Diagnóstico ImobCore</title><style>
+                      *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#1e293b;padding:32px;background:#f8fafc}
+                      .header{display:flex;align-items:center;gap:20px;margin-bottom:28px;padding-bottom:20px;border-bottom:3px solid ${nc}}
+                      .score-circle{width:100px;height:100px;border-radius:50%;background:${nc}18;border:5px solid ${nc};display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0}
+                      .score-num{font-size:32px;font-weight:900;color:${nc}}
+                      .score-label{font-size:11px;color:#64748b;font-weight:600}
+                      h1{color:#1e293b;font-size:22px}h2{font-size:15px;color:#374151;margin:22px 0 10px;border-bottom:1px solid #e2e8f0;padding-bottom:6px}
+                      table{width:100%;border-collapse:collapse;margin-bottom:16px}th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #e2e8f0}
+                      th{background:#f1f5f9;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase}
+                      .nivel-badge{display:inline-block;padding:4px 14px;border-radius:20px;background:${nc}22;color:${nc};font-weight:800;font-size:13px;border:1px solid ${nc}55}
+                      .ia-box{background:#f0f4ff;border:1px solid #c7d2fe;border-radius:10px;padding:16px;font-size:13px;line-height:1.7;color:#312e81;white-space:pre-wrap}
+                      .footer{margin-top:32px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center}
+                    </style></head><body>
+                    <div class="header">
+                      <div class="score-circle"><div class="score-num">${h.score_total}</div><div class="score-label">/ 100</div></div>
+                      <div>
+                        <h1>🫀 Diagnóstico de Saúde do Condomínio</h1>
+                        <div style="font-size:14px;color:#64748b;margin:6px 0">${condNome}</div>
+                        <div style="font-size:12px;color:#94a3b8">Calculado em ${new Date(h.calculado_em).toLocaleString("pt-BR")}</div>
+                        <div style="margin-top:8px"><span class="nivel-badge">${h.nivel}</span></div>
+                      </div>
+                    </div>
+                    <h2>📊 Score por Pilar</h2>
+                    <table><thead><tr><th>Pilar</th><th>Score</th><th>Barra</th></tr></thead><tbody>${pilarRows}</tbody></table>
+                    ${h.dados ? `<h2>📋 Dados Operacionais</h2><table><thead><tr><th>Indicador</th><th>Valor</th></tr></thead><tbody>${dadosRows}</tbody></table>` : ""}
+                    ${(h.insights || []).length > 0 ? `<h2>💡 Insights & Recomendações</h2><table><thead><tr><th>Prioridade</th><th>Tipo</th><th>Recomendação</th></tr></thead><tbody>${insightRows}</tbody></table>` : ""}
+                    ${h.ia_analise ? `<h2>🤖 Análise do Síndico Virtual (IA)</h2><div class="ia-box">${h.ia_analise}</div>` : ""}
+                    <div class="footer">Gerado pelo ImobCore v2 — Plataforma de Gestão Inteligente de Condomínios</div>
+                    </body></html>`;
+                    const w = window.open("","_blank","width=960,height=720");
+                    if (w) { w.document.write(html); w.document.close(); w.print(); }
+                  };
+
+                  const condNome = dash?.condominios?.find(c => c.id === condId)?.nome ?? "Condomínio";
+                  const chartData = [...diagHistorico].reverse().map((h, i) => ({
+                    name: new Date(h.calculado_em).toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit" }),
+                    score: h.score_total,
+                    fin: h.score_financeiro ?? 0,
+                    man: h.score_manutencao ?? 0,
+                    iot: h.score_iot ?? 0,
+                  }));
+
+                  return (
                   <div>
+                    {/* Header */}
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-                      <div style={{ fontSize:13, fontWeight:700 }}>📅 Histórico de Diagnósticos ({mispHistory.length})</div>
-                      <button title="Limpar respostas e iniciar um novo diagnóstico do zero" onClick={()=>{ setMispAnswers({}); setMispTab("checklist"); }} style={{ background:"#6366F1", border:"none", borderRadius:8, padding:"8px 18px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>➕ Novo Diagnóstico</button>
+                      <div>
+                        <div style={{ fontSize:14, fontWeight:800, color:"var(--c-text)" }}>📅 Histórico de Diagnósticos IA</div>
+                        <div style={{ fontSize:11, color:"#64748B", marginTop:2 }}>{diagHistorico.length} análise{diagHistorico.length !== 1 ? "s" : ""} salva{diagHistorico.length !== 1 ? "s" : ""} no banco</div>
+                      </div>
+                      <div style={{ display:"flex", gap:8 }}>
+                        {condId && <button onClick={()=>loadDiagHistorico(condId)} style={{ background:"none", border:"1px solid rgba(255,255,255,.1)", borderRadius:7, padding:"6px 12px", color:"#94A3B8", cursor:"pointer", fontSize:11 }}>↻ Atualizar</button>}
+                        <button onClick={()=>{ setMispTab("automatico"); }} style={{ background:"#6366F1", border:"none", borderRadius:8, padding:"6px 16px", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>🤖 Novo Diagnóstico</button>
+                      </div>
                     </div>
 
-                    {mispHistory.length === 0 && <div style={{ textAlign:"center", color:"#334155", padding:40, fontSize:13 }}>Nenhum diagnóstico realizado ainda. Clique em "Finalizar Diagnóstico" no checklist.</div>}
+                    {diagHistLoading && <div style={{ textAlign:"center", color:"#334155", padding:32, fontSize:13 }}>Carregando histórico...</div>}
 
-                    {/* Line chart */}
-                    {mispHistory.length > 1 && (
-                      <div style={{ marginBottom:20 }}>
-                        <div style={{ fontSize:11, color:"#64748B", marginBottom:8 }}>📈 Evolução do Score</div>
-                        <ResponsiveContainer width="100%" height={160}>
-                          <LineChart data={[...mispHistory].reverse().map((h,i)=>({ name:`#${i+1}`, score:h.score }))}>
+                    {/* Evolution chart */}
+                    {!diagHistLoading && chartData.length > 1 && (
+                      <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"14px 16px", marginBottom:20 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:"var(--c-text)", marginBottom:12 }}>📈 Evolução do Score — Últimos {chartData.length} diagnósticos</div>
+                        <ResponsiveContainer width="100%" height={180}>
+                          <LineChart data={chartData} margin={{ top:4, right:10, bottom:4, left:-20 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)" />
                             <XAxis dataKey="name" tick={{ fill:"#475569", fontSize:10 }} />
                             <YAxis domain={[0,100]} tick={{ fill:"#475569", fontSize:10 }} />
-                            <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", fontSize:12 }} />
-                            <Line type="monotone" dataKey="score" stroke="#6366F1" strokeWidth={2} dot={{ fill:"#6366F1", r:4 }} />
+                            <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.15)", borderRadius:8, fontSize:12, color:"#E2E8F0" }} />
+                            <Legend wrapperStyle={{ fontSize:11 }} />
+                            <Line type="monotone" dataKey="score" name="Score Geral" stroke="#6366F1" strokeWidth={2.5} dot={{ fill:"#6366F1", r:4 }} activeDot={{ r:6 }} />
+                            <Line type="monotone" dataKey="fin" name="Financeiro" stroke="#10B981" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                            <Line type="monotone" dataKey="man" name="Manutenção" stroke="#F59E0B" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+                            <Line type="monotone" dataKey="iot" name="IoT" stroke="#3B82F6" strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
                           </LineChart>
                         </ResponsiveContainer>
+                        {diagHistorico.length >= 2 && (
+                          <div style={{ display:"flex", gap:12, marginTop:12, flexWrap:"wrap" }}>
+                            {[
+                              { label:"Melhor Score", val: Math.max(...diagHistorico.map(h=>h.score_total)), col:"#10B981" },
+                              { label:"Pior Score",   val: Math.min(...diagHistorico.map(h=>h.score_total)), col:"#EF4444" },
+                              { label:"Variação Geral", val: (diagHistorico[0].score_total > diagHistorico[diagHistorico.length-1].score_total ? "+" : "") + (diagHistorico[0].score_total - diagHistorico[diagHistorico.length-1].score_total) + " pts", col: diagHistorico[0].score_total >= diagHistorico[diagHistorico.length-1].score_total ? "#10B981" : "#EF4444" },
+                            ].map(k => (
+                              <div key={k.label} style={{ background:"rgba(255,255,255,.03)", borderRadius:8, padding:"8px 14px", flex:1, minWidth:90, textAlign:"center" }}>
+                                <div style={{ fontSize:15, fontWeight:800, color:k.col }}>{k.val}</div>
+                                <div style={{ fontSize:10, color:"#64748B", marginTop:2 }}>{k.label}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {/* History list */}
-                    <div style={{ display:"flex", flexDirection:"column" as const, gap:8 }}>
-                      {mispHistory.map((h, i) => {
-                        const nc = h.score >= 80 ? "#10B981" : h.score >= 60 ? "#F59E0B" : h.score >= 40 ? "#F97316" : "#EF4444";
+                    {/* AI History list */}
+                    {!diagHistLoading && diagHistorico.length === 0 && (
+                      <div style={{ textAlign:"center", color:"#334155", padding:40, fontSize:13 }}>
+                        <div style={{ fontSize:40, marginBottom:12 }}>🏥</div>
+                        Nenhum diagnóstico IA realizado ainda.<br/>
+                        <button onClick={()=>setMispTab("automatico")} style={{ marginTop:12, background:"#6366F1", border:"none", borderRadius:8, padding:"8px 20px", color:"#fff", fontSize:13, cursor:"pointer", fontWeight:700 }}>Calcular Primeiro Diagnóstico</button>
+                      </div>
+                    )}
+
+                    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                      {diagHistorico.map((h, i) => {
+                        const nc = nivelC(h.score_total);
+                        const prev = diagHistorico[i + 1];
+                        const delta = prev ? h.score_total - prev.score_total : null;
                         return (
-                          <div key={i} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                            <div>
-                              <div style={{ fontSize:12, fontWeight:700 }}>Diagnóstico #{mispHistory.length - i}</div>
-                              <div style={{ fontSize:11, color:"#64748B" }}>{h.date}</div>
-                            </div>
-                            <div style={{ textAlign:"right" }}>
-                              <div style={{ fontSize:22, fontWeight:900, color:nc }}>{h.score}</div>
-                              <div style={{ fontSize:10, color:nc, fontWeight:700 }}>{h.nivel}</div>
+                          <div key={h.id} style={{ background:"rgba(255,255,255,.03)", border:`1px solid ${nc}22`, borderRadius:12, padding:"14px 16px" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                              {/* Score badge */}
+                              <div style={{ width:52, height:52, borderRadius:"50%", background:`${nc}18`, border:`3px solid ${nc}`, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                                <div style={{ fontSize:17, fontWeight:900, color:nc, lineHeight:1 }}>{h.score_total}</div>
+                                <div style={{ fontSize:8, color:nc, fontWeight:600 }}>/100</div>
+                              </div>
+                              {/* Info */}
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                                  <span style={{ fontSize:13, fontWeight:700, color:"var(--c-text)" }}>Diagnóstico #{diagHistorico.length - i}</span>
+                                  <span style={{ fontSize:10, padding:"2px 8px", borderRadius:99, background:`${nc}22`, color:nc, fontWeight:700, border:`1px solid ${nc}44` }}>{h.nivel}</span>
+                                  {delta !== null && <span style={{ fontSize:10, color: delta >= 0 ? "#10B981" : "#EF4444", fontWeight:700 }}>{delta >= 0 ? "▲" : "▼"} {Math.abs(delta)} pts</span>}
+                                </div>
+                                <div style={{ fontSize:11, color:"#64748B", marginTop:3 }}>{new Date(h.calculado_em).toLocaleString("pt-BR")}</div>
+                                {/* Mini pilar scores */}
+                                <div style={{ display:"flex", gap:10, marginTop:8, flexWrap:"wrap" }}>
+                                  {[{l:"💰 Fin",v:h.score_financeiro},{l:"🔧 Man",v:h.score_manutencao},{l:"💧 IoT",v:h.score_iot},{l:"📊 Gest",v:h.score_gestao}].filter(p=>p.v!==null).map(p=>(
+                                    <div key={p.l} style={{ fontSize:11 }}>
+                                      <span style={{ color:"#64748B" }}>{p.l}: </span>
+                                      <span style={{ fontWeight:700, color:nivelC(p.v!) }}>{p.v}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {/* Top insight */}
+                                {(h.insights || []).length > 0 && (
+                                  <div style={{ marginTop:6, fontSize:11, color:"#94A3B8", fontStyle:"italic", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+                                    💡 {h.insights![0].mensagem}
+                                  </div>
+                                )}
+                              </div>
+                              {/* PDF button */}
+                              <button
+                                onClick={() => generateDiagPDF(h, condNome)}
+                                title="Exportar PDF detalhado"
+                                style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:8, padding:"8px 12px", color:"#818CF8", cursor:"pointer", fontSize:11, fontWeight:700, flexShrink:0, whiteSpace:"nowrap" }}
+                              >📄 PDF</button>
                             </div>
                           </div>
                         );
                       })}
                     </div>
 
+                    {/* MISP checklist history (secondary) */}
+                    {mispHistory.length > 0 && (
+                      <div style={{ marginTop:24 }}>
+                        <div style={{ fontSize:11, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:".5px", marginBottom:10 }}>📋 Checklist Manual (MISP — local)</div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                          {mispHistory.map((h, i) => {
+                            const nc = nivelC(h.score);
+                            return (
+                              <div key={i} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:8, padding:"10px 14px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                                <div>
+                                  <div style={{ fontSize:11, fontWeight:700 }}>Checklist #{mispHistory.length - i}</div>
+                                  <div style={{ fontSize:10, color:"#64748B" }}>{h.date}</div>
+                                </div>
+                                <div style={{ textAlign:"right" }}>
+                                  <div style={{ fontSize:18, fontWeight:900, color:nc }}>{h.score}</div>
+                                  <div style={{ fontSize:9, color:nc, fontWeight:700 }}>{h.nivel}</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {mispHistory.length > 1 && (
-                      <div style={{ marginTop:16, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"12px 16px" }}>
-                        <div style={{ fontSize:12, fontWeight:700, marginBottom:8 }}>📊 Variação</div>
+                      <div style={{ marginTop:12, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"12px 16px" }}>
+                        <div style={{ fontSize:12, fontWeight:700, marginBottom:8 }}>📊 Variação (Checklist)</div>
                         <div style={{ fontSize:12, color: mispHistory[0].score >= mispHistory[1].score ? "#10B981" : "#EF4444" }}>
                           {mispHistory[0].score >= mispHistory[1].score ? "▲" : "▼"} {Math.abs(mispHistory[0].score - mispHistory[1].score)} pontos em relação ao diagnóstico anterior ({mispHistory[1].score} → {mispHistory[0].score})
                         </div>
                       </div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
                 </div>{/* end padding wrapper */}
               </div>
             );

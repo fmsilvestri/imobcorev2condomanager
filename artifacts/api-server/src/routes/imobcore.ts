@@ -1199,6 +1199,25 @@ router.get("/diagnostico/ultimo", async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/diagnostico/historico?condominio_id=X — histórico completo de diagnósticos
+router.get("/diagnostico/historico", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const { data, error } = await supabase
+      .from("diagnostico_historico")
+      .select("*")
+      .eq("condominio_id", condId)
+      .order("calculado_em", { ascending: false })
+      .limit(50);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (err) {
+    console.error("GET /diagnostico/historico error:", err);
+    res.status(500).json({ error: "Erro ao carregar histórico" });
+  }
+});
+
 // GET /api/diagnostico/dados?condominio_id=X — métricas reais para o diagnóstico
 router.get("/diagnostico/dados", async (req: Request, res: Response) => {
   const condId = String(req.query.condominio_id || "");
@@ -1382,13 +1401,32 @@ Use linguagem direta e profissional. Use emojis estrategicamente.`;
       }
     } catch (err) { console.error("insights_ia insert error:", err); }
 
+    // ── 6. Salvar no histórico ───────────────────────────────────────────────
+    const calculadoEm = new Date().toISOString();
+    const dadosPayloadFinal = { inadimplencia_pct: inadimpPct, os_atrasadas: osAtrasadas, os_urgentes: osUrgentes, sensores_offline: sensoresOffline, nivel_medio_agua: nivelMedio, saldo_positivo: saldoPositivo };
+    try {
+      await supabase.from("diagnostico_historico").insert({
+        condominio_id: condId,
+        score_total: scoreTotal,
+        nivel,
+        score_financeiro: scoreFinanceiro,
+        score_manutencao: scoreOS,
+        score_iot: scoreIoT,
+        score_gestao: scoreGestao,
+        dados: dadosPayloadFinal,
+        insights,
+        ia_analise: iaAnalise,
+        calculado_em: calculadoEm,
+      });
+    } catch (err) { console.error("diagnostico_historico insert error:", err); }
+
     res.json({
       ok: true,
       score: { total: scoreTotal, nivel, financeiro: scoreFinanceiro, manutencao: scoreOS, iot: scoreIoT, gestao: scoreGestao },
-      dados: { inadimplencia_pct: inadimpPct, os_atrasadas: osAtrasadas, os_urgentes: osUrgentes, sensores_offline: sensoresOffline, nivel_medio_agua: nivelMedio, saldo_positivo: saldoPositivo },
+      dados: dadosPayloadFinal,
       insights,
       ia_analise: iaAnalise,
-      calculado_em: new Date().toISOString(),
+      calculado_em: calculadoEm,
     });
   } catch (err) {
     console.error("POST /diagnostico/calcular error:", err);

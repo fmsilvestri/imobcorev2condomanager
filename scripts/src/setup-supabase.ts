@@ -216,6 +216,30 @@ async function runMigrations() {
     console.log("✅ Migration 7 (piscina_leituras): OK");
   }
 
+  // ─── Migration 8: Histórico de Diagnósticos IA ──────────────────────────────
+  const { error: m8Err } = await supabase.from("diagnostico_historico").select("id,score_total").limit(1);
+  if (m8Err) {
+    console.log("⚠️  Migration 8 needed (diagnostico_historico). Run in SQL Editor:");
+    console.log("   CREATE TABLE IF NOT EXISTS diagnostico_historico (");
+    console.log("     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),");
+    console.log("     condominio_id uuid NOT NULL,");
+    console.log("     score_total int NOT NULL,");
+    console.log("     nivel text NOT NULL,");
+    console.log("     score_financeiro int,");
+    console.log("     score_manutencao int,");
+    console.log("     score_iot int,");
+    console.log("     score_gestao int,");
+    console.log("     dados jsonb,");
+    console.log("     insights jsonb,");
+    console.log("     ia_analise text,");
+    console.log("     calculado_em timestamptz DEFAULT now()");
+    console.log("   );");
+    console.log("   CREATE INDEX IF NOT EXISTS idx_diag_hist_condo ON diagnostico_historico(condominio_id, calculado_em DESC);");
+    console.log();
+  } else {
+    console.log("✅ Migration 8 (diagnostico_historico): OK");
+  }
+
   console.log();
 }
 
