@@ -906,6 +906,107 @@ export default function App() {
     await loadPlanos(condId);
   };
 
+  const planoExportPDF = () => {
+    if (planoList.length === 0) { showToast("Nenhum plano para exportar", "error"); return; }
+    const condNome = dash?.condominios?.find(c => c.id === condId)?.nome || "Condomínio";
+    const now = new Date().toLocaleString("pt-BR");
+    const tipoColor: Record<string,string> = { preventiva:"#10B981", corretiva:"#EF4444", preditiva:"#3B82F6", "inspeção":"#F59E0B" };
+    const fmtBRLp = (v: number) => v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+    const orcTotal = planoList.reduce((s,p) => s + (Number(p.custo_total)||0), 0);
+    const equipCobertos = new Set(planoList.flatMap(p => (p.equipamentos_itens||[]).map(e => e.equipId))).size;
+    const proxExec = planoList.filter(p=>p.proxima_execucao).sort((a,b)=>a.proxima_execucao.localeCompare(b.proxima_execucao))[0]?.proxima_execucao || "—";
+
+    const planosHtml = planoList.map((p, idx) => {
+      const tc = tipoColor[p.tipo] || "#94A3B8";
+      const itens: PlanoEquipItem[] = Array.isArray(p.equipamentos_itens) ? p.equipamentos_itens : [];
+      const itensHtml = itens.length > 0
+        ? `<table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:12px;">
+            <thead>
+              <tr style="background:#f1f5f9;">
+                <th style="text-align:left;padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#475569;">Equipamento</th>
+                <th style="text-align:right;padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:11px;color:#475569;">Custo Previsto</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${itens.map((it,i) => `
+                <tr style="background:${i%2===0?"#fff":"#f8fafc"};">
+                  <td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;">${it.equipNome}</td>
+                  <td style="padding:6px 10px;border-bottom:1px solid #f1f5f9;text-align:right;color:${Number(it.custo_previsto)>0?"#F59E0B":"#94A3B8"};font-weight:${Number(it.custo_previsto)>0?"700":"400"};">${Number(it.custo_previsto)>0?fmtBRLp(Number(it.custo_previsto)):"—"}</td>
+                </tr>`).join("")}
+            </tbody>
+           </table>`
+        : `<div style="color:#94A3B8;font-size:11px;margin-top:8px;font-style:italic;">Nenhum equipamento vinculado.</div>`;
+
+      return `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:16px 18px;margin-bottom:16px;page-break-inside:avoid;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            ${p.codigo ? `<span style="font-size:10px;color:#64748B;background:#f1f5f9;border-radius:4px;padding:2px 7px;">${p.codigo}</span>` : ""}
+            <span style="font-size:15px;font-weight:800;color:#1e293b;">${p.nome}</span>
+            <span style="font-size:11px;font-weight:700;color:${tc};background:${tc}22;border:1px solid ${tc}44;border-radius:4px;padding:2px 8px;">${p.tipo}</span>
+            <span style="font-size:11px;color:#64748B;background:#f8fafc;border-radius:4px;padding:2px 7px;">${p.periodicidade}</span>
+            <span style="font-size:11px;color:${p.status==="ativo"?"#10B981":"#64748B"};background:${p.status==="ativo"?"#D1FAE5":"#f1f5f9"};border-radius:4px;padding:2px 7px;">${p.status||"ativo"}</span>
+          </div>
+          <span style="font-size:15px;font-weight:800;color:#059669;">${fmtBRLp(Number(p.custo_total||0))}</span>
+        </div>
+        ${p.instrucoes ? `<div style="font-size:12px;color:#475569;margin-bottom:8px;line-height:1.5;">${p.instrucoes}</div>` : ""}
+        ${itensHtml}
+        <div style="display:flex;gap:18px;font-size:11px;color:#64748B;margin-top:10px;padding-top:8px;border-top:1px solid #f1f5f9;">
+          ${p.proxima_execucao ? `<span>📅 Próxima execução: <strong style="color:#1e293b;">${p.proxima_execucao}</strong></span>` : ""}
+          ${p.tempo_estimado_min > 0 ? `<span>⏱ Tempo estimado: <strong style="color:#1e293b;">${p.tempo_estimado_min} min</strong></span>` : ""}
+          <span style="margin-left:auto;"># ${idx+1} de ${planoList.length}</span>
+        </div>
+      </div>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Planos de Manutenção – ${condNome}</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin:0; padding:0; background:#fff; color:#1e293b; }
+        .page { max-width:900px; margin:0 auto; padding:32px 40px; }
+        @media print { body { padding:0; } .page { padding:20px 24px; } }
+      </style>
+    </head><body><div class="page">
+      <!-- HEADER -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:3px solid #7C5CFC;">
+        <div>
+          <div style="font-size:22px;font-weight:900;color:#7C5CFC;">📅 Planos de Manutenção</div>
+          <div style="font-size:16px;font-weight:700;color:#1e293b;margin-top:4px;">${condNome}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px;">Gerado em ${now}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:11px;color:#64748B;">ImobCore v2</div>
+          <div style="font-size:11px;color:#64748B;">Módulo Manutenção</div>
+        </div>
+      </div>
+      <!-- RESUMO -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:28px;">
+        ${[
+          { label:"Total de Planos", val:String(planoList.length), color:"#7C5CFC" },
+          { label:"Orçamento Previsto", val:fmtBRLp(orcTotal), color:"#10B981" },
+          { label:"Equip. Cobertos", val:String(equipCobertos), color:"#F59E0B" },
+          { label:"Próxima Execução", val:proxExec, color:"#3B82F6" },
+        ].map(k=>`<div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;">
+          <div style="font-size:10px;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">${k.label}</div>
+          <div style="font-size:20px;font-weight:900;color:${k.color};margin-top:6px;">${k.val}</div>
+        </div>`).join("")}
+      </div>
+      <!-- PLANOS -->
+      <div style="font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">Planos detalhados</div>
+      ${planosHtml}
+      <!-- FOOTER -->
+      <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:10px;color:#94A3B8;display:flex;justify-content:space-between;">
+        <span>ImobCore v2 — Gestão de Condomínios com IA</span>
+        <span>${now}</span>
+      </div>
+    </div></body></html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) { showToast("Popup bloqueado — libere popups para exportar PDF", "error"); return; }
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
+  };
+
   const planoToggleEquip = (eq: { id: string; nome: string }) => {
     const exists = planoForm.equipamentos_itens.find(e => e.equipId === eq.id);
     const newItens = exists
@@ -6738,10 +6839,18 @@ export default function App() {
                           <div style={{ fontSize:14, fontWeight:800, color:"#E2E8F0" }}>📅 Planos de Manutenção</div>
                           <div style={{ fontSize:11, color:"#475569", marginTop:2 }}>Crie, edite e gerencie planos preventivos e corretivos</div>
                         </div>
-                        <button onClick={()=>{ setPlanoShowEdit(true); setPlanoEditId(null); setPlanoForm(emptyPlanoForm()); }}
-                          style={{ background:"linear-gradient(135deg,#7C5CFC,#A78BFA)", border:"none", borderRadius:10, padding:"8px 16px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                          + Novo Plano
-                        </button>
+                        <div style={{ display:"flex", gap:8 }}>
+                          {planoList.length > 0 && (
+                            <button onClick={planoExportPDF}
+                              style={{ background:"rgba(239,68,68,.12)", border:"1px solid rgba(239,68,68,.25)", borderRadius:10, padding:"8px 14px", color:"#FCA5A5", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                              📄 Exportar PDF
+                            </button>
+                          )}
+                          <button onClick={()=>{ setPlanoShowEdit(true); setPlanoEditId(null); setPlanoForm(emptyPlanoForm()); }}
+                            style={{ background:"linear-gradient(135deg,#7C5CFC,#A78BFA)", border:"none", borderRadius:10, padding:"8px 16px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                            + Novo Plano
+                          </button>
+                        </div>
                       </div>
 
                       {/* Resumo orçamentário */}
