@@ -194,6 +194,28 @@ async function runMigrations() {
     console.log("✅ Migration 6 (fornecedores): OK");
   }
 
+  // ─── Migration 7: Piscina e Qualidade da Água ───────────────────────────────
+  const { error: m7Err } = await supabase.from("piscina_leituras").select("id,ph,cloro").limit(1);
+  if (m7Err) {
+    console.log("⚠️  Migration 7 needed (piscina_leituras). Run in SQL Editor:");
+    console.log("   CREATE TABLE IF NOT EXISTS piscina_leituras (");
+    console.log("     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),");
+    console.log("     condominio_id uuid NOT NULL,");
+    console.log("     ph numeric(5,2) NOT NULL,");
+    console.log("     cloro numeric(5,2) NOT NULL,");
+    console.log("     temperatura numeric(5,1),");
+    console.log("     alcalinidade numeric(7,1),");
+    console.log("     dureza_calcica numeric(7,1),");
+    console.log("     status text DEFAULT 'ok',");
+    console.log("     observacoes text,");
+    console.log("     created_at timestamptz DEFAULT now()");
+    console.log("   );");
+    console.log("   CREATE INDEX IF NOT EXISTS idx_piscina_condo ON piscina_leituras(condominio_id, created_at DESC);");
+    console.log();
+  } else {
+    console.log("✅ Migration 7 (piscina_leituras): OK");
+  }
+
   console.log();
 }
 

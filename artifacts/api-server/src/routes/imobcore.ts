@@ -1396,5 +1396,67 @@ Use linguagem direta e profissional. Use emojis estrategicamente.`;
   }
 });
 
+// ─── PISCINA E QUALIDADE DA ÁGUA ─────────────────────────────────────────────
+
+const calcPiscinaStatus = (ph: number, cloro: number, temp?: number, alc?: number, dur?: number): "ok" | "alerta" => {
+  const ok = ph >= 7.2 && ph <= 7.6 && cloro >= 1.0 && cloro <= 3.0
+    && (!temp || (temp >= 24 && temp <= 30))
+    && (!alc  || (alc  >= 80  && alc  <= 120))
+    && (!dur  || (dur  >= 200 && dur  <= 400));
+  return ok ? "ok" : "alerta";
+};
+
+// GET /api/piscina?condominio_id=X
+router.get("/piscina", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+  const { data, error } = await supabase.from("piscina_leituras").select("*").eq("condominio_id", condId).order("created_at", { ascending: false }).limit(100);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// POST /api/piscina
+router.post("/piscina", async (req: Request, res: Response) => {
+  const { condominio_id, ph, cloro, temperatura, alcalinidade, dureza_calcica, observacoes } = req.body as Record<string, unknown>;
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  if (ph === undefined || cloro === undefined) return res.status(400).json({ error: "pH e cloro são obrigatórios" });
+  const phN = Number(ph), cloroN = Number(cloro);
+  const tempN = temperatura ? Number(temperatura) : undefined;
+  const alcN  = alcalinidade  ? Number(alcalinidade)  : undefined;
+  const durN  = dureza_calcica ? Number(dureza_calcica) : undefined;
+  const status = calcPiscinaStatus(phN, cloroN, tempN, alcN, durN);
+  const { data, error } = await supabase.from("piscina_leituras").insert({
+    condominio_id, ph: phN, cloro: cloroN,
+    temperatura: tempN ?? null, alcalinidade: alcN ?? null, dureza_calcica: durN ?? null,
+    observacoes: observacoes || null, status,
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, leitura: data });
+});
+
+// PUT /api/piscina/:id
+router.put("/piscina/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { condominio_id: _cid, id: _id, created_at: _ca, ...body } = req.body as Record<string, unknown>;
+  const ph = Number(body.ph), cloro = Number(body.cloro);
+  const temp = body.temperatura ? Number(body.temperatura) : undefined;
+  const alc  = body.alcalinidade ? Number(body.alcalinidade) : undefined;
+  const dur  = body.dureza_calcica ? Number(body.dureza_calcica) : undefined;
+  const status = calcPiscinaStatus(ph, cloro, temp, alc, dur);
+  const { data, error } = await supabase.from("piscina_leituras").update({
+    ...body, ph, cloro, status,
+  }).eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, leitura: data });
+});
+
+// DELETE /api/piscina/:id
+router.delete("/piscina/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { error } = await supabase.from("piscina_leituras").delete().eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 export default router;
 export { broadcast };

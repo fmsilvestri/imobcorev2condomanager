@@ -11,6 +11,7 @@ interface Receita { id: string; descricao: string; valor: number; categoria: str
 interface Despesa { id: string; descricao: string; valor: number; categoria: string; fornecedor?: string; created_at?: string }
 interface Comunicado { id: string; titulo: string; corpo: string; gerado_por_ia: boolean; created_at: string }
 interface ChatMsg { role: "user" | "ai"; content: string; time: string }
+interface PiscinaLeitura { id: string; condominio_id: string; ph: number; cloro: number; temperatura?: number; alcalinidade?: number; dureza_calcica?: number; status: "ok" | "alerta"; observacoes?: string; created_at: string; }
 interface DashTotais { os_abertas: number; os_urgentes: number; saldo: number; total_receitas: number; total_despesas: number; alertas_ativos: number; nivel_medio_agua: number }
 interface CondominioInfo {
   id: string; nome: string; cidade: string; estado?: string;
@@ -663,10 +664,11 @@ export default function App() {
 
   // Ao trocar condomínio: carregar equipamentos e planos do Supabase
   useEffect(() => {
-    if (!condId) { setEquipList([]); setPlanoList([]); setFornecList([]); return; }
+    if (!condId) { setEquipList([]); setPlanoList([]); setFornecList([]); setPiscinaList([]); return; }
     loadEquipamentos(condId);
     loadPlanos(condId);
     loadFornecedores(condId);
+    loadPiscina(condId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condId]);
 
@@ -911,6 +913,14 @@ export default function App() {
   const [fornecMsg, setFornecMsg] = useState("");
   const [sindFornecDetail, setSindFornecDetail] = useState<string|null>(null);
   const [morFornecDetail, setMorFornecDetail] = useState<string|null>(null);
+  // ─── Piscina ───────────────────────────────────────────────────────────────
+  const emptyPiscinaForm = () => ({ ph: "", cloro: "", temperatura: "", alcalinidade: "", dureza_calcica: "", observacoes: "" });
+  const [piscinaList, setPiscinaList] = useState<PiscinaLeitura[]>([]);
+  const [piscinaLoading, setPiscinaLoading] = useState(false);
+  const [piscSaving, setPiscSaving] = useState(false);
+  const [piscModal, setPiscModal] = useState(false);
+  const [piscEditId, setPiscEditId] = useState<string|null>(null);
+  const [piscForm, setPiscForm] = useState(emptyPiscinaForm());
 
   const loadFornecedores = async (cId: string) => {
     setFornecLoading(true);
@@ -920,6 +930,16 @@ export default function App() {
       setFornecList(Array.isArray(d) ? d : []);
     } catch { /* ignore */ }
     setFornecLoading(false);
+  };
+
+  const loadPiscina = async (cId: string) => {
+    setPiscinaLoading(true);
+    try {
+      const r = await fetch(`/api/piscina?condominio_id=${cId}`);
+      const d = await r.json();
+      if (r.ok) setPiscinaList(Array.isArray(d) ? d : []);
+    } catch { /* ignore */ }
+    setPiscinaLoading(false);
   };
 
   const fornecSave = async () => {
@@ -4363,6 +4383,10 @@ export default function App() {
             <span className="sb-icon">🔥</span> Gás
             {gasLeituras.some(l=>l.nivel<20) && <span className="sb-badge" style={{ background:"#EF4444" }}>!</span>}
           </div>
+          <div className={`sb-item ${panel === "piscina" ? "active" : ""}`} onClick={() => { setPanel("piscina"); if(condId) loadPiscina(condId); }}>
+            <span className="sb-icon">🏊</span> Piscina
+            {piscinaList.some(l=>l.status==="alerta") && <span className="sb-badge" style={{ background:"#EF4444" }}>!</span>}
+          </div>
           <div className={`sb-item ${panel === "encomendas" ? "active" : ""}`} onClick={() => { setPanel("encomendas"); fetchEncomendas(); }}>
             <span className="sb-icon">📦</span> Encomendas
             {encList.filter(e=>e.status==="aguardando_retirada").length > 0 && <span className="sb-badge" style={{ background:"#F59E0B" }}>{encList.filter(e=>e.status==="aguardando_retirada").length}</span>}
@@ -6737,6 +6761,213 @@ export default function App() {
                       {!mantAiResult && !mantAiLoading && (
                         <div style={{ fontSize:12, color:"#334155" }}>Clique em "Analisar com IA" para receber um diagnóstico completo dos equipamentos com recomendações do Síndico Virtual.</div>
                       )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* PANEL: PISCINA */}
+          {panel === "piscina" && (() => {
+            const ideal = {
+              ph:           { min:7.2, max:7.6, unit:"",     label:"pH" },
+              cloro:        { min:1.0, max:3.0, unit:" ppm", label:"Cloro Livre" },
+              temperatura:  { min:24,  max:30,  unit:"°C",   label:"Temperatura" },
+              alcalinidade: { min:80,  max:120, unit:" ppm", label:"Alcalinidade" },
+              dureza_calcica:{ min:200,max:400, unit:" ppm", label:"Dureza Cálcica" },
+            } as const;
+            type PKey = keyof typeof ideal;
+            const isOk = (key: PKey, v?: number) => v === undefined || v === null ? true : v >= ideal[key].min && v <= ideal[key].max;
+            const last = piscinaList[0];
+            const allOk = last ? (isOk("ph",last.ph)&&isOk("cloro",last.cloro)&&isOk("temperatura",last.temperatura)&&isOk("alcalinidade",last.alcalinidade)&&isOk("dureza_calcica",last.dureza_calcica)) : null;
+            const chartData = [...piscinaList].reverse().slice(-30).map(l => ({
+              dt: new Date(l.created_at).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}),
+              ph: l.ph, cloro: l.cloro, temp: l.temperatura ?? null,
+            }));
+            const gauge = (value: number|undefined, min: number, max: number, col: string) => {
+              const bg = `M 12 56 A 44 44 0 0 1 100 56`;
+              if (value === undefined || value === null) return { bg, d: "", color:"#94A3B8" };
+              const pct = Math.min(0.999, Math.max(0.001, (value-min)/(max-min)));
+              const ang = (180+pct*180)*Math.PI/180;
+              const ex = (56+44*Math.cos(ang)).toFixed(2), ey = (56+44*Math.sin(ang)).toFixed(2);
+              return { bg, d:`M 12 56 A 44 44 0 0 1 ${ex} ${ey}`, color: (value>=min&&value<=max) ? col : "#EF4444" };
+            };
+            const piscSave = async () => {
+              if (!condId||!piscForm.ph||!piscForm.cloro) { showToast("pH e Cloro são obrigatórios","warn"); return; }
+              setPiscSaving(true);
+              try {
+                const url = piscEditId ? `/api/piscina/${piscEditId}` : `/api/piscina`;
+                const r = await fetch(url, { method: piscEditId?"PUT":"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ condominio_id:condId, ph:Number(piscForm.ph), cloro:Number(piscForm.cloro), temperatura:piscForm.temperatura?Number(piscForm.temperatura):null, alcalinidade:piscForm.alcalinidade?Number(piscForm.alcalinidade):null, dureza_calcica:piscForm.dureza_calcica?Number(piscForm.dureza_calcica):null, observacoes:piscForm.observacoes||null }) });
+                if (r.ok) { await loadPiscina(condId); setPiscModal(false); setPiscEditId(null); setPiscForm(emptyPiscinaForm()); showToast(piscEditId?"Leitura atualizada!":"Leitura registrada!","success"); }
+                else { const d=await r.json(); showToast("Erro: "+(d.error||"desconhecido"),"error"); }
+              } catch { showToast("Erro ao salvar","error"); }
+              setPiscSaving(false);
+            };
+            const piscDelete = async (id: string) => {
+              if (!confirm("Excluir esta leitura?")) return;
+              await fetch(`/api/piscina/${id}`,{method:"DELETE"});
+              if (condId) loadPiscina(condId);
+              showToast("Leitura excluída","success");
+            };
+            const piscEdit = (l: PiscinaLeitura) => { setPiscEditId(l.id); setPiscForm({ ph:String(l.ph), cloro:String(l.cloro), temperatura:l.temperatura?String(l.temperatura):"", alcalinidade:l.alcalinidade?String(l.alcalinidade):"", dureza_calcica:l.dureza_calcica?String(l.dureza_calcica):"", observacoes:l.observacoes||"" }); setPiscModal(true); };
+            const exportCSV = () => {
+              const hdr = "Data,pH,Cloro (ppm),Temperatura (°C),Alcalinidade (ppm),Dureza Cálcica (ppm),Status,Observações";
+              const rows = piscinaList.map(l=>[new Date(l.created_at).toLocaleString("pt-BR"),l.ph,l.cloro,l.temperatura??"",l.alcalinidade??"",l.dureza_calcica??"",l.status,l.observacoes??""]).map(r=>r.join(",")).join("\n");
+              const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([hdr+"\n"+rows],{type:"text/csv"})); a.download="piscina_leituras.csv"; a.click();
+            };
+            const exportPDF = () => {
+              const rows = piscinaList.map(l=>`<tr><td>${new Date(l.created_at).toLocaleString("pt-BR")}</td><td>${l.ph}</td><td>${l.cloro}</td><td>${l.temperatura??"—"}</td><td>${l.alcalinidade??"—"}</td><td>${l.dureza_calcica??"—"}</td><td style="color:${l.status==="ok"?"#16a34a":"#dc2626"}">${l.status.toUpperCase()}</td><td>${l.observacoes||"—"}</td></tr>`).join("");
+              const html=`<html><head><title>Piscina</title><style>body{font-family:Arial,sans-serif;padding:24px}h1{color:#0284c7}table{width:100%;border-collapse:collapse;font-size:12px}th{background:#0284c7;color:#fff;padding:8px 10px;text-align:left}td{padding:7px 10px;border-bottom:1px solid #e2e8f0}tr:nth-child(even){background:#f0f9ff}</style></head><body><h1>🏊 Piscina &amp; Qualidade da Água</h1><p>Gerado em ${new Date().toLocaleString("pt-BR")}</p><table><thead><tr><th>Data/Hora</th><th>pH</th><th>Cloro</th><th>Temp</th><th>Alc.</th><th>Dur.</th><th>Status</th><th>Obs.</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+              const w=window.open("","_blank","width=900,height=600"); if(w){w.document.write(html);w.document.close();w.print();}
+            };
+            const colMap: Record<PKey,string> = { ph:"#0EA5E9", cloro:"#22C55E", temperatura:"#F97316", alcalinidade:"#6366F1", dureza_calcica:"#A855F7" };
+            const paramCard = (key: PKey, value?: number) => {
+              const cfg=ideal[key]; const ok=isOk(key,value); const col=colMap[key];
+              return (
+                <div key={key} style={{ background:`${col}12`, border:`1px solid ${col}30`, borderRadius:12, padding:"14px 16px", flex:1, minWidth:110 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
+                    <span style={{ fontSize:10, fontWeight:700, color:col, textTransform:"uppercase", letterSpacing:".5px" }}>{cfg.label}</span>
+                    {value!==undefined&&value!==null ? <span style={{ fontSize:10, fontWeight:700, padding:"1px 7px", borderRadius:99, background:ok?"#22C55E22":"#EF444422", color:ok?"#16A34A":"#DC2626" }}>{ok?"OK":"ALERTA"}</span> : <span style={{ fontSize:10, color:"#94A3B8" }}>—</span>}
+                  </div>
+                  <div style={{ fontSize:24, fontWeight:700, color:"var(--c-text)", lineHeight:1.1 }}>
+                    {value!==undefined&&value!==null ? `${value}${cfg.unit}` : <span style={{ color:"#94A3B8",fontSize:14 }}>Não medido</span>}
+                  </div>
+                  <div style={{ fontSize:10, color:"#94A3B8", marginTop:3 }}>Ideal: {cfg.min}–{cfg.max}{cfg.unit}</div>
+                </div>
+              );
+            };
+            const gPh=gauge(last?.ph,7.0,8.0,"#0EA5E9"), gCl=gauge(last?.cloro,0,5,"#22C55E"), gTp=gauge(last?.temperatura,18,36,"#F97316");
+            return (
+              <div style={{ padding:"24px 28px", height:"100%", overflowY:"auto" }}>
+                {/* Header */}
+                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:6, flexWrap:"wrap" }}>
+                  <button onClick={()=>setPanel("sv-chat")} style={{ background:"none", border:"none", color:"#475569", cursor:"pointer", fontSize:18, padding:0 }}>←</button>
+                  <div>
+                    <h2 style={{ margin:0, fontSize:20, fontWeight:700, color:"var(--c-text)" }}>🏊 Piscina & Qualidade da Água</h2>
+                    <p style={{ margin:0, fontSize:13, color:"#64748B" }}>Monitoramento de pH, cloro e parâmetros da água</p>
+                  </div>
+                  <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                    {last && <span style={{ fontSize:11, padding:"3px 10px", borderRadius:99, fontWeight:700, background:allOk?"#22C55E22":"#EF444422", color:allOk?"#16A34A":"#DC2626", border:`1px solid ${allOk?"#22C55E55":"#EF444455"}` }}>{allOk?"✓ Água OK":"⚠ Atenção"}</span>}
+                    {last && <span style={{ fontSize:12, color:"#64748B" }}>{new Date(last.created_at).toLocaleDateString("pt-BR")}</span>}
+                    {piscinaList.length>0 && <button onClick={exportPDF} style={{ background:"#0284C7", color:"#fff", border:"none", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer", fontWeight:600 }}>📄 PDF</button>}
+                    <button onClick={()=>{setPiscModal(true);setPiscEditId(null);setPiscForm(emptyPiscinaForm());}} style={{ background:"#6366F1", color:"#fff", border:"none", borderRadius:8, padding:"6px 14px", fontSize:12, cursor:"pointer", fontWeight:600 }}>+ Nova Leitura</button>
+                  </div>
+                </div>
+
+                {piscinaLoading && <div style={{ textAlign:"center", color:"#94A3B8", padding:40 }}>Carregando...</div>}
+                {!piscinaLoading && (
+                  <div style={{ display:"flex", gap:20, marginTop:16, alignItems:"flex-start" }}>
+                    {/* Left */}
+                    <div style={{ flex:1, minWidth:0, display:"flex", flexDirection:"column", gap:16 }}>
+                      <div style={{ background:"var(--c-card)", borderRadius:14, padding:20, border:"1px solid var(--c-border)" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                          <span style={{ fontWeight:700, color:"var(--c-text)", fontSize:15 }}>💧 Leitura Atual</span>
+                          {last && <span style={{ fontSize:11, color:"#94A3B8" }}>{new Date(last.created_at).toLocaleString("pt-BR")}</span>}
+                        </div>
+                        {!last ? (
+                          <div style={{ textAlign:"center", color:"#94A3B8", padding:28 }}>
+                            <div style={{ fontSize:48, marginBottom:8 }}>🏊</div>
+                            <div style={{ marginBottom:12 }}>Nenhuma leitura registrada ainda</div>
+                            <button onClick={()=>{setPiscModal(true);setPiscEditId(null);setPiscForm(emptyPiscinaForm());}} style={{ background:"#6366F1", color:"#fff", border:"none", borderRadius:8, padding:"8px 20px", cursor:"pointer", fontSize:13, fontWeight:600 }}>+ Registrar Primeira Leitura</button>
+                          </div>
+                        ) : (
+                          <>
+                            <div style={{ display:"flex", gap:10, marginBottom:10 }}>
+                              {paramCard("ph",last.ph)}{paramCard("cloro",last.cloro)}{paramCard("temperatura",last.temperatura)}
+                            </div>
+                            <div style={{ display:"flex", gap:10 }}>
+                              {paramCard("alcalinidade",last.alcalinidade)}{paramCard("dureza_calcica",last.dureza_calcica)}
+                              {last.observacoes && <div style={{ flex:1, background:"rgba(99,102,241,.08)", border:"1px solid rgba(99,102,241,.2)", borderRadius:12, padding:"14px 16px" }}><div style={{ fontSize:10, fontWeight:700, color:"#6366F1", textTransform:"uppercase", letterSpacing:".5px", marginBottom:4 }}>Obs.</div><div style={{ fontSize:13, color:"var(--c-text)", lineHeight:1.4 }}>{last.observacoes}</div></div>}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      {chartData.length>1 && (
+                        <div style={{ background:"var(--c-card)", borderRadius:14, padding:20, border:"1px solid var(--c-border)" }}>
+                          <div style={{ fontWeight:700, color:"var(--c-text)", fontSize:15, marginBottom:14 }}>📈 Histórico de Parâmetros</div>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <LineChart data={chartData} margin={{ top:4, right:10, bottom:4, left:-20 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="var(--c-border)" />
+                              <XAxis dataKey="dt" tick={{ fontSize:11, fill:"#94A3B8" }} />
+                              <YAxis tick={{ fontSize:11, fill:"#94A3B8" }} />
+                              <Tooltip contentStyle={{ background:"var(--c-card)", border:"1px solid var(--c-border)", borderRadius:8, fontSize:12, color:"var(--c-text)" }} />
+                              <Legend wrapperStyle={{ fontSize:12 }} />
+                              <Line type="monotone" dataKey="ph" name="pH" stroke="#0EA5E9" strokeWidth={2} dot={false} activeDot={{r:4}} />
+                              <Line type="monotone" dataKey="cloro" name="Cloro" stroke="#22C55E" strokeWidth={2} dot={false} activeDot={{r:4}} />
+                              <Line type="monotone" dataKey="temp" name="Temp °C" stroke="#F97316" strokeWidth={2} dot={false} activeDot={{r:4}} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+                    {/* Right */}
+                    <div style={{ width:272, flexShrink:0, display:"flex", flexDirection:"column", gap:16 }}>
+                      {last && (
+                        <div style={{ background:"var(--c-card)", borderRadius:14, padding:20, border:"1px solid var(--c-border)" }}>
+                          <div style={{ fontWeight:700, color:"var(--c-text)", fontSize:14, marginBottom:14 }}>⚙ Indicadores Visuais</div>
+                          {[{g:gPh,label:"pH",value:last.ph,unit:"",key:"ph" as PKey},{g:gCl,label:"Cloro Livre",value:last.cloro,unit:" ppm",key:"cloro" as PKey},{g:gTp,label:"Temperatura",value:last.temperatura,unit:"°C",key:"temperatura" as PKey}].map(({g,label,value,unit,key})=>(
+                            <div key={label} style={{ marginBottom:14 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:2 }}>
+                                <span style={{ fontSize:12, fontWeight:600, color:"var(--c-text-2)" }}>{label}</span>
+                                <span style={{ fontSize:13, fontWeight:700, color:g.color }}>{value!==undefined&&value!==null?`${value}${unit}`:"—"}</span>
+                              </div>
+                              <svg viewBox="0 0 112 62" style={{ width:"100%", height:50, display:"block" }}>
+                                <path d={g.bg} fill="none" stroke="var(--c-border)" strokeWidth="9" strokeLinecap="round"/>
+                                {g.d && <path d={g.d} fill="none" stroke={g.color} strokeWidth="9" strokeLinecap="round"/>}
+                              </svg>
+                              <div style={{ fontSize:10, color:"#94A3B8", textAlign:"center", marginTop:-4 }}>Ideal: {ideal[key].min}–{ideal[key].max}{ideal[key].unit}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ background:"var(--c-card)", borderRadius:14, padding:20, border:"1px solid var(--c-border)" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                          <span style={{ fontWeight:700, color:"var(--c-text)", fontSize:14 }}>📋 Histórico</span>
+                          {piscinaList.length>0 && <button onClick={exportCSV} style={{ fontSize:11, background:"none", border:"1px solid var(--c-border)", borderRadius:6, padding:"3px 9px", cursor:"pointer", color:"#64748B" }}>⬇ CSV</button>}
+                        </div>
+                        {piscinaList.length===0 ? <div style={{ textAlign:"center", color:"#94A3B8", fontSize:13, padding:"16px 0" }}>Sem leituras</div> : (
+                          <div style={{ maxHeight:340, overflowY:"auto", display:"flex", flexDirection:"column", gap:6 }}>
+                            {piscinaList.map(l=>(
+                              <div key={l.id} style={{ display:"flex", alignItems:"center", gap:7, padding:"8px 10px", borderRadius:8, background:l.status==="alerta"?"rgba(239,68,68,.07)":"rgba(34,197,94,.07)", border:`1px solid ${l.status==="alerta"?"rgba(239,68,68,.2)":"rgba(34,197,94,.2)"}` }}>
+                                <span style={{ fontSize:13 }}>{l.status==="ok"?"✅":"⚠️"}</span>
+                                <div style={{ flex:1, minWidth:0 }}>
+                                  <div style={{ fontSize:12, fontWeight:600, color:"var(--c-text)", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>pH {l.ph} · Cl {l.cloro}{l.temperatura?` · ${l.temperatura}°C`:""}</div>
+                                  <div style={{ fontSize:10, color:"#94A3B8" }}>{new Date(l.created_at).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>
+                                </div>
+                                <button onClick={()=>piscEdit(l)} style={{ background:"none", border:"none", cursor:"pointer", color:"#6366F1", fontSize:14, padding:2 }} title="Editar">✏</button>
+                                <button onClick={()=>piscDelete(l.id)} style={{ background:"none", border:"none", cursor:"pointer", color:"#EF4444", fontSize:14, padding:2 }} title="Excluir">🗑</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* Modal */}
+                {piscModal && (
+                  <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.55)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={e=>{if(e.target===e.currentTarget){setPiscModal(false);setPiscEditId(null);}}}>
+                    <div style={{ background:"var(--c-card)", borderRadius:16, padding:28, width:460, maxWidth:"95vw", boxShadow:"0 20px 60px rgba(0,0,0,.3)" }}>
+                      <h3 style={{ margin:"0 0 20px", color:"var(--c-text)", fontSize:17 }}>{piscEditId?"✏ Editar Leitura":"🏊 Nova Leitura de Piscina"}</h3>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                        {([{key:"ph",label:"pH *",placeholder:"7.4",step:"0.01"},{key:"cloro",label:"Cloro Livre (ppm) *",placeholder:"2.0",step:"0.1"},{key:"temperatura",label:"Temperatura (°C)",placeholder:"28",step:"0.1"},{key:"alcalinidade",label:"Alcalinidade (ppm)",placeholder:"100",step:"1"},{key:"dureza_calcica",label:"Dureza Cálcica (ppm)",placeholder:"300",step:"1"}] as const).map(({key,label,placeholder,step})=>(
+                          <div key={key}>
+                            <label style={{ fontSize:11, fontWeight:600, color:"#64748B", textTransform:"uppercase" }}>{label}</label>
+                            <input type="number" step={step} placeholder={placeholder} value={(piscForm as Record<string,string>)[key]} onChange={e=>setPiscForm(p=>({...p,[key]:e.target.value}))} style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:"1px solid var(--c-border)", background:"var(--c-bg)", color:"var(--c-text)", fontSize:14, boxSizing:"border-box" }} />
+                          </div>
+                        ))}
+                        <div style={{ gridColumn:"1 / -1" }}>
+                          <label style={{ fontSize:11, fontWeight:600, color:"#64748B", textTransform:"uppercase" }}>Observações</label>
+                          <textarea placeholder="Observações opcionais..." value={piscForm.observacoes} onChange={e=>setPiscForm(p=>({...p,observacoes:e.target.value}))} rows={2} style={{ display:"block", width:"100%", marginTop:4, padding:"8px 10px", borderRadius:8, border:"1px solid var(--c-border)", background:"var(--c-bg)", color:"var(--c-text)", fontSize:13, resize:"vertical", boxSizing:"border-box" }} />
+                        </div>
+                      </div>
+                      <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+                        <button onClick={()=>{setPiscModal(false);setPiscEditId(null);}} style={{ padding:"8px 18px", borderRadius:8, border:"1px solid var(--c-border)", background:"none", color:"var(--c-text)", cursor:"pointer", fontSize:13 }}>Cancelar</button>
+                        <button onClick={piscSave} disabled={piscSaving} style={{ padding:"8px 22px", borderRadius:8, border:"none", background:"#6366F1", color:"#fff", cursor:"pointer", fontSize:13, fontWeight:700, opacity:piscSaving?.7:1 }}>
+                          {piscSaving?"Salvando...":"Salvar Leitura"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
