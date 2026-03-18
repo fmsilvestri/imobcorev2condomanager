@@ -6368,7 +6368,7 @@ export default function App() {
                       <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                         <thead>
                           <tr style={{ background:"rgba(99,102,241,.12)", borderBottom:"2px solid rgba(99,102,241,.3)" }}>
-                            {["#","Equipamento","Categoria","Local","Status","Vida Útil","Fabricante","Próx. Manut.","Ações"].map(h => (
+                            {["#","Equipamento","Categoria","Local","Status","Vida Útil","Fabricante","Custo Manut.","Próx. Manut.","Ações"].map(h => (
                               <th key={h} style={{ padding:"11px 12px", textAlign:"left", color:"#C4B5FD", fontWeight:700, fontSize:11, whiteSpace:"nowrap", textTransform:"uppercase", letterSpacing:".05em" }}>{h}</th>
                             ))}
                           </tr>
@@ -6396,6 +6396,11 @@ export default function App() {
                                 <div style={{ fontSize:10, color:vidaColor(vidaPct(e)), fontWeight:700 }}>{vidaPct(e)}% utilizado</div>
                               </td>
                               <td style={{ padding:"12px 12px", color:"#94A3B8" }}>{e.fabricante}</td>
+                              <td style={{ padding:"12px 12px", whiteSpace:"nowrap" }}>
+                                <span style={{ background:"rgba(16,185,129,.12)", color:"#34D399", border:"1px solid rgba(16,185,129,.3)", borderRadius:6, padding:"3px 9px", fontSize:11, fontWeight:700 }}>
+                                  {e.custoManutencao > 0 ? `R$ ${e.custoManutencao.toLocaleString("pt-BR", { minimumFractionDigits:2 })}` : "—"}
+                                </span>
+                              </td>
                               <td style={{ padding:"12px 12px", color:"#CBD5E1", whiteSpace:"nowrap", fontWeight:600 }}>{e.proxManutencao}</td>
                               <td style={{ padding:"12px 10px" }}>
                                 <div style={{ display:"flex", gap:5, flexWrap:"wrap" as const }}>
