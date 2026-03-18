@@ -130,6 +130,8 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       condominio_id?: string;
     };
 
+    const condIdCtx = condominio_id || "";
+
     const [
       { data: cond },
       { data: osAbertas },
@@ -137,6 +139,8 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       { data: alertas },
       { data: receitas },
       { data: despesas },
+      { data: equipamentos },
+      { data: planos },
     ] = await Promise.all([
       supabase.from("condominios").select("*").limit(1).single(),
       supabase.from("ordens_servico").select("*").eq("status", "aberta").order("created_at", { ascending: false }),
@@ -144,6 +148,12 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       supabase.from("alertas_publicos").select("*").eq("ativo", true),
       supabase.from("financeiro_receitas").select("*"),
       supabase.from("financeiro_despesas").select("*"),
+      condIdCtx
+        ? supabase.from("equipamentos").select("*").eq("condominio_id", condIdCtx).order("created_at", { ascending: true })
+        : supabase.from("equipamentos").select("*").order("created_at", { ascending: true }),
+      condIdCtx
+        ? supabase.from("planos_manutencao").select("*").eq("condominio_id", condIdCtx).order("created_at", { ascending: true })
+        : supabase.from("planos_manutencao").select("*").order("created_at", { ascending: true }),
     ]);
 
     const totalReceitas = (receitas || []).reduce((s: number, r: { valor: number }) => s + Number(r.valor), 0);
@@ -151,6 +161,51 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
     const saldo = totalReceitas - totalDespesas;
 
     const osUrgentes = (osAbertas || []).filter((o: { prioridade: string }) => o.prioridade === "urgente");
+
+    // ── Resumo de manutenção ────────────────────────────────────────────────────
+    type EquipRow = { nome: string; categoria: string; status: string; local: string; consumo_eletrico_kwh: number; horas_uso_dia: number; custo_manutencao: number; prox_manutencao: string | null; vida_util_meses: number; instalado_ha: number; quantidade: number; descricao?: string };
+    type PlanoRow = { nome: string; codigo: string; tipo: string; periodicidade: string; custo_total: number; tempo_estimado_min: number; proxima_execucao: string | null; instrucoes?: string; equipamentos_itens: { equipNome: string; custo_previsto: number }[]; status: string };
+
+    const equips = (equipamentos || []) as EquipRow[];
+    const planosList = (planos || []) as PlanoRow[];
+
+    const equipPorStatus = equips.reduce((acc: Record<string, number>, e) => { acc[e.status] = (acc[e.status] || 0) + (e.quantidade || 1); return acc; }, {});
+    const equipComProblema = equips.filter(e => e.status === "manutencao" || e.status === "atencao");
+    const custoManutencaoTotal = equips.reduce((s, e) => s + (Number(e.custo_manutencao) || 0) * (Number(e.quantidade) || 1), 0);
+    const consumoTotalKwh = equips.reduce((s, e) => s + (Number(e.consumo_eletrico_kwh) || 0) * (Number(e.horas_uso_dia) || 0) * (Number(e.quantidade) || 1), 0);
+    const orcamentoPlanos = planosList.reduce((s, p) => s + (Number(p.custo_total) || 0), 0);
+
+    // Equipamentos com manutenção próxima (próximos 30 dias)
+    const hoje = new Date();
+    const em30dias = new Date(hoje); em30dias.setDate(hoje.getDate() + 30);
+    const equipManutProxima = equips.filter(e => {
+      if (!e.prox_manutencao) return false;
+      const d = new Date(e.prox_manutencao);
+      return d >= hoje && d <= em30dias;
+    });
+
+    // Planos próximos (próximos 30 dias)
+    const planosProximos = planosList.filter(p => {
+      if (!p.proxima_execucao) return false;
+      const d = new Date(p.proxima_execucao);
+      return d >= hoje && d <= em30dias;
+    });
+
+    const manutencaoSection = `
+🔧 MÓDULO MANUTENÇÃO — EQUIPAMENTOS (${equips.length} cadastrados, ${equips.reduce((s,e)=>s+(Number(e.quantidade)||1),0)} unidades totais):
+Status: ${Object.entries(equipPorStatus).map(([s,n])=>`${s}: ${n}`).join(" | ") || "—"}
+Custo manutenção total (ciclo): R$ ${custoManutencaoTotal.toLocaleString("pt-BR",{minimumFractionDigits:2})}
+Consumo elétrico estimado: ${consumoTotalKwh.toFixed(1)} kWh/dia
+
+${equipComProblema.length > 0 ? `⚠️ EQUIPAMENTOS COM PROBLEMA (${equipComProblema.length}):
+${equipComProblema.map(e=>`- ${e.nome} (${e.categoria} | ${e.local}): STATUS ${e.status.toUpperCase()}${e.descricao?` — ${e.descricao.slice(0,80)}`:""}${e.prox_manutencao?` | Próx. manut: ${e.prox_manutencao}`:""}`).join("\n")}` : "✅ Todos os equipamentos operacionais"}
+
+${equipManutProxima.length > 0 ? `📅 MANUTENÇÕES NOS PRÓXIMOS 30 DIAS (${equipManutProxima.length}):
+${equipManutProxima.map(e=>`- ${e.nome} | ${e.prox_manutencao} | R$ ${Number(e.custo_manutencao).toLocaleString("pt-BR",{minimumFractionDigits:2})}`).join("\n")}` : ""}
+
+📅 PLANOS DE MANUTENÇÃO (${planosList.length} planos, orçamento total R$ ${orcamentoPlanos.toLocaleString("pt-BR",{minimumFractionDigits:2})}):
+${planosList.slice(0, 8).map(p=>`- [${p.codigo||"—"}] ${p.nome} | Tipo: ${p.tipo} | ${p.periodicidade} | R$ ${Number(p.custo_total).toLocaleString("pt-BR",{minimumFractionDigits:2})} | Próxima: ${p.proxima_execucao||"não definida"} | ${p.equipamentos_itens?.length||0} equips vinculados`).join("\n") || "Nenhum plano cadastrado"}
+${planosProximos.length > 0 ? `\n⚡ PLANOS PARA EXECUTAR NOS PRÓXIMOS 30 DIAS:\n${planosProximos.map(p=>`- ${p.nome} (${p.tipo}) em ${p.proxima_execucao} | ${p.tempo_estimado_min}min estimados`).join("\n")}` : ""}`;
 
     const systemPrompt = `Você é o Síndico Virtual IA do ${cond?.nome || "condomínio"}, localizado em ${cond?.cidade || "Florianópolis"}.
 Síndico responsável: ${cond?.sindico_nome || "Ricardo Gestor"}.
@@ -177,8 +232,16 @@ ${(alertas || []).map((a: { titulo: string; nivel: string; cidade: string; bairr
 - Receitas: R$ ${totalReceitas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
 - Despesas: R$ ${totalDespesas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
 - Saldo: R$ ${saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} ${saldo >= 0 ? "✅" : "⚠️ NEGATIVO"}
+${manutencaoSection}
 
-Responda de forma profissional, objetiva e útil. Use emojis moderadamente. Máximo 400 palavras por resposta.`;
+Você tem acesso completo aos dados de manutenção acima. Use-os para:
+- Identificar equipamentos críticos e recomendar ações
+- Calcular impacto financeiro de manutenções pendentes
+- Sugerir otimização do cronograma de planos preventivos
+- Alertar sobre equipamentos com vida útil próxima ao fim
+- Estimar consumo energético e oportunidades de economia
+
+Responda de forma profissional, objetiva e útil. Use emojis moderadamente. Máximo 500 palavras por resposta.`;
 
     const messages = [
       ...history.slice(-10).map((h) => ({

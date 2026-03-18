@@ -3337,7 +3337,7 @@ export default function App() {
         {sindicoScreen === "sindico" && (
           <>
             <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 12px", borderBottom: "1px solid var(--card-border)", flexShrink: 0 }}>
-              {[["📊 Resumo", "Resumo rápido do condomínio"], ["🔴 Urgentes", "Quais OSs urgentes?"], ["💧 Água", "Status dos sensores"]].map(([l, m]) => (
+              {[["📊 Resumo", "Resumo rápido do condomínio"], ["🔴 Urgentes", "Quais OSs urgentes?"], ["💧 Água", "Status dos sensores"], ["🔧 Manutenção", "Análise dos equipamentos e planos de manutenção"], ["⚙️ Críticos", "Quais equipamentos precisam de atenção imediata?"]].map(([l, m]) => (
                 <button key={l} className="chip" style={{ whiteSpace: "nowrap", fontSize: 11 }}
                   onClick={() => sendChat(m, mobileHistory, setMobileMsgs, setMobileTyping, setMobileHistory)}>{l}</button>
               ))}
@@ -3696,6 +3696,7 @@ export default function App() {
               {[["💡 Resumo", "Gere insights executivos sobre o condomínio agora"],
                 ["🔴 Riscos", "Quais são os principais riscos e vulnerabilidades?"],
                 ["💰 Financeiro", "Análise financeira: eficiência e oportunidades de economia"],
+                ["🔧 Manutenção", "Relatório completo de manutenção: equipamentos críticos, custos, cronograma de planos"],
                 ["📈 Tendências", "Tendências de consumo de água, energia e gás do mês"]
               ].map(([l, m]) => (
                 <button key={l} className="chip" style={{ whiteSpace: "nowrap", fontSize: 11 }}
@@ -4558,7 +4559,7 @@ export default function App() {
             </div>
             <div className="gestor-chat">
               <div className="chat-chips">
-                {[["📊 Resumo executivo", "Faça um resumo executivo do condomínio agora"], ["🔴 OSs urgentes", "Quais são as OSs urgentes pendentes?"], ["💧 Água + IoT", "Como está a situação da água e sensores IoT?"], ["💰 Financeiro", "Análise financeira completa"], ["⭐ Score", "Como melhorar o score do condomínio?"]].map(([l, m]) => (
+                {[["📊 Resumo executivo", "Faça um resumo executivo do condomínio agora"], ["🔴 OSs urgentes", "Quais são as OSs urgentes pendentes?"], ["💧 Água + IoT", "Como está a situação da água e sensores IoT?"], ["💰 Financeiro", "Análise financeira completa"], ["🔧 Manutenção", "Análise completa do módulo de manutenção: equipamentos com problema, custos, planos agendados e recomendações"], ["⚙️ Equipamentos críticos", "Quais equipamentos precisam de atenção imediata? Liste por prioridade com impacto e custo estimado"], ["📅 Planos de manutenção", "Quais planos de manutenção vencem nos próximos 30 dias? Faça um cronograma de execução"], ["⭐ Score", "Como melhorar o score do condomínio?"]].map(([l, m]) => (
                   <button key={l} className="chip" onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setSideMsgs(p => [...p, { role: "user", content: m, time: fmtTime() }]); }}>{l}</button>
                 ))}
               </div>
