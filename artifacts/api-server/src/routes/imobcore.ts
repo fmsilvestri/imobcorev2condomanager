@@ -555,12 +555,23 @@ router.put("/os/:id", async (req: Request, res: Response) => {
     const updates = req.body as Record<string, unknown>;
     updates.updated_at = new Date().toISOString();
 
+    const colErr = (e: { message?: string; code?: string } | null) =>
+      !!(e && (e.code === "PGRST204" || e.message?.includes("schema cache") || e.message?.includes("Could not find")));
+
     let { data, error } = await supabase.from("ordens_servico").update(updates).eq("id", id).select().single();
-    // Retry sem equipamento_ids se coluna não existir
-    if (error && error.message?.includes("equipamento_ids")) {
-      const { equipamento_ids: _drop, ...fallback } = updates;
+    // Retry 1: sem equipamento_ids + updated_at
+    if (colErr(error)) {
+      const { equipamento_ids: _e, ...fallback } = updates as Record<string, unknown> & { equipamento_ids?: unknown };
+      delete fallback.updated_at;
       const r2 = await supabase.from("ordens_servico").update(fallback).eq("id", id).select().single();
       data = r2.data; error = r2.error;
+    }
+    // Retry 2: apenas campos core garantidos
+    if (colErr(error)) {
+      const os_core = ["titulo","descricao","categoria","prioridade","unidade","status","responsavel","numero"];
+      const safe = Object.fromEntries(Object.entries(updates).filter(([k]) => os_core.includes(k)));
+      const r3 = await supabase.from("ordens_servico").update(safe).eq("id", id).select().single();
+      data = r3.data; error = r3.error;
     }
 
     if (error) return res.status(500).json({ error: error.message });
@@ -1448,12 +1459,26 @@ router.get("/equipamentos", async (req: Request, res: Response) => {
   res.json((data || []).map(r => dbToEquip(r as Record<string, unknown>)));
 });
 
-// helper: remove colunas opcionais ainda não migradas (fornecedor_id, quantidade)
-function stripOptionalCols(p: Record<string, unknown>) {
-  const copy = { ...p };
-  delete copy.fornecedor_id;
-  delete copy.quantidade;
-  return copy;
+// Colunas garantidas na tabela equipamentos original
+const EQUIP_CORE_COLS = new Set([
+  "condominio_id", "nome", "categoria", "localizacao", "status",
+  "horas_uso_dia", "consumo_eletrico_kwh", "vida_util_meses",
+  "fabricante", "data_instalacao", "descricao",
+]);
+
+// Detecta qualquer erro de coluna inexistente (PostgREST PGRST204 ou schema cache)
+function isColError(e: { message?: string; code?: string } | null): boolean {
+  if (!e) return false;
+  return (
+    e.code === "PGRST204" ||
+    (e.message?.includes("schema cache") ?? false) ||
+    (e.message?.includes("Could not find") ?? false)
+  );
+}
+
+// Payload mínimo: apenas colunas core garantidas
+function stripToCore(p: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(p).filter(([k]) => EQUIP_CORE_COLS.has(k)));
 }
 
 // POST /api/equipamentos — criar novo
@@ -1463,9 +1488,14 @@ router.post("/equipamentos", async (req: Request, res: Response) => {
   if (!body.nome) return res.status(400).json({ error: "nome obrigatório" });
   const payload = equipToDb(body, String(condominio_id));
   let { data, error } = await supabase.from("equipamentos").insert(payload).select().single();
-  if (error && (error.message.includes("fornecedor_id") || error.message.includes("quantidade"))) {
-    // colunas ainda não migradas — retry sem elas
-    ({ data, error } = await supabase.from("equipamentos").insert(stripOptionalCols(payload)).select().single());
+  // Retry progressivo: primeiro sem colunas opcionais novas, depois apenas core
+  if (isColError(error)) {
+    const p2 = { ...payload };
+    delete p2.fornecedor_id; delete p2.quantidade; delete p2.updated_at;
+    ({ data, error } = await supabase.from("equipamentos").insert(p2).select().single());
+  }
+  if (isColError(error)) {
+    ({ data, error } = await supabase.from("equipamentos").insert(stripToCore(payload)).select().single());
   }
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true, equipamento: dbToEquip(data as Record<string, unknown>) });
@@ -1479,9 +1509,15 @@ router.put("/equipamentos/:id", async (req: Request, res: Response) => {
   const payload = equipToDb(body, String(condominio_id || ""));
   delete payload.condominio_id; // não sobrescrever o dono
   let { data, error } = await supabase.from("equipamentos").update(payload).eq("id", id).select().single();
-  if (error && (error.message.includes("fornecedor_id") || error.message.includes("quantidade"))) {
-    // colunas ainda não migradas — retry sem elas
-    ({ data, error } = await supabase.from("equipamentos").update(stripOptionalCols(payload)).eq("id", id).select().single());
+  // Retry progressivo: primeiro sem colunas opcionais novas, depois apenas core
+  if (isColError(error)) {
+    const p2 = { ...payload };
+    delete p2.fornecedor_id; delete p2.quantidade; delete p2.updated_at;
+    ({ data, error } = await supabase.from("equipamentos").update(p2).eq("id", id).select().single());
+  }
+  if (isColError(error)) {
+    const core = stripToCore(payload);
+    ({ data, error } = await supabase.from("equipamentos").update(core).eq("id", id).select().single());
   }
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true, equipamento: dbToEquip(data as Record<string, unknown>) });

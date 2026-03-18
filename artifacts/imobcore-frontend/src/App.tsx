@@ -1871,11 +1871,15 @@ export default function App() {
       equipamento_ids: osEquipLinks.map(e => e.id),
     };
     if (osForm.numero) payload.numero = Number(osForm.numero);
-    await fetch(`/api/os/${osEditId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    showToast("✅ OS atualizada", "success");
-    setOsModal(null);
-    setOsEquipLinks([]);
-    loadDashboard();
+    try {
+      const r = await fetch(`/api/os/${osEditId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const d = await r.json();
+      if (!r.ok) { showToast("Erro ao salvar OS: " + (d.error || r.status), "error"); return; }
+      showToast("✅ OS atualizada", "success");
+      setOsModal(null);
+      setOsEquipLinks([]);
+      loadDashboard();
+    } catch { showToast("Erro ao salvar OS", "error"); }
   };
 
   const updateOSStatus = async (id: string, status: string) => {
