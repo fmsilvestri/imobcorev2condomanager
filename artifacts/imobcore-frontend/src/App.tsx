@@ -3575,19 +3575,19 @@ export default function App() {
           return (
             <div className="ph-sub-body" style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:10 }}>
               {fornecList.length === 0 && (
-                <div style={{ textAlign:"center", padding:32, color:"#475569", fontSize:13 }}>
+                <div style={{ textAlign:"center", padding:32, color:"var(--neu-text-2)", fontSize:13 }}>
                   <div style={{ fontSize:32, marginBottom:8 }}>🏢</div>
                   Nenhum fornecedor cadastrado.
                 </div>
               )}
               {sfDetail ? (
                 <div>
-                  <button onClick={()=>setSindFornecDetail(null)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"6px 12px", color:"#A5B4FC", fontSize:12, cursor:"pointer", marginBottom:14 }}>← Voltar</button>
+                  <button onClick={()=>setSindFornecDetail(null)} style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", border:"none", borderRadius:8, padding:"6px 12px", color:"var(--neu-purple)", fontSize:12, cursor:"pointer", marginBottom:14 }}>← Voltar</button>
                   <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:16 }}>
-                    <div style={{ background:"rgba(255,255,255,.08)", borderRadius:12, width:52, height:52, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>{sfDetail.icone||"🏢"}</div>
+                    <div style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, width:52, height:52, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>{sfDetail.icone||"🏢"}</div>
                     <div>
-                      <div style={{ fontWeight:800, fontSize:16, color:"#E2E8F0" }}>{sfDetail.nome}</div>
-                      <span style={{ background:"rgba(16,185,129,.12)", color:"#34D399", border:"1px solid rgba(16,185,129,.2)", borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600 }}>{sfDetail.categoria}</span>
+                      <div style={{ fontWeight:800, fontSize:16, color:"var(--neu-text)" }}>{sfDetail.nome}</div>
+                      <span style={{ background:"rgba(16,185,129,.15)", color:"#059669", border:"1px solid rgba(16,185,129,.3)", borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600 }}>{sfDetail.categoria}</span>
                     </div>
                   </div>
                   {([
@@ -3597,9 +3597,9 @@ export default function App() {
                     sfDetail.endereco   ? { icon:"📍", label:"Endereço",  val:sfDetail.endereco   } : null,
                     sfDetail.observacoes? { icon:"📝", label:"Obs.",      val:sfDetail.observacoes} : null,
                   ] as ({icon:string;label:string;val:string}|null)[]).filter(Boolean).map((r, i) => r && (
-                    <div key={i} style={{ display:"flex", gap:10, padding:"10px 0", borderBottom:"1px solid rgba(255,255,255,.05)", fontSize:13 }}>
+                    <div key={i} style={{ display:"flex", gap:10, padding:"10px 0", borderBottom:"1px solid var(--card-border)", fontSize:13 }}>
                       <span style={{ fontSize:16 }}>{r.icon}</span>
-                      <div><div style={{ fontSize:10, color:"#475569", fontWeight:700 }}>{r.label}</div><div style={{ color:"#E2E8F0" }}>{r.val}</div></div>
+                      <div><div style={{ fontSize:10, color:"var(--neu-text-2)", fontWeight:700 }}>{r.label}</div><div style={{ color:"var(--neu-text)" }}>{r.val}</div></div>
                     </div>
                   ))}
                   <button onClick={()=>fornecWhatsApp(sfDetail)} disabled={!(sfDetail.whatsapp||sfDetail.telefone)}
@@ -3610,14 +3610,14 @@ export default function App() {
               ) : (
                 fornecList.map(f => (
                   <div key={f.id} onClick={()=>setSindFornecDetail(f.id)}
-                    style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"12px 14px", cursor:"pointer", display:"flex", gap:12, alignItems:"center" }}>
-                    <div style={{ background:"rgba(255,255,255,.07)", borderRadius:10, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{f.icone||"🏢"}</div>
+                    style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, padding:"12px 14px", cursor:"pointer", display:"flex", gap:12, alignItems:"center" }}>
+                    <div style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-in-sm)", borderRadius:10, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{f.icone||"🏢"}</div>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontWeight:700, fontSize:13, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.nome}</div>
-                      <div style={{ fontSize:11, color:"#475569" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
+                      <div style={{ fontWeight:700, fontSize:13, color:"var(--neu-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.nome}</div>
+                      <div style={{ fontSize:11, color:"var(--neu-text-2)" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
                     </div>
                     <button onClick={e=>{ e.stopPropagation(); fornecWhatsApp(f); }} disabled={!(f.whatsapp||f.telefone)}
-                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"rgba(255,255,255,.05)", border:"none", borderRadius:8, padding:"7px 10px", color:"#fff", fontSize:11, fontWeight:600, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0 }}>
+                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"var(--neu-bg)", boxShadow:f.whatsapp||f.telefone?"none":"var(--neu-out-sm)", border:"none", borderRadius:8, padding:"7px 10px", color:f.whatsapp||f.telefone?"#fff":"var(--neu-text-2)", fontSize:11, fontWeight:600, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0 }}>
                       💬 WA
                     </button>
                   </div>
@@ -3885,19 +3885,19 @@ export default function App() {
           return (
             <div className="ph-sub-body" style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:10 }}>
               {fornecList.length === 0 && (
-                <div style={{ textAlign:"center", padding:32, color:"#475569", fontSize:13 }}>
+                <div style={{ textAlign:"center", padding:32, color:"var(--neu-text-2)", fontSize:13 }}>
                   <div style={{ fontSize:32, marginBottom:8 }}>🏢</div>
                   Nenhum fornecedor disponível.
                 </div>
               )}
               {mfDetail ? (
                 <div>
-                  <button onClick={()=>setMorFornecDetail(null)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"6px 12px", color:"#A5B4FC", fontSize:12, cursor:"pointer", marginBottom:14 }}>← Voltar</button>
+                  <button onClick={()=>setMorFornecDetail(null)} style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", border:"none", borderRadius:8, padding:"6px 12px", color:"var(--neu-purple)", fontSize:12, cursor:"pointer", marginBottom:14 }}>← Voltar</button>
                   <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:16 }}>
-                    <div style={{ background:"rgba(255,255,255,.08)", borderRadius:12, width:52, height:52, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>{mfDetail.icone||"🏢"}</div>
+                    <div style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, width:52, height:52, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>{mfDetail.icone||"🏢"}</div>
                     <div>
-                      <div style={{ fontWeight:800, fontSize:16, color:"#E2E8F0" }}>{mfDetail.nome}</div>
-                      <span style={{ background:"rgba(16,185,129,.12)", color:"#34D399", border:"1px solid rgba(16,185,129,.2)", borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600 }}>{mfDetail.categoria}</span>
+                      <div style={{ fontWeight:800, fontSize:16, color:"var(--neu-text)" }}>{mfDetail.nome}</div>
+                      <span style={{ background:"rgba(16,185,129,.15)", color:"#059669", border:"1px solid rgba(16,185,129,.3)", borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600 }}>{mfDetail.categoria}</span>
                     </div>
                   </div>
                   {([
@@ -3907,9 +3907,9 @@ export default function App() {
                     mfDetail.endereco    ? { icon:"📍", label:"Endereço",  val:mfDetail.endereco    } : null,
                     mfDetail.observacoes ? { icon:"📝", label:"Obs.",      val:mfDetail.observacoes } : null,
                   ] as ({icon:string;label:string;val:string}|null)[]).filter(Boolean).map((r, i) => r && (
-                    <div key={i} style={{ display:"flex", gap:10, padding:"10px 0", borderBottom:"1px solid rgba(255,255,255,.05)", fontSize:13 }}>
+                    <div key={i} style={{ display:"flex", gap:10, padding:"10px 0", borderBottom:"1px solid var(--card-border)", fontSize:13 }}>
                       <span style={{ fontSize:16 }}>{r.icon}</span>
-                      <div><div style={{ fontSize:10, color:"#475569", fontWeight:700 }}>{r.label}</div><div style={{ color:"#E2E8F0" }}>{r.val}</div></div>
+                      <div><div style={{ fontSize:10, color:"var(--neu-text-2)", fontWeight:700 }}>{r.label}</div><div style={{ color:"var(--neu-text)" }}>{r.val}</div></div>
                     </div>
                   ))}
                   <button onClick={()=>fornecWhatsApp(mfDetail)} disabled={!(mfDetail.whatsapp||mfDetail.telefone)}
@@ -3920,14 +3920,14 @@ export default function App() {
               ) : (
                 fornecList.map(f => (
                   <div key={f.id} onClick={()=>setMorFornecDetail(f.id)}
-                    style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"12px 14px", cursor:"pointer", display:"flex", gap:12, alignItems:"center" }}>
-                    <div style={{ background:"rgba(255,255,255,.07)", borderRadius:10, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{f.icone||"🏢"}</div>
+                    style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, padding:"12px 14px", cursor:"pointer", display:"flex", gap:12, alignItems:"center" }}>
+                    <div style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-in-sm)", borderRadius:10, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{f.icone||"🏢"}</div>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontWeight:700, fontSize:13, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.nome}</div>
-                      <div style={{ fontSize:11, color:"#475569" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
+                      <div style={{ fontWeight:700, fontSize:13, color:"var(--neu-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.nome}</div>
+                      <div style={{ fontSize:11, color:"var(--neu-text-2)" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
                     </div>
                     <button onClick={e=>{ e.stopPropagation(); fornecWhatsApp(f); }} disabled={!(f.whatsapp||f.telefone)}
-                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"rgba(255,255,255,.05)", border:"none", borderRadius:8, padding:"7px 10px", color:"#fff", fontSize:11, fontWeight:600, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0 }}>
+                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"var(--neu-bg)", boxShadow:f.whatsapp||f.telefone?"none":"var(--neu-out-sm)", border:"none", borderRadius:8, padding:"7px 10px", color:f.whatsapp||f.telefone?"#fff":"var(--neu-text-2)", fontSize:11, fontWeight:600, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0 }}>
                       💬 WA
                     </button>
                   </div>
