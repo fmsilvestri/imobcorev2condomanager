@@ -3,7 +3,7 @@ import QRCode from "qrcode";
 import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis } from "recharts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; responsavel?: string; updated_at?: string; created_at: string }
+interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; responsavel?: string; updated_at?: string; created_at: string; equipamento_ids?: string[] }
 interface Sensor { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; nivel_atual: number; volume_litros: number }
 interface Reservatorio { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; altura_cm: number; mac_address?: string; cf_url: string; wh_url: string; protocolo: string; porta: number; cf_online: boolean; wh_online: boolean; created_at: string }
 interface Alerta { id: string; origem: string; titulo: string; descricao?: string; tipo: string; nivel: string; cidade: string; bairro: string }
@@ -1274,6 +1274,9 @@ export default function App() {
   const [osSearch, setOsSearch] = useState("");
   const [osDeleteId, setOsDeleteId] = useState<string | null>(null);
   const [osFormOpen, setOsFormOpen] = useState(false);
+  // OS ↔ Equipamentos links
+  const [osEquipLinks, setOsEquipLinks] = useState<{ id: string; nome: string; catIcon: string; categoria: string; local: string; status: string }[]>([]);
+  const [osEquipSearch, setOsEquipSearch] = useState("");
 
   // Comunicado
   const [comTema, setComTema] = useState("");
@@ -1670,6 +1673,8 @@ export default function App() {
   const openCriarOS = () => {
     setOsForm({ ...OS_BLANK });
     setOsEditId(null);
+    setOsEquipLinks([]);
+    setOsEquipSearch("");
     setOsModal("criar");
   };
 
@@ -1684,16 +1689,27 @@ export default function App() {
       responsavel: o.responsavel || "",
     });
     setOsEditId(o.id);
+    // Reconstitui links de equipamentos a partir dos IDs salvos
+    const ids: string[] = Array.isArray(o.equipamento_ids) ? o.equipamento_ids : [];
+    const linked = equipList.filter(eq => ids.includes(eq.id))
+      .map(eq => ({ id: eq.id, nome: eq.nome, catIcon: eq.catIcon, categoria: eq.categoria, local: eq.local, status: eq.status }));
+    setOsEquipLinks(linked);
+    setOsEquipSearch("");
     setOsModal("editar");
   };
 
   const criarOS = async () => {
     if (!osForm.titulo.trim()) { showToast("Informe o título", "warn"); return; }
-    const payload: Record<string, unknown> = { ...osForm, condominio_id: condId };
+    const payload: Record<string, unknown> = {
+      ...osForm,
+      condominio_id: condId,
+      equipamento_ids: osEquipLinks.map(e => e.id),
+    };
     if (osForm.numero) payload.numero = Number(osForm.numero);
     await fetch("/api/os", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     showToast("✅ OS criada!", "success");
     setOsModal(null);
+    setOsEquipLinks([]);
     ringBell();
     loadDashboard();
   };
@@ -1704,11 +1720,13 @@ export default function App() {
     const payload: Record<string, unknown> = {
       titulo: osForm.titulo, descricao: osForm.descricao, categoria: osForm.categoria,
       prioridade: osForm.prioridade, unidade: osForm.unidade, responsavel: osForm.responsavel,
+      equipamento_ids: osEquipLinks.map(e => e.id),
     };
     if (osForm.numero) payload.numero = Number(osForm.numero);
     await fetch(`/api/os/${osEditId}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     showToast("✅ OS atualizada", "success");
     setOsModal(null);
+    setOsEquipLinks([]);
     loadDashboard();
   };
 
@@ -4729,6 +4747,14 @@ export default function App() {
                               <td>
                                 <div style={{ fontWeight: 500, fontSize: 13 }}>{o.titulo}</div>
                                 {o.descricao && <div style={{ fontSize: 10, color: "#475569", marginTop: 1, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.descricao}</div>}
+                                {Array.isArray(o.equipamento_ids) && o.equipamento_ids.length > 0 && (
+                                  <div style={{ display: "flex", gap: 4, marginTop: 3, flexWrap: "wrap" }}>
+                                    {equipList.filter(eq => (o.equipamento_ids || []).includes(eq.id)).slice(0, 3).map(eq => (
+                                      <span key={eq.id} style={{ fontSize: 9, background: "rgba(99,102,241,.15)", color: "#A5B4FC", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>{eq.catIcon} {eq.nome.slice(0, 18)}</span>
+                                    ))}
+                                    {o.equipamento_ids.length > 3 && <span style={{ fontSize: 9, color: "#475569" }}>+{o.equipamento_ids.length - 3}</span>}
+                                  </div>
+                                )}
                               </td>
                               <td><span style={{ fontSize: 12 }}>{catIcon[o.categoria] || "📋"} <span style={{ fontSize: 10, color: "#64748B" }}>{o.categoria}</span></span></td>
                               <td><span className={`pill ${priPill(o.prioridade)}`}>{o.prioridade}</span></td>
@@ -4765,6 +4791,14 @@ export default function App() {
                           </div>
                           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{o.titulo}</div>
                           {o.descricao && <div style={{ fontSize: 11, color: "#475569", marginBottom: 8, lineHeight: 1.5 }}>{o.descricao.slice(0, 80)}{o.descricao.length > 80 ? "…" : ""}</div>}
+                          {Array.isArray(o.equipamento_ids) && o.equipamento_ids.length > 0 && (
+                            <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
+                              {equipList.filter(eq => (o.equipamento_ids || []).includes(eq.id)).slice(0, 3).map(eq => (
+                                <span key={eq.id} style={{ fontSize: 9, background: "rgba(99,102,241,.15)", color: "#A5B4FC", borderRadius: 4, padding: "2px 6px", fontWeight: 600 }}>{eq.catIcon} {eq.nome.slice(0, 16)}</span>
+                              ))}
+                              {o.equipamento_ids.length > 3 && <span style={{ fontSize: 9, color: "#64748B" }}>+{o.equipamento_ids.length - 3}</span>}
+                            </div>
+                          )}
                           <div style={{ display: "flex", gap: 8, fontSize: 10, color: "#64748B", marginBottom: 10 }}>
                             <span>{catIcon[o.categoria] || "📋"} {o.categoria}</span>
                             {o.unidade && <span>🏠 {o.unidade}</span>}
@@ -4834,6 +4868,79 @@ export default function App() {
                             </div>
                           )}
                         </div>
+
+                        {/* ── Equipamentos vinculados ── */}
+                        {(() => {
+                          const statusColors: Record<string,string> = { operacional:"#10B981", atencao:"#F59E0B", manutencao:"#EF4444", inativo:"#475569" };
+                          const toggleEquip = (eq: Equipamento) => {
+                            setOsEquipLinks(prev => {
+                              const exists = prev.find(e => e.id === eq.id);
+                              if (exists) return prev.filter(e => e.id !== eq.id);
+                              // auto-set categoria to "equipamento" se estava como padrão
+                              if (osForm.categoria === "hidraulica") setOsForm(f => ({ ...f, categoria: "equipamento" }));
+                              return [...prev, { id: eq.id, nome: eq.nome, catIcon: eq.catIcon, categoria: eq.categoria, local: eq.local, status: eq.status }];
+                            });
+                          };
+                          const equipSearched = equipList.filter(eq => {
+                            const q = osEquipSearch.toLowerCase();
+                            if (!q) return true;
+                            return eq.nome.toLowerCase().includes(q) || eq.local.toLowerCase().includes(q) || eq.categoria.toLowerCase().includes(q);
+                          }).slice(0, 30);
+                          return (
+                            <div style={{ marginBottom: 16, background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 10, padding: "12px 14px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: "#94A3B8" }}>⚙️ Equipamentos Vinculados</span>
+                                {osEquipLinks.length > 0 && <span style={{ background: "rgba(99,102,241,.2)", color: "#A5B4FC", fontSize: 10, fontWeight: 700, borderRadius: 999, padding: "2px 8px" }}>{osEquipLinks.length}</span>}
+                              </div>
+                              {/* Chips dos selecionados */}
+                              {osEquipLinks.length > 0 && (
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                                  {osEquipLinks.map(eq => (
+                                    <div key={eq.id} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(99,102,241,.15)", border: "1px solid rgba(99,102,241,.3)", borderRadius: 6, padding: "4px 8px" }}>
+                                      <span style={{ fontSize: 13 }}>{eq.catIcon}</span>
+                                      <span style={{ fontSize: 11, color: "#C7D2FE", fontWeight: 600, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{eq.nome}</span>
+                                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusColors[eq.status] || "#475569", flexShrink: 0 }} />
+                                      <button onClick={() => setOsEquipLinks(p => p.filter(e => e.id !== eq.id))} style={{ background: "none", border: "none", color: "#64748B", cursor: "pointer", fontSize: 13, lineHeight: 1, padding: 0, marginLeft: 2 }}>✕</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {/* Busca */}
+                              <input
+                                value={osEquipSearch} onChange={e => setOsEquipSearch(e.target.value)}
+                                placeholder={equipList.length > 0 ? `🔍 Buscar entre ${equipList.length} equipamentos...` : "Nenhum equipamento cadastrado"}
+                                disabled={equipList.length === 0}
+                                style={{ width: "100%", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 7, padding: "7px 10px", color: "#E2E8F0", fontSize: 11, boxSizing: "border-box" as const, marginBottom: 8, fontFamily: "inherit" }}
+                              />
+                              {/* Lista de equipamentos */}
+                              {equipList.length > 0 && (
+                                <div style={{ maxHeight: 170, overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
+                                  {equipSearched.map(eq => {
+                                    const selected = !!osEquipLinks.find(e => e.id === eq.id);
+                                    return (
+                                      <div key={eq.id} onClick={() => toggleEquip(eq)}
+                                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 7, cursor: "pointer", background: selected ? "rgba(99,102,241,.15)" : "rgba(255,255,255,.03)", border: `1px solid ${selected ? "rgba(99,102,241,.35)" : "rgba(255,255,255,.06)"}`, transition: "all .12s" }}>
+                                        <span style={{ fontSize: 15, flexShrink: 0 }}>{eq.catIcon}</span>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ fontSize: 12, fontWeight: selected ? 700 : 500, color: selected ? "#C7D2FE" : "#CBD5E1", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{eq.nome}</div>
+                                          <div style={{ fontSize: 10, color: "#475569" }}>{eq.local} · {eq.categoria}</div>
+                                        </div>
+                                        <span style={{ fontSize: 10, fontWeight: 700, color: statusColors[eq.status] || "#475569", background: (statusColors[eq.status] || "#475569") + "22", borderRadius: 4, padding: "2px 6px", flexShrink: 0 }}>{eq.status}</span>
+                                        {selected && <span style={{ color: "#818CF8", fontSize: 14, flexShrink: 0 }}>✓</span>}
+                                      </div>
+                                    );
+                                  })}
+                                  {equipSearched.length === 0 && <div style={{ color: "#475569", fontSize: 11, textAlign: "center", padding: "12px 0" }}>Nenhum equipamento encontrado</div>}
+                                </div>
+                              )}
+                              {equipList.length === 0 && (
+                                <div style={{ color: "#475569", fontSize: 11, textAlign: "center", padding: "10px 0" }}>
+                                  Cadastre equipamentos no módulo Manutenção para vinculá-los aqui
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
                           {osModal === "editar" && (

@@ -380,7 +380,7 @@ router.get("/os", async (req: Request, res: Response) => {
 // POST /api/os - Criar OS
 router.post("/os", async (req: Request, res: Response) => {
   try {
-    const { condominio_id, titulo, descricao, categoria, prioridade, unidade, responsavel } = req.body as {
+    const { condominio_id, titulo, descricao, categoria, prioridade, unidade, responsavel, equipamento_ids } = req.body as {
       condominio_id?: string;
       titulo: string;
       descricao?: string;
@@ -388,6 +388,7 @@ router.post("/os", async (req: Request, res: Response) => {
       prioridade: string;
       unidade?: string;
       responsavel?: string;
+      equipamento_ids?: string[];
     };
 
     const { data: cond } = await supabase.from("condominios").select("id").limit(1).single();
@@ -401,21 +402,26 @@ router.post("/os", async (req: Request, res: Response) => {
       .single();
     const nextNumero = ((lastOs?.numero as number) || 0) + 1;
 
-    const { data, error } = await supabase
-      .from("ordens_servico")
-      .insert({
-        condominio_id: condominio_id || cond?.id,
-        numero: nextNumero,
-        titulo,
-        descricao,
-        categoria,
-        prioridade: prioridade || "media",
-        unidade,
-        responsavel,
-        status: "aberta",
-      })
-      .select()
-      .single();
+    const baseInsert: Record<string, unknown> = {
+      condominio_id: condominio_id || cond?.id,
+      numero: nextNumero,
+      titulo,
+      descricao,
+      categoria,
+      prioridade: prioridade || "media",
+      unidade,
+      responsavel,
+      status: "aberta",
+      equipamento_ids: equipamento_ids ?? [],
+    };
+
+    let { data, error } = await supabase.from("ordens_servico").insert(baseInsert).select().single();
+    // Retry sem equipamento_ids se coluna não existir
+    if (error && error.message?.includes("equipamento_ids")) {
+      const { equipamento_ids: _drop, ...fallback } = baseInsert;
+      const r2 = await supabase.from("ordens_servico").insert(fallback).select().single();
+      data = r2.data; error = r2.error;
+    }
 
     if (error) return res.status(500).json({ error: error.message });
     broadcast("nova_os", data);
@@ -432,12 +438,13 @@ router.put("/os/:id", async (req: Request, res: Response) => {
     const updates = req.body as Record<string, unknown>;
     updates.updated_at = new Date().toISOString();
 
-    const { data, error } = await supabase
-      .from("ordens_servico")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
+    let { data, error } = await supabase.from("ordens_servico").update(updates).eq("id", id).select().single();
+    // Retry sem equipamento_ids se coluna não existir
+    if (error && error.message?.includes("equipamento_ids")) {
+      const { equipamento_ids: _drop, ...fallback } = updates;
+      const r2 = await supabase.from("ordens_servico").update(fallback).eq("id", id).select().single();
+      data = r2.data; error = r2.error;
+    }
 
     if (error) return res.status(500).json({ error: error.message });
     broadcast("os_atualizada", data);

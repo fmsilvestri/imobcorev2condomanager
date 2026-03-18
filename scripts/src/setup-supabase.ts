@@ -251,6 +251,17 @@ async function runMigrations() {
     console.log("✅ Migration 8 (diagnostico_historico): OK");
   }
 
+  // ─── Migration 9: OS ↔ Equipamentos – equipamento_ids JSONB ────────────────
+  const { error: m9Err } = await supabase.from("ordens_servico").select("equipamento_ids").limit(1);
+  if (m9Err) {
+    console.log("⚠️  Migration 9 needed (ordens_servico equipamento_ids). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    console.log("   ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS equipamento_ids JSONB DEFAULT '[]';");
+    console.log();
+  } else {
+    console.log("✅ Migration 9 (ordens_servico equipamento_ids): OK");
+  }
+
   console.log();
 }
 
