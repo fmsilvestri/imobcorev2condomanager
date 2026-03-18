@@ -627,6 +627,12 @@ export default function App() {
     ["piscina","🏊 Piscina"], ["climatizacao","❄️ Climatização"], ["incendio","🔥 Incêndio"],
     ["portaria","🚪 Portaria"], ["gerador","🔋 Gerador"], ["outros","📦 Outros"],
   ];
+  const EQUIP_CAT_LABELS: Record<string, string> = {
+    elevador:"Elevador", hidraulico:"Hidráulico", eletrico:"Elétrico",
+    seguranca:"Segurança", limpeza:"Limpeza", estrutural:"Estrutural",
+    piscina:"Piscina", climatizacao:"Climatização", incendio:"Incêndio",
+    portaria:"Portaria", gerador:"Gerador", outros:"Outros",
+  };
   const EMPTY_EQ: { nome:string; categoria:string; catIcon:string; local:string; fabricante:string; modelo:string; serie:string; dataInstalacao:string; vidaUtilAnos:number; instaladoHa:number; consumoKwh:number; horasDia:number; status:"operacional"|"atencao"|"manutencao"|"inativo"; proxManutencao:string; ultimaManutencao:string; custoManutencao:number; descricao:string; fornecedor_id:string; quantidade:number } = { nome:"", categoria:"elevador", catIcon:"🛗", local:"", fabricante:"", modelo:"", serie:"", dataInstalacao:"", vidaUtilAnos:10, instaladoHa:0, consumoKwh:0, horasDia:8, status:"operacional", proxManutencao:"", ultimaManutencao:"", custoManutencao:0, descricao:"", fornecedor_id:"", quantidade:1 };
   const [equipForm, setEquipForm] = useState(EMPTY_EQ);
 
@@ -7625,7 +7631,7 @@ Content-Type: application/json
                                 })()}
                               </td>
                               <td style={{ padding:"12px 12px" }}>
-                                {(() => { const cc = EQUIP_CAT_COLORS[e.categoria] ?? EQUIP_CAT_COLORS["outros"]; return <span style={{ background:cc.bg, color:cc.text, border:`1px solid ${cc.border}`, borderRadius:6, padding:"3px 8px", fontSize:11, fontWeight:700 }}>{EQUIP_CAT_ICONS[e.categoria]||"📦"} {e.categoria}</span>; })()}
+                                {(() => { const cc = EQUIP_CAT_COLORS[e.categoria] ?? EQUIP_CAT_COLORS["outros"]; return <span style={{ background:cc.bg, color:cc.text, border:`1px solid ${cc.border}`, borderRadius:6, padding:"3px 9px", fontSize:11, fontWeight:700, whiteSpace:"nowrap", display:"inline-flex", alignItems:"center", gap:4 }}>{EQUIP_CAT_ICONS[e.categoria]||"📦"} {EQUIP_CAT_LABELS[e.categoria]||e.categoria}</span>; })()}
                               </td>
                               <td style={{ padding:"12px 12px", color:"#CBD5E1", maxWidth:130 }}>{e.local}</td>
                               <td style={{ padding:"12px 12px" }}>
