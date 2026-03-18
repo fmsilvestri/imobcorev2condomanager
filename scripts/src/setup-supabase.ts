@@ -262,6 +262,41 @@ async function runMigrations() {
     console.log("✅ Migration 9 (ordens_servico equipamento_ids): OK");
   }
 
+  // ─── Migration 10: Financeiro Inteligente ────────────────────────────────────
+  const { error: m10Err } = await supabase.from("lancamentos_financeiros").select("id").limit(1);
+  if (m10Err) {
+    console.log("⚠️  Migration 10 needed (lancamentos_financeiros). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    console.log(`
+CREATE TABLE IF NOT EXISTS lancamentos_financeiros (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES condominios(id) ON DELETE CASCADE,
+  tipo TEXT NOT NULL CHECK (tipo IN ('receita','despesa')),
+  categoria TEXT NOT NULL DEFAULT 'geral',
+  subcategoria TEXT,
+  descricao TEXT NOT NULL,
+  valor NUMERIC(12,2) NOT NULL DEFAULT 0,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  competencia TEXT,
+  status TEXT NOT NULL DEFAULT 'previsto' CHECK (status IN ('previsto','pago','atrasado')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS orcamento_anual (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES condominios(id) ON DELETE CASCADE,
+  categoria TEXT NOT NULL,
+  mes INT NOT NULL CHECK (mes BETWEEN 1 AND 12),
+  ano INT NOT NULL DEFAULT EXTRACT(YEAR FROM NOW()),
+  valor_previsto NUMERIC(12,2) NOT NULL DEFAULT 0,
+  valor_real NUMERIC(12,2) DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);`);
+    console.log();
+  } else {
+    console.log("✅ Migration 10 (lancamentos_financeiros, orcamento_anual): OK");
+  }
+
   console.log();
 }
 

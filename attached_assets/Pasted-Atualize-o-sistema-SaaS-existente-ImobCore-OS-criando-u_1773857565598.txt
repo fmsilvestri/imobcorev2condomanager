@@ -1,0 +1,212 @@
+Atualize o sistema SaaS existente **ImobCore OS** criando um módulo completo chamado:
+
+💰 FINANCEIRO INTELIGENTE
+
+Este módulo deve incluir:
+
+* Gestão de receitas e despesas
+* Previsão orçamentária mensal
+* Fluxo de caixa
+* Score financeiro automático
+* Insights com IA (Síndico Virtual)
+* Dashboard visual estilo dark (tipo Nubank)
+
+Stack obrigatória:
+
+* Backend: Node.js + Express
+* Banco: Supabase
+* Frontend: React (com Tailwind)
+* Gráficos: Chart.js
+* IA: endpoint já existente /api/sindico/chat
+
+────────────────────────
+
+1. BANCO DE DADOS (SUPABASE)
+
+Criar tabelas:
+
+lancamentos_financeiros:
+id (uuid)
+condominio_id
+tipo (receita/despesa)
+categoria
+subcategoria
+descricao
+valor
+data
+competencia
+status (previsto/pago/atrasado)
+
+orcamento_anual:
+id
+condominio_id
+categoria
+mes
+valor_previsto
+valor_real
+
+previsao_financeira:
+id
+condominio_id
+mes
+receitas_previstas
+despesas_previstas
+saldo_previsto
+
+indicadores_financeiros:
+id
+condominio_id
+inadimplencia
+saldo_caixa
+score_financeiro
+risco
+
+────────────────────────
+
+2. BACKEND
+
+Criar pasta:
+
+/financeiro
+
+Arquivos:
+
+financeiro.controller.js
+financeiro.service.js
+financeiro.routes.js
+
+Endpoints:
+
+GET /api/financeiro/resumo
+GET /api/financeiro/fluxo
+GET /api/financeiro/previsao
+GET /api/financeiro/indicadores
+
+────────────────────────
+
+3. LÓGICA PRINCIPAL
+
+Fluxo de caixa:
+
+* somar receitas
+* somar despesas
+* calcular saldo
+
+Previsão:
+
+* média dos últimos 3 meses
+* projetar próximos 3 meses
+
+Score financeiro:
+
+Começa em 100 e reduz:
+
+* inadimplência > 10% → -30
+* saldo negativo → -40
+* despesas > receitas → -20
+
+Classificação:
+
+> 80 excelente
+> 60 bom
+> 40 atenção
+> <40 crítico
+
+────────────────────────
+
+4. INTEGRAÇÃO COM IA
+
+Após calcular indicadores:
+
+Chamar:
+
+POST /api/sindico/chat
+
+Enviar:
+
+{
+tipo: "financeiro",
+saldo: valor,
+inadimplencia: percentual,
+score: numero
+}
+
+IA deve retornar:
+
+* análise financeira
+* riscos
+* recomendações
+
+Salvar resposta em insights
+
+────────────────────────
+
+5. FRONTEND (REACT)
+
+Criar página:
+
+/financeiro/dashboard.jsx
+
+Componentes:
+
+* CardSaldo
+* CardInadimplencia
+* ScoreFinanceiro
+* GraficoFluxo
+* GraficoCategorias
+* PrevisaoCards
+* ListaReceitas
+* ListaDespesas
+
+────────────────────────
+
+6. DESIGN
+
+Tema dark:
+
+bg: #0B0F1A
+cards: #121826
+borda: #1F2A3A
+texto: #E6EDF3
+
+cores:
+
+verde → positivo
+vermelho → negativo
+azul → receita
+laranja → despesa
+
+────────────────────────
+
+7. GRÁFICOS
+
+* Doughnut → categorias
+* Line → fluxo de caixa
+* Cards → previsão 3 meses
+
+────────────────────────
+
+8. MOBILE
+
+Criar card:
+
+"Saúde Financeira"
+
+Mostrar:
+
+score
+saldo
+risco
+
+────────────────────────
+
+OBJETIVO FINAL:
+
+Criar um sistema financeiro inteligente que:
+
+* analisa automaticamente
+* prevê o futuro financeiro
+* gera insights com IA
+* exibe dados de forma visual moderna
+
+Integrado totalmente ao ImobCore OS.

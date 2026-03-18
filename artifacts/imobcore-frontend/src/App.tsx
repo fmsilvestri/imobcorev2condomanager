@@ -9,6 +9,9 @@ interface Reservatorio { id: string; sensor_id: string; nome: string; local: str
 interface Alerta { id: string; origem: string; titulo: string; descricao?: string; tipo: string; nivel: string; cidade: string; bairro: string }
 interface Receita { id: string; descricao: string; valor: number; categoria: string; status: string; created_at?: string }
 interface Despesa { id: string; descricao: string; valor: number; categoria: string; fornecedor?: string; created_at?: string }
+interface Lancamento { id: string; condominio_id?: string; tipo: "receita"|"despesa"; categoria: string; subcategoria?: string; descricao: string; valor: number; data: string; competencia?: string; status: "previsto"|"pago"|"atrasado"; created_at?: string }
+interface OrcamentoEntry { id: string; categoria: string; mes: number; valor_previsto: number; valor_real: number }
+interface FinanceiroInsight { score: number; inadimplencia: number; saldo: number; risco: string; analise: string; riscos: string; recomendacoes: string; gerado_em: string }
 interface Comunicado { id: string; titulo: string; corpo: string; gerado_por_ia: boolean; created_at: string }
 interface ChatMsg { role: "user" | "ai"; content: string; time: string }
 interface PiscinaLeitura { id: string; condominio_id: string; ph: number; cloro: number; temperatura?: number; alcalinidade?: number; dureza_calcica?: number; status: "ok" | "alerta"; observacoes?: string; created_at: string; }
@@ -1172,6 +1175,73 @@ export default function App() {
   const [cfTestLog, setCfTestLog] = useState<{id:string; ok:boolean; status:number; ts:string}[]>([]);
   const [whTestLog, setWhTestLog] = useState<{id:string; ok:boolean; status:number; ts:string}[]>([]);
 
+  // ── FINANCEIRO INTELIGENTE ──────────────────────────────────────────────────
+  type FinTab = "dashboard"|"lancamentos"|"orcamento"|"previsao"|"insights";
+  const [finTab, setFinTab] = useState<FinTab>("dashboard");
+  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
+  const [orcamento, setOrcamento] = useState<OrcamentoEntry[]>([]);
+  const [finInsight, setFinInsight] = useState<FinanceiroInsight|null>(null);
+  const [finInsightLoading, setFinInsightLoading] = useState(false);
+  const [finLancFilter, setFinLancFilter] = useState<{tipo:""|"receita"|"despesa"; mes:string; cat:string}>({ tipo:"", mes:"", cat:"" });
+  const [finModal, setFinModal] = useState<{open:boolean; editing:Lancamento|null}>({ open:false, editing:null });
+  const [finForm, setFinForm] = useState<Partial<Lancamento>>({ tipo:"receita", status:"previsto", categoria:"", descricao:"", valor:0, data: new Date().toISOString().slice(0,10) });
+  const [finSaving, setFinSaving] = useState(false);
+
+  const finFetchLancamentos = useCallback(async () => {
+    try {
+      const cid = dash?.condominios?.[0]?.id;
+      const q = cid ? `?condominio_id=${cid}` : "";
+      const r = await fetch(`/api/financeiro/lancamentos${q}`);
+      if (r.ok) setLancamentos(await r.json());
+    } catch {}
+  }, [dash]);
+
+  const finFetchOrcamento = useCallback(async () => {
+    try {
+      const cid = dash?.condominios?.[0]?.id;
+      const q = cid ? `?condominio_id=${cid}&ano=${new Date().getFullYear()}` : `?ano=${new Date().getFullYear()}`;
+      const r = await fetch(`/api/financeiro/orcamento${q}`);
+      if (r.ok) setOrcamento(await r.json());
+    } catch {}
+  }, [dash]);
+
+  useEffect(() => { if (panel === "financeiro") { finFetchLancamentos(); finFetchOrcamento(); } }, [panel, finFetchLancamentos, finFetchOrcamento]);
+
+  const finSalvarLancamento = async () => {
+    if (!finForm.descricao || !finForm.valor || !finForm.data) return;
+    setFinSaving(true);
+    try {
+      const cid = dash?.condominios?.[0]?.id;
+      const payload = { ...finForm, condominio_id: cid };
+      let r: Response;
+      if (finModal.editing) {
+        r = await fetch(`/api/financeiro/lancamentos/${finModal.editing.id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+      } else {
+        r = await fetch("/api/financeiro/lancamentos", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+      }
+      if (r.ok) { setFinModal({open:false,editing:null}); finFetchLancamentos(); showToast("Lançamento salvo!", "success"); }
+      else showToast("Erro ao salvar", "warn");
+    } catch { showToast("Erro ao salvar", "warn"); }
+    setFinSaving(false);
+  };
+
+  const finDeletarLancamento = async (id: string) => {
+    if (!confirm("Remover este lançamento?")) return;
+    const r = await fetch(`/api/financeiro/lancamentos/${id}`, { method:"DELETE" });
+    if (r.ok) { finFetchLancamentos(); showToast("Removido", "success"); }
+  };
+
+  const finGerarInsights = async () => {
+    setFinInsightLoading(true);
+    try {
+      const cid = dash?.condominios?.[0]?.id;
+      const r = await fetch("/api/financeiro/insights", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id: cid }) });
+      if (r.ok) setFinInsight(await r.json());
+      else showToast("Erro ao gerar insights", "warn");
+    } catch { showToast("Erro ao gerar insights", "warn"); }
+    setFinInsightLoading(false);
+  };
+
   const resTestCFById = async (r: Reservatorio) => {
     setResPerTesting(p => ({ ...p, [r.id]: { cf: true, wh: p[r.id]?.wh ?? false } }));
     try {
@@ -1472,6 +1542,7 @@ export default function App() {
       const cid = forCondId ?? condIdRef.current;
       const url = cid ? `/api/dashboard?condominio_id=${cid}` : "/api/dashboard";
       const r = await fetch(url);
+      if (!r.ok) { console.warn("dashboard fetch status:", r.status); return; }
       const d: Dashboard = await r.json();
       setDash(d);
       if (forCondId) {
@@ -5082,9 +5153,87 @@ export default function App() {
             })()}
           </div>
 
+          {/* ══════════════════════════════════════════════════════════════
+              MODAL: LANÇAMENTO FINANCEIRO
+          ══════════════════════════════════════════════════════════════ */}
+          {finModal.open && (
+            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:4000 }}>
+              <div style={{ background:"#121826", border:"1px solid rgba(255,255,255,.1)", borderRadius:16, padding:28, width:480, maxWidth:"95vw" }}>
+                <div style={{ fontSize:16, fontWeight:800, marginBottom:20, color:"#E2E8F0" }}>
+                  {finModal.editing ? "✏️ Editar Lançamento" : "➕ Novo Lançamento"}
+                </div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                  <div>
+                    <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Tipo *</div>
+                    <select value={finForm.tipo||"receita"} onChange={e=>setFinForm(f=>({...f,tipo:e.target.value as "receita"|"despesa"}))}
+                      style={{ width:"100%", background:"#0B0F1A", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:12 }}>
+                      <option value="receita">📈 Receita</option>
+                      <option value="despesa">📉 Despesa</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Status *</div>
+                    <select value={finForm.status||"previsto"} onChange={e=>setFinForm(f=>({...f,status:e.target.value as "previsto"|"pago"|"atrasado"}))}
+                      style={{ width:"100%", background:"#0B0F1A", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:12 }}>
+                      <option value="previsto">⏳ Previsto</option>
+                      <option value="pago">✅ Pago/Recebido</option>
+                      <option value="atrasado">🔴 Atrasado</option>
+                    </select>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Categoria *</div>
+                    <input value={finForm.categoria||""} onChange={e=>setFinForm(f=>({...f,categoria:e.target.value}))}
+                      list="fin-cats"
+                      style={{ width:"100%", background:"#0B0F1A", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}
+                      placeholder="ex: taxa condominial" />
+                    <datalist id="fin-cats">
+                      {["taxa condominial","fundo reserva","água","energia","gás","limpeza","segurança","manutenção","administração","seguro","obras","outros"].map(c=><option key={c} value={c}/>)}
+                    </datalist>
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Subcategoria</div>
+                    <input value={finForm.subcategoria||""} onChange={e=>setFinForm(f=>({...f,subcategoria:e.target.value}))}
+                      style={{ width:"100%", background:"#0B0F1A", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}
+                      placeholder="detalhe (opcional)" />
+                  </div>
+                  <div style={{ gridColumn:"1/-1" }}>
+                    <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Descrição *</div>
+                    <input value={finForm.descricao||""} onChange={e=>setFinForm(f=>({...f,descricao:e.target.value}))}
+                      style={{ width:"100%", background:"#0B0F1A", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}
+                      placeholder="ex: Taxa condominial Março/2026" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Valor (R$) *</div>
+                    <input type="number" step="0.01" min="0" value={finForm.valor||""} onChange={e=>setFinForm(f=>({...f,valor:Number(e.target.value)}))}
+                      style={{ width:"100%", background:"#0B0F1A", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}
+                      placeholder="0,00" />
+                  </div>
+                  <div>
+                    <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Data *</div>
+                    <input type="date" value={finForm.data||""} onChange={e=>setFinForm(f=>({...f,data:e.target.value}))}
+                      style={{ width:"100%", background:"#0B0F1A", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }} />
+                  </div>
+                  <div style={{ gridColumn:"1/-1" }}>
+                    <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Competência (mês de referência)</div>
+                    <input type="month" value={finForm.competencia||""} onChange={e=>setFinForm(f=>({...f,competencia:e.target.value}))}
+                      style={{ width:"100%", background:"#0B0F1A", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }} />
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+                  <button onClick={()=>setFinModal({open:false,editing:null})} style={{ padding:"8px 18px", borderRadius:8, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                  <button onClick={finSalvarLancamento} disabled={finSaving}
+                    style={{ padding:"8px 22px", borderRadius:8, background: finForm.tipo==="receita" ? "#06B6D4" : "#EF4444", border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", opacity:finSaving?.7:1 }}>
+                    {finSaving ? "⏳ Salvando..." : "Salvar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* PANEL: FINANCEIRO */}
           <div className={`panel ${panel === "financeiro" ? "active" : ""}`}>
             {(() => {
+              // ── dados legados do dashboard ──
               const receitas = dash?.receitas || [];
               const despesas = dash?.despesas || [];
               const saldo = t?.saldo || 0;
@@ -5151,27 +5300,117 @@ export default function App() {
 
               const fmtK = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v}`;
 
+              // ── Cats para autocomplete nos lançamentos ──
+              const allCats = Array.from(new Set(lancamentos.map(l => l.categoria).filter(Boolean)));
+              // ── lançamentos filtrados ──
+              const lancFiltrados = lancamentos.filter(l => {
+                if (finLancFilter.tipo && l.tipo !== finLancFilter.tipo) return false;
+                if (finLancFilter.cat && l.categoria !== finLancFilter.cat) return false;
+                if (finLancFilter.mes && !(l.data || "").startsWith(finLancFilter.mes)) return false;
+                return true;
+              });
+              // ── totais dos lançamentos ──
+              const lancRec = lancamentos.filter(l => l.tipo === "receita").reduce((s, l) => s + Number(l.valor), 0);
+              const lancDesp = lancamentos.filter(l => l.tipo === "despesa").reduce((s, l) => s + Number(l.valor), 0);
+              const lancSaldo = lancRec - lancDesp;
+              const lancInad = lancamentos.filter(l => l.tipo === "receita" && l.status === "atrasado").reduce((s, l) => s + Number(l.valor), 0);
+              const lancTxInad = lancRec > 0 ? Math.round((lancInad / lancRec) * 100) : 0;
+              // ── cats de despesas para orçamento ──
+              const despCatMap: Record<string, number> = {};
+              lancamentos.filter(l => l.tipo === "despesa").forEach(l => { despCatMap[l.categoria || "outros"] = (despCatMap[l.categoria || "outros"] || 0) + Number(l.valor); });
+              const despCatEntries = Object.entries(despCatMap).sort((a, b) => b[1] - a[1]);
+              // ── fluxo de caixa (lançamentos) ──
+              const now3 = new Date();
+              const fluxoMap: Record<string, { rec: number; desp: number }> = {};
+              for (let i = 5; i >= 0; i--) {
+                const dt = new Date(now3.getFullYear(), now3.getMonth() - i, 1);
+                const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+                fluxoMap[key] = { rec: 0, desp: 0 };
+              }
+              lancamentos.forEach(l => {
+                const key = (l.data || "").slice(0, 7);
+                if (fluxoMap[key]) { if (l.tipo === "receita") fluxoMap[key].rec += Number(l.valor); else fluxoMap[key].desp += Number(l.valor); }
+              });
+              const fluxoData = Object.entries(fluxoMap).map(([m, v]) => ({
+                mes: m.slice(5) + "/" + m.slice(2, 4),
+                Receitas: Math.round(v.rec), Despesas: Math.round(v.desp), Resultado: Math.round(v.rec - v.desp),
+              }));
+              // ── projeção 3 meses (lançamentos) ──
+              const last3Lanc = fluxoData.slice(-3);
+              const avgRecLanc = last3Lanc.length ? last3Lanc.reduce((s, m) => s + m.Receitas, 0) / last3Lanc.length : avgRec ?? 0;
+              const avgDespLanc = last3Lanc.length ? last3Lanc.reduce((s, m) => s + m.Despesas, 0) / last3Lanc.length : avgDesp ?? 0;
+              let saldoProj2 = lancSaldo;
+              const projLanc = [1, 2, 3].map(i => {
+                const dt = new Date(now3.getFullYear(), now3.getMonth() + i, 1);
+                saldoProj2 += avgRecLanc - avgDespLanc;
+                return { mes: `${String(dt.getMonth() + 1).padStart(2, "0")}/${String(dt.getFullYear()).slice(2)} ▸`, Receitas: Math.round(avgRecLanc), Despesas: Math.round(avgDespLanc), SaldoProjetado: Math.round(saldoProj2) };
+              });
+
+              // ── status colors ──
+              const stColor = (s: string) => s === "pago" ? "#10B981" : s === "atrasado" ? "#EF4444" : "#F59E0B";
+              const stBg = (s: string) => s === "pago" ? "rgba(16,185,129,.15)" : s === "atrasado" ? "rgba(239,68,68,.12)" : "rgba(245,158,11,.12)";
+              const fmtK2 = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${Math.round(v)}`;
+
+              // ── FIN TAB BUTTON ──
+              const ftBtn = (id: FinTab, icon: string, label: string, col: string) => (
+                <button key={id} onClick={() => setFinTab(id)} style={{
+                  padding:"10px 16px", borderRadius:10, border:"none", cursor:"pointer", fontFamily:"inherit",
+                  background: finTab === id ? col : "rgba(255,255,255,.03)",
+                  color: finTab === id ? "#fff" : col,
+                  fontSize:11, fontWeight:700, display:"flex", flexDirection:"column" as const, alignItems:"center", gap:4,
+                  outline: finTab !== id ? "1px solid rgba(255,255,255,.07)" : "none",
+                }}>
+                  <span style={{ fontSize:18 }}>{icon}</span>
+                  <span>{label}</span>
+                </button>
+              );
+
               return (
-                <>
-                  {/* ── KPI Cards ── */}
-                  <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+                <div style={{ padding:20 }}>
+                  {/* ── Header ── */}
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+                    <div>
+                      <div style={{ fontSize:22, fontWeight:800, marginBottom:2 }}>💰 Financeiro Inteligente</div>
+                      <div style={{ fontSize:12, color:"#475569" }}>Gestão financeira · Fluxo de caixa · Previsões · Insights IA</div>
+                    </div>
+                    <button onClick={() => { setFinForm({ tipo:"receita", status:"previsto", categoria:"", descricao:"", valor:0, data: new Date().toISOString().slice(0,10) }); setFinModal({open:true,editing:null}); }}
+                      style={{ background:"#06B6D4", border:"none", borderRadius:8, padding:"9px 18px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                      + Novo Lançamento
+                    </button>
+                  </div>
+
+                  {/* ── KPI topo ── */}
+                  <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" as const }}>
                     {[
-                      { label: "Saldo em Caixa", val: fmtBRLFull(saldo), color: saldo >= 0 ? "#10B981" : "#EF4444", icon: "💰" },
-                      { label: "Receitas (total)", val: fmtBRLFull(totalRec), color: "#06B6D4", icon: "📈" },
-                      { label: "Despesas (total)", val: fmtBRLFull(totalDesp), color: "#EF4444", icon: "📉" },
-                      { label: "Resultado", val: fmtBRLFull(resultado), color: resultado >= 0 ? "#10B981" : "#EF4444", icon: resultado >= 0 ? "✅" : "⚠️" },
+                      { label:"Saldo Total", val: fmtBRLFull(lancamentos.length > 0 ? lancSaldo : saldo), color: (lancamentos.length > 0 ? lancSaldo : saldo) >= 0 ? "#10B981" : "#EF4444", icon:"💰", sub: lancamentos.length > 0 ? "via lançamentos" : "via dashboard" },
+                      { label:"Receitas", val: fmtBRLFull(lancamentos.length > 0 ? lancRec : totalRec), color:"#06B6D4", icon:"📈", sub: `${lancamentos.filter(l=>l.tipo==="receita").length || receitas.length} lançamentos` },
+                      { label:"Despesas", val: fmtBRLFull(lancamentos.length > 0 ? lancDesp : totalDesp), color:"#EF4444", icon:"📉", sub: `${lancamentos.filter(l=>l.tipo==="despesa").length || despesas.length} lançamentos` },
+                      { label:"Inadimplência", val: `${lancamentos.length > 0 ? lancTxInad : txInad}%`, color: (lancamentos.length > 0 ? lancTxInad : txInad) <= 5 ? "#10B981" : "#EF4444", icon:"⚠️", sub: lancamentos.length > 0 ? fmtBRLFull(lancInad) + " em aberto" : fmtBRLFull(vlrInad) + " em aberto" },
                     ].map(k => (
-                      <div key={k.label} style={{ flex: 1, minWidth: 160, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "12px 16px" }}>
-                        <div style={{ fontSize: 10, color: "#475569", marginBottom: 4 }}>{k.icon} {k.label.toUpperCase()}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: k.color }}>{k.val}</div>
+                      <div key={k.label} style={{ flex:1, minWidth:150, background:"#121826", border:`1px solid rgba(255,255,255,.06)`, borderRadius:12, padding:"14px 16px", borderLeft:`3px solid ${k.color}` }}>
+                        <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.icon} {k.label.toUpperCase()}</div>
+                        <div style={{ fontSize:20, fontWeight:800, color:k.color }}>{k.val}</div>
+                        <div style={{ fontSize:10, color:"#334155", marginTop:3 }}>{k.sub}</div>
                       </div>
                     ))}
                   </div>
 
+                  {/* ── Tab bar ── */}
+                  <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" as const }}>
+                    {ftBtn("dashboard",   "📊", "Dashboard",   "#6366F1")}
+                    {ftBtn("lancamentos", "📋", "Lançamentos", "#06B6D4")}
+                    {ftBtn("orcamento",   "🗓️",  "Orçamento",   "#10B981")}
+                    {ftBtn("previsao",    "🔮", "Previsão",    "#8B5CF6")}
+                    {ftBtn("insights",    "🤖", "Insights IA", "#F59E0B")}
+                  </div>
+
+                  {/* ══════════════ ABA: DASHBOARD ══════════════ */}
+                  {finTab === "dashboard" && (<>
+
                   {/* ── Score + Inadimplência ── */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
                     {/* Score */}
-                    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px 20px" }}>
+                    <div style={{ background: "#121826", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px 20px" }}>
                       <div style={{ fontSize: 11, color: "#475569", marginBottom: 10 }}>💚 SAÚDE FINANCEIRA</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                         <div style={{ position: "relative", width: 72, height: 72 }}>
@@ -5195,7 +5434,7 @@ export default function App() {
                     </div>
 
                     {/* Inadimplência */}
-                    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px 20px" }}>
+                    <div style={{ background: "#121826", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px 20px" }}>
                       <div style={{ fontSize: 11, color: "#475569", marginBottom: 10 }}>⚠️ INADIMPLÊNCIA</div>
                       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
                         <div style={{ fontSize: 28, fontWeight: 800, color: txInad <= 5 ? "#10B981" : txInad <= 15 ? "#F59E0B" : "#EF4444" }}>{txInad}%</div>
@@ -5312,7 +5551,272 @@ export default function App() {
                       ))}
                     </div>
                   </div>
-                </>
+
+                  </>)} {/* /finTab === dashboard */}
+
+                  {/* ══════════════ ABA: LANÇAMENTOS ══════════════ */}
+                  {finTab === "lancamentos" && (
+                    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+                      {/* Filtros */}
+                      <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const, alignItems:"center" }}>
+                        <select value={finLancFilter.tipo} onChange={e=>setFinLancFilter(f=>({...f,tipo:e.target.value as ""| "receita"|"despesa"}))}
+                          style={{ background:"#121826", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 12px", color:"#E2E8F0", fontSize:11, cursor:"pointer" }}>
+                          <option value="">📋 Todos tipos</option>
+                          <option value="receita">📈 Receitas</option>
+                          <option value="despesa">📉 Despesas</option>
+                        </select>
+                        <input type="month" value={finLancFilter.mes} onChange={e=>setFinLancFilter(f=>({...f,mes:e.target.value}))}
+                          style={{ background:"#121826", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 12px", color:"#E2E8F0", fontSize:11 }} />
+                        <select value={finLancFilter.cat} onChange={e=>setFinLancFilter(f=>({...f,cat:e.target.value}))}
+                          style={{ background:"#121826", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 12px", color:"#E2E8F0", fontSize:11, cursor:"pointer" }}>
+                          <option value="">🏷️ Todas categorias</option>
+                          {allCats.map(c=><option key={c} value={c}>{c}</option>)}
+                        </select>
+                        {(finLancFilter.tipo || finLancFilter.mes || finLancFilter.cat) && (
+                          <button onClick={()=>setFinLancFilter({tipo:"",mes:"",cat:""})}
+                            style={{ padding:"7px 12px", borderRadius:8, background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.25)", color:"#FCA5A5", fontSize:11, cursor:"pointer" }}>
+                            ✕ Limpar
+                          </button>
+                        )}
+                        <span style={{ marginLeft:"auto", fontSize:11, color:"#475569" }}>{lancFiltrados.length} lançamentos</span>
+                      </div>
+
+                      {/* Totais filtrados */}
+                      {lancFiltrados.length > 0 && (() => {
+                        const fr = lancFiltrados.filter(l=>l.tipo==="receita").reduce((s,l)=>s+Number(l.valor),0);
+                        const fd = lancFiltrados.filter(l=>l.tipo==="despesa").reduce((s,l)=>s+Number(l.valor),0);
+                        return (
+                          <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const }}>
+                            <div style={{ padding:"6px 14px", borderRadius:8, background:"rgba(6,182,212,.1)", border:"1px solid rgba(6,182,212,.2)", fontSize:11, color:"#67E8F9" }}>📈 Receitas: {fmtBRLFull(fr)}</div>
+                            <div style={{ padding:"6px 14px", borderRadius:8, background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", fontSize:11, color:"#FCA5A5" }}>📉 Despesas: {fmtBRLFull(fd)}</div>
+                            <div style={{ padding:"6px 14px", borderRadius:8, background:(fr-fd)>=0?"rgba(16,185,129,.1)":"rgba(239,68,68,.1)", border:`1px solid ${(fr-fd)>=0?"rgba(16,185,129,.25)":"rgba(239,68,68,.25)"}`, fontSize:11, color:(fr-fd)>=0?"#6EE7B7":"#FCA5A5" }}>💰 Saldo: {fmtBRLFull(fr-fd)}</div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Tabela de lançamentos */}
+                      {lancFiltrados.length === 0 ? (
+                        <div style={{ textAlign:"center", padding:40, color:"#334155", fontSize:13 }}>
+                          <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
+                          <div>Nenhum lançamento encontrado</div>
+                          <div style={{ fontSize:11, marginTop:6, color:"#475569" }}>Clique em "Novo Lançamento" para adicionar</div>
+                        </div>
+                      ) : (
+                        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                          {lancFiltrados.map(l => {
+                            const isRec = l.tipo === "receita";
+                            const sc = stColor(l.status);
+                            const sbg = stBg(l.status);
+                            return (
+                              <div key={l.id} style={{ display:"flex", alignItems:"center", gap:12, background:"#121826", border:`1px solid rgba(255,255,255,.06)`, borderRadius:10, padding:"10px 14px", borderLeft:`3px solid ${isRec?"#06B6D4":"#EF4444"}` }}>
+                                <div style={{ width:32, height:32, borderRadius:8, background:isRec?"rgba(6,182,212,.15)":"rgba(239,68,68,.12)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
+                                  {isRec ? "📈" : "📉"}
+                                </div>
+                                <div style={{ flex:1, minWidth:0 }}>
+                                  <div style={{ fontSize:12, fontWeight:600, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{l.descricao}</div>
+                                  <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>{l.categoria}{l.subcategoria ? ` › ${l.subcategoria}` : ""} · {l.data}</div>
+                                </div>
+                                <div style={{ fontSize:14, fontWeight:800, color:isRec?"#06B6D4":"#EF4444", whiteSpace:"nowrap" as const }}>{isRec?"+":"-"}{fmtBRLFull(Number(l.valor))}</div>
+                                <span style={{ fontSize:9, fontWeight:800, padding:"2px 7px", borderRadius:5, background:sbg, color:sc, border:`1px solid ${sc}44`, whiteSpace:"nowrap" as const }}>
+                                  {l.status === "pago" ? "✓ PAGO" : l.status === "atrasado" ? "⚠ ATRASADO" : "⏳ PREVISTO"}
+                                </span>
+                                <div style={{ display:"flex", gap:4 }}>
+                                  <button onClick={()=>{ setFinForm({...l}); setFinModal({open:true,editing:l}); }}
+                                    style={{ padding:"4px 8px", borderRadius:6, background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)", color:"#A5B4FC", fontSize:10, cursor:"pointer" }}>✏️</button>
+                                  <button onClick={()=>finDeletarLancamento(l.id)}
+                                    style={{ padding:"4px 8px", borderRadius:6, background:"rgba(239,68,68,.08)", border:"1px solid rgba(239,68,68,.2)", color:"#FCA5A5", fontSize:10, cursor:"pointer" }}>🗑️</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ══════════════ ABA: ORÇAMENTO ══════════════ */}
+                  {finTab === "orcamento" && (
+                    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                      <div style={{ fontSize:12, color:"#475569" }}>Comparativo previsto × realizado por categoria — {new Date().getFullYear()}</div>
+                      {despCatEntries.length === 0 && orcamento.length === 0 ? (
+                        <div style={{ textAlign:"center", padding:40, color:"#334155" }}>
+                          <div style={{ fontSize:32 }}>📭</div>
+                          <div style={{ marginTop:10, fontSize:13 }}>Sem dados de orçamento</div>
+                          <div style={{ fontSize:11, color:"#475569", marginTop:6 }}>Adicione lançamentos de despesa para ver o comparativo</div>
+                        </div>
+                      ) : (
+                        <>
+                          {/* BarChart: previsto vs. real */}
+                          {despCatEntries.length > 0 && (
+                            <div style={{ background:"#121826", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:16 }}>
+                              <div style={{ fontSize:11, color:"#475569", marginBottom:12 }}>🗓️ DESPESAS REAIS POR CATEGORIA</div>
+                              <ResponsiveContainer width="100%" height={220}>
+                                <BarChart data={despCatEntries.map(([cat, val]) => {
+                                  const orçEntry = orcamento.find(o => o.categoria === cat);
+                                  return { cat, Real: Math.round(val), Previsto: orçEntry ? Math.round(orçEntry.valor_previsto) : 0 };
+                                })} margin={{ top:4, right:10, bottom:30, left:0 }}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
+                                  <XAxis dataKey="cat" tick={{ fontSize:9, fill:"#475569" }} angle={-25} textAnchor="end" interval={0} />
+                                  <YAxis tick={{ fontSize:10, fill:"#475569" }} tickFormatter={fmtK2} width={48} />
+                                  <Tooltip formatter={(v: number) => fmtBRLFull(v)} contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} />
+                                  <Legend wrapperStyle={{ fontSize:10, color:"#475569" }} />
+                                  <Bar dataKey="Real" fill="#EF4444" radius={[4,4,0,0]} />
+                                  <Bar dataKey="Previsto" fill="#6366F1" radius={[4,4,0,0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          )}
+                          {/* Tabela detalhada */}
+                          <div style={{ background:"#121826", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:16 }}>
+                            <div style={{ fontSize:11, color:"#475569", marginBottom:12 }}>📊 DETALHAMENTO POR CATEGORIA</div>
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", gap:"6px 16px", alignItems:"center" }}>
+                              <div style={{ fontSize:10, color:"#334155", fontWeight:700 }}>Categoria</div>
+                              <div style={{ fontSize:10, color:"#334155", fontWeight:700, textAlign:"right" as const }}>Previsto</div>
+                              <div style={{ fontSize:10, color:"#334155", fontWeight:700, textAlign:"right" as const }}>Real</div>
+                              <div style={{ fontSize:10, color:"#334155", fontWeight:700, textAlign:"right" as const }}>Δ</div>
+                              {despCatEntries.map(([cat, real]) => {
+                                const orcEntry = orcamento.find(o => o.categoria === cat);
+                                const prev = orcEntry ? Number(orcEntry.valor_previsto) : 0;
+                                const diff = real - prev;
+                                return [
+                                  <div key={`${cat}-n`} style={{ fontSize:12, color:"#E2E8F0" }}>{cat}</div>,
+                                  <div key={`${cat}-p`} style={{ fontSize:12, color:"#6366F1", textAlign:"right" as const }}>{prev > 0 ? fmtBRLFull(prev) : "—"}</div>,
+                                  <div key={`${cat}-r`} style={{ fontSize:12, color:"#EF4444", textAlign:"right" as const }}>{fmtBRLFull(real)}</div>,
+                                  <div key={`${cat}-d`} style={{ fontSize:12, color: prev === 0 ? "#475569" : diff > 0 ? "#EF4444" : "#10B981", textAlign:"right" as const }}>{prev > 0 ? (diff > 0 ? `+${fmtBRLFull(diff)}` : fmtBRLFull(diff)) : "—"}</div>,
+                                ];
+                              })}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ══════════════ ABA: PREVISÃO ══════════════ */}
+                  {finTab === "previsao" && (
+                    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                      <div style={{ fontSize:12, color:"#475569" }}>Projeção baseada na média dos últimos 3 meses · usando lançamentos cadastrados</div>
+
+                      {/* Cards 3 meses */}
+                      <div style={{ display:"flex", gap:12, flexWrap:"wrap" as const }}>
+                        {projLanc.map((p, i) => (
+                          <div key={i} style={{ flex:1, minWidth:180, background:"#121826", border:"1px solid rgba(99,102,241,.2)", borderRadius:12, padding:"16px 18px" }}>
+                            <div style={{ fontSize:11, color:"#6366F1", fontWeight:700, marginBottom:10 }}>{p.mes}</div>
+                            <div style={{ fontSize:12, color:"#06B6D4", marginBottom:4 }}>📈 Rec. prev. {fmtBRLFull(p.Receitas)}</div>
+                            <div style={{ fontSize:12, color:"#EF4444", marginBottom:10 }}>📉 Desp. prev. {fmtBRLFull(p.Despesas)}</div>
+                            <div style={{ height:1, background:"rgba(255,255,255,.06)", marginBottom:10 }} />
+                            <div style={{ fontSize:16, fontWeight:800, color:p.SaldoProjetado>=0?"#10B981":"#EF4444" }}>
+                              {p.SaldoProjetado>=0?"✅":"⚠️"} {fmtBRLFull(p.SaldoProjetado)}
+                            </div>
+                            <div style={{ fontSize:10, color:"#334155", marginTop:4 }}>saldo projetado</div>
+                          </div>
+                        ))}
+                        {projLanc.length === 0 && (
+                          <div style={{ flex:1, textAlign:"center", padding:40, color:"#334155", fontSize:13 }}>
+                            <div style={{ fontSize:32 }}>🔮</div>
+                            <div style={{ marginTop:10 }}>Sem dados para projeção</div>
+                            <div style={{ fontSize:11, color:"#475569", marginTop:6 }}>Cadastre lançamentos com data para gerar previsão</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Fluxo de caixa dos lançamentos */}
+                      {fluxoData.some(d => d.Receitas > 0 || d.Despesas > 0) && (
+                        <div style={{ background:"#121826", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:16 }}>
+                          <div style={{ fontSize:11, color:"#475569", marginBottom:12 }}>📊 FLUXO DE CAIXA — ÚLTIMOS 6 MESES (lançamentos)</div>
+                          <ResponsiveContainer width="100%" height={200}>
+                            <LineChart data={fluxoData} margin={{ top:4, right:10, bottom:4, left:0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
+                              <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false} tickFormatter={fmtK2} width={50} />
+                              <Tooltip formatter={(v: number) => fmtBRLFull(v)} contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} />
+                              <Legend wrapperStyle={{ fontSize:10, color:"#475569" }} />
+                              <Line type="monotone" dataKey="Receitas" stroke="#06B6D4" strokeWidth={2} dot={{ r:3, fill:"#06B6D4" }} />
+                              <Line type="monotone" dataKey="Despesas" stroke="#EF4444" strokeWidth={2} dot={{ r:3, fill:"#EF4444" }} />
+                              <Line type="monotone" dataKey="Resultado" stroke="#10B981" strokeWidth={2} strokeDasharray="5 3" dot={{ r:2, fill:"#10B981" }} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                          <div style={{ fontSize:10, color:"#334155", marginTop:8 }}>
+                            Média: receitas {fmtBRLFull(Math.round(avgRecLanc))}/mês · despesas {fmtBRLFull(Math.round(avgDespLanc))}/mês
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ══════════════ ABA: INSIGHTS IA ══════════════ */}
+                  {finTab === "insights" && (
+                    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                      {/* Trigger button */}
+                      <div style={{ background:"linear-gradient(135deg, rgba(245,158,11,.08), rgba(251,191,36,.05))", border:"1px solid rgba(245,158,11,.2)", borderRadius:14, padding:"20px 22px", display:"flex", alignItems:"center", gap:16 }}>
+                        <div style={{ fontSize:40 }}>🤖</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:14, fontWeight:800, color:"#FCD34D" }}>Síndico Virtual — Análise Financeira</div>
+                          <div style={{ fontSize:12, color:"#475569", marginTop:4 }}>Análise automática com IA baseada nos seus lançamentos: score, riscos e recomendações personalizadas</div>
+                        </div>
+                        <button onClick={finGerarInsights} disabled={finInsightLoading}
+                          style={{ padding:"10px 22px", borderRadius:10, background: finInsightLoading ? "rgba(245,158,11,.2)" : "#F59E0B", border:"none", color: finInsightLoading ? "#FCD34D" : "#000", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" as const, opacity:finInsightLoading?.8:1 }}>
+                          {finInsightLoading ? "⏳ Analisando..." : "⚡ Gerar Análise"}
+                        </button>
+                      </div>
+
+                      {/* Result */}
+                      {finInsight && (
+                        <>
+                          {/* Score card */}
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10 }}>
+                            {[
+                              { label:"Score", val:`${finInsight.score}/100`, color: finInsight.score>=80?"#10B981":finInsight.score>=60?"#F59E0B":finInsight.score>=40?"#F97316":"#EF4444", icon:"💚" },
+                              { label:"Inadimplência", val:`${finInsight.inadimplencia}%`, color: finInsight.inadimplencia<=5?"#10B981":finInsight.inadimplencia<=15?"#F59E0B":"#EF4444", icon:"⚠️" },
+                              { label:"Saldo", val:fmtBRLFull(finInsight.saldo), color: finInsight.saldo>=0?"#10B981":"#EF4444", icon:"💰" },
+                              { label:"Risco", val:finInsight.risco, color: finInsight.risco==="baixo"?"#10B981":finInsight.risco==="moderado"?"#F59E0B":finInsight.risco==="alto"?"#F97316":"#EF4444", icon:"📊" },
+                            ].map(k => (
+                              <div key={k.label} style={{ background:"#121826", border:`1px solid rgba(255,255,255,.06)`, borderRadius:10, padding:"12px 14px", borderLeft:`3px solid ${k.color}` }}>
+                                <div style={{ fontSize:10, color:"#475569" }}>{k.icon} {k.label.toUpperCase()}</div>
+                                <div style={{ fontSize:18, fontWeight:800, color:k.color, marginTop:4, textTransform:"capitalize" as const }}>{k.val}</div>
+                              </div>
+                            ))}
+                          </div>
+
+                          {/* Análise */}
+                          <div style={{ background:"rgba(245,158,11,.05)", border:"1px solid rgba(245,158,11,.15)", borderRadius:12, padding:"18px 20px" }}>
+                            <div style={{ fontSize:12, fontWeight:700, color:"#FCD34D", marginBottom:10 }}>📋 ANÁLISE GERAL</div>
+                            <div style={{ fontSize:13, color:"#CBD5E1", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>{finInsight.analise}</div>
+                          </div>
+
+                          {/* Riscos */}
+                          {finInsight.riscos && (
+                            <div style={{ background:"rgba(239,68,68,.05)", border:"1px solid rgba(239,68,68,.15)", borderRadius:12, padding:"18px 20px" }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:"#FCA5A5", marginBottom:10 }}>🚨 RISCOS IDENTIFICADOS</div>
+                              <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finInsight.riscos}</div>
+                            </div>
+                          )}
+
+                          {/* Recomendações */}
+                          {finInsight.recomendacoes && (
+                            <div style={{ background:"rgba(16,185,129,.05)", border:"1px solid rgba(16,185,129,.15)", borderRadius:12, padding:"18px 20px" }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:"#6EE7B7", marginBottom:10 }}>✅ RECOMENDAÇÕES</div>
+                              <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finInsight.recomendacoes}</div>
+                            </div>
+                          )}
+
+                          <div style={{ fontSize:10, color:"#334155", textAlign:"right" as const }}>
+                            Análise gerada em {new Date(finInsight.gerado_em).toLocaleString("pt-BR")} pelo Síndico Virtual
+                          </div>
+                        </>
+                      )}
+
+                      {!finInsight && !finInsightLoading && (
+                        <div style={{ textAlign:"center", padding:40, color:"#334155", fontSize:13 }}>
+                          <div style={{ fontSize:48, marginBottom:12 }}>🤖</div>
+                          <div>Clique em "Gerar Análise" para que o Síndico Virtual avalie a saúde financeira do condomínio</div>
+                          <div style={{ fontSize:11, color:"#475569", marginTop:8 }}>Baseado nos lançamentos cadastrados · Powered by Claude AI</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                </div>
               );
             })()}
           </div>

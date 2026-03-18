@@ -512,13 +512,280 @@ router.get("/misp", async (_req: Request, res: Response) => {
   res.json(data);
 });
 
-// GET /api/financeiro - Dados financeiros
+// GET /api/financeiro - Dados financeiros (legado — mantido para dashboard)
 router.get("/financeiro", async (_req: Request, res: Response) => {
   const [{ data: receitas }, { data: despesas }] = await Promise.all([
     supabase.from("financeiro_receitas").select("*").order("created_at", { ascending: false }),
     supabase.from("financeiro_despesas").select("*").order("created_at", { ascending: false }),
   ]);
   res.json({ receitas: receitas || [], despesas: despesas || [] });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINANCEIRO INTELIGENTE — CRUD + Indicadores + IA
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Helper: calcula indicadores a partir dos lançamentos
+async function calcIndicadores(condId: string | undefined) {
+  let q = supabase.from("lancamentos_financeiros").select("*").order("data", { ascending: false });
+  if (condId) q = q.eq("condominio_id", condId);
+  const { data: lancs, error: lErr } = await q;
+  if (lErr && (lErr.message?.includes("does not exist") || lErr.message?.includes("schema cache"))) {
+    return { totalRec: 0, totalDesp: 0, saldo: 0, txInad: 0, vlrInad: 0, score: 100, risco: "baixo", all: [] };
+  }
+  const all = (lancs || []) as { tipo: string; valor: number; status: string; data: string }[];
+
+  const receitas = all.filter(l => l.tipo === "receita");
+  const despesas = all.filter(l => l.tipo === "despesa");
+  const totalRec = receitas.reduce((s, r) => s + Number(r.valor), 0);
+  const totalDesp = despesas.reduce((s, d) => s + Number(d.valor), 0);
+  const saldo = totalRec - totalDesp;
+
+  const inadimpl = receitas.filter(r => r.status === "atrasado");
+  const vlrInad = inadimpl.reduce((s, r) => s + Number(r.valor), 0);
+  const txInad = totalRec > 0 ? Math.round((vlrInad / totalRec) * 100) : 0;
+
+  // Score: começa em 100, reduz por critérios
+  let score = 100;
+  if (txInad > 10) score -= 30;
+  if (saldo < 0) score -= 40;
+  if (totalDesp > totalRec) score -= 20;
+  score = Math.max(0, score);
+
+  const risco = score >= 80 ? "baixo" : score >= 60 ? "moderado" : score >= 40 ? "alto" : "critico";
+  return { totalRec, totalDesp, saldo, txInad, vlrInad, score, risco, all };
+}
+
+// GET /api/financeiro/lancamentos
+router.get("/financeiro/lancamentos", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, tipo, mes, categoria } = req.query as Record<string, string>;
+    let q = supabase.from("lancamentos_financeiros").select("*").order("data", { ascending: false });
+    if (condominio_id) q = q.eq("condominio_id", condominio_id);
+    if (tipo && tipo !== "") q = q.eq("tipo", tipo);
+    if (categoria && categoria !== "") q = q.eq("categoria", categoria);
+    if (mes && mes !== "") { // mes = "2026-03"
+      q = q.gte("data", `${mes}-01`).lte("data", `${mes}-31`);
+    }
+    const { data, error } = await q;
+    if (error) {
+      // Graceful: table may not exist yet (migration pending)
+      if (error.message?.includes("does not exist") || error.message?.includes("schema cache")) return res.json([]);
+      return res.status(500).json({ error: error.message });
+    }
+    res.json(data || []);
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/financeiro/lancamentos
+router.post("/financeiro/lancamentos", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, tipo, categoria, subcategoria, descricao, valor, data, competencia, status } = req.body as {
+      condominio_id?: string; tipo: string; categoria: string; subcategoria?: string;
+      descricao: string; valor: number; data: string; competencia?: string; status?: string;
+    };
+    if (!tipo || !descricao || !valor || !data) return res.status(400).json({ error: "Campos obrigatórios: tipo, descricao, valor, data" });
+    const payload: Record<string, unknown> = { tipo, categoria, subcategoria, descricao, valor: Number(valor), data, status: status || "previsto" };
+    if (condominio_id) payload.condominio_id = condominio_id;
+    if (competencia) payload.competencia = competencia;
+    const { data: row, error } = await supabase.from("lancamentos_financeiros").insert(payload).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(row);
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// PUT /api/financeiro/lancamentos/:id
+router.put("/financeiro/lancamentos/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const fields = req.body as Partial<{ tipo: string; categoria: string; subcategoria: string; descricao: string; valor: number; data: string; competencia: string; status: string }>;
+    if (fields.valor) fields.valor = Number(fields.valor);
+    const { data: row, error } = await supabase.from("lancamentos_financeiros").update(fields).eq("id", id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(row);
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// DELETE /api/financeiro/lancamentos/:id
+router.delete("/financeiro/lancamentos/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabase.from("lancamentos_financeiros").delete().eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/financeiro/resumo
+router.get("/financeiro/resumo", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.query as { condominio_id?: string };
+    const ind = await calcIndicadores(condominio_id);
+    res.json({ totalRec: ind.totalRec, totalDesp: ind.totalDesp, saldo: ind.saldo, txInad: ind.txInad, vlrInad: ind.vlrInad, score: ind.score, risco: ind.risco });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/financeiro/fluxo  — últimos 6 + próximos 3 meses
+router.get("/financeiro/fluxo", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.query as { condominio_id?: string };
+    let q = supabase.from("lancamentos_financeiros").select("tipo,valor,data").order("data", { ascending: true });
+    if (condominio_id) q = q.eq("condominio_id", condominio_id);
+    const { data: lancs, error: flErr } = await q;
+    if (flErr && (flErr.message?.includes("does not exist") || flErr.message?.includes("schema cache"))) return res.json({ historico: [] });
+    const all = (lancs || []) as { tipo: string; valor: number; data: string }[];
+
+    const now = new Date();
+    const monthsMap: Record<string, { rec: number; desp: number }> = {};
+    for (let i = 5; i >= 0; i--) {
+      const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+      monthsMap[key] = { rec: 0, desp: 0 };
+    }
+    all.forEach(l => {
+      const key = (l.data || "").slice(0, 7);
+      if (monthsMap[key]) {
+        if (l.tipo === "receita") monthsMap[key].rec += Number(l.valor);
+        else monthsMap[key].desp += Number(l.valor);
+      }
+    });
+    const historico = Object.entries(monthsMap).map(([mes, v]) => ({
+      mes: mes.slice(5) + "/" + mes.slice(2, 4),
+      Receitas: Math.round(v.rec), Despesas: Math.round(v.desp), Resultado: Math.round(v.rec - v.desp),
+    }));
+    res.json({ historico });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/financeiro/previsao  — projeção 3 meses
+router.get("/financeiro/previsao", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.query as { condominio_id?: string };
+    let q = supabase.from("lancamentos_financeiros").select("tipo,valor,data").order("data", { ascending: true });
+    if (condominio_id) q = q.eq("condominio_id", condominio_id);
+    const { data: lancs, error: pvErr } = await q;
+    if (pvErr && (pvErr.message?.includes("does not exist") || pvErr.message?.includes("schema cache"))) return res.json({ avgRec: 0, avgDesp: 0, projecao: [] });
+    const all = (lancs || []) as { tipo: string; valor: number; data: string }[];
+
+    const now = new Date();
+    const monthsMap: Record<string, { rec: number; desp: number }> = {};
+    for (let i = 2; i >= 0; i--) {
+      const dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+      monthsMap[key] = { rec: 0, desp: 0 };
+    }
+    all.forEach(l => {
+      const key = (l.data || "").slice(0, 7);
+      if (monthsMap[key]) {
+        if (l.tipo === "receita") monthsMap[key].rec += Number(l.valor);
+        else monthsMap[key].desp += Number(l.valor);
+      }
+    });
+    const vals = Object.values(monthsMap);
+    const avgRec = vals.length ? vals.reduce((s, v) => s + v.rec, 0) / vals.length : 0;
+    const avgDesp = vals.length ? vals.reduce((s, v) => s + v.desp, 0) / vals.length : 0;
+
+    const { totalRec: tr, totalDesp: td } = await calcIndicadores(condominio_id);
+    let saldoProj = tr - td;
+    const projecao = [];
+    for (let i = 1; i <= 3; i++) {
+      const dt = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const label = `${String(dt.getMonth() + 1).padStart(2, "0")}/${String(dt.getFullYear()).slice(2)}`;
+      saldoProj += avgRec - avgDesp;
+      projecao.push({ mes: label, Receitas: Math.round(avgRec), Despesas: Math.round(avgDesp), SaldoProjetado: Math.round(saldoProj) });
+    }
+    res.json({ avgRec: Math.round(avgRec), avgDesp: Math.round(avgDesp), projecao });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/financeiro/orcamento
+router.get("/financeiro/orcamento", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, ano } = req.query as { condominio_id?: string; ano?: string };
+    let q = supabase.from("orcamento_anual").select("*").order("mes", { ascending: true });
+    if (condominio_id) q = q.eq("condominio_id", condominio_id);
+    if (ano) q = q.eq("ano", Number(ano));
+    const { data, error } = await q;
+    if (error) {
+      if (error.message?.includes("does not exist") || error.message?.includes("schema cache")) return res.json([]);
+      return res.status(500).json({ error: error.message });
+    }
+    res.json(data || []);
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/financeiro/orcamento
+router.post("/financeiro/orcamento", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, categoria, mes, ano, valor_previsto } = req.body as {
+      condominio_id?: string; categoria: string; mes: number; ano: number; valor_previsto: number;
+    };
+    const payload: Record<string, unknown> = { categoria, mes, ano: ano || new Date().getFullYear(), valor_previsto: Number(valor_previsto) };
+    if (condominio_id) payload.condominio_id = condominio_id;
+    const { data: existing } = await supabase.from("orcamento_anual").select("id")
+      .eq("categoria", categoria).eq("mes", mes).eq("ano", payload.ano as number).limit(1);
+    let row, error;
+    if (existing && existing.length > 0) {
+      ({ data: row, error } = await supabase.from("orcamento_anual").update({ valor_previsto: Number(valor_previsto) }).eq("id", existing[0].id).select().single());
+    } else {
+      ({ data: row, error } = await supabase.from("orcamento_anual").insert(payload).select().single());
+    }
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(row);
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/financeiro/insights  — chama Síndico Virtual IA
+router.post("/financeiro/insights", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.body as { condominio_id?: string };
+    const ind = await calcIndicadores(condominio_id);
+
+    // Compila categorias de despesas
+    const despCat: Record<string, number> = {};
+    ind.all.filter(l => l.tipo === "despesa").forEach((l: { tipo: string; valor: number; data: string; categoria?: string }) => {
+      const cat = (l as unknown as { categoria?: string }).categoria || "outros";
+      despCat[cat] = (despCat[cat] || 0) + Number(l.valor);
+    });
+    const topCats = Object.entries(despCat).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([c, v]) => `${c}: R$${v.toFixed(2)}`).join(", ");
+
+    const prompt = `Você é o Síndico Virtual do ImobCore. Analise os indicadores financeiros do condomínio e gere um relatório completo.
+
+DADOS FINANCEIROS:
+- Score de saúde financeira: ${ind.score}/100 (${ind.risco})
+- Saldo em caixa: R$ ${ind.saldo.toFixed(2)}
+- Total receitas: R$ ${ind.totalRec.toFixed(2)}
+- Total despesas: R$ ${ind.totalDesp.toFixed(2)}
+- Resultado: R$ ${(ind.totalRec - ind.totalDesp).toFixed(2)}
+- Taxa de inadimplência: ${ind.txInad}% (R$ ${ind.vlrInad.toFixed(2)} em aberto)
+- Principais categorias de despesa: ${topCats || "sem dados"}
+
+Responda com:
+1. ANÁLISE: 2-3 frases sobre a situação financeira geral
+2. RISCOS: principais riscos identificados (bullet points)
+3. RECOMENDAÇÕES: ações concretas para melhorar (bullet points)
+
+Seja objetivo, direto e use linguagem de síndico profissional.`;
+
+    const anthropic = (await import("@anthropic-ai/sdk")).default;
+    const client = new anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const msg = await client.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 800,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const text = msg.content[0].type === "text" ? msg.content[0].text : "";
+
+    // Parse sections
+    const analise = text.match(/ANÁLISE[:\s]+([\s\S]+?)(?=RISCOS|$)/i)?.[1]?.trim() || text.slice(0, 200);
+    const riscos = text.match(/RISCOS[:\s]+([\s\S]+?)(?=RECOMENDAÇÕES|$)/i)?.[1]?.trim() || "";
+    const recomendacoes = text.match(/RECOMENDAÇÕES[:\s]+([\s\S]+)/i)?.[1]?.trim() || "";
+
+    res.json({
+      score: ind.score, inadimplencia: ind.txInad, saldo: ind.saldo, risco: ind.risco,
+      analise, riscos, recomendacoes, gerado_em: new Date().toISOString(),
+    });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
 });
 
 // GET /api/comunicados - Comunicados
