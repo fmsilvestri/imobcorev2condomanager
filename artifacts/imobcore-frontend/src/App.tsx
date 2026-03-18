@@ -847,7 +847,7 @@ export default function App() {
   const loadPlanos = async (cId: string) => {
     setPlanoLoading(true);
     try {
-      const r = await fetch(`${API}/planos?condominio_id=${cId}`);
+      const r = await fetch(`/api/planos?condominio_id=${cId}`);
       const d = await r.json();
       setPlanoList(Array.isArray(d) ? d : []);
     } catch { /* ignore */ }
@@ -857,7 +857,7 @@ export default function App() {
   const planoSave = async () => {
     if (!condId || !planoForm.nome.trim()) return;
     setPlanoSaving(true);
-    const url = planoEditId ? `${API}/planos/${planoEditId}` : `${API}/planos`;
+    const url = planoEditId ? `/api/planos/${planoEditId}` : `/api/planos`;
     const method = planoEditId ? "PUT" : "POST";
     const body = planoEditId ? planoForm : { ...planoForm, condominio_id: condId };
     await fetch(url, { method, headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
@@ -870,7 +870,7 @@ export default function App() {
 
   const planoDelete = async (id: string) => {
     if (!condId) return;
-    await fetch(`${API}/planos/${id}`, { method:"DELETE" });
+    await fetch(`/api/planos/${id}`, { method:"DELETE" });
     await loadPlanos(condId);
   };
 
@@ -908,7 +908,7 @@ export default function App() {
   const loadFornecedores = async (cId: string) => {
     setFornecLoading(true);
     try {
-      const r = await fetch(`${API}/fornecedores?condominio_id=${cId}`);
+      const r = await fetch(`/api/fornecedores?condominio_id=${cId}`);
       const d = await r.json();
       setFornecList(Array.isArray(d) ? d : []);
     } catch { /* ignore */ }
@@ -919,7 +919,7 @@ export default function App() {
     if (!condId || !fornecForm.nome.trim()) return;
     setFornecSaving(true);
     try {
-      const url = fornecEditId ? `${API}/fornecedores/${fornecEditId}` : `${API}/fornecedores`;
+      const url = fornecEditId ? `/api/fornecedores/${fornecEditId}` : `/api/fornecedores`;
       const method = fornecEditId ? "PUT" : "POST";
       const body = fornecEditId ? fornecForm : { ...fornecForm, condominio_id: condId };
       await fetch(url, { method, headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
@@ -931,7 +931,7 @@ export default function App() {
 
   const fornecDelete = async (id: string) => {
     if (!condId) return;
-    await fetch(`${API}/fornecedores/${id}`, { method:"DELETE" });
+    await fetch(`/api/fornecedores/${id}`, { method:"DELETE" });
     await loadFornecedores(condId);
   };
 
