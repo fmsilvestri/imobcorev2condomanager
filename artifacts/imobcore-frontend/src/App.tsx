@@ -5279,6 +5279,17 @@ export default function App() {
                               </button>
                             )}
                             <button title="Editar dados do condomínio" onClick={() => { setObSavedCondoId(c.id); setObCondo({ nome:c.nome||"", cnpj:c.cnpj||"", endereco:c.endereco||"", cidade:c.cidade||"", estado:c.estado||"SC", sindico_nome:c.sindico_nome||"", sindico_email:c.sindico_email||"", sindico_tel:c.sindico_tel||"", unidades:String(c.total_unidades||c.unidades||84) }); setObIsReset(false); setObStep(0); setView("onboarding"); }} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#64748B", fontSize:12, cursor:"pointer" }}>✏️</button>
+                            <button title="Excluir condomínio" onClick={async () => {
+                              if (!window.confirm(`Excluir "${c.nome}" permanentemente?\n\nTodos os dados (financeiro, OS, sensores, comunicados) serão removidos. Esta ação não pode ser desfeita.`)) return;
+                              try {
+                                const r = await fetch(`/api/condominios/${c.id}`, { method: "DELETE" });
+                                const d = await r.json();
+                                if (!r.ok) { showToast("Erro ao excluir: " + d.error, "error"); return; }
+                                showToast("Condomínio excluído", "success");
+                                if (isActive) { setCondId(null); condIdRef.current = null; }
+                                await loadDashboard();
+                              } catch { showToast("Erro ao excluir condomínio", "error"); }
+                            }} style={{ background:"rgba(239,68,68,.08)", border:"1px solid rgba(239,68,68,.2)", borderRadius:8, padding:"8px 12px", color:"#EF4444", fontSize:12, cursor:"pointer" }}>🗑️</button>
                           </div>
                         </div>
                       </div>

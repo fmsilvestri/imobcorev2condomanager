@@ -561,6 +561,31 @@ router.patch("/condominios/:id", async (req: Request, res: Response) => {
   }
 });
 
+// DELETE /api/condominios/:id — excluir condomínio e dados relacionados
+router.delete("/condominios/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: "ID do condomínio é obrigatório" });
+
+  try {
+    // Remove dados relacionados em cascata (melhor esforço)
+    const tables = [
+      "score_condominio", "insights_ia",
+      "sensores_agua", "leituras_agua",
+      "comunicados", "ordens_servico",
+      "financeiro", "moradores", "usuarios_condominio",
+    ];
+    for (const table of tables) {
+      try { await supabase.from(table).delete().eq("condominio_id", id); } catch { /* tabela pode não existir */ }
+    }
+
+    const { error } = await supabase.from("condominios").delete().eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // POST /api/sensor - Salvar/upsert sensor individual
 router.post("/sensor", async (req: Request, res: Response) => {
   const { condominio_id, sensor_id, nome, local, capacidade_litros, nivel_atual } = req.body as {
