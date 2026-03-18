@@ -647,6 +647,13 @@ export default function App() {
     setEquipForm({ nome:e.nome, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:e.serie, dataInstalacao:e.dataInstalacao, vidaUtilAnos:e.vidaUtilAnos, instaladoHa:e.instaladoHa, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:e.status, proxManutencao:e.proxManutencao, ultimaManutencao:e.ultimaManutencao, custoManutencao:e.custoManutencao, descricao:e.descricao });
     setEquipShowEdit(true);
   };
+
+  const equipDuplicate = (e: Equipamento) => {
+    setEquipEditId(null);
+    setEquipForm({ nome:`${e.nome} (Cópia)`, categoria:e.categoria, catIcon:e.catIcon, local:e.local, fabricante:e.fabricante, modelo:e.modelo, serie:"", dataInstalacao:new Date().toISOString().slice(0,10), vidaUtilAnos:e.vidaUtilAnos, instaladoHa:0, consumoKwh:e.consumoKwh, horasDia:e.horasDia, status:"operacional", proxManutencao:e.proxManutencao, ultimaManutencao:"", custoManutencao:e.custoManutencao, descricao:e.descricao });
+    setEquipShowEdit(true);
+    showToast("Equipamento duplicado — revise e salve", "success");
+  };
   // ── Diagnóstico Automático (IA + dados reais) ───────────────────────────────
   type DiagAutoResult = { score: { total:number; nivel:string; financeiro:number; manutencao:number; iot:number; gestao:number }; dados: { inadimplencia_pct:number; os_atrasadas:number; os_urgentes:number; sensores_offline:number; nivel_medio_agua:number; saldo_positivo:boolean }; insights: { tipo:string; mensagem:string; prioridade:string }[]; ia_analise:string; calculado_em:string };
   type DiagHistorico = { id:string; condominio_id:string; score_total:number; nivel:string; score_financeiro:number|null; score_manutencao:number|null; score_iot:number|null; score_gestao:number|null; dados:{ inadimplencia_pct:number; os_atrasadas:number; os_urgentes:number; sensores_offline:number; nivel_medio_agua:number; saldo_positivo:boolean }|null; insights:{ tipo:string; mensagem:string; prioridade:string }[]|null; ia_analise:string|null; calculado_em:string };
@@ -6383,6 +6390,7 @@ export default function App() {
                                 <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const }}>
                                   <button title="Ver detalhes do equipamento" onClick={()=>setMantSelEquip(e)} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:6, padding:"4px 8px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>Ver</button>
                                   <button title="Editar equipamento" onClick={()=>equipEdit(e)} style={{ background:"rgba(59,130,246,.15)", border:"1px solid rgba(59,130,246,.3)", borderRadius:6, padding:"4px 8px", color:"#60A5FA", fontSize:11, cursor:"pointer" }}>✏️</button>
+                                  <button title="Duplicar equipamento — cria novo cadastro com as mesmas configurações" onClick={()=>equipDuplicate(e)} style={{ background:"rgba(245,158,11,.12)", border:"1px solid rgba(245,158,11,.3)", borderRadius:6, padding:"4px 8px", color:"#FBBF24", fontSize:11, cursor:"pointer" }}>📋</button>
                                   <button title="Excluir equipamento" onClick={()=>equipDelete(e.id)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:6, padding:"4px 8px", color:"#F87171", fontSize:11, cursor:"pointer" }}>🗑️</button>
                                 </div>
                               </td>
