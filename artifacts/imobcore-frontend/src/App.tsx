@@ -1811,11 +1811,14 @@ export default function App() {
       es.addEventListener("sensor_leitura", (e: MessageEvent) => {
         const data = JSON.parse(e.data);
         addLog("sensor_leitura", data);
-        if (data.sensor_id && data.nivel !== undefined) {
+        // Aceita formato Worker (nivel_percent) e formato legado (nivel)
+        const nivelRaw = data.nivel_percent ?? data.nivel;
+        if (data.sensor_id && nivelRaw != null) {
+          const nivel = Math.min(100, Math.max(0, Number(nivelRaw)));
           setResNivels(prev => ({
             ...prev,
             [data.sensor_id]: {
-              nivel: Math.min(100, Math.max(0, Number(data.nivel))),
+              nivel,
               volume: Number(data.volume_litros || 0),
               ts: data.received_at || new Date().toISOString(),
             }
@@ -6866,19 +6869,24 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Payload preview */}
+                      {/* Payload preview — Cloudflare Worker format */}
                       <div style={{ marginBottom:16 }}>
-                        <div style={{ fontSize:11, color:"#64748B", marginBottom:6 }}>📦 Payload enviado pelo sensor:</div>
+                        <div style={{ fontSize:11, color:"#64748B", marginBottom:6 }}>📦 Payload que o Worker envia ao ImobCore:</div>
                         <pre style={{ background:"rgba(0,0,0,.4)", border:"1px solid rgba(255,255,255,.06)", borderRadius:8, padding:"12px 14px", fontSize:11, color:"#A5B4FC", margin:0, overflowX:"auto" as const }}>
-{`{
-  "sensor_id": "sensor_agua",
-  "nivel": 72,
-  "volume_litros": 10800,
-  "distancia_cm": 56,
-  "timestamp": "2026-03-18T17:30:00Z",
-  "mac": "F8:83:87:90:9F:78"
+{`// Campos normalizados pelo Worker:
+{
+  "device_id":    "agua-01",        // data.device || data.id
+  "distancia_cm": 56,               // data.distancia || data.distance
+  "nivel_percent": 72,              // data.nivel || data.level  (0–100)
+  "volume_litros": 14400,           // data.volume
+  "bateria":       85,              // data.bateria || data.bat
+  "raw": { ... },                   // payload original do ESP32
+  "received_at": "2026-03-19T..."
 }`}
                         </pre>
+                        <div style={{ fontSize:10, color:"#8B5CF6", marginTop:8, padding:"8px 10px", background:"rgba(139,92,246,.08)", borderRadius:8, border:"1px solid rgba(139,92,246,.2)" }}>
+                          💡 O ImobCore mapeia automaticamente <code style={{color:"#C4B5FD"}}>device_id</code> para o <code style={{color:"#C4B5FD"}}>sensor_id</code> ou <code style={{color:"#C4B5FD"}}>mac_address</code> do reservatório cadastrado.
+                        </div>
                       </div>
 
                       {/* Per-reservoir CF status */}
@@ -6974,18 +6982,22 @@ export default function App() {
                           <span style={{ fontSize:11, color:"#475569" }}>— aceita leituras do sensor em JSON</span>
                         </div>
                         <div style={{ marginTop:10 }}>
-                          <div style={{ fontSize:10, color:"#475569", marginBottom:6 }}>📦 Formato esperado:</div>
+                          <div style={{ fontSize:10, color:"#475569", marginBottom:6 }}>📦 Formato aceito (Cloudflare Worker):</div>
                           <pre style={{ background:"rgba(0,0,0,.4)", borderRadius:6, padding:"8px 12px", fontSize:10, color:"#A5B4FC", margin:0 }}>
-{`POST /api/webhook/sensor
+{`POST /api/webhook
 Content-Type: application/json
 
 {
-  "sensor_id": "sensor_agua",
-  "nivel": 72,
-  "volume_litros": 10800,
-  "distancia_cm": 56,
-  "timestamp": "2026-03-18T17:30:00Z"
-}`}
+  "device_id":    "agua-01",   // mapeado para sensor_id/mac do reservatório
+  "nivel_percent": 72,         // nível 0–100%
+  "distancia_cm":  56,
+  "volume_litros": 14400,      // calculado auto se omitido
+  "bateria":       85,
+  "received_at":  "..."
+}
+
+// Formato legado também aceito:
+{ "sensor_id": "...", "nivel": 72, "volume_litros": ... }`}
                           </pre>
                         </div>
                       </div>

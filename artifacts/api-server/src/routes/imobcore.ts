@@ -1339,44 +1339,103 @@ router.delete("/encomendas/:id", async (req: Request, res: Response) => {
 });
 
 // ─── Webhook receptor de sensores IoT (Cloudflare Worker → ImobCore) ─────────
-// Aceita tanto /api/webhook quanto /api/webhook/sensor (alias para compatibilidade)
+// ─────────────────────────────────────────────────────────────────────────────
+// Webhook: aceita formato legado { sensor_id, nivel } e formato Cloudflare Worker
+// { device_id, nivel_percent, distancia_cm, volume_litros, bateria, raw }
+// ─────────────────────────────────────────────────────────────────────────────
 async function handleSensorWebhook(req: Request, res: Response): Promise<void> {
   try {
-    const payload = req.body as {
-      sensor_id?: string; nivel?: number; distancia_cm?: number;
-      temperatura?: number; pressao?: number; timestamp?: string;
-      mac_address?: string; [key: string]: unknown;
-    };
-    if (!payload || !payload.sensor_id) {
-      res.status(400).json({ ok: false, error: "sensor_id required" });
+    const raw = req.body as Record<string, unknown>;
+
+    // ── 1. Identificar device ──────────────────────────────────────────────
+    // Worker envia device_id; legado envia sensor_id
+    const device_id = String(raw.device_id || raw.sensor_id || "").trim();
+    if (!device_id) {
+      res.status(400).json({ ok: false, error: "device_id or sensor_id required" });
       return;
     }
-    const doc = { ...payload, received_at: new Date().toISOString() };
+
+    // ── 2. Normalizar nivel ────────────────────────────────────────────────
+    // Worker envia nivel_percent; legado envia nivel
+    const nivel_raw = raw.nivel_percent ?? raw.nivel;
+    const nivel_num: number | null = nivel_raw != null
+      ? Math.min(100, Math.max(0, Number(nivel_raw)))
+      : null;
+
+    // ── 3. Lookup reservatório pelo device_id (sensor_id ou mac_address) ──
+    let resolved_sensor_id = device_id;
+    let capacidade_litros = 0;
+    let condominio_id: string | null = null;
+
+    try {
+      // Tenta match direto no sensor_id, depois no mac_address
+      const { data: byId } = await supabase
+        .from("reservatorios")
+        .select("sensor_id, capacidade_litros, condominio_id")
+        .eq("sensor_id", device_id)
+        .maybeSingle();
+
+      if (byId) {
+        resolved_sensor_id = byId.sensor_id;
+        capacidade_litros   = Number(byId.capacidade_litros) || 0;
+        condominio_id       = byId.condominio_id;
+      } else {
+        // Tenta mac_address
+        const { data: byMac } = await supabase
+          .from("reservatorios")
+          .select("sensor_id, capacidade_litros, condominio_id")
+          .eq("mac_address", device_id)
+          .maybeSingle();
+        if (byMac) {
+          resolved_sensor_id = byMac.sensor_id;
+          capacidade_litros  = Number(byMac.capacidade_litros) || 0;
+          condominio_id      = byMac.condominio_id;
+        }
+      }
+    } catch { /* reservatório pode ainda não existir */ }
+
+    // ── 4. Calcular volume_litros se não enviado ───────────────────────────
+    const volume_litros =
+      raw.volume_litros != null
+        ? Number(raw.volume_litros)
+        : nivel_num != null && capacidade_litros > 0
+          ? Math.round((nivel_num / 100) * capacidade_litros)
+          : 0;
+
+    // ── 5. Montar documento normalizado ───────────────────────────────────
+    const doc: Record<string, unknown> = {
+      sensor_id:    resolved_sensor_id,
+      device_id,
+      nivel:        nivel_num,
+      distancia_cm: raw.distancia_cm != null ? Number(raw.distancia_cm) : null,
+      volume_litros,
+      bateria:      raw.bateria != null ? Number(raw.bateria) : null,
+      received_at:  (raw.received_at as string) || new Date().toISOString(),
+    };
+
+    // ── 6. Salvar em sensor_leituras ──────────────────────────────────────
     try {
       await supabase.from("sensor_leituras").insert(doc);
-    } catch { /* table may not exist yet — continue */ }
-    // Atualiza nivel_atual e condominio_id no sensor (lookup via reservatorios)
-    try {
-      const { data: resRow } = await supabase
-        .from("reservatorios")
-        .select("condominio_id, capacidade_litros")
-        .eq("sensor_id", payload.sensor_id)
-        .single();
-      if (resRow) {
-        const nivel = Math.min(100, Math.max(0, Number(payload.nivel) || 0));
-        const capacidade = Number(resRow.capacidade_litros) || 0;
+    } catch { /* tabela pode não existir ainda */ }
+
+    // ── 7. Atualizar tabela sensores ──────────────────────────────────────
+    if (nivel_num != null) {
+      try {
         await supabase.from("sensores").update({
-          nivel_atual: nivel,
-          volume_litros: Math.round(nivel / 100 * capacidade),
-          condominio_id: resRow.condominio_id,
-        }).eq("sensor_id", payload.sensor_id);
-      }
-    } catch { /* silently ignore — sensors table update is non-critical */ }
+          nivel_atual:   nivel_num,
+          volume_litros,
+          ...(condominio_id ? { condominio_id } : {}),
+        }).eq("sensor_id", resolved_sensor_id);
+      } catch { /* não-crítico */ }
+    }
+
+    // ── 8. Broadcast SSE para o frontend ──────────────────────────────────
     broadcast("sensor_leitura", doc);
-    console.log(`[webhook] sensor ${payload.sensor_id} recebido — nivel: ${payload.nivel ?? "—"}`);
-    res.json({ ok: true, received_at: doc.received_at });
+    console.log(`[webhook] ${device_id} → sensor:${resolved_sensor_id} | nivel:${nivel_num ?? "—"}% | vol:${volume_litros}L`);
+    res.json({ ok: true, sensor_id: resolved_sensor_id, received_at: doc.received_at });
+
   } catch (err) {
-    console.error("webhook/sensor error:", err);
+    console.error("[webhook] error:", err);
     res.status(500).json({ ok: false, error: "internal error" });
   }
 }
