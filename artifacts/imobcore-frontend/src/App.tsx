@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tool
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; responsavel?: string; updated_at?: string; created_at: string; equipamento_ids?: string[] }
-interface Sensor { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; nivel_atual: number; volume_litros: number }
+interface Sensor { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; nivel_atual: number; volume_litros: number; status?: string }
 interface Reservatorio { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; altura_cm: number; mac_address?: string; cf_url: string; wh_url: string; protocolo: string; porta: number; cf_online: boolean; wh_online: boolean; created_at: string }
 interface Alerta { id: string; origem: string; titulo: string; descricao?: string; tipo: string; nivel: string; cidade: string; bairro: string }
 interface Receita { id: string; descricao: string; valor: number; categoria: string; status: string; created_at?: string }
@@ -1196,6 +1196,12 @@ export default function App() {
   const [resList, setResList] = useState<Reservatorio[]>([]);
   // Níveis em tempo real por sensor_id (atualizado via SSE sensor_leitura)
   const [resNivels, setResNivels] = useState<Record<string, { nivel: number; volume: number; ts: string }>>({});
+  // ── Gerenciamento de sensores (tabela sensores — aparecem nos gauges) ───────
+  const [sensoresManaged, setSensoresManaged] = useState<Sensor[]>([]);
+  const EMPTY_SENSOR_FORM = { sensor_id:"", nome:"", local:"", capacidade_litros:5000, nivel_atual:0 };
+  const [sensorEditModal, setSensorEditModal] = useState(false);
+  const [sensorEditId, setSensorEditId] = useState<string|null>(null);
+  const [sensorEditForm, setSensorEditForm] = useState(EMPTY_SENSOR_FORM);
   const [resShowForm, setResShowForm] = useState(false);
   const [resEditId, setResEditId] = useState<string|null>(null);
   const EMPTY_RES_FORM = { sensor_id:"", nome:"", local:"", capacidade_litros:20000, altura_cm:200, mac_address:"", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://condo-manager-ai.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443 };
@@ -1399,6 +1405,46 @@ export default function App() {
     setResEditId(r.id);
     setResForm({ sensor_id:r.sensor_id, nome:r.nome, local:r.local, capacidade_litros:r.capacidade_litros, altura_cm:r.altura_cm, mac_address:r.mac_address||"", cf_url:r.cf_url, wh_url:r.wh_url, protocolo:r.protocolo, porta:r.porta });
     setResShowForm(true);
+  };
+  // ── Sensor management (tabela sensores) ────────────────────────────────────
+  const sensorEdit = (s: Sensor) => {
+    setSensorEditId(s.sensor_id);
+    setSensorEditForm({ sensor_id:s.sensor_id, nome:s.nome, local:s.local, capacidade_litros:s.capacidade_litros, nivel_atual:s.nivel_atual });
+    setSensorEditModal(true);
+  };
+  const sensorSave = async () => {
+    if (!sensorEditId) return;
+    if (!sensorEditForm.nome.trim()) { showToast("⚠️ Preencha o Nome", "warn"); return; }
+    // Optimistic update
+    setSensoresManaged(prev => prev.map(s => s.sensor_id === sensorEditId
+      ? { ...s, nome:sensorEditForm.nome, local:sensorEditForm.local, capacidade_litros:sensorEditForm.capacidade_litros, nivel_atual:sensorEditForm.nivel_atual,
+          volume_litros:Math.round(sensorEditForm.nivel_atual/100*sensorEditForm.capacidade_litros) }
+      : s));
+    // Also update resNivels so gauge reflects new nivel immediately
+    setResNivels(prev => ({
+      ...prev,
+      [sensorEditId]: { nivel:sensorEditForm.nivel_atual, volume:Math.round(sensorEditForm.nivel_atual/100*sensorEditForm.capacidade_litros), ts:new Date().toISOString() }
+    }));
+    setSensorEditModal(false); setSensorEditId(null); setSensorEditForm(EMPTY_SENSOR_FORM);
+    try {
+      const r = await fetch(`/api/sensores/${encodeURIComponent(sensorEditId)}`, {
+        method:"PUT", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ nome:sensorEditForm.nome, local:sensorEditForm.local, capacidade_litros:sensorEditForm.capacidade_litros, nivel_atual:sensorEditForm.nivel_atual })
+      });
+      if (!r.ok) { showToast("❌ Erro ao atualizar sensor", "error"); return; }
+      showToast("✅ Sensor atualizado", "success");
+      loadDashboard();
+    } catch { showToast("❌ Erro de conexão", "error"); }
+  };
+  const sensorDelete = async (s: Sensor) => {
+    if (!confirm(`Excluir sensor "${s.nome}"?`)) return;
+    setSensoresManaged(prev => prev.filter(x => x.sensor_id !== s.sensor_id));
+    setResNivels(prev => { const n = { ...prev }; delete n[s.sensor_id]; return n; });
+    try {
+      const r = await fetch(`/api/sensores/${encodeURIComponent(s.sensor_id)}`, { method:"DELETE" });
+      if (!r.ok) { showToast("❌ Erro ao excluir sensor", "error"); }
+      else { showToast("🗑️ Sensor excluído", "info"); loadDashboard(); }
+    } catch { showToast("❌ Erro de conexão", "error"); }
   };
   const resTestCF = async (r: Reservatorio) => {
     setResTesting(p=>({...p,cf:true}));
@@ -1644,6 +1690,10 @@ export default function App() {
       if (!text || !text.trim().startsWith("{")) { console.warn("dashboard: empty/invalid response"); return; }
       const d: Dashboard = JSON.parse(text);
       setDash(d);
+      // Sincronizar lista gerenciável de sensores com dados frescos do banco
+      if (d.sensores?.length) {
+        setSensoresManaged(d.sensores);
+      }
       if (forCondId) {
         setCondId(forCondId);
       } else if (d.condominios?.[0] && !condIdRef.current) {
@@ -6223,85 +6273,116 @@ export default function App() {
                       </button>
                     </div>
 
-                    {/* IoT Sensor rings — um gauge por reservatório cadastrado */}
-                    {resList.length > 0 && (
+                    {/* IoT Sensor rings — todos os sensores cadastrados */}
+                    {sensoresManaged.length > 0 && (
                       <div style={{ marginBottom:16 }}>
                         <div style={{ fontSize:11, color:"#475569", fontWeight:600, marginBottom:10 }}>
                           📡 SENSORES IoT EM TEMPO REAL <span style={{ color:"#334155", fontWeight:400 }}>↻ 10s</span>
                         </div>
                         <div className="sensor-grid">
-                          {resList.map(r => {
-                            const nv = resNivels[r.sensor_id];
-                            const nivel = nv?.nivel ?? 0;
-                            const sensor: Sensor = {
-                              id: r.id,
-                              sensor_id: r.sensor_id,
-                              nome: r.nome || r.sensor_id,
-                              local: r.local || "—",
-                              capacidade_litros: r.capacidade_litros,
-                              nivel_atual: nivel,
-                              volume_litros: nv?.volume ?? Math.round(nivel / 100 * r.capacidade_litros),
+                          {sensoresManaged.map(s => {
+                            const nv = resNivels[s.sensor_id];
+                            const sensorWithLive: Sensor = {
+                              ...s,
+                              nivel_atual: nv?.nivel ?? s.nivel_atual,
+                              volume_litros: nv?.volume ?? s.volume_litros,
                             };
                             return (
-                              <div key={r.id} style={{ position:"relative" }}>
-                                <SensorRing sensor={sensor} />
+                              <div key={s.id} style={{ position:"relative" }}>
+                                <SensorRing sensor={sensorWithLive} />
                                 {nv && (
                                   <div style={{ textAlign:"center", fontSize:9, color:"#334155", marginTop:-2 }}>
                                     {new Date(nv.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
                                   </div>
                                 )}
-                                {!nv && (
-                                  <div style={{ textAlign:"center", fontSize:9, color:"#F59E0B", fontWeight:600, marginTop:-2 }}>
-                                    ⏳ Aguardando leitura
-                                  </div>
-                                )}
                               </div>
                             );
                           })}
-                          {/* Sensores da tabela sensores_agua sem reservatório cadastrado */}
-                          {sensores.filter(s => !resList.some(r => r.sensor_id === s.sensor_id)).map(s => (
-                            <SensorRing key={s.id} sensor={s} />
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {/* Fallback: apenas sensores_agua (quando não há reservatórios cadastrados) */}
-                    {resList.length === 0 && sensores.length > 0 && (
-                      <div style={{ marginBottom:16 }}>
-                        <div style={{ fontSize:11, color:"#475569", fontWeight:600, marginBottom:10 }}>
-                          📡 SENSORES IoT EM TEMPO REAL <span style={{ color:"#334155", fontWeight:400 }}>↻ 10s</span>
-                        </div>
-                        <div className="sensor-grid">
-                          {sensores.map(s => <SensorRing key={s.id} sensor={s} />)}
+                          {/* Novos reservatórios aguardando primeira leitura */}
+                          {resList.filter(r => !sensoresManaged.some(s => s.sensor_id === r.sensor_id)).map(r => {
+                            const nv = resNivels[r.sensor_id];
+                            const nivel = nv?.nivel ?? 0;
+                            const sensor: Sensor = {
+                              id: r.id, sensor_id: r.sensor_id, nome: r.nome || r.sensor_id,
+                              local: r.local || "—", capacidade_litros: r.capacidade_litros,
+                              nivel_atual: nivel, volume_litros: nv?.volume ?? 0,
+                            };
+                            return (
+                              <div key={r.id} style={{ position:"relative" }}>
+                                <SensorRing sensor={sensor} />
+                                {!nv && <div style={{ textAlign:"center", fontSize:9, color:"#F59E0B", fontWeight:600, marginTop:-2 }}>⏳ Aguardando</div>}
+                                {nv && <div style={{ textAlign:"center", fontSize:9, color:"#334155", marginTop:-2 }}>{new Date(nv.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}</div>}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
 
-                    {/* Table */}
-                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.08)", borderRadius:10, overflow:"hidden", marginBottom:16 }}>
-                      {/* Table header */}
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 90px 80px 36px 36px 130px", padding:"10px 16px", background:"rgba(255,255,255,.04)", fontSize:11, fontWeight:700, color:"#64748B", borderBottom:"1px solid rgba(255,255,255,.06)", letterSpacing:".04em", textTransform:"uppercase" as const }}>
-                        <span>Sensor ID</span><span>Nome</span><span>Local</span><span>Capacidade</span><span>Altura</span><span>CF</span><span>WH</span><span>Ações</span>
-                      </div>
-                      {resList.length === 0 && (
-                        <div style={{ padding:"32px", textAlign:"center", color:"#475569", fontSize:13 }}>Nenhum reservatório cadastrado</div>
-                      )}
-                      {resList.map((r, i) => (
-                        <div key={r.id} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 90px 80px 36px 36px 130px", padding:"12px 16px", borderBottom: i < resList.length-1 ? "1px solid rgba(255,255,255,.05)" : "none", alignItems:"center", fontSize:12, background: resEditId===r.id ? "rgba(59,130,246,.08)" : "transparent" }}>
-                          <span style={{ fontWeight:700, color:"#E2E8F0" }}>{r.sensor_id}</span>
-                          <span style={{ color:"#94A3B8" }}>{r.nome || "—"}</span>
-                          <span style={{ color:"#64748B" }}>{r.local || "—"}</span>
-                          <span style={{ color:"#94A3B8" }}>{r.capacidade_litros.toLocaleString("pt-BR")}L</span>
-                          <span style={{ color:"#94A3B8" }}>{r.altura_cm}cm</span>
-                          <span><div style={{ width:10, height:10, borderRadius:"50%", background: r.cf_online ? "#10B981" : "#EF4444", boxShadow:`0 0 6px ${r.cf_online?"#10B981":"#EF4444"}` }}/></span>
-                          <span><div style={{ width:10, height:10, borderRadius:"50%", background: r.wh_online ? "#10B981" : "#EF4444", boxShadow:`0 0 6px ${r.wh_online?"#10B981":"#EF4444"}` }}/></span>
-                          <span style={{ display:"flex", gap:8 }}>
-                            <button onClick={() => resEdit(r)} style={{ color:"#3B82F6", background:"none", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", padding:0 }}>Editar</button>
-                            <button onClick={() => resDelete(r.id)} style={{ color:"#EF4444", background:"none", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", padding:0 }}>Excluir</button>
-                          </span>
-                        </div>
-                      ))}
+                    {/* ── Tabela: Sensores IoT (editáveis/excluíveis) ── */}
+                    <div style={{ fontSize:11, color:"#64748B", fontWeight:700, marginBottom:8, letterSpacing:".04em", textTransform:"uppercase" as const }}>
+                      Sensores cadastrados
                     </div>
+                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.08)", borderRadius:10, overflow:"hidden", marginBottom:16 }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1.2fr 1.2fr 1fr 90px 80px 70px 110px", padding:"10px 16px", background:"rgba(255,255,255,.04)", fontSize:11, fontWeight:700, color:"#64748B", borderBottom:"1px solid rgba(255,255,255,.06)", letterSpacing:".04em", textTransform:"uppercase" as const }}>
+                        <span>Sensor ID</span><span>Nome</span><span>Local</span><span>Capacidade</span><span>Nível</span><span>Status</span><span>Ações</span>
+                      </div>
+                      {sensoresManaged.length === 0 && (
+                        <div style={{ padding:"32px", textAlign:"center", color:"#475569", fontSize:13 }}>Nenhum sensor cadastrado. Use <strong>＋ Novo</strong> para adicionar.</div>
+                      )}
+                      {sensoresManaged.map((s, i) => {
+                        const nv = resNivels[s.sensor_id];
+                        const nivel = nv?.nivel ?? s.nivel_atual;
+                        const clr = nivel >= 60 ? "#10B981" : nivel >= 30 ? "#F59E0B" : "#EF4444";
+                        return (
+                          <div key={s.id} style={{ display:"grid", gridTemplateColumns:"1.2fr 1.2fr 1fr 90px 80px 70px 110px", padding:"12px 16px", borderBottom: i < sensoresManaged.length-1 ? "1px solid rgba(255,255,255,.05)" : "none", alignItems:"center", fontSize:12, background: sensorEditId===s.sensor_id ? "rgba(59,130,246,.08)" : "transparent" }}>
+                            <span style={{ fontWeight:700, color:"#E2E8F0", fontSize:11 }}>{s.sensor_id}</span>
+                            <span style={{ color:"#94A3B8" }}>{s.nome || "—"}</span>
+                            <span style={{ color:"#64748B" }}>{s.local || "—"}</span>
+                            <span style={{ color:"#94A3B8" }}>{Number(s.capacidade_litros).toLocaleString("pt-BR")}L</span>
+                            <span style={{ fontWeight:700, color:clr }}>{nivel}%</span>
+                            <span>
+                              <span style={{ background:s.status==="normal"?"rgba(16,185,129,.15)":"rgba(239,68,68,.15)", color:s.status==="normal"?"#10B981":"#EF4444", borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:700 }}>
+                                {s.status || "—"}
+                              </span>
+                            </span>
+                            <span style={{ display:"flex", gap:8 }}>
+                              <button onClick={() => sensorEdit(s)} style={{ color:"#3B82F6", background:"none", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", padding:0 }}>Editar</button>
+                              <button onClick={() => sensorDelete(s)} style={{ color:"#EF4444", background:"none", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", padding:0 }}>Excluir</button>
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* ── Tabela: Reservatórios com config IoT (opcional) ── */}
+                    {resList.length > 0 && (
+                      <details style={{ marginBottom:16 }}>
+                        <summary style={{ cursor:"pointer", fontSize:11, color:"#64748B", fontWeight:700, letterSpacing:".04em", textTransform:"uppercase" as const, userSelect:"none" as const, padding:"8px 0" }}>
+                          ⚙️ CONFIGURAÇÕES IoT ({resList.length} {resList.length===1?"reservatório":"reservatórios"}) ▸
+                        </summary>
+                        <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.08)", borderRadius:10, overflow:"hidden", marginTop:8 }}>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 90px 80px 36px 36px 120px", padding:"10px 16px", background:"rgba(255,255,255,.04)", fontSize:11, fontWeight:700, color:"#64748B", borderBottom:"1px solid rgba(255,255,255,.06)", letterSpacing:".04em", textTransform:"uppercase" as const }}>
+                            <span>Sensor ID</span><span>Nome</span><span>Local</span><span>Capacidade</span><span>Altura</span><span>CF</span><span>WH</span><span>Ações</span>
+                          </div>
+                          {resList.map((r, i) => (
+                            <div key={r.id} style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 90px 80px 36px 36px 120px", padding:"12px 16px", borderBottom: i < resList.length-1 ? "1px solid rgba(255,255,255,.05)" : "none", alignItems:"center", fontSize:12, background: resEditId===r.id ? "rgba(59,130,246,.08)" : "transparent" }}>
+                              <span style={{ fontWeight:700, color:"#E2E8F0", fontSize:11 }}>{r.sensor_id}</span>
+                              <span style={{ color:"#94A3B8" }}>{r.nome || "—"}</span>
+                              <span style={{ color:"#64748B" }}>{r.local || "—"}</span>
+                              <span style={{ color:"#94A3B8" }}>{r.capacidade_litros.toLocaleString("pt-BR")}L</span>
+                              <span style={{ color:"#94A3B8" }}>{r.altura_cm}cm</span>
+                              <span><div style={{ width:10, height:10, borderRadius:"50%", background: r.cf_online ? "#10B981" : "#EF4444", boxShadow:`0 0 6px ${r.cf_online?"#10B981":"#EF4444"}` }}/></span>
+                              <span><div style={{ width:10, height:10, borderRadius:"50%", background: r.wh_online ? "#10B981" : "#EF4444", boxShadow:`0 0 6px ${r.wh_online?"#10B981":"#EF4444"}` }}/></span>
+                              <span style={{ display:"flex", gap:8 }}>
+                                <button onClick={() => resEdit(r)} style={{ color:"#3B82F6", background:"none", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", padding:0 }}>Editar</button>
+                                <button onClick={() => resDelete(r.id)} style={{ color:"#EF4444", background:"none", border:"none", fontSize:12, fontWeight:700, cursor:"pointer", padding:0 }}>Excluir</button>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
 
                   </div>
                 )}
@@ -10991,6 +11072,91 @@ Content-Type: application/json
                 style={{ background:"transparent", border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"11px 18px", color:"#64748B", fontSize:13, cursor:"pointer", marginLeft:"auto" }}
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════
+          MODAL: Editar Sensor IoT
+      ═══════════════════════════════════════════════════════════════ */}
+      {sensorEditModal && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) { setSensorEditModal(false); setSensorEditId(null); setSensorEditForm(EMPTY_SENSOR_FORM); } }}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.72)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+        >
+          <div style={{ background:"#0F172A", border:"1px solid rgba(59,130,246,.35)", borderRadius:16, padding:"28px 28px 24px", width:"100%", maxWidth:480, boxShadow:"0 24px 80px rgba(0,0,0,.8)" }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22 }}>
+              <div style={{ fontSize:15, fontWeight:800, color:"#60A5FA" }}>✏️ Editar Sensor IoT</div>
+              <button onClick={() => { setSensorEditModal(false); setSensorEditId(null); setSensorEditForm(EMPTY_SENSOR_FORM); }} style={{ background:"none", border:"none", color:"#64748B", fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
+            </div>
+
+            <div style={{ marginBottom:12 }}>
+              <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Sensor ID</div>
+              <div style={{ fontSize:13, color:"#475569", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"9px 12px" }}>{sensorEditForm.sensor_id}</div>
+            </div>
+
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
+              <div>
+                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Nome <span style={{color:"#EF4444"}}>*</span></div>
+                <input
+                  autoFocus
+                  value={sensorEditForm.nome}
+                  onChange={e => setSensorEditForm(f=>({...f, nome:e.target.value}))}
+                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:`1px solid ${sensorEditForm.nome.trim()?"rgba(255,255,255,.15)":"rgba(239,68,68,.5)"}`, borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                  placeholder="Ex: Caixa Bloco A, Cisterna..."
+                />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Local</div>
+                <input
+                  value={sensorEditForm.local}
+                  onChange={e => setSensorEditForm(f=>({...f, local:e.target.value}))}
+                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                  placeholder="Ex: Cobertura, Subsolo..."
+                />
+              </div>
+            </div>
+
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:24 }}>
+              <div>
+                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Capacidade (L)</div>
+                <input
+                  type="number" min={100}
+                  value={sensorEditForm.capacidade_litros}
+                  onChange={e => setSensorEditForm(f=>({...f, capacidade_litros:Number(e.target.value)}))}
+                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Nível atual (%)</div>
+                <input
+                  type="number" min={0} max={100}
+                  value={sensorEditForm.nivel_atual}
+                  onChange={e => setSensorEditForm(f=>({...f, nivel_atual:Math.min(100,Math.max(0,Number(e.target.value)))}))}
+                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                />
+                <div style={{ marginTop:6 }}>
+                  <div style={{ height:4, borderRadius:2, background:"rgba(255,255,255,.08)" }}>
+                    <div style={{ height:4, borderRadius:2, width:`${sensorEditForm.nivel_atual}%`, background: sensorEditForm.nivel_atual>=60?"#10B981":sensorEditForm.nivel_atual>=30?"#F59E0B":"#EF4444", transition:"width .2s" }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display:"flex", justifyContent:"flex-end", gap:10 }}>
+              <button
+                onClick={() => { setSensorEditModal(false); setSensorEditId(null); setSensorEditForm(EMPTY_SENSOR_FORM); }}
+                style={{ background:"transparent", border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"11px 18px", color:"#64748B", fontSize:13, cursor:"pointer" }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={sensorSave}
+                style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"11px 24px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}
+              >
+                ✓ Salvar
               </button>
             </div>
           </div>

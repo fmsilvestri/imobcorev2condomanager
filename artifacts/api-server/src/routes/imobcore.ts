@@ -1016,6 +1016,43 @@ router.post("/sensor", async (req: Request, res: Response) => {
   }
 });
 
+// PUT /api/sensores/:sensor_id — editar sensor existente
+router.put("/sensores/:sensor_id", async (req: Request, res: Response) => {
+  const { sensor_id } = req.params;
+  const { nome, local, capacidade_litros, nivel_atual } = req.body as {
+    nome?: string; local?: string; capacidade_litros?: number; nivel_atual?: number;
+  };
+  const nivel = Math.min(100, Math.max(0, Number(nivel_atual) || 0));
+  const cap = Number(capacidade_litros) || 5000;
+  const updates: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (nome !== undefined) updates.nome = nome.trim();
+  if (local !== undefined) updates.local = local;
+  if (capacidade_litros !== undefined) updates.capacidade_litros = cap;
+  if (nivel_atual !== undefined) {
+    updates.nivel_atual = nivel;
+    updates.volume_litros = Math.round(nivel / 100 * cap);
+  }
+  const { error } = await supabase.from("sensores").update(updates).eq("sensor_id", sensor_id);
+  if (error) {
+    console.error("[sensores PUT] error:", error.message);
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+  return res.json({ ok: true });
+});
+
+// DELETE /api/sensores/:sensor_id — excluir sensor
+router.delete("/sensores/:sensor_id", async (req: Request, res: Response) => {
+  const { sensor_id } = req.params;
+  const { error } = await supabase.from("sensores").delete().eq("sensor_id", sensor_id);
+  if (error) {
+    console.error("[sensores DELETE] error:", error.message);
+    return res.status(500).json({ ok: false, error: error.message });
+  }
+  return res.json({ ok: true });
+});
+
 // POST /api/moradores - Salvar moradores do onboarding
 router.post("/moradores", async (req: Request, res: Response) => {
   const { condominio_id, moradores } = req.body as {
