@@ -1343,140 +1343,143 @@ router.delete("/encomendas/:id", async (req: Request, res: Response) => {
 // Webhook: aceita formato legado { sensor_id, nivel } e formato Cloudflare Worker
 // { device_id, nivel_percent, distancia_cm, volume_litros, bateria, raw }
 // ─────────────────────────────────────────────────────────────────────────────
+const WEBHOOK_SECRET = "imobcore-webhook-secret";
+
 async function handleSensorWebhook(req: Request, res: Response): Promise<void> {
+  // ── 0. Autenticação por secret header (opcional — aceita sem header em dev) ─
+  const secret = req.headers["x-webhook-secret"];
+  if (secret && secret !== WEBHOOK_SECRET) {
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
+
   try {
-    const raw = req.body as Record<string, unknown>;
+    const body = req.body as Record<string, unknown>;
+    const { device_id: rawDeviceId, distancia_cm, nivel_percent, volume_litros: rawVol, bateria, raw } = body;
 
     // ── 1. Identificar device ──────────────────────────────────────────────
-    // Worker envia device_id; legado envia sensor_id
-    const device_id = String(raw.device_id || raw.sensor_id || "").trim();
+    const device_id = String(rawDeviceId || body.sensor_id || "").trim();
     if (!device_id) {
-      res.status(400).json({ ok: false, error: "device_id or sensor_id required" });
+      res.status(400).json({ ok: false, error: "device_id ausente" });
       return;
     }
 
-    // ── 2. Normalizar nivel ────────────────────────────────────────────────
-    // Worker envia nivel_percent; legado envia nivel
-    const nivel_raw = raw.nivel_percent ?? raw.nivel;
-    const nivel_num: number | null = nivel_raw != null
-      ? Math.min(100, Math.max(0, Number(nivel_raw)))
-      : null;
+    // ── 2. Buscar reservoir pelo iot_sensor_id ─────────────────────────────
+    const { data: reservoir, error: rErr } = await supabase
+      .from("reservoirs")
+      .select("id, name, capacity_liters, condominium_id, iot_sensor_id")
+      .eq("iot_sensor_id", device_id)
+      .maybeSingle();
 
-    // ── 3. Lookup reservatório pelo device_id ─────────────────────────────
-    // Tenta: reservoirs(iot_sensor_id) → reservoirs(mac_address) → reservatorios(sensor_id) → reservatorios(mac_address)
-    let resolved_sensor_id = device_id;
-    let capacidade_litros = 0;
-    let condominio_id: string | null = null;
-
-    try {
-      // ► Tabela 'reservoirs' (schema inglês — iot_sensor_id / capacity_liters)
-      const { data: byIot } = await supabase
+    if (rErr || !reservoir) {
+      // Fallback: buscar pelo mac_address
+      const { data: byMac } = await supabase
         .from("reservoirs")
-        .select("iot_sensor_id, capacity_liters, condominio_id")
-        .eq("iot_sensor_id", device_id)
+        .select("id, name, capacity_liters, condominium_id, iot_sensor_id")
+        .eq("mac_address", device_id)
         .maybeSingle();
 
-      if (byIot) {
-        resolved_sensor_id = byIot.iot_sensor_id;
-        capacidade_litros  = Number(byIot.capacity_liters) || 0;
-        condominio_id      = byIot.condominio_id ?? null;
-      } else {
-        // ► Tenta mac_address na tabela reservoirs
-        const { data: byMacNew } = await supabase
-          .from("reservoirs")
-          .select("iot_sensor_id, capacity_liters, condominio_id")
-          .eq("mac_address", device_id)
-          .maybeSingle();
-        if (byMacNew) {
-          resolved_sensor_id = byMacNew.iot_sensor_id;
-          capacidade_litros  = Number(byMacNew.capacity_liters) || 0;
-          condominio_id      = byMacNew.condominio_id ?? null;
-        } else {
-          // ► Fallback: tabela 'reservatorios' (schema português — sensor_id / capacidade_litros)
-          const { data: byId } = await supabase
-            .from("reservatorios")
-            .select("sensor_id, capacidade_litros, condominio_id")
-            .eq("sensor_id", device_id)
-            .maybeSingle();
-          if (byId) {
-            resolved_sensor_id = byId.sensor_id;
-            capacidade_litros  = Number(byId.capacidade_litros) || 0;
-            condominio_id      = byId.condominio_id ?? null;
-          } else {
-            const { data: byMacOld } = await supabase
-              .from("reservatorios")
-              .select("sensor_id, capacidade_litros, condominio_id")
-              .eq("mac_address", device_id)
-              .maybeSingle();
-            if (byMacOld) {
-              resolved_sensor_id = byMacOld.sensor_id;
-              capacidade_litros  = Number(byMacOld.capacidade_litros) || 0;
-              condominio_id      = byMacOld.condominio_id ?? null;
-            }
-          }
-        }
+      if (!byMac) {
+        console.error("[webhook] Reservoir não encontrado:", device_id, rErr?.message);
+        // Não retorna 404 — registra mesmo sem reservatório (fallback para sensor_leituras legado)
+        const nivelFb = nivel_percent != null ? Math.min(100, Math.max(0, Number(nivel_percent))) : (body.nivel != null ? Number(body.nivel) : null);
+        const volFb = rawVol != null ? Number(rawVol) : 0;
+        broadcast("sensor_leitura", { sensor_id: device_id, device_id, nivel: nivelFb, volume_litros: volFb, received_at: new Date().toISOString() });
+        res.json({ ok: false, warn: "Reservoir not found — broadcast only", device_id });
+        return;
       }
-    } catch { /* reservatório pode ainda não existir */ }
-
-    // ── 4. Calcular volume_litros se não enviado ───────────────────────────
-    const volume_litros =
-      raw.volume_litros != null
-        ? Number(raw.volume_litros)
-        : nivel_num != null && capacidade_litros > 0
-          ? Math.round((nivel_num / 100) * capacidade_litros)
-          : 0;
-
-    // ── 5. Montar documento normalizado ───────────────────────────────────
-    const doc: Record<string, unknown> = {
-      sensor_id:    resolved_sensor_id,
-      device_id,
-      nivel:        nivel_num,
-      distancia_cm: raw.distancia_cm != null ? Number(raw.distancia_cm) : null,
-      volume_litros,
-      bateria:      raw.bateria != null ? Number(raw.bateria) : null,
-      received_at:  (raw.received_at as string) || new Date().toISOString(),
-    };
-
-    // ── 6. Salvar em sensor_leituras (com fallback para schema antigo) ───────
-    try {
-      const { error: insErr } = await supabase.from("sensor_leituras").insert(doc);
-      if (insErr) {
-        const isSchemaErr = insErr.code === "PGRST204"
-          || (insErr.message || "").includes("schema cache")
-          || (insErr.message || "").includes("Could not find")
-          || (insErr.message || "").includes("column");
-        if (isSchemaErr) {
-          // Fallback: insert apenas colunas garantidamente existentes
-          await supabase.from("sensor_leituras").insert({
-            sensor_id:    resolved_sensor_id,
-            nivel:        nivel_num,
-            distancia_cm: doc.distancia_cm,
-            received_at:  doc.received_at,
-          });
-        }
-      }
-    } catch { /* tabela pode não existir ainda */ }
-
-    // ── 7. Atualizar tabela sensores ──────────────────────────────────────
-    if (nivel_num != null) {
-      try {
-        await supabase.from("sensores").update({
-          nivel_atual:   nivel_num,
-          volume_litros,
-          ...(condominio_id ? { condominio_id } : {}),
-        }).eq("sensor_id", resolved_sensor_id);
-      } catch { /* não-crítico */ }
+      // Usa o encontrado pelo mac
+      return handleWithReservoir(req, res, device_id, byMac, distancia_cm, nivel_percent, rawVol, bateria, raw, body);
     }
 
-    // ── 8. Broadcast SSE para o frontend ──────────────────────────────────
-    broadcast("sensor_leitura", doc);
-    console.log(`[webhook] ${device_id} → sensor:${resolved_sensor_id} | nivel:${nivel_num ?? "—"}% | vol:${volume_litros}L`);
-    res.json({ ok: true, sensor_id: resolved_sensor_id, received_at: doc.received_at });
+    return handleWithReservoir(req, res, device_id, reservoir, distancia_cm, nivel_percent, rawVol, bateria, raw, body);
 
   } catch (err) {
     console.error("[webhook] error:", err);
     res.status(500).json({ ok: false, error: "internal error" });
   }
+}
+
+async function handleWithReservoir(
+  _req: Request, res: Response,
+  device_id: string,
+  reservoir: { id: string; name: string; capacity_liters: number; condominium_id?: string; iot_sensor_id: string },
+  distancia_cm: unknown, nivel_percent: unknown, rawVol: unknown, bateria: unknown, raw: unknown,
+  fullBody: Record<string, unknown>
+): Promise<void> {
+  const now = new Date().toISOString();
+  const capacidade = Number(reservoir.capacity_liters) || 0;
+
+  // ── 3. Calcular nivel e volume ─────────────────────────────────────────
+  let nivelFinal: number | null = null;
+  let volFinal = rawVol != null ? Number(rawVol) : 0;
+
+  if (nivel_percent != null) {
+    nivelFinal = Math.min(100, Math.max(0, Number(nivel_percent)));
+  } else if (fullBody.nivel != null) {
+    nivelFinal = Math.min(100, Math.max(0, Number(fullBody.nivel)));
+  }
+
+  if (!volFinal && distancia_cm != null && capacidade > 0) {
+    const distNum = Number(distancia_cm);
+    const alturaAgua = 200 - distNum;
+    const pct = Math.max(0, Math.min(alturaAgua / 200, 1));
+    volFinal = Math.round(pct * capacidade);
+    if (nivelFinal == null) nivelFinal = Math.round(pct * 100);
+  } else if (!volFinal && nivelFinal != null && capacidade > 0) {
+    volFinal = Math.round((nivelFinal / 100) * capacidade);
+  }
+
+  // ── 4. INSERT em sensor_readings ──────────────────────────────────────
+  const { error: insErr } = await supabase
+    .from("sensor_readings")
+    .insert({
+      condominium_id: reservoir.condominium_id ?? null,
+      reservoir_id:   reservoir.id,
+      device_id,
+      nivel:          nivelFinal,
+      distancia:      distancia_cm != null ? Number(distancia_cm) : null,
+      volume:         volFinal,
+      bateria:        bateria != null ? Number(bateria) : null,
+      raw_payload:    raw ?? fullBody,
+      created_at:     now,
+    });
+
+  if (insErr) {
+    console.error("[webhook] Erro INSERT sensor_readings:", insErr.message);
+    // Não aborta — continua com broadcast SSE mesmo sem persistência
+  }
+
+  // ── 5. Atualizar reservoirs (iot_last_reading, iot_last_sync, iot_status) ──
+  try {
+    await supabase
+      .from("reservoirs")
+      .update({
+        iot_last_reading: nivelFinal,
+        iot_last_sync:    now,
+        iot_status:       "online",
+      })
+      .eq("id", reservoir.id);
+  } catch { /* não-crítico */ }
+
+  // ── 6. Broadcast SSE para o frontend ──────────────────────────────────
+  // Emite 'water_reading' (novo) E 'sensor_leitura' (legado) para compatibilidade
+  const ssePayload = {
+    type:         "water_reading",
+    reservoir_id: reservoir.id,
+    sensor_id:    reservoir.iot_sensor_id,   // para compatibilidade com resNivels no frontend
+    device_id,
+    nivel:        nivelFinal,
+    volume_litros: volFinal,
+    volume:       volFinal,
+    timestamp:    now,
+    received_at:  now,
+  };
+  broadcast("water_reading", ssePayload);
+  broadcast("sensor_leitura", ssePayload);   // evento legado — frontend antigo recebe
+
+  console.log(`✅ [webhook] ${reservoir.name} (${device_id}) | nivel:${nivelFinal ?? "—"}% | vol:${volFinal}L`);
+  res.json({ ok: true, reservoir_id: reservoir.id, nivel: nivelFinal, volume: volFinal });
 }
 
 router.post("/webhook/sensor", handleSensorWebhook);
@@ -1516,16 +1519,18 @@ const reservatoriosCache: Record<string, object[]> = {};
 // Demais campos permanecem iguais (id, condominio_id, mac_address, etc.)
 function resFromDB(row: Record<string, unknown>): Record<string, unknown> {
   const out = { ...row };
-  if ("iot_sensor_id" in row) { out.sensor_id = row.iot_sensor_id; delete out.iot_sensor_id; }
-  if ("name" in row && !("nome" in row)) { out.nome = row.name; delete out.name; }
-  if ("capacity_liters" in row) { out.capacidade_litros = row.capacity_liters; delete out.capacity_liters; }
+  if ("iot_sensor_id" in row)  { out.sensor_id        = row.iot_sensor_id;    delete out.iot_sensor_id; }
+  if ("name" in row && !("nome" in row)) { out.nome   = row.name;             delete out.name; }
+  if ("capacity_liters" in row){ out.capacidade_litros = row.capacity_liters; delete out.capacity_liters; }
+  if ("condominium_id" in row && !("condominio_id" in row)) { out.condominio_id = row.condominium_id; }
   return out;
 }
 function resToDB(body: Record<string, unknown>): Record<string, unknown> {
   const out = { ...body };
-  if ("sensor_id" in body) { out.iot_sensor_id = body.sensor_id; delete out.sensor_id; }
-  if ("nome" in body) { out.name = body.nome; delete out.nome; }
-  if ("capacidade_litros" in body) { out.capacity_liters = body.capacidade_litros; delete out.capacity_liters; }
+  if ("sensor_id" in body)        { out.iot_sensor_id   = body.sensor_id;        delete out.sensor_id; }
+  if ("nome" in body)             { out.name             = body.nome;             delete out.nome; }
+  if ("capacidade_litros" in body){ out.capacity_liters  = body.capacidade_litros; delete out.capacidade_litros; }
+  if ("condominio_id" in body)    { out.condominium_id   = body.condominio_id;    delete out.condominio_id; }
   return out;
 }
 
@@ -1557,7 +1562,28 @@ router.get("/reservatorios", async (req: Request, res: Response) => {
 // Retorna o último nível conhecido por sensor_id (para pre-popular gauges no frontend)
 router.get("/reservatorios/niveis", async (_req: Request, res: Response) => {
   const niveis: Record<string, { nivel: number; volume: number; ts: string }> = {};
-  // 1. Tenta sensor_leituras (mais recente — pode não existir)
+  // 1. Tenta sensor_readings (schema inglês novo — reservoir_id / device_id / volume / nivel)
+  try {
+    const { data: readings, error: rErr } = await supabase
+      .from("sensor_readings")
+      .select("device_id, nivel, volume, created_at")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (!rErr && readings) {
+      for (const row of readings) {
+        const key = String(row.device_id || "");
+        if (key && !niveis[key]) {
+          niveis[key] = {
+            nivel: Math.min(100, Math.max(0, Number(row.nivel) || 0)),
+            volume: Number(row.volume) || 0,
+            ts: row.created_at,
+          };
+        }
+      }
+    }
+  } catch { /* sensor_readings may not exist yet */ }
+
+  // 2. Tenta sensor_leituras (schema português legado)
   try {
     const { data: leituras, error: lErr } = await supabase
       .from("sensor_leituras")
@@ -1566,8 +1592,9 @@ router.get("/reservatorios/niveis", async (_req: Request, res: Response) => {
       .limit(500);
     if (!lErr && leituras) {
       for (const row of leituras) {
-        if (row.sensor_id && !niveis[row.sensor_id]) {
-          niveis[row.sensor_id] = {
+        const key = String(row.sensor_id || "");
+        if (key && !niveis[key]) {
+          niveis[key] = {
             nivel: Math.min(100, Math.max(0, Number(row.nivel) || 0)),
             volume: Number(row.volume_litros) || 0,
             ts: row.received_at,
@@ -1576,17 +1603,39 @@ router.get("/reservatorios/niveis", async (_req: Request, res: Response) => {
       }
     }
   } catch { /* sensor_leituras may not exist */ }
-  // 2. Fallback: tabela sensores (principal — usada pelo dashboard)
+
+  // 3. Fallback: iot_last_reading em reservoirs
+  try {
+    const { data: reservs } = await supabase
+      .from("reservoirs")
+      .select("iot_sensor_id, iot_last_reading, capacity_liters, iot_last_sync");
+    if (reservs) {
+      for (const r of reservs) {
+        const key = String(r.iot_sensor_id || "");
+        if (key && !niveis[key] && r.iot_last_reading != null) {
+          const nivel = Math.min(100, Math.max(0, Number(r.iot_last_reading) || 0));
+          niveis[key] = {
+            nivel,
+            volume: Math.round(nivel / 100 * (Number(r.capacity_liters) || 0)),
+            ts: r.iot_last_sync || new Date().toISOString(),
+          };
+        }
+      }
+    }
+  } catch { /* ignore */ }
+
+  // 4. Fallback: tabela sensores (dashboard legado)
   try {
     const { data: sens, error: sErr } = await supabase
       .from("sensores")
       .select("sensor_id, nivel_atual, volume_litros, updated_at, capacidade_litros");
     if (!sErr && sens) {
       for (const s of sens) {
-        if (s.sensor_id && !niveis[s.sensor_id]) {
+        const key = String(s.sensor_id || "");
+        if (key && !niveis[key]) {
           const cap = Number(s.capacidade_litros) || 0;
           const nivel = Math.min(100, Math.max(0, Number(s.nivel_atual) || 0));
-          niveis[s.sensor_id] = {
+          niveis[key] = {
             nivel,
             volume: Number(s.volume_litros) || Math.round(nivel / 100 * cap),
             ts: s.updated_at || new Date().toISOString(),
@@ -1607,42 +1656,59 @@ router.get("/sensor-leituras/historico", async (req: Request, res: Response) => 
   if (!sensorIds.length) return res.json({ historico: {} });
 
   const historico: Record<string, { nivel: number; volume_litros: number; received_at: string }[]> = {};
+
+  // ► 1. sensor_readings (schema inglês: device_id / volume / created_at)
   try {
-    // Tenta selecionar com volume_litros (schema novo)
-    let { data, error } = await supabase
-      .from("sensor_leituras")
-      .select("sensor_id, nivel, volume_litros, received_at")
-      .in("sensor_id", sensorIds)
-      .order("received_at", { ascending: false })
+    const { data: readings, error: rErr } = await supabase
+      .from("sensor_readings")
+      .select("device_id, nivel, volume, created_at")
+      .in("device_id", sensorIds)
+      .order("created_at", { ascending: false })
       .limit(limit * sensorIds.length);
-
-    // Fallback: schema antigo sem volume_litros
-    if (error && ((error.message || "").includes("volume_litros") || (error.message || "").includes("Could not find") || error.code === "PGRST204")) {
-      const fb = await supabase
-        .from("sensor_leituras")
-        .select("sensor_id, nivel, received_at")
-        .in("sensor_id", sensorIds)
-        .order("received_at", { ascending: false })
-        .limit(limit * sensorIds.length);
-      data = fb.data as typeof data;
-      error = fb.error;
-    }
-
-    if (!error && data) {
-      for (const row of data as Record<string, unknown>[]) {
-        const sid = String(row.sensor_id || "");
+    if (!rErr && readings) {
+      for (const row of readings as Record<string, unknown>[]) {
+        const sid = String(row.device_id || "");
         if (!sid) continue;
         if (!historico[sid]) historico[sid] = [];
         if (historico[sid].length < limit) {
           historico[sid].push({
             nivel: Math.min(100, Math.max(0, Number(row.nivel) || 0)),
-            volume_litros: Number(row.volume_litros) || 0,
-            received_at: String(row.received_at || ""),
+            volume_litros: Number(row.volume) || 0,
+            received_at: String(row.created_at || ""),
           });
         }
       }
     }
-  } catch { /* sensor_leituras may not exist */ }
+  } catch { /* sensor_readings may not exist */ }
+
+  // ► 2. Fallback: sensor_leituras (schema português: sensor_id / volume_litros / received_at)
+  //    Só busca sensor_ids que ainda não têm dados
+  const missingIds = sensorIds.filter(id => !historico[id]);
+  if (missingIds.length > 0) {
+    try {
+      const { data, error } = await supabase
+        .from("sensor_leituras")
+        .select("sensor_id, nivel, volume_litros, received_at")
+        .in("sensor_id", missingIds)
+        .order("received_at", { ascending: false })
+        .limit(limit * missingIds.length);
+      if (!error && data) {
+        for (const row of data as Record<string, unknown>[]) {
+          const sid = String(row.sensor_id || "");
+          if (!sid) continue;
+          if (!historico[sid]) historico[sid] = [];
+          if (historico[sid].length < limit) {
+            historico[sid].push({
+              nivel: Math.min(100, Math.max(0, Number(row.nivel) || 0)),
+              volume_litros: Number(row.volume_litros) || 0,
+              received_at: String(row.received_at || ""),
+            });
+          }
+        }
+      }
+    } catch { /* sensor_leituras may not exist */ }
+  }
+
   return res.json({ historico });
 });
 

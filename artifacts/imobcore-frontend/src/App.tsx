@@ -1814,39 +1814,43 @@ export default function App() {
           if (evt === "os_atualizada") showToast("🔄 OS atualizada", "info");
         });
       });
-      // Atualização em tempo real de nível de reservatórios
-      es.addEventListener("sensor_leitura", (e: MessageEvent) => {
+      // ── Atualização em tempo real de nível de reservatórios ──────────────────
+      // Handler compartilhado — aceita formato novo (water_reading) e legado (sensor_leitura)
+      const handleWaterEvent = (e: MessageEvent) => {
         const data = JSON.parse(e.data);
-        addLog("sensor_leitura", data);
-        // Aceita formato Worker (nivel_percent) e formato legado (nivel)
+        addLog(data.type || "sensor_leitura", data);
+        // Nível: aceita nivel_percent (Worker), nivel (legado), ou nivel do payload novo
         const nivelRaw = data.nivel_percent ?? data.nivel;
         if (nivelRaw == null) return;
         const nivel = Math.min(100, Math.max(0, Number(nivelRaw)));
-        const volume = Number(data.volume_litros || 0);
-        const ts = data.received_at || new Date().toISOString();
+        // Volume: campo 'volume' (novo sensor_readings) OU 'volume_litros' (legado)
+        const volume = Number(data.volume ?? data.volume_litros ?? 0);
+        const ts = data.timestamp || data.received_at || new Date().toISOString();
 
-        // Tenta resolver qual reservatório corresponde a este sensor
-        // Aceita match por sensor_id OU mac_address (tanto no campo sensor_id quanto device_id recebido)
         setResNivels(prev => {
           const next = { ...prev };
-          // Candidatos de identificação vindos do SSE: sensor_id e device_id
+          // Candidatos de identificação: sensor_id, device_id, reservoir_id
           const candidates = [data.sensor_id, data.device_id].filter(Boolean) as string[];
 
-          // Atualiza pelo sensor_id exato que veio (garante funcionamento sem reservatórios cadastrados)
+          // Atualiza pelo sensor_id exato que veio (sem reservatórios cadastrados)
           if (data.sensor_id) next[data.sensor_id] = { nivel, volume, ts };
 
           // Cruza com reservatórios em memória (via ref síncrono) por sensor_id OU mac_address
           for (const res of resListRef.current) {
-            const match = candidates.some(c =>
+            const matchSensor = candidates.some(c =>
               (res.sensor_id && res.sensor_id === c) ||
               (res.mac_address && res.mac_address.toUpperCase() === c.toUpperCase())
             );
-            if (match) next[res.sensor_id] = { nivel, volume, ts };
+            // Match adicional por reservoir_id (formato novo water_reading)
+            const matchId = data.reservoir_id && res.id === data.reservoir_id;
+            if (matchSensor || matchId) next[res.sensor_id] = { nivel, volume, ts };
           }
-
           return next;
         });
-      });
+      };
+
+      es.addEventListener("water_reading",  handleWaterEvent);   // novo formato
+      es.addEventListener("sensor_leitura", handleWaterEvent);   // legado
       es.onerror = () => { setSseOnline(false); retryTimer = setTimeout(connect, 5000); };
     };
     connect();
