@@ -1362,34 +1362,58 @@ async function handleSensorWebhook(req: Request, res: Response): Promise<void> {
       ? Math.min(100, Math.max(0, Number(nivel_raw)))
       : null;
 
-    // ── 3. Lookup reservatório pelo device_id (sensor_id ou mac_address) ──
+    // ── 3. Lookup reservatório pelo device_id ─────────────────────────────
+    // Tenta: reservoirs(iot_sensor_id) → reservoirs(mac_address) → reservatorios(sensor_id) → reservatorios(mac_address)
     let resolved_sensor_id = device_id;
     let capacidade_litros = 0;
     let condominio_id: string | null = null;
 
     try {
-      // Tenta match direto no sensor_id, depois no mac_address
-      const { data: byId } = await supabase
-        .from("reservatorios")
-        .select("sensor_id, capacidade_litros, condominio_id")
-        .eq("sensor_id", device_id)
+      // ► Tabela 'reservoirs' (schema inglês — iot_sensor_id / capacity_liters)
+      const { data: byIot } = await supabase
+        .from("reservoirs")
+        .select("iot_sensor_id, capacity_liters, condominio_id")
+        .eq("iot_sensor_id", device_id)
         .maybeSingle();
 
-      if (byId) {
-        resolved_sensor_id = byId.sensor_id;
-        capacidade_litros   = Number(byId.capacidade_litros) || 0;
-        condominio_id       = byId.condominio_id;
+      if (byIot) {
+        resolved_sensor_id = byIot.iot_sensor_id;
+        capacidade_litros  = Number(byIot.capacity_liters) || 0;
+        condominio_id      = byIot.condominio_id ?? null;
       } else {
-        // Tenta mac_address
-        const { data: byMac } = await supabase
-          .from("reservatorios")
-          .select("sensor_id, capacidade_litros, condominio_id")
+        // ► Tenta mac_address na tabela reservoirs
+        const { data: byMacNew } = await supabase
+          .from("reservoirs")
+          .select("iot_sensor_id, capacity_liters, condominio_id")
           .eq("mac_address", device_id)
           .maybeSingle();
-        if (byMac) {
-          resolved_sensor_id = byMac.sensor_id;
-          capacidade_litros  = Number(byMac.capacidade_litros) || 0;
-          condominio_id      = byMac.condominio_id;
+        if (byMacNew) {
+          resolved_sensor_id = byMacNew.iot_sensor_id;
+          capacidade_litros  = Number(byMacNew.capacity_liters) || 0;
+          condominio_id      = byMacNew.condominio_id ?? null;
+        } else {
+          // ► Fallback: tabela 'reservatorios' (schema português — sensor_id / capacidade_litros)
+          const { data: byId } = await supabase
+            .from("reservatorios")
+            .select("sensor_id, capacidade_litros, condominio_id")
+            .eq("sensor_id", device_id)
+            .maybeSingle();
+          if (byId) {
+            resolved_sensor_id = byId.sensor_id;
+            capacidade_litros  = Number(byId.capacidade_litros) || 0;
+            condominio_id      = byId.condominio_id ?? null;
+          } else {
+            const { data: byMacOld } = await supabase
+              .from("reservatorios")
+              .select("sensor_id, capacidade_litros, condominio_id")
+              .eq("mac_address", device_id)
+              .maybeSingle();
+            if (byMacOld) {
+              resolved_sensor_id = byMacOld.sensor_id;
+              capacidade_litros  = Number(byMacOld.capacidade_litros) || 0;
+              condominio_id      = byMacOld.condominio_id ?? null;
+            }
+          }
         }
       }
     } catch { /* reservatório pode ainda não existir */ }
@@ -1484,10 +1508,42 @@ router.post("/reservatorios/test-url", async (req: Request, res: Response) => {
 // Cache in-memory por condominio_id (chave "_all" para sem filtro)
 const reservatoriosCache: Record<string, object[]> = {};
 
+// ── Mapeamento de campos: DB inglês ↔ frontend português ──────────────────
+// reservoirs (DB)        ↔  reservatorios (frontend)
+//   iot_sensor_id        ↔  sensor_id
+//   name                 ↔  nome
+//   capacity_liters      ↔  capacidade_litros
+// Demais campos permanecem iguais (id, condominio_id, mac_address, etc.)
+function resFromDB(row: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...row };
+  if ("iot_sensor_id" in row) { out.sensor_id = row.iot_sensor_id; delete out.iot_sensor_id; }
+  if ("name" in row && !("nome" in row)) { out.nome = row.name; delete out.name; }
+  if ("capacity_liters" in row) { out.capacidade_litros = row.capacity_liters; delete out.capacity_liters; }
+  return out;
+}
+function resToDB(body: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...body };
+  if ("sensor_id" in body) { out.iot_sensor_id = body.sensor_id; delete out.sensor_id; }
+  if ("nome" in body) { out.name = body.nome; delete out.nome; }
+  if ("capacidade_litros" in body) { out.capacity_liters = body.capacidade_litros; delete out.capacity_liters; }
+  return out;
+}
+
 router.get("/reservatorios", async (req: Request, res: Response) => {
   const condId = (req.query.condominio_id as string | undefined) || null;
   const cacheKey = condId || "_all";
   try {
+    // ► Tenta tabela 'reservoirs' (schema inglês)
+    const base = supabase.from("reservoirs").select("*").order("created_at", { ascending: false });
+    const { data, error } = condId ? await base.eq("condominio_id", condId) : await base;
+    if (!error && data) {
+      const mapped = data.map(r => resFromDB(r as Record<string, unknown>));
+      reservatoriosCache[cacheKey] = mapped;
+      return res.json({ reservatorios: mapped });
+    }
+  } catch { /* fall through */ }
+  try {
+    // ► Fallback: tabela 'reservatorios' (schema português)
     const base = supabase.from("reservatorios").select("*").order("created_at", { ascending: false });
     const { data, error } = condId ? await base.eq("condominio_id", condId) : await base;
     if (!error && data) {
@@ -1601,20 +1657,40 @@ router.post("/reservatorios", async (req: Request, res: Response) => {
   const { id: _clientId, ...body } = req.body;
   const condId: string | null = body.condominio_id || null;
   const localDoc = { ...req.body, created_at: new Date().toISOString() };
-  // Optimistic: insert into per-cond cache
   const cacheKey = condId || "_all";
   if (!reservatoriosCache[cacheKey]) reservatoriosCache[cacheKey] = [];
   (reservatoriosCache[cacheKey] as object[]).unshift(localDoc);
-  const { data: inserted, error } = await supabase
-    .from("reservatorios")
-    .insert({ ...body, created_at: localDoc.created_at })
+
+  // ► Tenta inserir na tabela 'reservoirs' (schema inglês)
+  const dbBody = resToDB({ ...body, created_at: localDoc.created_at });
+  let inserted: Record<string, unknown> | null = null;
+  let insertErr: { message: string; code: string } | null = null;
+
+  const { data: ins1, error: e1 } = await supabase
+    .from("reservoirs")
+    .insert(dbBody)
     .select()
     .single();
-  if (error) {
-    console.error("[reservatorios POST] Supabase error:", error.message, error.code);
+  if (!e1 && ins1) {
+    inserted = resFromDB(ins1 as Record<string, unknown>);
+  } else {
+    // ► Fallback: tabela 'reservatorios' (schema português)
+    const { data: ins2, error: e2 } = await supabase
+      .from("reservatorios")
+      .insert({ ...body, created_at: localDoc.created_at })
+      .select()
+      .single();
+    if (!e2 && ins2) {
+      inserted = ins2 as Record<string, unknown>;
+    } else {
+      insertErr = e2 || e1;
+    }
+  }
+
+  if (insertErr || !inserted) {
+    console.error("[reservatorios POST] Supabase error:", insertErr?.message, insertErr?.code);
     return res.json({ ok: true, doc: localDoc });
   }
-  // Replace optimistic doc with real record
   reservatoriosCache[cacheKey] = (reservatoriosCache[cacheKey] as { id: string }[]).map(r =>
     (r as { id: string }).id === _clientId ? inserted : r
   );
@@ -1623,22 +1699,32 @@ router.post("/reservatorios", async (req: Request, res: Response) => {
 
 router.put("/reservatorios/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
-  const updates = req.body;
+  const updates = req.body as Record<string, unknown>;
   for (const key of Object.keys(reservatoriosCache)) {
     reservatoriosCache[key] = (reservatoriosCache[key] as { id: string }[]).map(r =>
       r.id === id ? { ...r, ...updates } : r
     );
   }
-  const { error } = await supabase.from("reservatorios").update(updates).eq("id", id);
-  if (error) console.error("[reservatorios PUT] Supabase error:", error.message, error.code);
+  // ► Tenta atualizar em 'reservoirs' (schema inglês)
+  const dbUpdates = resToDB(updates);
+  const { error: e1 } = await supabase.from("reservoirs").update(dbUpdates).eq("id", id);
+  if (e1) {
+    // ► Fallback: 'reservatorios' (schema português)
+    const { error: e2 } = await supabase.from("reservatorios").update(updates).eq("id", id);
+    if (e2) console.error("[reservatorios PUT] Supabase error:", e2.message, e2.code);
+  }
   res.json({ ok: true });
 });
 
 router.delete("/reservatorios/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   resEvictFromCache(id);
-  const { error } = await supabase.from("reservatorios").delete().eq("id", id);
-  if (error) console.error("[reservatorios DELETE] Supabase error:", error.message, error.code);
+  // ► Tenta deletar em 'reservoirs' (schema inglês), depois fallback
+  const { error: e1 } = await supabase.from("reservoirs").delete().eq("id", id);
+  if (e1) {
+    const { error: e2 } = await supabase.from("reservatorios").delete().eq("id", id);
+    if (e2) console.error("[reservatorios DELETE] Supabase error:", e2.message, e2.code);
+  }
   res.json({ ok: true });
 });
 
