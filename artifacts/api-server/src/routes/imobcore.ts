@@ -1372,12 +1372,16 @@ async function handleSensorWebhook(req: Request, res: Response): Promise<void> {
       .maybeSingle();
 
     if (rErr || !reservoir) {
-      // Fallback: buscar pelo mac_address
-      const { data: byMac } = await supabase
-        .from("reservoirs")
-        .select("id, name, capacity_liters, condominium_id, iot_sensor_id")
-        .eq("mac_address", device_id)
-        .maybeSingle();
+      // Fallback: buscar pelo mac_address (ignora erro se coluna não existir)
+      let byMac: { id: string; name: string; capacity_liters: number; condominium_id?: string; iot_sensor_id: string } | null = null;
+      try {
+        const { data: macResult, error: macErr } = await supabase
+          .from("reservoirs")
+          .select("id, name, capacity_liters, condominium_id, iot_sensor_id")
+          .eq("mac_address", device_id)
+          .maybeSingle();
+        if (!macErr) byMac = macResult;
+      } catch { /* coluna mac_address pode não existir */ }
 
       if (!byMac) {
         console.error("[webhook] Reservoir não encontrado:", device_id, rErr?.message);
