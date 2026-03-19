@@ -5,7 +5,7 @@ import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tool
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; responsavel?: string; updated_at?: string; created_at: string; equipamento_ids?: string[] }
 interface Sensor { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; nivel_atual: number; volume_litros: number; status?: string }
-interface Reservatorio { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; altura_cm: number; mac_address?: string; cf_url: string; wh_url: string; protocolo: string; porta: number; cf_online: boolean; wh_online: boolean; created_at: string }
+interface Reservatorio { id: string; sensor_id: string; nome: string; local: string; capacidade_litros: number; altura_cm: number; mac_address?: string; cf_url: string; wh_url: string; protocolo: string; porta: number; cf_online: boolean; wh_online: boolean; created_at: string; condominio_id?: string | null }
 interface Alerta { id: string; origem: string; titulo: string; descricao?: string; tipo: string; nivel: string; cidade: string; bairro: string }
 interface Receita { id: string; descricao: string; valor: number; categoria: string; status: string; created_at?: string }
 interface Despesa { id: string; descricao: string; valor: number; categoria: string; fornecedor?: string; created_at?: string }
@@ -1352,7 +1352,7 @@ export default function App() {
   const resSave = async () => {
     if (!resForm.nome.trim()) { showToast("⚠️ Preencha o Nome do reservatório", "warn"); return; }
     const sensorId = resForm.sensor_id.trim() || `sensor_${Date.now()}`;
-    const formData = { ...resForm, sensor_id: sensorId };
+    const formData = { ...resForm, sensor_id: sensorId, condominio_id: condId };
     if (resEditId) {
       setResList(prev => prev.map(r => r.id === resEditId ? { ...r, ...formData, cf_online:r.cf_online, wh_online:r.wh_online } : r));
       try {
@@ -1804,17 +1804,19 @@ export default function App() {
     return () => { clearInterval(clock); clearInterval(refresh); };
   }, [loadDashboard]);
 
-  // ── Carregar reservatórios da API ─────────────────────────────────────────
+  // ── Carregar reservatórios da API (isolado por condomínio) ────────────────
   useEffect(() => {
-    // Carrega lista de reservatórios e últimos níveis conhecidos em paralelo
+    // Limpa lista imediatamente ao trocar de condomínio para não mostrar dados errados
+    setResList([]);
+    if (!condId) return;
     Promise.all([
-      fetch("/api/reservatorios").then(r => r.json()).catch(() => ({})),
+      fetch(`/api/reservatorios?condominio_id=${condId}`).then(r => r.json()).catch(() => ({})),
       fetch("/api/reservatorios/niveis").then(r => r.json()).catch(() => ({})),
     ]).then(([resJson, niveisJson]) => {
-      if (resJson.reservatorios?.length > 0) setResList(resJson.reservatorios);
+      setResList(resJson.reservatorios ?? []);
       if (niveisJson.niveis) setResNivels(niveisJson.niveis);
     });
-  }, []);
+  }, [condId]);
 
   // ── Theme: apply CSS custom properties ───────────────────────────────────
   useEffect(() => {

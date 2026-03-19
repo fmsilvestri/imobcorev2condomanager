@@ -1311,6 +1311,23 @@ async function handleSensorWebhook(req: Request, res: Response): Promise<void> {
     try {
       await supabase.from("sensor_leituras").insert(doc);
     } catch { /* table may not exist yet — continue */ }
+    // Atualiza nivel_atual e condominio_id no sensor (lookup via reservatorios)
+    try {
+      const { data: resRow } = await supabase
+        .from("reservatorios")
+        .select("condominio_id, capacidade_litros")
+        .eq("sensor_id", payload.sensor_id)
+        .single();
+      if (resRow) {
+        const nivel = Math.min(100, Math.max(0, Number(payload.nivel) || 0));
+        const capacidade = Number(resRow.capacidade_litros) || 0;
+        await supabase.from("sensores").update({
+          nivel_atual: nivel,
+          volume_litros: Math.round(nivel / 100 * capacidade),
+          condominio_id: resRow.condominio_id,
+        }).eq("sensor_id", payload.sensor_id);
+      }
+    } catch { /* silently ignore — sensors table update is non-critical */ }
     broadcast("sensor_leitura", doc);
     console.log(`[webhook] sensor ${payload.sensor_id} recebido — nivel: ${payload.nivel ?? "—"}`);
     res.json({ ok: true, received_at: doc.received_at });
@@ -1346,14 +1363,21 @@ router.post("/reservatorios/test-url", async (req: Request, res: Response) => {
 });
 
 // ─── Reservatórios ────────────────────────────────────────────────────────
-let reservatorios: object[] = [];
+// Cache in-memory por condominio_id (chave "_all" para sem filtro)
+const reservatoriosCache: Record<string, object[]> = {};
 
-router.get("/reservatorios", async (_req: Request, res: Response) => {
+router.get("/reservatorios", async (req: Request, res: Response) => {
+  const condId = (req.query.condominio_id as string | undefined) || null;
+  const cacheKey = condId || "_all";
   try {
-    const { data, error } = await supabase.from("reservatorios").select("*").order("created_at", { ascending: false });
-    if (!error && data?.length) reservatorios = data;
-  } catch { /* use in-memory */ }
-  res.json({ reservatorios });
+    const base = supabase.from("reservatorios").select("*").order("created_at", { ascending: false });
+    const { data, error } = condId ? await base.eq("condominio_id", condId) : await base;
+    if (!error && data) {
+      reservatoriosCache[cacheKey] = data;
+      return res.json({ reservatorios: data });
+    }
+  } catch { /* use in-memory cache */ }
+  res.json({ reservatorios: reservatoriosCache[cacheKey] || [] });
 });
 
 // Retorna o último nível conhecido por sensor_id (para pre-popular gauges no frontend)
@@ -1400,11 +1424,21 @@ router.get("/reservatorios/niveis", async (_req: Request, res: Response) => {
   res.json({ niveis });
 });
 
+// Helper: remove entry by id from all cache keys
+function resEvictFromCache(id: string) {
+  for (const key of Object.keys(reservatoriosCache)) {
+    reservatoriosCache[key] = (reservatoriosCache[key] as { id: string }[]).filter(r => r.id !== id);
+  }
+}
+
 router.post("/reservatorios", async (req: Request, res: Response) => {
-  // Strip client-generated id so Supabase uses gen_random_uuid()
   const { id: _clientId, ...body } = req.body;
+  const condId: string | null = body.condominio_id || null;
   const localDoc = { ...req.body, created_at: new Date().toISOString() };
-  reservatorios.unshift(localDoc);
+  // Optimistic: insert into per-cond cache
+  const cacheKey = condId || "_all";
+  if (!reservatoriosCache[cacheKey]) reservatoriosCache[cacheKey] = [];
+  (reservatoriosCache[cacheKey] as object[]).unshift(localDoc);
   const { data: inserted, error } = await supabase
     .from("reservatorios")
     .insert({ ...body, created_at: localDoc.created_at })
@@ -1414,9 +1448,9 @@ router.post("/reservatorios", async (req: Request, res: Response) => {
     console.error("[reservatorios POST] Supabase error:", error.message, error.code);
     return res.json({ ok: true, doc: localDoc });
   }
-  // Update in-memory record with real UUID from Supabase
-  reservatorios = (reservatorios as { id: string }[]).map(r =>
-    r.id === _clientId ? inserted : r
+  // Replace optimistic doc with real record
+  reservatoriosCache[cacheKey] = (reservatoriosCache[cacheKey] as { id: string }[]).map(r =>
+    (r as { id: string }).id === _clientId ? inserted : r
   );
   res.json({ ok: true, doc: inserted });
 });
@@ -1424,7 +1458,11 @@ router.post("/reservatorios", async (req: Request, res: Response) => {
 router.put("/reservatorios/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   const updates = req.body;
-  reservatorios = (reservatorios as { id: string }[]).map((r) => r.id === id ? { ...r, ...updates } : r);
+  for (const key of Object.keys(reservatoriosCache)) {
+    reservatoriosCache[key] = (reservatoriosCache[key] as { id: string }[]).map(r =>
+      r.id === id ? { ...r, ...updates } : r
+    );
+  }
   const { error } = await supabase.from("reservatorios").update(updates).eq("id", id);
   if (error) console.error("[reservatorios PUT] Supabase error:", error.message, error.code);
   res.json({ ok: true });
@@ -1432,7 +1470,7 @@ router.put("/reservatorios/:id", async (req: Request, res: Response) => {
 
 router.delete("/reservatorios/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
-  reservatorios = (reservatorios as { id: string }[]).filter(r => r.id !== id);
+  resEvictFromCache(id);
   const { error } = await supabase.from("reservatorios").delete().eq("id", id);
   if (error) console.error("[reservatorios DELETE] Supabase error:", error.message, error.code);
   res.json({ ok: true });
