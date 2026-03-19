@@ -1413,9 +1413,24 @@ async function handleSensorWebhook(req: Request, res: Response): Promise<void> {
       received_at:  (raw.received_at as string) || new Date().toISOString(),
     };
 
-    // ── 6. Salvar em sensor_leituras ──────────────────────────────────────
+    // ── 6. Salvar em sensor_leituras (com fallback para schema antigo) ───────
     try {
-      await supabase.from("sensor_leituras").insert(doc);
+      const { error: insErr } = await supabase.from("sensor_leituras").insert(doc);
+      if (insErr) {
+        const isSchemaErr = insErr.code === "PGRST204"
+          || (insErr.message || "").includes("schema cache")
+          || (insErr.message || "").includes("Could not find")
+          || (insErr.message || "").includes("column");
+        if (isSchemaErr) {
+          // Fallback: insert apenas colunas garantidamente existentes
+          await supabase.from("sensor_leituras").insert({
+            sensor_id:    resolved_sensor_id,
+            nivel:        nivel_num,
+            distancia_cm: doc.distancia_cm,
+            received_at:  doc.received_at,
+          });
+        }
+      }
     } catch { /* tabela pode não existir ainda */ }
 
     // ── 7. Atualizar tabela sensores ──────────────────────────────────────
@@ -1537,20 +1552,36 @@ router.get("/sensor-leituras/historico", async (req: Request, res: Response) => 
 
   const historico: Record<string, { nivel: number; volume_litros: number; received_at: string }[]> = {};
   try {
-    const { data, error } = await supabase
+    // Tenta selecionar com volume_litros (schema novo)
+    let { data, error } = await supabase
       .from("sensor_leituras")
       .select("sensor_id, nivel, volume_litros, received_at")
       .in("sensor_id", sensorIds)
       .order("received_at", { ascending: false })
       .limit(limit * sensorIds.length);
+
+    // Fallback: schema antigo sem volume_litros
+    if (error && ((error.message || "").includes("volume_litros") || (error.message || "").includes("Could not find") || error.code === "PGRST204")) {
+      const fb = await supabase
+        .from("sensor_leituras")
+        .select("sensor_id, nivel, received_at")
+        .in("sensor_id", sensorIds)
+        .order("received_at", { ascending: false })
+        .limit(limit * sensorIds.length);
+      data = fb.data as typeof data;
+      error = fb.error;
+    }
+
     if (!error && data) {
-      for (const row of data) {
-        if (!historico[row.sensor_id]) historico[row.sensor_id] = [];
-        if (historico[row.sensor_id].length < limit) {
-          historico[row.sensor_id].push({
+      for (const row of data as Record<string, unknown>[]) {
+        const sid = String(row.sensor_id || "");
+        if (!sid) continue;
+        if (!historico[sid]) historico[sid] = [];
+        if (historico[sid].length < limit) {
+          historico[sid].push({
             nivel: Math.min(100, Math.max(0, Number(row.nivel) || 0)),
             volume_litros: Number(row.volume_litros) || 0,
-            received_at: row.received_at,
+            received_at: String(row.received_at || ""),
           });
         }
       }

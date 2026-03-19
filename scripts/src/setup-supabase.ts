@@ -337,14 +337,20 @@ CREATE INDEX IF NOT EXISTS idx_reservatorios_condo ON reservatorios(condominio_i
 CREATE TABLE IF NOT EXISTS sensor_leituras (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   sensor_id TEXT,
+  device_id TEXT,
   nivel NUMERIC,
   distancia_cm NUMERIC,
+  volume_litros NUMERIC,
+  bateria NUMERIC,
   temperatura NUMERIC,
   pressao NUMERIC,
   mac_address TEXT,
   received_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_sensor_leituras_sensor ON sensor_leituras(sensor_id, received_at DESC);
+ALTER TABLE sensor_leituras ADD COLUMN IF NOT EXISTS volume_litros NUMERIC;
+ALTER TABLE sensor_leituras ADD COLUMN IF NOT EXISTS bateria NUMERIC;
+ALTER TABLE sensor_leituras ADD COLUMN IF NOT EXISTS device_id TEXT;
 `);
     console.log();
   } else {
@@ -374,6 +380,22 @@ ALTER TABLE reservatorios ADD COLUMN IF NOT EXISTS wh_online BOOLEAN DEFAULT fal
     console.log();
   } else {
     console.log("✅ Migration 11b (reservatorios columns): OK");
+  }
+
+  // ─── Migration 11c: sensor_leituras — colunas Cloudflare Worker ──────────────
+  const { error: m11cErr } = await supabase.from("sensor_leituras")
+    .select("volume_litros, bateria, device_id").limit(1);
+  if (m11cErr) {
+    console.log("⚠️  Migration 11c needed (sensor_leituras extra columns). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    console.log(`
+ALTER TABLE sensor_leituras ADD COLUMN IF NOT EXISTS volume_litros NUMERIC;
+ALTER TABLE sensor_leituras ADD COLUMN IF NOT EXISTS bateria NUMERIC;
+ALTER TABLE sensor_leituras ADD COLUMN IF NOT EXISTS device_id TEXT;
+`);
+    console.log();
+  } else {
+    console.log("✅ Migration 11c (sensor_leituras Cloudflare columns): OK");
   }
 
   console.log();
@@ -470,14 +492,20 @@ CREATE INDEX IF NOT EXISTS idx_reservatorios_condo ON reservatorios(condominio_i
 CREATE TABLE IF NOT EXISTS sensor_leituras (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   sensor_id TEXT,
+  device_id TEXT,
   nivel NUMERIC,
   distancia_cm NUMERIC,
+  volume_litros NUMERIC,
+  bateria NUMERIC,
   temperatura NUMERIC,
   pressao NUMERIC,
   mac_address TEXT,
   received_at TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_sensor_leituras_sensor ON sensor_leituras(sensor_id, received_at DESC);
+ALTER TABLE sensor_leituras ADD COLUMN IF NOT EXISTS volume_litros NUMERIC;
+ALTER TABLE sensor_leituras ADD COLUMN IF NOT EXISTS bateria NUMERIC;
+ALTER TABLE sensor_leituras ADD COLUMN IF NOT EXISTS device_id TEXT;
   `;
   console.log(sql);
 }
