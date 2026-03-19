@@ -3596,6 +3596,7 @@ export default function App() {
       comunicados: "📢 Comunicados",
       insights: "💡 Insights & Análises",
       fornecedores: "🏢 Fornecedores e Contatos",
+      encomendas: "📦 Encomendas",
     };
 
     return (
@@ -4120,6 +4121,88 @@ export default function App() {
             </div>
           </>
         )}
+        {sindicoScreen === "encomendas" && (() => {
+          const ENC_STATUS_SIND: Record<Encomenda["status"], { label: string; color: string; bg: string }> = {
+            aguardando_retirada: { label:"AGUARDANDO",  color:"#F59E0B", bg:"rgba(245,158,11,.15)" },
+            notificado:          { label:"NOTIFICADO",  color:"#3B82F6", bg:"rgba(59,130,246,.15)" },
+            retirado:            { label:"RETIRADO",    color:"#10B981", bg:"rgba(16,185,129,.15)" },
+            devolvido:           { label:"DEVOLVIDO",   color:"#EF4444", bg:"rgba(239,68,68,.15)"  },
+          };
+          const pendentes = encList.filter(e=>e.status==="aguardando_retirada");
+          const recentes = [...encList].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).slice(0,20);
+          const fmtD = (iso:string) => new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
+          return (
+            <div className="ph-sub-body" style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:10 }}>
+              {/* Resumo rápido */}
+              <div style={{ display:"flex", gap:8 }}>
+                {[
+                  { label:"Total",      val:encList.length,                                          color:"#6366f1" },
+                  { label:"Aguardando", val:encList.filter(e=>e.status==="aguardando_retirada").length, color:"#F59E0B" },
+                  { label:"Notificado", val:encList.filter(e=>e.status==="notificado").length,          color:"#3B82F6" },
+                  { label:"Retirado",   val:encList.filter(e=>e.status==="retirado").length,            color:"#10B981" },
+                ].map(s=>(
+                  <div key={s.label} style={{ flex:1, background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:10, padding:"10px 0", textAlign:"center" }}>
+                    <div style={{ fontSize:18, fontWeight:900, color:s.color }}>{s.val}</div>
+                    <div style={{ fontSize:9, color:"var(--neu-text-2)", fontWeight:700, marginTop:1 }}>{s.label.toUpperCase()}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Alerta pendentes */}
+              {pendentes.length>0 && (
+                <div style={{ background:"rgba(245,158,11,.12)", border:"1px solid rgba(245,158,11,.30)", borderRadius:12, padding:"10px 14px", display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ fontSize:20 }}>📬</span>
+                  <div>
+                    <div style={{ fontSize:13, fontWeight:800, color:"#F59E0B" }}>{pendentes.length} encomenda{pendentes.length>1?"s":""} aguardando retirada</div>
+                    <div style={{ fontSize:11, color:"var(--neu-text-2)" }}>Notifique os moradores</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Lista */}
+              <div style={{ fontSize:11, fontWeight:800, color:"var(--neu-text-2)", textTransform:"uppercase", letterSpacing:".06em", marginTop:4 }}>Recentes</div>
+              {recentes.length===0 && (
+                <div style={{ textAlign:"center", padding:24, color:"var(--neu-text-2)", fontSize:13 }}>
+                  <div style={{ fontSize:32, marginBottom:8 }}>📦</div>Sem encomendas registradas.
+                </div>
+              )}
+              {recentes.map(enc=>{
+                const st = ENC_STATUS_SIND[enc.status];
+                return (
+                  <div key={enc.id} style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, padding:"12px 14px", display:"flex", flexDirection:"column", gap:6 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:"var(--neu-text)" }}>{enc.morador_nome}</div>
+                      <span style={{ background:st.bg, color:st.color, borderRadius:20, padding:"2px 8px", fontSize:9, fontWeight:800, letterSpacing:".04em" }}>{st.label}</span>
+                    </div>
+                    <div style={{ display:"flex", gap:12, fontSize:11, color:"var(--neu-text-2)" }}>
+                      <span>🏠 Bl.{enc.bloco} — Ap.{enc.unidade}</span>
+                      <span>📅 {fmtD(enc.received_at)}</span>
+                      {enc.codigo_rastreio && <span>🔍 {enc.codigo_rastreio}</span>}
+                    </div>
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                      {enc.tipos.map(t=>(
+                        <span key={t} style={{ background:"rgba(99,102,241,.12)", color:"#6366f1", borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:700 }}>{t}</span>
+                      ))}
+                    </div>
+                    {enc.status==="aguardando_retirada" && (
+                      <button onClick={()=>encUpdateStatus(enc.id,"notificado")}
+                        style={{ marginTop:4, background:"linear-gradient(135deg,#3B82F6,#2563EB)", border:"none", borderRadius:8, padding:"7px", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                        🔔 Notificar Morador
+                      </button>
+                    )}
+                    {enc.status==="notificado" && (
+                      <button onClick={()=>encUpdateStatus(enc.id,"retirado")}
+                        style={{ marginTop:4, background:"linear-gradient(135deg,#10B981,#059669)", border:"none", borderRadius:8, padding:"7px", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                        ✅ Confirmar Retirada
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         {sindicoScreen === "fornecedores" && (() => {
           const sfDetail = sindFornecDetail ? fornecList.find(f=>f.id===sindFornecDetail) : null;
           return (
@@ -10691,6 +10774,8 @@ Content-Type: application/json
               nivelMedio={nivelMedio}
               sseCount={sseCount}
               comunicadosCount={(dash?.comunicados ?? []).length}
+              gasNivel={gasLeituras[0]?.nivel ?? 0}
+              encPendentes={encList.filter(e => e.status === "aguardando_retirada").length}
               onPhotoUpdate={(url) => setDash(prev => prev ? { ...prev, condominios: prev.condominios.map((c, i) => i === 0 ? { ...c, photo_url: url } : c) } : prev)}
               renderSindicoScreen={renderSindicoScreen}
             />

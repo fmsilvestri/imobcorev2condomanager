@@ -30,6 +30,8 @@ export interface SindicoHomeProps {
   nivelMedio: number;
   sseCount: number;
   comunicadosCount: number;
+  gasNivel: number;
+  encPendentes: number;
   onPhotoUpdate: (url: string) => void;
   renderSindicoScreen: () => React.ReactNode;
 }
@@ -60,6 +62,7 @@ export default function SindicoHome({
   bellCount, setBellCount, bellShake,
   saldo, osAbertasCount, equipCount, crmCount,
   fornecCount, nivelMedio, sseCount, comunicadosCount,
+  gasNivel, encPendentes,
   onPhotoUpdate,
   renderSindicoScreen,
 }: SindicoHomeProps) {
@@ -130,24 +133,30 @@ export default function SindicoHome({
   type LightModule = DarkModule & { border: string };
 
   const modsDark: DarkModule[] = [
-    { icon:"💰", title:"Financeiro",   screen:"financeiro",    sub: saldo>=1000?`R$${(saldo/1000).toFixed(0)}k`:`R$${saldo.toFixed(0)}`, hasDot:false, bg:"linear-gradient(135deg,#064e3b,#065f46)", text:"#6ee7b7" },
-    { icon:"👤", title:"Usuários",     screen:"planejamento",  sub:`${osAbertasCount} pendentes`,hasDot:osAbertasCount>0, bg:"linear-gradient(135deg,#1e1b4b,#2e2660)", text:"#a5b4fc" },
-    { icon:"🔧", title:"Manutenção",   screen:"manutencao",    sub:`${equipCount} itens`,        hasDot:false, bg:"linear-gradient(135deg,#431407,#7c2d12)", text:"#fdba74" },
-    { icon:"👥", title:"CRM",          screen:"crm",           sub:`${crmCount} moradores`,      hasDot:false, bg:"linear-gradient(135deg,#1e3a5f,#1e40af)", text:"#93c5fd" },
-    { icon:"📢", title:"Comunicados",  screen:"comunicados",   sub:`${comunicadosCount} enviados`,hasDot:false, bg:"linear-gradient(135deg,#2d1b69,#4c1d95)", text:"#c4b5fd" },
-    { icon:"✨", title:"Insights IA",  screen:"insights",      sub:"Tempo real",                 hasDot:false, bg:"linear-gradient(135deg,#1c1917,#44403c)", text:"#fde68a" },
-    { icon:"🏪", title:"Fornecedores", screen:"fornecedores",  sub:`${fornecCount} cadastros`,   hasDot:false, bg:"linear-gradient(135deg,#0c1a12,#14532d)", text:"#86efac" },
-    { icon:"📡", title:"IoT Sensores", screen:"agua",          sub:`${nivelMedio}% nível`,       hasDot:false, bg:"linear-gradient(135deg,#0c1a2e,#0f3460)", text:"#7dd3fc" },
+    { icon:"💰", title:"Financeiro",   screen:"financeiro",    sub: saldo>=1000?`R$${(saldo/1000).toFixed(0)}k`:`R$${saldo.toFixed(0)}`,    hasDot:false,              bg:"linear-gradient(135deg,#064e3b,#065f46)", text:"#6ee7b7" },
+    { icon:"👤", title:"Usuários",     screen:"planejamento",  sub:`${osAbertasCount} pendentes`,                                            hasDot:osAbertasCount>0,   bg:"linear-gradient(135deg,#1e1b4b,#2e2660)", text:"#a5b4fc" },
+    { icon:"🔧", title:"Manutenção",   screen:"manutencao",    sub:`${equipCount} itens`,                                                    hasDot:false,              bg:"linear-gradient(135deg,#431407,#7c2d12)", text:"#fdba74" },
+    { icon:"👥", title:"CRM",          screen:"crm",           sub:`${crmCount} moradores`,                                                  hasDot:false,              bg:"linear-gradient(135deg,#1e3a5f,#1e40af)", text:"#93c5fd" },
+    { icon:"📢", title:"Comunicados",  screen:"comunicados",   sub:`${comunicadosCount} enviados`,                                           hasDot:false,              bg:"linear-gradient(135deg,#2d1b69,#4c1d95)", text:"#c4b5fd" },
+    { icon:"✨", title:"Insights IA",  screen:"insights",      sub:"Tempo real",                                                             hasDot:false,              bg:"linear-gradient(135deg,#1c1917,#44403c)", text:"#fde68a" },
+    { icon:"🏪", title:"Fornecedores", screen:"fornecedores",  sub:`${fornecCount} cadastros`,                                               hasDot:false,              bg:"linear-gradient(135deg,#0c1a12,#14532d)", text:"#86efac" },
+    { icon:"💧", title:"Água",         screen:"agua",          sub:`${nivelMedio}% nível`,                                                   hasDot:false,              bg:"linear-gradient(135deg,#0c1a2e,#0f3460)", text:"#7dd3fc" },
+    { icon:"🔥", title:"Gás",          screen:"gas",           sub:`${gasNivel}% nível${gasNivel<20?" ⚠️":""}`,                              hasDot:gasNivel<20,        bg:"linear-gradient(135deg,#431407,#7c2d12)", text:"#fb923c" },
+    { icon:"⚡", title:"Energia",      screen:"energia",       sub:"Ver consumo",                                                            hasDot:false,              bg:"linear-gradient(135deg,#1c1a04,#3d3200)", text:"#fde047" },
+    { icon:"📦", title:"Encomendas",   screen:"encomendas",    sub:`${encPendentes} aguardando`,                                             hasDot:encPendentes>0,     bg:"linear-gradient(135deg,#1e1b4b,#312e81)", text:"#818cf8" },
   ];
   const modsLight: LightModule[] = [
-    { icon:"💰", title:"Financeiro",   screen:"financeiro",    sub: saldo>=1000?`R$${(saldo/1000).toFixed(0)}k`:`R$${saldo.toFixed(0)}`, hasDot:false, bg:"#f0fdf4", border:"#bbf7d0", text:"#065f46" },
-    { icon:"👤", title:"Usuários",     screen:"planejamento",  sub:`${osAbertasCount} pendentes`,hasDot:osAbertasCount>0, bg:"#eef2ff", border:"#c7d2fe", text:"#3730a3" },
-    { icon:"🔧", title:"Manutenção",   screen:"manutencao",    sub:`${equipCount} itens`,        hasDot:false, bg:"#fff7ed", border:"#fed7aa", text:"#9a3412" },
-    { icon:"👥", title:"CRM",          screen:"crm",           sub:`${crmCount} moradores`,      hasDot:false, bg:"#eff6ff", border:"#bfdbfe", text:"#1e40af" },
-    { icon:"📢", title:"Comunicados",  screen:"comunicados",   sub:`${comunicadosCount} enviados`,hasDot:false, bg:"#f5f3ff", border:"#ddd6fe", text:"#5b21b6" },
-    { icon:"✨", title:"Insights IA",  screen:"insights",      sub:"Tempo real",                 hasDot:false, bg:"#fffbeb", border:"#fde68a", text:"#92400e" },
-    { icon:"🏪", title:"Fornecedores", screen:"fornecedores",  sub:`${fornecCount} cadastros`,   hasDot:false, bg:"#f0fdf4", border:"#bbf7d0", text:"#14532d" },
-    { icon:"📡", title:"IoT Sensores", screen:"agua",          sub:`${nivelMedio}% nível`,       hasDot:false, bg:"#f0f9ff", border:"#bae6fd", text:"#0c4a6e" },
+    { icon:"💰", title:"Financeiro",   screen:"financeiro",    sub: saldo>=1000?`R$${(saldo/1000).toFixed(0)}k`:`R$${saldo.toFixed(0)}`,    hasDot:false,              bg:"#f0fdf4", border:"#bbf7d0", text:"#065f46" },
+    { icon:"👤", title:"Usuários",     screen:"planejamento",  sub:`${osAbertasCount} pendentes`,                                            hasDot:osAbertasCount>0,   bg:"#eef2ff", border:"#c7d2fe", text:"#3730a3" },
+    { icon:"🔧", title:"Manutenção",   screen:"manutencao",    sub:`${equipCount} itens`,                                                    hasDot:false,              bg:"#fff7ed", border:"#fed7aa", text:"#9a3412" },
+    { icon:"👥", title:"CRM",          screen:"crm",           sub:`${crmCount} moradores`,                                                  hasDot:false,              bg:"#eff6ff", border:"#bfdbfe", text:"#1e40af" },
+    { icon:"📢", title:"Comunicados",  screen:"comunicados",   sub:`${comunicadosCount} enviados`,                                           hasDot:false,              bg:"#f5f3ff", border:"#ddd6fe", text:"#5b21b6" },
+    { icon:"✨", title:"Insights IA",  screen:"insights",      sub:"Tempo real",                                                             hasDot:false,              bg:"#fffbeb", border:"#fde68a", text:"#92400e" },
+    { icon:"🏪", title:"Fornecedores", screen:"fornecedores",  sub:`${fornecCount} cadastros`,                                               hasDot:false,              bg:"#f0fdf4", border:"#bbf7d0", text:"#14532d" },
+    { icon:"💧", title:"Água",         screen:"agua",          sub:`${nivelMedio}% nível`,                                                   hasDot:false,              bg:"#f0f9ff", border:"#bae6fd", text:"#0c4a6e" },
+    { icon:"🔥", title:"Gás",          screen:"gas",           sub:`${gasNivel}% nível${gasNivel<20?" ⚠️":""}`,                              hasDot:gasNivel<20,        bg:"#fff7ed", border:"#fed7aa", text:"#c2410c" },
+    { icon:"⚡", title:"Energia",      screen:"energia",       sub:"Ver consumo",                                                            hasDot:false,              bg:"#fefce8", border:"#fef08a", text:"#854d0e" },
+    { icon:"📦", title:"Encomendas",   screen:"encomendas",    sub:`${encPendentes} aguardando`,                                             hasDot:encPendentes>0,     bg:"#eef2ff", border:"#c7d2fe", text:"#3730a3" },
   ];
   const mods = isDark ? modsDark : modsLight;
 
