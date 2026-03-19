@@ -1198,6 +1198,8 @@ export default function App() {
   const [resList, setResList] = useState<Reservatorio[]>([]);
   // Níveis em tempo real por sensor_id (atualizado via SSE sensor_leitura)
   const [resNivels, setResNivels] = useState<Record<string, { nivel: number; volume: number; ts: string }>>({});
+  // Histórico de leituras por sensor_id (carregado do backend sensor_leituras)
+  const [resHistorico, setResHistorico] = useState<Record<string, { nivel: number; volume_litros: number; received_at: string }[]>>({});
   // ── Gerenciamento de sensores (tabela sensores — aparecem nos gauges) ───────
   const [sensoresManaged, setSensoresManaged] = useState<Sensor[]>([]);
   const EMPTY_SENSOR_FORM = { sensor_id:"", nome:"", local:"", capacidade_litros:5000, nivel_atual:0 };
@@ -1385,6 +1387,20 @@ export default function App() {
     }
     setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM);
   };
+
+  // Carrega histórico de sensor_leituras para todos os reservatórios da lista
+  const loadResHistorico = async (lista: Reservatorio[]) => {
+    const ids = lista.map(r => r.sensor_id).filter(Boolean);
+    if (!ids.length) return;
+    try {
+      const r = await fetch(`/api/sensor-leituras/historico?sensor_ids=${ids.join(",")}&limit=60`);
+      if (r.ok) {
+        const json = await r.json();
+        setResHistorico(json.historico || {});
+      }
+    } catch { /* ignore */ }
+  };
+
   const resDelete = async (id: string) => {
     const target = resList.find(r => r.id === id);
     if (!confirm(`Excluir reservatório "${target?.nome || id}"?`)) return;
@@ -1685,6 +1701,11 @@ export default function App() {
   useEffect(() => {
     if (sindicoScreen === "piscina" && condId) loadPiscina(condId);
   }, [sindicoScreen, condId]);
+
+  // Carrega histórico de sensor_leituras sempre que a lista de reservatórios mudar
+  useEffect(() => {
+    if (resList.length > 0) loadResHistorico(resList);
+  }, [resList]);
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
   const loadDashboard = useCallback(async (forCondId?: string) => {
@@ -6678,35 +6699,87 @@ export default function App() {
                 ════════════════════════════════════════════════════ */}
                 {aguaTab === "historico" && (
                   <div>
-                    <div style={{ fontSize:11, color:"#475569", marginBottom:10, fontWeight:600 }}>📈 EVOLUÇÃO DO NÍVEL — ÚLTIMAS LEITURAS</div>
-                    <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px", marginBottom:16 }}>
-                      <ResponsiveContainer width="100%" height={240}>
-                        <LineChart data={[...aguaLeituras].reverse().map(l=>({ nome:`${l.data.slice(0,5)} ${l.hora.slice(0,5)}`, nivel:l.nivel, volume:l.volume/1000 }))} margin={{ top:4, right:10, bottom:4, left:0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)"/>
-                          <XAxis dataKey="nome" tick={{ fontSize:8, fill:"#475569" }} axisLine={false} tickLine={false}/>
-                          <YAxis yAxisId="left" tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} width={35} tickFormatter={(v:number)=>`${v}%`}/>
-                          <YAxis yAxisId="right" orientation="right" tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} width={40} tickFormatter={(v:number)=>`${v}k`}/>
-                          <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }}/>
-                          <Legend wrapperStyle={{ fontSize:10 }}/>
-                          <Line yAxisId="left" type="monotone" dataKey="nivel" stroke="#3B82F6" strokeWidth={2} dot={{ r:3 }} name="Nível (%)"/>
-                          <Line yAxisId="right" type="monotone" dataKey="volume" stroke="#06B6D4" strokeWidth={2} dot={{ r:3 }} name="Volume (kL)"/>
-                        </LineChart>
-                      </ResponsiveContainer>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                      <div style={{ fontSize:11, color:"#475569", fontWeight:600 }}>📈 VOLUME POR RESERVATÓRIO — HISTÓRICO DE LEITURAS</div>
+                      <button onClick={()=>loadResHistorico(resList)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:6, padding:"4px 12px", color:"#94A3B8", fontSize:11, cursor:"pointer" }}>⟳ Atualizar</button>
                     </div>
 
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
-                      {[
-                        { label:"Nível Máximo",  val:`${Math.max(...aguaLeituras.map(l=>l.nivel))}%`,                                          color:"#10B981" },
-                        { label:"Nível Mínimo",  val:`${Math.min(...aguaLeituras.map(l=>l.nivel))}%`,                                          color:"#EF4444" },
-                        { label:"Nível Médio",   val:`${Math.round(aguaLeituras.reduce((s,l)=>s+l.nivel,0)/aguaLeituras.length)}%`,            color:"#3B82F6" },
-                        { label:"Vol. Médio",    val:`${(Math.round(aguaLeituras.reduce((s,l)=>s+l.volume,0)/aguaLeituras.length)/1000).toFixed(1)}k L`, color:"#06B6D4" },
-                      ].map(k=>(
-                        <div key={k.label} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"12px 14px" }}>
-                          <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
-                          <div style={{ fontSize:20, fontWeight:800, color:k.color }}>{k.val}</div>
-                        </div>
-                      ))}
-                    </div>
+                    {resList.length === 0 ? (
+                      <div style={{ textAlign:"center", padding:"48px 0", color:"#475569" }}>
+                        <div style={{ fontSize:40, marginBottom:12 }}>🗂️</div>
+                        <div style={{ fontSize:14, fontWeight:600, marginBottom:6 }}>Nenhum reservatório cadastrado</div>
+                        <div style={{ fontSize:12 }}>Adicione um reservatório na aba Reservatórios para ver o gráfico aqui.</div>
+                      </div>
+                    ) : (
+                      resList.map((res, ri) => {
+                        const hist = [...(resHistorico[res.sensor_id] || [])].reverse();
+                        const colors = ["#3B82F6","#06B6D4","#10B981","#8B5CF6","#F59E0B","#EF4444"];
+                        const col = colors[ri % colors.length];
+                        const chartData = hist.map(h => ({
+                          ts: new Date(h.received_at).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}),
+                          nivel: h.nivel,
+                          volume: +(h.volume_litros/1000).toFixed(1),
+                        }));
+                        const hasData = chartData.length > 0;
+                        const nivelAtual = resNivels[res.sensor_id]?.nivel ?? (hasData ? hist[hist.length-1].nivel : 0);
+                        const volAtual = resNivels[res.sensor_id]?.volume ?? (hasData ? hist[hist.length-1].volume_litros : 0);
+                        return (
+                          <div key={res.id} style={{ background:"rgba(255,255,255,.02)", border:`1px solid ${col}30`, borderRadius:14, padding:"18px 20px", marginBottom:18 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+                              <div>
+                                <div style={{ fontSize:14, fontWeight:800, color:col }}>💧 {res.nome || res.sensor_id}</div>
+                                <div style={{ fontSize:11, color:"#475569", marginTop:2 }}>{res.local || "—"} · Cap: {res.capacidade_litros.toLocaleString("pt-BR")}L · ID: {res.sensor_id}</div>
+                              </div>
+                              <div style={{ display:"flex", gap:10 }}>
+                                <div style={{ background:`${col}15`, border:`1px solid ${col}30`, borderRadius:8, padding:"6px 12px", textAlign:"center" }}>
+                                  <div style={{ fontSize:10, color:"#475569" }}>Nível atual</div>
+                                  <div style={{ fontSize:18, fontWeight:800, color: nivelAtual >= 60 ? "#10B981" : nivelAtual >= 30 ? "#F59E0B" : "#EF4444" }}>{nivelAtual}%</div>
+                                </div>
+                                <div style={{ background:"rgba(6,182,212,.08)", border:"1px solid rgba(6,182,212,.2)", borderRadius:8, padding:"6px 12px", textAlign:"center" }}>
+                                  <div style={{ fontSize:10, color:"#475569" }}>Volume atual</div>
+                                  <div style={{ fontSize:18, fontWeight:800, color:"#06B6D4" }}>{(volAtual/1000).toFixed(1)}kL</div>
+                                </div>
+                              </div>
+                            </div>
+                            {hasData ? (
+                              <>
+                                <ResponsiveContainer width="100%" height={200}>
+                                  <LineChart data={chartData} margin={{ top:4, right:10, bottom:4, left:0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)"/>
+                                    <XAxis dataKey="ts" tick={{ fontSize:8, fill:"#475569" }} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
+                                    <YAxis yAxisId="left" tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} width={35} tickFormatter={(v:number)=>`${v}%`} domain={[0,100]}/>
+                                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} width={40} tickFormatter={(v:number)=>`${v}k`}/>
+                                    <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} formatter={(v:number,n:string)=>n==="nivel"?[`${v}%`,"Nível"]:[`${v}kL`,"Volume"]}/>
+                                    <Legend wrapperStyle={{ fontSize:10 }}/>
+                                    <Line yAxisId="left" type="monotone" dataKey="nivel" stroke={col} strokeWidth={2} dot={{ r:2 }} name="Nível (%)"/>
+                                    <Line yAxisId="right" type="monotone" dataKey="volume" stroke="#06B6D4" strokeWidth={2} dot={{ r:2 }} name="Volume (kL)" strokeDasharray="4 2"/>
+                                  </LineChart>
+                                </ResponsiveContainer>
+                                <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginTop:10 }}>
+                                  {[
+                                    { label:"Nível Máx",  val:`${Math.max(...hist.map(h=>h.nivel))}%`,  color:"#10B981" },
+                                    { label:"Nível Mín",  val:`${Math.min(...hist.map(h=>h.nivel))}%`,  color:"#EF4444" },
+                                    { label:"Nível Médio",val:`${Math.round(hist.reduce((s,h)=>s+h.nivel,0)/hist.length)}%`, color:col },
+                                    { label:"Vol. Médio", val:`${(hist.reduce((s,h)=>s+h.volume_litros,0)/hist.length/1000).toFixed(1)}kL`, color:"#06B6D4" },
+                                  ].map(k=>(
+                                    <div key={k.label} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.05)", borderRadius:8, padding:"9px 12px" }}>
+                                      <div style={{ fontSize:10, color:"#475569", marginBottom:3 }}>{k.label}</div>
+                                      <div style={{ fontSize:16, fontWeight:800, color:k.color }}>{k.val}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            ) : (
+                              <div style={{ textAlign:"center", padding:"28px 0", color:"#475569" }}>
+                                <div style={{ fontSize:28, marginBottom:8 }}>⏳</div>
+                                <div style={{ fontSize:12, fontWeight:600 }}>Aguardando primeiras leituras</div>
+                                <div style={{ fontSize:11, marginTop:4 }}>O gráfico aparecerá quando o sensor enviar dados via webhook</div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 )}
 

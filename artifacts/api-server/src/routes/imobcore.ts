@@ -1468,6 +1468,38 @@ router.get("/reservatorios/niveis", async (_req: Request, res: Response) => {
   res.json({ niveis });
 });
 
+// Retorna histórico de leituras por sensor_id(s)
+// GET /api/sensor-leituras/historico?sensor_ids=id1,id2&limit=60
+router.get("/sensor-leituras/historico", async (req: Request, res: Response) => {
+  const rawIds = String(req.query.sensor_ids || "");
+  const sensorIds = rawIds.split(",").map(s => s.trim()).filter(Boolean);
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 60));
+  if (!sensorIds.length) return res.json({ historico: {} });
+
+  const historico: Record<string, { nivel: number; volume_litros: number; received_at: string }[]> = {};
+  try {
+    const { data, error } = await supabase
+      .from("sensor_leituras")
+      .select("sensor_id, nivel, volume_litros, received_at")
+      .in("sensor_id", sensorIds)
+      .order("received_at", { ascending: false })
+      .limit(limit * sensorIds.length);
+    if (!error && data) {
+      for (const row of data) {
+        if (!historico[row.sensor_id]) historico[row.sensor_id] = [];
+        if (historico[row.sensor_id].length < limit) {
+          historico[row.sensor_id].push({
+            nivel: Math.min(100, Math.max(0, Number(row.nivel) || 0)),
+            volume_litros: Number(row.volume_litros) || 0,
+            received_at: row.received_at,
+          });
+        }
+      }
+    }
+  } catch { /* sensor_leituras may not exist */ }
+  return res.json({ historico });
+});
+
 // Helper: remove entry by id from all cache keys
 function resEvictFromCache(id: string) {
   for (const key of Object.keys(reservatoriosCache)) {
