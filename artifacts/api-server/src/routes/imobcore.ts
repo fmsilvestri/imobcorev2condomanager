@@ -1258,7 +1258,8 @@ router.delete("/encomendas/:id", async (req: Request, res: Response) => {
 });
 
 // ─── Webhook receptor de sensores IoT (Cloudflare Worker → ImobCore) ─────────
-router.post("/webhook/sensor", async (req: Request, res: Response) => {
+// Aceita tanto /api/webhook quanto /api/webhook/sensor (alias para compatibilidade)
+async function handleSensorWebhook(req: Request, res: Response): Promise<void> {
   try {
     const payload = req.body as {
       sensor_id?: string; nivel?: number; distancia_cm?: number;
@@ -1274,12 +1275,17 @@ router.post("/webhook/sensor", async (req: Request, res: Response) => {
       await supabase.from("sensor_leituras").insert(doc);
     } catch { /* table may not exist yet — continue */ }
     broadcast("sensor_leitura", doc);
+    console.log(`[webhook] sensor ${payload.sensor_id} recebido — nivel: ${payload.nivel ?? "—"}`);
     res.json({ ok: true, received_at: doc.received_at });
   } catch (err) {
     console.error("webhook/sensor error:", err);
     res.status(500).json({ ok: false, error: "internal error" });
   }
-});
+}
+
+router.post("/webhook/sensor", handleSensorWebhook);
+// Alias: /api/webhook (sem /sensor) — compatível com URL salva nos reservatórios
+router.post("/webhook", handleSensorWebhook);
 
 // ─── Reservatórios: proxy URL tester (avoids CORS on client) ──────────────
 router.post("/reservatorios/test-url", async (req: Request, res: Response) => {

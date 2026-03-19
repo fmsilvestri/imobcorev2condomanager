@@ -1196,14 +1196,14 @@ export default function App() {
   const [resList, setResList] = useState<Reservatorio[]>([]);
   const [resShowForm, setResShowForm] = useState(false);
   const [resEditId, setResEditId] = useState<string|null>(null);
-  const EMPTY_RES_FORM = { sensor_id:"", nome:"", local:"", capacidade_litros:20000, altura_cm:200, mac_address:"", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://imob-core-mobile-12.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443 };
+  const EMPTY_RES_FORM = { sensor_id:"", nome:"", local:"", capacidade_litros:20000, altura_cm:200, mac_address:"", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://condo-manager-ai.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443 };
   const [resForm, setResForm] = useState(EMPTY_RES_FORM);
   const [resTesting, setResTesting] = useState<{cf?:boolean;wh?:boolean}>({});
   // Per-reservoir testing (used in integration tab)
   const [resPerTesting, setResPerTesting] = useState<Record<string,{cf:boolean;wh:boolean}>>({});
   // Global integration config (used in the integration tab form)
   const [cfGlobalUrl, setCfGlobalUrl] = useState("https://imobcore1.fmsilvestri39.workers.dev");
-  const [whGlobalUrl, setWhGlobalUrl] = useState("https://imob-core-mobile-12.replit.app/api/webhook");
+  const [whGlobalUrl, setWhGlobalUrl] = useState("https://condo-manager-ai.replit.app/api/webhook");
   const [whGlobalProtocolo, setWhGlobalProtocolo] = useState("HTTPS POST");
   const [whGlobalPorta, setWhGlobalPorta] = useState(443);
   const [cfTestLog, setCfTestLog] = useState<{id:string; ok:boolean; status:number; ts:string}[]>([]);
