@@ -3798,63 +3798,90 @@ export default function App() {
           const equipCobertos = new Set(planoList.flatMap(p => (p.equipamentos_itens||[]).map(e => e.equipId))).size;
           const proxExec = planoList.filter(p=>p.proxima_execucao).sort((a,b)=>a.proxima_execucao.localeCompare(b.proxima_execucao))[0]?.proxima_execucao || "—";
           const planosAtivos = planoList.filter(p => p.status !== "inativo");
+          const mTipoColor: Record<string,string> = { preventiva:"#10B981", corretiva:"#EF4444", preditiva:"#3B82F6", "inspeção":"#F59E0B" };
+          const mTipoIcon: Record<string,string>  = { preventiva:"🛡️", corretiva:"🔧", preditiva:"🔮", "inspeção":"🔍" };
+          const mPeriodIcon: Record<string,string> = { "diário":"🔄","semanal":"📆","quinzenal":"📆","mensal":"🗓️","bimestral":"🗓️","trimestral":"📊","semestral":"📅","anual":"🏆" };
+          const mEqStatusColor: Record<string,{bg:string;c:string;icon:string}> = {
+            operacional: { bg:"rgba(16,185,129,.18)", c:"#34D399", icon:"✅" },
+            atencao:     { bg:"rgba(245,158,11,.18)", c:"#FBBF24", icon:"⚠️" },
+            manutencao:  { bg:"rgba(239,68,68,.18)",  c:"#F87171", icon:"🔧" },
+            inativo:     { bg:"rgba(100,116,139,.18)", c:"#94A3B8", icon:"⬛" },
+          };
           return (
             <div className="ph-sub-body">
-              {/* ── Dashboard Stats ── */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+              {/* ── Dashboard Stats — cards coloridos ── */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
                 {[
-                  { label: "Total Planos", val: String(planoList.length), icon: "📋", color: "#7C5CFC" },
-                  { label: "Orçamento", val: orcTotal >= 1000 ? `R$${(orcTotal/1000).toFixed(1)}k` : `R$${orcTotal.toFixed(0)}`, icon: "💰", color: "#10B981" },
-                  { label: "Equip. Cobertos", val: String(equipCobertos), icon: "🔧", color: "#F59E0B" },
-                  { label: "Próx. Execução", val: proxExec !== "—" ? proxExec.slice(5).split("-").reverse().join("/") : "—", icon: "📅", color: "#38BDF8" },
+                  { label:"Total Planos",    val:String(planoList.length),
+                    icon:"📋", color:"#A78BFA", bg:"rgba(167,139,250,.18)", border:"rgba(167,139,250,.35)" },
+                  { label:"Orçamento",       val:orcTotal>=1000?`R$${(orcTotal/1000).toFixed(1)}k`:`R$${orcTotal.toFixed(0)}`,
+                    icon:"💰", color:"#34D399", bg:"rgba(52,211,153,.15)",   border:"rgba(52,211,153,.35)" },
+                  { label:"Equip. Cobertos", val:String(equipCobertos),
+                    icon:"⚙️", color:"#FBBF24", bg:"rgba(251,191,36,.15)",   border:"rgba(251,191,36,.35)" },
+                  { label:"Próx. Execução",  val:proxExec!=="—"?proxExec.slice(5).split("-").reverse().join("/"):"—",
+                    icon:"📅", color:"#38BDF8", bg:"rgba(56,189,248,.15)",   border:"rgba(56,189,248,.35)" },
                 ].map(k => (
-                  <div key={k.label} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
-                    <div style={{ fontSize: 18, marginBottom: 2 }}>{k.icon}</div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: k.color }}>{k.val}</div>
-                    <div style={{ fontSize: 9, color: "#475569" }}>{k.label}</div>
+                  <div key={k.label} style={{ background:k.bg, border:`1.5px solid ${k.border}`, borderRadius:12, padding:"12px 10px 10px", textAlign:"center" as const }}>
+                    <div style={{ fontSize:26, marginBottom:4 }}>{k.icon}</div>
+                    <div style={{ fontSize:18, fontWeight:800, color:k.color, lineHeight:1.1 }}>{k.val}</div>
+                    <div style={{ fontSize:9, color:"#64748B", fontWeight:600, marginTop:3, textTransform:"uppercase" as const, letterSpacing:".04em" }}>{k.label}</div>
                   </div>
                 ))}
               </div>
 
               {/* ── Planos de Manutenção ── */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#A5B4FC", marginBottom: 8 }}>📋 Planos de Manutenção</div>
+              <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, fontWeight:800, color:"#A5B4FC", marginBottom:10, textTransform:"uppercase" as const, letterSpacing:".05em" }}>
+                <span style={{ fontSize:14 }}>📋</span> Planos de Manutenção
+              </div>
               {planosAtivos.length === 0 ? (
                 <div style={{ textAlign:"center", padding:"24px 0", color:"#475569", fontSize:12 }}>Nenhum plano cadastrado</div>
               ) : (
                 planosAtivos.map(p => {
-                  const tipoCor = p.tipo === "preventiva" ? { bg:"rgba(16,185,129,.15)", c:"#34D399" } : { bg:"rgba(245,158,11,.15)", c:"#F59E0B" };
-                  const periCor = { bg:"rgba(99,102,241,.12)", c:"#A5B4FC" };
+                  const tc   = mTipoColor[p.tipo]   || "#94A3B8";
+                  const tic  = mTipoIcon[p.tipo]    || "📋";
+                  const pic  = mPeriodIcon[p.periodicidade] || "🗓️";
                   return (
-                    <div key={p.id} className="ph-os-item" style={{ marginBottom: 10, padding: "12px 12px 10px" }}>
-                      {/* Header */}
-                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:6 }}>
-                        {p.codigo && <span style={{ fontSize:9, color:"#64748B", fontWeight:700 }}>#{p.codigo}</span>}
-                        <span style={{ fontSize:12, fontWeight:700, flex:1 }}>{p.nome}</span>
+                    <div key={p.id} className="ph-os-item" style={{ marginBottom:10, padding:"12px 12px 10px", borderLeft:`3px solid ${tc}`, borderRadius:10, background:"rgba(255,255,255,.035)" }}>
+                      {/* Header: ícone tipo + código + nome */}
+                      <div style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:8 }}>
+                        <div style={{ width:32, height:32, borderRadius:8, background:`${tc}22`, border:`1px solid ${tc}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
+                          {tic}
+                        </div>
+                        <div style={{ flex:1 }}>
+                          {p.codigo && <div style={{ fontSize:9, color:"#64748B", fontWeight:700, marginBottom:1 }}>#{p.codigo}</div>}
+                          <div style={{ fontSize:12, fontWeight:800, color:"#F1F5F9", lineHeight:1.3 }}>{p.nome}</div>
+                        </div>
                       </div>
-                      {/* Badges */}
-                      <div style={{ display:"flex", gap:4, marginBottom:8 }}>
-                        <span style={{ fontSize:9, padding:"2px 7px", borderRadius:8, fontWeight:700, background:tipoCor.bg, color:tipoCor.c }}>{p.tipo}</span>
-                        <span style={{ fontSize:9, padding:"2px 7px", borderRadius:8, fontWeight:700, background:periCor.bg, color:periCor.c }}>{p.periodicidade}</span>
+                      {/* Badges: tipo + periodicidade */}
+                      <div style={{ display:"flex", gap:5, marginBottom:8, flexWrap:"wrap" as const }}>
+                        <span style={{ fontSize:9, padding:"3px 8px", borderRadius:20, fontWeight:700, background:`${tc}25`, color:tc, border:`1px solid ${tc}55` }}>
+                          {tic} {p.tipo}
+                        </span>
+                        <span style={{ fontSize:9, padding:"3px 8px", borderRadius:20, fontWeight:700, background:"rgba(99,102,241,.15)", color:"#A5B4FC", border:"1px solid rgba(99,102,241,.3)" }}>
+                          {pic} {p.periodicidade}
+                        </span>
                       </div>
                       {/* Equipment items */}
                       {(p.equipamentos_itens||[]).length > 0 && (
                         <div style={{ display:"flex", flexWrap:"wrap" as const, gap:4, marginBottom:8 }}>
                           {(p.equipamentos_itens||[]).map((ei,i) => (
-                            <span key={i} style={{ fontSize:9, padding:"2px 7px", borderRadius:6, background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.08)", color:"#94A3B8" }}>
-                              {ei.equipNome} <span style={{ color:"#10B981" }}>{ei.custo_previsto > 0 ? `R$${ei.custo_previsto.toLocaleString("pt-BR")}` : ""}</span>
+                            <span key={i} style={{ fontSize:9, padding:"2px 8px", borderRadius:6, background:`${tc}12`, border:`1px solid ${tc}30`, color:"#CBD5E1", display:"flex", alignItems:"center", gap:3 }}>
+                              ⚙️ {ei.equipNome}
+                              {ei.custo_previsto > 0 && <span style={{ color:"#FBBF24", fontWeight:700, marginLeft:2 }}>R${Number(ei.custo_previsto).toLocaleString("pt-BR",{maximumFractionDigits:0})}</span>}
                             </span>
                           ))}
                         </div>
                       )}
                       {/* Footer */}
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", borderTop:`1px solid ${tc}20`, paddingTop:8 }}>
                         <div style={{ display:"flex", alignItems:"center", gap:4, fontSize:10, color:"#64748B" }}>
-                          <span>📅</span>
-                          <span>Próxima: <span style={{ color:"#38BDF8", fontWeight:600 }}>{p.proxima_execucao || "—"}</span></span>
+                          📅 <span style={{ color:"#38BDF8", fontWeight:700 }}>{p.proxima_execucao || "—"}</span>
                         </div>
-                        <span style={{ fontSize:11, fontWeight:700, color:"#10B981" }}>
-                          {p.custo_total > 0 ? `R$ ${Number(p.custo_total).toLocaleString("pt-BR",{minimumFractionDigits:2})}` : ""}
-                        </span>
+                        {p.custo_total > 0 && (
+                          <span style={{ fontSize:11, fontWeight:800, color:"#34D399", background:"rgba(52,211,153,.12)", borderRadius:6, padding:"2px 8px" }}>
+                            R$ {Number(p.custo_total).toLocaleString("pt-BR",{minimumFractionDigits:2})}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -3862,20 +3889,28 @@ export default function App() {
               )}
 
               {/* ── Equipamentos Resumo ── */}
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#94A3B8", margin: "14px 0 8px" }}>⚙️ Equipamentos ({equipList.length})</div>
-              {equipList.map(eq => (
-                <div key={eq.id} className="ph-os-item" style={{ marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems:"center" }}>
-                    <div>
-                      <div style={{ fontSize: 12, fontWeight: 600 }}>{eq.nome}</div>
-                      <div style={{ fontSize: 10, color: "#64748B", marginTop:2 }}>{eq.categoria} · {eq.local}</div>
+              <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, fontWeight:800, color:"#94A3B8", margin:"16px 0 10px", textTransform:"uppercase" as const, letterSpacing:".05em" }}>
+                <span style={{ fontSize:14 }}>⚙️</span> Equipamentos ({equipList.length})
+              </div>
+              {equipList.map(eq => {
+                const st = mEqStatusColor[eq.status] || mEqStatusColor["inativo"];
+                return (
+                  <div key={eq.id} className="ph-os-item" style={{ marginBottom:8, borderLeft:`3px solid ${st.c}`, padding:"10px 12px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                          <span style={{ fontSize:13 }}>{st.icon}</span>
+                          <span style={{ fontSize:12, fontWeight:700, color:"#F1F5F9" }}>{eq.nome}</span>
+                        </div>
+                        <div style={{ fontSize:10, color:"#64748B", marginTop:2, paddingLeft:19 }}>{eq.categoria} · {eq.local}</div>
+                      </div>
+                      <span style={{ fontSize:9, padding:"3px 9px", borderRadius:20, fontWeight:700, background:st.bg, color:st.c, border:`1px solid ${st.c}44`, whiteSpace:"nowrap" as const }}>
+                        {eq.status}
+                      </span>
                     </div>
-                    <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 8, fontWeight: 600,
-                      background: eq.status === "operacional" ? "rgba(16,185,129,.15)" : eq.status === "manutencao" ? "rgba(245,158,11,.15)" : "rgba(239,68,68,.15)",
-                      color: eq.status === "operacional" ? "#34D399" : eq.status === "manutencao" ? "#F59E0B" : "#F87171" }}>{eq.status}</span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           );
         })()}
@@ -7810,41 +7845,46 @@ Content-Type: application/json
                     const TIPOS_PLANO = ["preventiva","corretiva","preditiva","inspeção"];
                     const PERIODS = ["diário","semanal","quinzenal","mensal","bimestral","trimestral","semestral","anual"];
                     const tipoColor: Record<string,string> = { preventiva:"#10B981", corretiva:"#EF4444", preditiva:"#3B82F6", "inspeção":"#F59E0B" };
+                    const tipoIcon: Record<string,string>  = { preventiva:"🛡️", corretiva:"🔧", preditiva:"🔮", "inspeção":"🔍" };
+                    const periodIcon: Record<string,string> = { "diário":"🔄","semanal":"📆","quinzenal":"📆","mensal":"🗓️","bimestral":"🗓️","trimestral":"📊","semestral":"📅","anual":"🏆" };
                     const aresList = [...new Set(equipList.map(e=>e.local))].filter(Boolean);
                     return (
                     <div>
                       {/* Header */}
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
                         <div>
-                          <div style={{ fontSize:14, fontWeight:800, color:"#E2E8F0" }}>📅 Planos de Manutenção</div>
-                          <div style={{ fontSize:11, color:"#475569", marginTop:2 }}>Crie, edite e gerencie planos preventivos e corretivos</div>
+                          <div style={{ fontSize:16, fontWeight:800, color:"#E2E8F0", display:"flex", alignItems:"center", gap:8 }}>
+                            <span style={{ fontSize:20 }}>📅</span> Planos de Manutenção
+                          </div>
+                          <div style={{ fontSize:11, color:"#475569", marginTop:3 }}>Crie, edite e gerencie planos preventivos e corretivos</div>
                         </div>
                         <div style={{ display:"flex", gap:8 }}>
                           {planoList.length > 0 && (
                             <button onClick={planoExportPDF}
-                              style={{ background:"rgba(239,68,68,.12)", border:"1px solid rgba(239,68,68,.25)", borderRadius:10, padding:"8px 14px", color:"#FCA5A5", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                              style={{ background:"rgba(239,68,68,.15)", border:"1px solid rgba(239,68,68,.3)", borderRadius:10, padding:"8px 14px", color:"#FCA5A5", fontSize:12, fontWeight:700, cursor:"pointer" }}>
                               📄 Exportar PDF
                             </button>
                           )}
                           <button onClick={()=>{ setPlanoShowEdit(true); setPlanoEditId(null); setPlanoForm(emptyPlanoForm()); }}
-                            style={{ background:"linear-gradient(135deg,#7C5CFC,#A78BFA)", border:"none", borderRadius:10, padding:"8px 16px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                            + Novo Plano
+                            style={{ background:"linear-gradient(135deg,#7C5CFC,#A78BFA)", border:"none", borderRadius:10, padding:"8px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 4px 14px rgba(124,92,252,.35)" }}>
+                            ＋ Novo Plano
                           </button>
                         </div>
                       </div>
 
-                      {/* Resumo orçamentário */}
+                      {/* Resumo orçamentário — cards coloridos com ícone grande */}
                       {planoList.length > 0 && (
-                        <div style={{ display:"flex", gap:10, marginBottom:18 }}>
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:20 }}>
                           {[
-                            { label:"Total planos", val:planoList.length, color:"#A5B4FC" },
-                            { label:"Orçamento previsto", val:"R$ "+planoList.reduce((s,p)=>s+(Number(p.custo_total)||0),0).toLocaleString("pt-BR",{minimumFractionDigits:2}), color:"#10B981" },
-                            { label:"Equipamentos cobertos", val:new Set(planoList.flatMap(p=>(p.equipamentos_itens||[]).map(e=>e.equipId))).size, color:"#F59E0B" },
-                            { label:"Próxima execução", val:planoList.filter(p=>p.proxima_execucao).sort((a,b)=>a.proxima_execucao.localeCompare(b.proxima_execucao))[0]?.proxima_execucao||"—", color:"#38BDF8" },
+                            { label:"Total Planos", val:String(planoList.length), icon:"📋", color:"#A78BFA", bg:"rgba(167,139,250,.12)", border:"rgba(167,139,250,.25)" },
+                            { label:"Orçamento", val:"R$ "+planoList.reduce((s,p)=>s+(Number(p.custo_total)||0),0).toLocaleString("pt-BR",{maximumFractionDigits:0}), icon:"💰", color:"#34D399", bg:"rgba(52,211,153,.1)", border:"rgba(52,211,153,.25)" },
+                            { label:"Equip. Cobertos", val:String(new Set(planoList.flatMap(p=>(p.equipamentos_itens||[]).map(e=>e.equipId))).size), icon:"⚙️", color:"#FBBF24", bg:"rgba(251,191,36,.1)", border:"rgba(251,191,36,.25)" },
+                            { label:"Próx. Execução", val:planoList.filter(p=>p.proxima_execucao).sort((a,b)=>a.proxima_execucao.localeCompare(b.proxima_execucao))[0]?.proxima_execucao?.slice(5)||"—", icon:"📅", color:"#38BDF8", bg:"rgba(56,189,248,.1)", border:"rgba(56,189,248,.25)" },
                           ].map(k=>(
-                            <div key={k.label} style={{ flex:1, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"10px 12px" }}>
-                              <div style={{ fontSize:10, color:"#475569" }}>{k.label}</div>
-                              <div style={{ fontSize:16, fontWeight:800, color:k.color, marginTop:2 }}>{k.val}</div>
+                            <div key={k.label} style={{ background:k.bg, border:`1px solid ${k.border}`, borderRadius:12, padding:"14px 14px 12px", display:"flex", flexDirection:"column" as const, gap:4 }}>
+                              <div style={{ fontSize:22 }}>{k.icon}</div>
+                              <div style={{ fontSize:18, fontWeight:800, color:k.color, lineHeight:1.1 }}>{k.val}</div>
+                              <div style={{ fontSize:10, color:"#64748B", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:".04em" }}>{k.label}</div>
                             </div>
                           ))}
                         </div>
@@ -7853,51 +7893,83 @@ Content-Type: application/json
                       {/* Lista de planos */}
                       {planoLoading && <div style={{ color:"#475569", fontSize:12, textAlign:"center", padding:20 }}>Carregando planos...</div>}
                       {!planoLoading && planoList.length === 0 && !planoShowEdit && (
-                        <div style={{ background:"rgba(255,255,255,.02)", border:"1px dashed rgba(255,255,255,.1)", borderRadius:12, padding:32, textAlign:"center" }}>
-                          <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
-                          <div style={{ color:"#475569", fontSize:13 }}>Nenhum plano de manutenção criado ainda.</div>
-                          <div style={{ color:"#334155", fontSize:11, marginTop:4 }}>Clique em "+ Novo Plano" para começar.</div>
+                        <div style={{ background:"rgba(255,255,255,.02)", border:"1px dashed rgba(255,255,255,.1)", borderRadius:12, padding:40, textAlign:"center" }}>
+                          <div style={{ fontSize:42, marginBottom:10 }}>📋</div>
+                          <div style={{ color:"#64748B", fontSize:14, fontWeight:600 }}>Nenhum plano de manutenção criado ainda</div>
+                          <div style={{ color:"#334155", fontSize:12, marginTop:4 }}>Clique em "＋ Novo Plano" para começar</div>
                         </div>
                       )}
 
-                      {!planoShowEdit && planoList.map(p => {
-                        const tc = tipoColor[p.tipo]||"#94A3B8";
+                      {!planoShowEdit && planoList.map((p, idx) => {
+                        const tc  = tipoColor[p.tipo] || "#94A3B8";
+                        const tic = tipoIcon[p.tipo]  || "📋";
+                        const pic = periodIcon[p.periodicidade] || "🗓️";
                         const itvens: PlanoEquipItem[] = Array.isArray(p.equipamentos_itens) ? p.equipamentos_itens : [];
                         return (
-                          <div key={p.id} style={{ background:"rgba(255,255,255,.025)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"14px 16px", marginBottom:10 }}>
-                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
-                              <div>
-                                <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                                  {p.codigo && <span style={{ fontSize:10, color:"#475569", background:"rgba(255,255,255,.05)", borderRadius:4, padding:"1px 6px" }}>{p.codigo}</span>}
-                                  <span style={{ fontSize:14, fontWeight:700, color:"#E2E8F0" }}>{p.nome}</span>
-                                  <span style={{ background:tc+"22", color:tc, fontSize:10, borderRadius:4, padding:"2px 7px", fontWeight:700, border:`1px solid ${tc}44` }}>{p.tipo}</span>
-                                  <span style={{ fontSize:10, color:"#64748B", background:"rgba(255,255,255,.04)", borderRadius:4, padding:"2px 6px" }}>{p.periodicidade}</span>
+                          <div key={p.id} style={{ background:"rgba(255,255,255,.025)", border:`1px solid ${tc}33`, borderLeft:`4px solid ${tc}`, borderRadius:12, padding:"16px 18px", marginBottom:12, position:"relative" as const }}>
+                            {/* Topo: ícone tipo + info + ações */}
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                              <div style={{ display:"flex", gap:12, alignItems:"flex-start" }}>
+                                {/* Ícone grande do tipo */}
+                                <div style={{ width:44, height:44, borderRadius:10, background:`${tc}22`, border:`1px solid ${tc}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>
+                                  {tic}
                                 </div>
-                                {p.instrucoes && <div style={{ fontSize:11, color:"#475569", marginTop:4 }}>{p.instrucoes}</div>}
+                                <div>
+                                  <div style={{ display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" as const }}>
+                                    {p.codigo && (
+                                      <span style={{ fontSize:10, color:"#64748B", background:"rgba(255,255,255,.07)", borderRadius:4, padding:"2px 7px", fontWeight:700, letterSpacing:".03em" }}>{p.codigo}</span>
+                                    )}
+                                    <span style={{ fontSize:15, fontWeight:800, color:"#F1F5F9" }}>{p.nome}</span>
+                                  </div>
+                                  <div style={{ display:"flex", gap:6, marginTop:6, flexWrap:"wrap" as const }}>
+                                    {/* Badge tipo */}
+                                    <span style={{ background:`${tc}25`, color:tc, fontSize:11, borderRadius:20, padding:"3px 10px", fontWeight:700, border:`1px solid ${tc}55`, display:"flex", alignItems:"center", gap:4 }}>
+                                      {tic} {p.tipo}
+                                    </span>
+                                    {/* Badge periodicidade */}
+                                    <span style={{ background:"rgba(148,163,184,.1)", color:"#94A3B8", fontSize:11, borderRadius:20, padding:"3px 10px", fontWeight:600, border:"1px solid rgba(148,163,184,.2)", display:"flex", alignItems:"center", gap:4 }}>
+                                      {pic} {p.periodicidade}
+                                    </span>
+                                  </div>
+                                  {p.instrucoes && <div style={{ fontSize:11, color:"#64748B", marginTop:6, maxWidth:420, lineHeight:1.5 }}>{p.instrucoes}</div>}
+                                </div>
                               </div>
                               <div style={{ display:"flex", gap:6, flexShrink:0 }}>
                                 <button onClick={()=>{ setPlanoEditId(p.id); setPlanoForm({ codigo:p.codigo||"", nome:p.nome, tipo:p.tipo, periodicidade:p.periodicidade, equipamentos_itens:itvens, custo_total:p.custo_total, tempo_estimado_min:p.tempo_estimado_min, proxima_execucao:p.proxima_execucao||"", instrucoes:p.instrucoes||"", status:p.status }); setPlanoShowEdit(true); }}
-                                  style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.25)", borderRadius:7, padding:"5px 10px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>✏️ Editar</button>
+                                  style={{ background:"rgba(99,102,241,.18)", border:"1px solid rgba(99,102,241,.35)", borderRadius:8, padding:"6px 12px", color:"#A5B4FC", fontSize:12, cursor:"pointer", fontWeight:700 }}>✏️ Editar</button>
                                 <button onClick={()=>{ if(confirm(`Excluir plano "${p.nome}"?`)) planoDelete(p.id); }}
-                                  style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:7, padding:"5px 10px", color:"#EF4444", fontSize:11, cursor:"pointer" }}>🗑️</button>
+                                  style={{ background:"rgba(239,68,68,.12)", border:"1px solid rgba(239,68,68,.25)", borderRadius:8, padding:"6px 10px", color:"#F87171", fontSize:12, cursor:"pointer" }}>🗑️</button>
                               </div>
                             </div>
+
                             {/* Equipamentos do plano */}
                             {itvens.length > 0 && (
-                              <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:8 }}>
+                              <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const, marginBottom:10 }}>
                                 {itvens.map(it=>(
-                                  <div key={it.equipId} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:6, padding:"3px 10px", fontSize:11 }}>
-                                    <span style={{ color:"#94A3B8" }}>{it.equipNome}</span>
-                                    {it.custo_previsto > 0 && <span style={{ color:"#F59E0B", marginLeft:6 }}>R$ {Number(it.custo_previsto).toLocaleString("pt-BR",{minimumFractionDigits:2})}</span>}
+                                  <div key={it.equipId} style={{ background:`${tc}12`, border:`1px solid ${tc}30`, borderRadius:8, padding:"4px 10px", fontSize:11, display:"flex", alignItems:"center", gap:6 }}>
+                                    <span style={{ color:tc, fontSize:13 }}>⚙️</span>
+                                    <span style={{ color:"#CBD5E1", fontWeight:600 }}>{it.equipNome}</span>
+                                    {it.custo_previsto > 0 && (
+                                      <span style={{ color:"#FBBF24", fontWeight:700, marginLeft:2 }}>R${Number(it.custo_previsto).toLocaleString("pt-BR",{maximumFractionDigits:0})}</span>
+                                    )}
                                   </div>
                                 ))}
                               </div>
                             )}
+
                             {/* Rodapé plano */}
-                            <div style={{ display:"flex", gap:14, fontSize:11, color:"#475569", borderTop:"1px solid rgba(255,255,255,.05)", paddingTop:8 }}>
-                              {p.proxima_execucao && <span>📅 Próxima: <strong style={{ color:"#E2E8F0" }}>{p.proxima_execucao}</strong></span>}
-                              {p.tempo_estimado_min > 0 && <span>⏱ {p.tempo_estimado_min} min</span>}
-                              <span style={{ marginLeft:"auto", color:"#10B981", fontWeight:700, fontSize:13 }}>
+                            <div style={{ display:"flex", gap:16, fontSize:12, color:"#475569", borderTop:`1px solid ${tc}22`, paddingTop:10, alignItems:"center" }}>
+                              {p.proxima_execucao && (
+                                <span style={{ display:"flex", alignItems:"center", gap:5, color:"#94A3B8" }}>
+                                  📅 Próxima: <strong style={{ color:"#E2E8F0" }}>{p.proxima_execucao}</strong>
+                                </span>
+                              )}
+                              {p.tempo_estimado_min > 0 && (
+                                <span style={{ display:"flex", alignItems:"center", gap:4, color:"#94A3B8" }}>
+                                  ⏱️ {p.tempo_estimado_min} min
+                                </span>
+                              )}
+                              <span style={{ marginLeft:"auto", background:"rgba(16,185,129,.12)", border:"1px solid rgba(16,185,129,.25)", borderRadius:8, padding:"4px 12px", color:"#34D399", fontWeight:800, fontSize:14 }}>
                                 {Number(p.custo_total||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}
                               </span>
                             </div>
