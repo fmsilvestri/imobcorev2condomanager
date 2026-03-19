@@ -1525,6 +1525,33 @@ export default function App() {
   const [energiaAno, setEnergiaAno] = useState(2026);
   const [energiaRegModal, setEnergiaRegModal] = useState(false);
   const [energiaRegForm, setEnergiaRegForm] = useState({ titulo:"", tipo:"queda", obs:"" });
+
+  // ── Placa Solar CRUD state ─────────────────────────────────────────────────
+  type PlacaSolarData = {
+    id?: string;
+    condominio_id?: string;
+    potencia_instalada_kwp?: number | string;
+    num_paineis?: number | string;
+    eficiencia_media_pct?: number | string;
+    fabricante_inversor?: string;
+    fabricante_painel?: string;
+    data_instalacao?: string;
+    orientacao?: string;
+    inclinacao?: string;
+    tensao_cc?: string;
+    garantia_painel?: string;
+    ultima_vistoria?: string;
+    proxima_vistoria?: string;
+    conexao_rede?: string;
+    creditos_kwh?: number | string;
+    validade_creditos_meses?: number | string;
+    reducao_fatura_pct?: number | string;
+  };
+  const [solarData, setSolarData] = useState<PlacaSolarData | null>(null);
+  const [solarLoading, setSolarLoading] = useState(false);
+  const [solarModal, setSolarModal] = useState(false);
+  const [solarForm, setSolarForm] = useState<PlacaSolarData>({});
+  const [solarSaving, setSolarSaving] = useState(false);
   const [energiaOcorrencias, setEnergiaOcorrencias] = useState([
     { id:"oc1", titulo:"queda energia 29/01/2026", tipo:"queda",     data:"29/01/2026", hora:"10:21:16", obs:"Queda total no bloco A" },
     { id:"oc2", titulo:"energia normal",            tipo:"retorno",   data:"29/01/2026", hora:"10:21:04", obs:"Energia restaurada pela CELESC" },
@@ -1751,6 +1778,58 @@ export default function App() {
     } catch (e) { console.error("dashboard err:", e); }
   }, []);
 
+  // ── Placa Solar: load / save / delete ─────────────────────────────────────
+  const loadSolarData = useCallback(async (condId?: string) => {
+    const cid = condId ?? condIdRef.current;
+    if (!cid) return;
+    setSolarLoading(true);
+    try {
+      const r = await fetch(`/api/placa-solar?condominio_id=${cid}`);
+      if (r.ok) {
+        const json = await r.json();
+        setSolarData(json.data || null);
+      }
+    } catch (e) { console.error("solar load err:", e); }
+    finally { setSolarLoading(false); }
+  }, []);
+
+  const saveSolar = useCallback(async (form: PlacaSolarData) => {
+    const cid = condIdRef.current;
+    if (!cid) return;
+    setSolarSaving(true);
+    try {
+      const payload = { ...form, condominio_id: cid };
+      let r: Response;
+      if (solarData?.id) {
+        r = await fetch(`/api/placa-solar/${solarData.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      } else {
+        r = await fetch("/api/placa-solar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      }
+      const json = await r.json();
+      if (r.ok && json.ok) {
+        setSolarData(json.data);
+        setSolarModal(false);
+        showToast("✅ Placa solar salva com sucesso!", "success");
+      } else {
+        showToast("Erro ao salvar: " + (json.error || "desconhecido"), "error");
+      }
+    } catch (e) { showToast("Erro de rede ao salvar", "error"); }
+    finally { setSolarSaving(false); }
+  }, [solarData, showToast]);
+
+  const deleteSolar = useCallback(async () => {
+    if (!solarData?.id) return;
+    if (!confirm("Excluir configuração da placa solar? Esta ação não pode ser desfeita.")) return;
+    try {
+      const r = await fetch(`/api/placa-solar/${solarData.id}`, { method: "DELETE" });
+      if (r.ok) {
+        setSolarData(null);
+        setSolarModal(false);
+        showToast("Configuração excluída.", "info");
+      }
+    } catch { showToast("Erro ao excluir", "error"); }
+  }, [solarData, showToast]);
+
   // ── Ativar ImobCore (Onboarding Submit) ───────────────────────────────────
   const ativarImobCore = useCallback(async () => {
     if (!obCondo.nome.trim()) { showToast("Nome do condomínio é obrigatório", "warn"); return; }
@@ -1864,6 +1943,11 @@ export default function App() {
     const refresh = setInterval(() => loadDashboard(), 10000);
     return () => { clearInterval(clock); clearInterval(refresh); };
   }, [loadDashboard]);
+
+  // ── Carregar Placa Solar quando aba abre ou condomínio muda ──────────────
+  useEffect(() => {
+    if (energiaTab === "solar" && condId) loadSolarData(condId);
+  }, [energiaTab, condId, loadSolarData]);
 
   // ── Carregar reservatórios da API (isolado por condomínio) ────────────────
   useEffect(() => {
@@ -10207,12 +10291,28 @@ Content-Type: application/json
                 ═══════════════════════════════════════════════════════════ */}
                 {energiaTab === "solar" && (
                   <div>
+                    {/* Barra de ações */}
+                    <div style={{ display:"flex", justifyContent:"flex-end", gap:8, marginBottom:14 }}>
+                      {solarData?.id && (
+                        <button onClick={deleteSolar} style={{ background:"rgba(239,68,68,.12)", border:"1px solid rgba(239,68,68,.3)", color:"#EF4444", borderRadius:8, padding:"6px 14px", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                          🗑 Excluir
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { setSolarForm(solarData || {}); setSolarModal(true); }}
+                        style={{ background:"rgba(234,179,8,.15)", border:"1px solid rgba(234,179,8,.4)", color:"#EAB308", borderRadius:8, padding:"6px 16px", fontSize:11, cursor:"pointer", fontWeight:700 }}
+                      >
+                        {solarLoading ? "⏳ Carregando..." : solarData ? "✏️ Editar Configuração" : "➕ Cadastrar Sistema Solar"}
+                      </button>
+                    </div>
+
+                    {/* Cards KPIs */}
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:20 }}>
                       {[
                         { label:"Geração (Ano)", val:`${totalSolar.toLocaleString("pt-BR")} kWh`, color:"#EAB308" },
-                        { label:"Potência Instalada", val:"72 kWp", color:"#10B981" },
-                        { label:"Painéis", val:"180 un.", color:"#A5B4FC" },
-                        { label:"Eficiência Média", val:"94%", color:"#06B6D4" },
+                        { label:"Potência Instalada", val: solarData?.potencia_instalada_kwp ? `${solarData.potencia_instalada_kwp} kWp` : "—", color:"#10B981" },
+                        { label:"Painéis", val: solarData?.num_paineis ? `${solarData.num_paineis} un.` : "—", color:"#A5B4FC" },
+                        { label:"Eficiência Média", val: solarData?.eficiencia_media_pct ? `${solarData.eficiencia_media_pct}%` : "—", color:"#06B6D4" },
                       ].map(k => (
                         <div key={k.label} style={{ background:"rgba(234,179,8,.06)", border:"1px solid rgba(234,179,8,.15)", borderRadius:12, padding:"12px 16px" }}>
                           <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
@@ -10238,24 +10338,33 @@ Content-Type: application/json
 
                       {/* Info painéis */}
                       <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"14px 16px" }}>
-                        <div style={{ fontSize:11, color:"#475569", marginBottom:12, fontWeight:600 }}>🔧 ESPECIFICAÇÕES DO SISTEMA</div>
-                        {[
-                          ["Fabricante Inversor", "Fronius Symo 72kW"],
-                          ["Fabricante Painel", "Canadian Solar 400W"],
-                          ["Data instalação", "Abril/2022"],
-                          ["Orientação", "Norte / Noroeste"],
-                          ["Inclinação", "15°"],
-                          ["Tensão CC", "800V"],
-                          ["Garantia painel", "25 anos (produção)"],
-                          ["Última vistoria", "Jan/2026"],
-                          ["Próxima vistoria", "Jul/2026"],
-                          ["Conexão rede", "Net metering (CELESC)"],
-                        ].map(([l,v]) => (
-                          <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:11 }}>
-                            <span style={{ color:"#475569" }}>{l}</span>
-                            <span style={{ color:"#E2E8F0", fontWeight:600 }}>{v}</span>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                          <div style={{ fontSize:11, color:"#475569", fontWeight:600 }}>🔧 ESPECIFICAÇÕES DO SISTEMA</div>
+                          {!solarData && <span style={{ fontSize:10, color:"#334155", fontStyle:"italic" }}>Nenhum dado cadastrado</span>}
+                        </div>
+                        {solarData ? (
+                          [
+                            ["Fabricante Inversor", solarData.fabricante_inversor],
+                            ["Fabricante Painel",   solarData.fabricante_painel],
+                            ["Data instalação",     solarData.data_instalacao],
+                            ["Orientação",          solarData.orientacao],
+                            ["Inclinação",          solarData.inclinacao],
+                            ["Tensão CC",           solarData.tensao_cc],
+                            ["Garantia painel",     solarData.garantia_painel],
+                            ["Última vistoria",     solarData.ultima_vistoria],
+                            ["Próxima vistoria",    solarData.proxima_vistoria],
+                            ["Conexão rede",        solarData.conexao_rede],
+                          ].filter(([,v])=>v).map(([l,v]) => (
+                            <div key={String(l)} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:"1px solid rgba(255,255,255,.04)", fontSize:11 }}>
+                              <span style={{ color:"#475569" }}>{l}</span>
+                              <span style={{ color:"#E2E8F0", fontWeight:600 }}>{String(v)}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ textAlign:"center", padding:"30px 0", color:"#334155", fontSize:12 }}>
+                            Clique em "Cadastrar Sistema Solar" para adicionar as especificações.
                           </div>
-                        ))}
+                        )}
                       </div>
                     </div>
 
@@ -10264,10 +10373,10 @@ Content-Type: application/json
                       <div style={{ fontSize:11, color:"#EAB308", fontWeight:700, marginBottom:8 }}>💡 CRÉDITOS DE ENERGIA — NET METERING</div>
                       <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
                         {[
-                          { label:"Créditos acumulados", val:"8.340 kWh" },
-                          { label:"Validade créditos", val:"60 meses" },
-                          { label:"Economia acumulada", val:`R$ ${Math.round(totalSolar*tarifa*0.067).toLocaleString("pt-BR")}` },
-                          { label:"Redução na fatura", val:"~23% ao mês" },
+                          { label:"Créditos acumulados", val: solarData?.creditos_kwh ? `${Number(solarData.creditos_kwh).toLocaleString("pt-BR")} kWh` : "—" },
+                          { label:"Validade créditos",   val: solarData?.validade_creditos_meses ? `${solarData.validade_creditos_meses} meses` : "—" },
+                          { label:"Economia acumulada",  val:`R$ ${Math.round(totalSolar*tarifa*0.067).toLocaleString("pt-BR")}` },
+                          { label:"Redução na fatura",   val: solarData?.reducao_fatura_pct ? `~${solarData.reducao_fatura_pct}% ao mês` : "—" },
                         ].map(k => (
                           <div key={k.label} style={{ flex:1, minWidth:140 }}>
                             <div style={{ fontSize:10, color:"#475569", marginBottom:2 }}>{k.label}</div>
@@ -10276,6 +10385,67 @@ Content-Type: application/json
                         ))}
                       </div>
                     </div>
+
+                    {/* ── Modal Cadastro/Edição Placa Solar ── */}
+                    {solarModal && (
+                      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:3000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
+                        <div style={{ background:"#0F172A", border:"1px solid rgba(234,179,8,.25)", borderRadius:16, width:"100%", maxWidth:640, maxHeight:"90vh", overflowY:"auto", padding:24 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                            <div style={{ fontSize:16, fontWeight:800, color:"#EAB308" }}>☀️ {solarData?.id ? "Editar" : "Cadastrar"} Sistema Solar</div>
+                            <button onClick={() => setSolarModal(false)} style={{ background:"none", border:"none", color:"#64748B", fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
+                          </div>
+
+                          {/* Campos em grid */}
+                          {(() => {
+                            const sf = (key: keyof PlacaSolarData, label: string, type: "text"|"number" = "text", placeholder = "") => (
+                              <div key={key} style={{ display:"flex", flexDirection:"column", gap:4 }}>
+                                <label style={{ fontSize:10, color:"#64748B", fontWeight:600, textTransform:"uppercase" }}>{label}</label>
+                                <input
+                                  type={type}
+                                  value={String(solarForm[key] ?? "")}
+                                  onChange={e => setSolarForm(p => ({ ...p, [key]: type === "number" ? e.target.value : e.target.value }))}
+                                  placeholder={placeholder}
+                                  style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, outline:"none" }}
+                                />
+                              </div>
+                            );
+                            return (
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                                {sf("potencia_instalada_kwp", "Potência Instalada (kWp)", "number", "ex: 72")}
+                                {sf("num_paineis",            "Nº de Painéis",           "number", "ex: 180")}
+                                {sf("eficiencia_media_pct",   "Eficiência Média (%)",     "number", "ex: 94")}
+                                {sf("fabricante_inversor",    "Fabricante Inversor",      "text", "ex: Fronius Symo 72kW")}
+                                {sf("fabricante_painel",      "Fabricante Painel",        "text", "ex: Canadian Solar 400W")}
+                                {sf("data_instalacao",        "Data de Instalação",       "text", "ex: Abril/2022")}
+                                {sf("orientacao",             "Orientação",               "text", "ex: Norte / Noroeste")}
+                                {sf("inclinacao",             "Inclinação",               "text", "ex: 15°")}
+                                {sf("tensao_cc",              "Tensão CC",                "text", "ex: 800V")}
+                                {sf("garantia_painel",        "Garantia do Painel",       "text", "ex: 25 anos (produção)")}
+                                {sf("ultima_vistoria",        "Última Vistoria",          "text", "ex: Jan/2026")}
+                                {sf("proxima_vistoria",       "Próxima Vistoria",         "text", "ex: Jul/2026")}
+                                {sf("conexao_rede",           "Conexão Rede",             "text", "ex: Net metering (CELESC)")}
+                                {sf("creditos_kwh",           "Créditos Acumulados (kWh)","number", "ex: 8340")}
+                                {sf("validade_creditos_meses","Validade Créditos (meses)","number", "ex: 60")}
+                                {sf("reducao_fatura_pct",     "Redução na Fatura (%)",    "number", "ex: 23")}
+                              </div>
+                            );
+                          })()}
+
+                          <div style={{ display:"flex", gap:8, marginTop:20, justifyContent:"flex-end" }}>
+                            <button onClick={() => setSolarModal(false)} style={{ background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#94A3B8", borderRadius:8, padding:"8px 20px", fontSize:12, cursor:"pointer" }}>
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => saveSolar(solarForm)}
+                              disabled={solarSaving}
+                              style={{ background:"#EAB308", border:"none", color:"#000", borderRadius:8, padding:"8px 24px", fontSize:12, fontWeight:700, cursor:"pointer", opacity:solarSaving?0.6:1 }}
+                            >
+                              {solarSaving ? "Salvando..." : "💾 Salvar"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

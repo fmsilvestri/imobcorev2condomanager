@@ -2425,5 +2425,64 @@ router.delete("/piscina/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Placa Solar — CRUD (tabela: placa_solar)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/placa-solar?condominio_id=xxx
+router.get("/placa-solar", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+  const { data, error } = await supabase
+    .from("placa_solar")
+    .select("*")
+    .eq("condominio_id", condId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  // Se tabela não existe ainda, retorna null sem 500
+  if (error) {
+    const isTableMissing = (error.message || "").includes("Could not find") || (error.message || "").includes("schema cache") || error.code === "PGRST200";
+    if (isTableMissing) return res.json({ data: null });
+    return res.status(500).json({ error: error.message });
+  }
+  res.json({ data: data || null });
+});
+
+// POST /api/placa-solar
+router.post("/placa-solar", async (req: Request, res: Response) => {
+  const body = req.body as Record<string, unknown>;
+  if (!body.condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  const { data, error } = await supabase
+    .from("placa_solar")
+    .insert({ ...body, created_at: new Date().toISOString() })
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, data });
+});
+
+// PUT /api/placa-solar/:id
+router.put("/placa-solar/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { id: _id, created_at: _ca, condominio_id: _cid, ...body } = req.body as Record<string, unknown>;
+  const { data, error } = await supabase
+    .from("placa_solar")
+    .update(body)
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, data });
+});
+
+// DELETE /api/placa-solar/:id
+router.delete("/placa-solar/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { error } = await supabase.from("placa_solar").delete().eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 export default router;
 export { broadcast };
