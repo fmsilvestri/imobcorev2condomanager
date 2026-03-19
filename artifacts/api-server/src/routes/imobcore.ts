@@ -1319,6 +1319,50 @@ router.get("/reservatorios", async (_req: Request, res: Response) => {
   res.json({ reservatorios });
 });
 
+// Retorna o último nível conhecido por sensor_id (para pre-popular gauges no frontend)
+router.get("/reservatorios/niveis", async (_req: Request, res: Response) => {
+  const niveis: Record<string, { nivel: number; volume: number; ts: string }> = {};
+  // 1. Tenta sensor_leituras (mais recente — pode não existir)
+  try {
+    const { data: leituras, error: lErr } = await supabase
+      .from("sensor_leituras")
+      .select("sensor_id, nivel, volume_litros, received_at")
+      .order("received_at", { ascending: false })
+      .limit(500);
+    if (!lErr && leituras) {
+      for (const row of leituras) {
+        if (row.sensor_id && !niveis[row.sensor_id]) {
+          niveis[row.sensor_id] = {
+            nivel: Math.min(100, Math.max(0, Number(row.nivel) || 0)),
+            volume: Number(row.volume_litros) || 0,
+            ts: row.received_at,
+          };
+        }
+      }
+    }
+  } catch { /* sensor_leituras may not exist */ }
+  // 2. Fallback: tabela sensores (principal — usada pelo dashboard)
+  try {
+    const { data: sens, error: sErr } = await supabase
+      .from("sensores")
+      .select("sensor_id, nivel_atual, volume_litros, updated_at, capacidade_litros");
+    if (!sErr && sens) {
+      for (const s of sens) {
+        if (s.sensor_id && !niveis[s.sensor_id]) {
+          const cap = Number(s.capacidade_litros) || 0;
+          const nivel = Math.min(100, Math.max(0, Number(s.nivel_atual) || 0));
+          niveis[s.sensor_id] = {
+            nivel,
+            volume: Number(s.volume_litros) || Math.round(nivel / 100 * cap),
+            ts: s.updated_at || new Date().toISOString(),
+          };
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  res.json({ niveis });
+});
+
 router.post("/reservatorios", async (req: Request, res: Response) => {
   // Strip client-generated id so Supabase uses gen_random_uuid()
   const { id: _clientId, ...body } = req.body;

@@ -1194,6 +1194,8 @@ export default function App() {
   const [aguaNovoResForm, setAguaNovoResForm] = useState({ nome:"", local:"", capacidade:"", mac:"" });
   // ── Reservatórios state ────────────────────────────────────────────────────
   const [resList, setResList] = useState<Reservatorio[]>([]);
+  // Níveis em tempo real por sensor_id (atualizado via SSE sensor_leitura)
+  const [resNivels, setResNivels] = useState<Record<string, { nivel: number; volume: number; ts: string }>>({});
   const [resShowForm, setResShowForm] = useState(false);
   const [resEditId, setResEditId] = useState<string|null>(null);
   const EMPTY_RES_FORM = { sensor_id:"", nome:"", local:"", capacidade_litros:20000, altura_cm:200, mac_address:"", cf_url:"https://imobcore1.fmsilvestri39.workers.dev", wh_url:"https://condo-manager-ai.replit.app/api/webhook", protocolo:"HTTPS POST", porta:443 };
@@ -1376,12 +1378,22 @@ export default function App() {
     setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM);
   };
   const resDelete = async (id: string) => {
-    if (!confirm("Excluir reservatório?")) return;
+    const target = resList.find(r => r.id === id);
+    if (!confirm(`Excluir reservatório "${target?.nome || id}"?`)) return;
     setResList(prev => prev.filter(r => r.id !== id));
+    // Remove nível em tempo real do estado
+    if (target?.sensor_id) {
+      setResNivels(prev => { const n = { ...prev }; delete n[target.sensor_id]; return n; });
+    }
     try {
       const r = await fetch(`/api/reservatorios/${id}`, { method:"DELETE" });
-      if (!r.ok) console.error("DELETE reservatorio failed", await r.text());
-    } catch (e) { console.error("DELETE reservatorio error", e); }
+      if (!r.ok) {
+        console.error("DELETE reservatorio failed", await r.text());
+        showToast("❌ Erro ao excluir reservatório", "error");
+      } else {
+        showToast("🗑️ Reservatório excluído", "info");
+      }
+    } catch (e) { console.error("DELETE reservatorio error", e); showToast("❌ Erro de conexão", "error"); }
   };
   const resEdit = (r: Reservatorio) => {
     setResEditId(r.id);
@@ -1713,6 +1725,21 @@ export default function App() {
           if (evt === "os_atualizada") showToast("🔄 OS atualizada", "info");
         });
       });
+      // Atualização em tempo real de nível de reservatórios
+      es.addEventListener("sensor_leitura", (e: MessageEvent) => {
+        const data = JSON.parse(e.data);
+        addLog("sensor_leitura", data);
+        if (data.sensor_id && data.nivel !== undefined) {
+          setResNivels(prev => ({
+            ...prev,
+            [data.sensor_id]: {
+              nivel: Math.min(100, Math.max(0, Number(data.nivel))),
+              volume: Number(data.volume_litros || 0),
+              ts: data.received_at || new Date().toISOString(),
+            }
+          }));
+        }
+      });
       es.onerror = () => { setSseOnline(false); retryTimer = setTimeout(connect, 5000); };
     };
     connect();
@@ -1729,14 +1756,14 @@ export default function App() {
 
   // ── Carregar reservatórios da API ─────────────────────────────────────────
   useEffect(() => {
-    fetch("/api/reservatorios")
-      .then(r => r.json())
-      .then(json => {
-        if (json.reservatorios && json.reservatorios.length > 0) {
-          setResList(json.reservatorios);
-        }
-      })
-      .catch(() => {/* mantém vazio */});
+    // Carrega lista de reservatórios e últimos níveis conhecidos em paralelo
+    Promise.all([
+      fetch("/api/reservatorios").then(r => r.json()).catch(() => ({})),
+      fetch("/api/reservatorios/niveis").then(r => r.json()).catch(() => ({})),
+    ]).then(([resJson, niveisJson]) => {
+      if (resJson.reservatorios?.length > 0) setResList(resJson.reservatorios);
+      if (niveisJson.niveis) setResNivels(niveisJson.niveis);
+    });
   }, []);
 
   // ── Theme: apply CSS custom properties ───────────────────────────────────
@@ -6196,10 +6223,54 @@ export default function App() {
                       </button>
                     </div>
 
-                    {/* IoT Sensor rings */}
-                    {sensores.length > 0 && (
+                    {/* IoT Sensor rings — um gauge por reservatório cadastrado */}
+                    {resList.length > 0 && (
                       <div style={{ marginBottom:16 }}>
-                        <div style={{ fontSize:11, color:"#475569", fontWeight:600, marginBottom:10 }}>📡 SENSORES IoT EM TEMPO REAL <span style={{ color:"#334155", fontWeight:400 }}>↻ 10s</span></div>
+                        <div style={{ fontSize:11, color:"#475569", fontWeight:600, marginBottom:10 }}>
+                          📡 SENSORES IoT EM TEMPO REAL <span style={{ color:"#334155", fontWeight:400 }}>↻ 10s</span>
+                        </div>
+                        <div className="sensor-grid">
+                          {resList.map(r => {
+                            const nv = resNivels[r.sensor_id];
+                            const nivel = nv?.nivel ?? 0;
+                            const sensor: Sensor = {
+                              id: r.id,
+                              sensor_id: r.sensor_id,
+                              nome: r.nome || r.sensor_id,
+                              local: r.local || "—",
+                              capacidade_litros: r.capacidade_litros,
+                              nivel_atual: nivel,
+                              volume_litros: nv?.volume ?? Math.round(nivel / 100 * r.capacidade_litros),
+                            };
+                            return (
+                              <div key={r.id} style={{ position:"relative" }}>
+                                <SensorRing sensor={sensor} />
+                                {nv && (
+                                  <div style={{ textAlign:"center", fontSize:9, color:"#334155", marginTop:-2 }}>
+                                    {new Date(nv.ts).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}
+                                  </div>
+                                )}
+                                {!nv && (
+                                  <div style={{ textAlign:"center", fontSize:9, color:"#F59E0B", fontWeight:600, marginTop:-2 }}>
+                                    ⏳ Aguardando leitura
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {/* Sensores da tabela sensores_agua sem reservatório cadastrado */}
+                          {sensores.filter(s => !resList.some(r => r.sensor_id === s.sensor_id)).map(s => (
+                            <SensorRing key={s.id} sensor={s} />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {/* Fallback: apenas sensores_agua (quando não há reservatórios cadastrados) */}
+                    {resList.length === 0 && sensores.length > 0 && (
+                      <div style={{ marginBottom:16 }}>
+                        <div style={{ fontSize:11, color:"#475569", fontWeight:600, marginBottom:10 }}>
+                          📡 SENSORES IoT EM TEMPO REAL <span style={{ color:"#334155", fontWeight:400 }}>↻ 10s</span>
+                        </div>
                         <div className="sensor-grid">
                           {sensores.map(s => <SensorRing key={s.id} sensor={s} />)}
                         </div>
