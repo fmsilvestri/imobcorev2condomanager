@@ -73,6 +73,18 @@ async function runMigrations() {
     console.log("✅ Migration 1b (condominios plano/status/trial): OK");
   }
 
+  // ── Migration 1c: condominios → photo_url ──────────────────────────────
+  const { error: m1cErr } = await supabase.from("condominios").select("photo_url").limit(1);
+  if (m1cErr) {
+    console.log("⚠️  Migration 1c needed (condominios photo_url). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    console.log("   ALTER TABLE condominios ADD COLUMN IF NOT EXISTS photo_url TEXT;");
+    console.log();
+  } else {
+    // Run silently via API (service role can do DDL through supabase-js? No — just mark OK)
+    console.log("✅ Migration 1c (condominios photo_url): OK");
+  }
+
   // ── Migration 2: ordens_servico → responsavel + numero + unique ────────
   const { error: m2Err } = await supabase.from("ordens_servico").select("responsavel, numero").limit(1);
   if (m2Err) {

@@ -1,0 +1,100 @@
+Redesign completo da tela inicial (Home) do app ImobCore v2 para o perfil Síndico.
+Manter toda a lógica e dados existentes, apenas substituir o visual.
+
+=== STACK ===
+React + TypeScript, Tailwind CSS, shadcn/ui, Supabase (dados já existentes)
+
+=== TEMA ===
+Implementar sistema de tema duplo com toggle persistido no localStorage:
+- DARK: background #0f0f1a, superfícies #1a1a2e, bordas rgba(255,255,255,0.08)
+- LIGHT: background #f0f0f8, superfícies #ffffff, bordas rgba(99,60,230,0.12)
+Criar ThemeContext global com useTheme() hook.
+Botão toggle no header (ícone lua/sol) alternando os dois modos.
+
+=== HEADER ===
+Layout: flex space-between, padding 16px 20px
+- Esquerda: texto "Bom dia," (12px, muted), nome do usuário (22px, bold, -0.5px tracking), badge "⬡ SÍNDICO" (pill roxa, 9px, uppercase)
+- Direita: ícone 🔔 notificações (círculo 32px), ícone ↕ trocar condomínio (círculo 32px), avatar inicial do usuário (círculo gradiente #6366f1→#a855f7)
+- DARK: ícones com bg rgba(255,255,255,0.07), borda rgba(255,255,255,0.1)
+- LIGHT: ícones com bg rgba(255,255,255,0.9), sombra 0 1px 4px rgba(0,0,0,0.07)
+
+=== CARD FOTO DO CONDOMÍNIO ===
+- Componente CondoPhotoCard
+- margin 14px horizontal, border-radius 18px, height 140px
+- Overlay gradiente escuro na parte inferior (to top, rgba(0,0,0,0.8) → transparent)
+- Exibe: nome do condomínio (16px bold branco) e subtítulo (cidade · unidades)
+- Badge "Sistema ativo" (top-right, dot verde pulsante)
+- Botão "📷 Alterar foto" (top-left, pill semitransparente com borda dashed)
+- Ao clicar: abre <input type="file" accept="image/*">
+- Foto salva no Supabase Storage bucket "condo-photos", coluna photo_url na tabela condominios
+- Fallback: gradiente #1e1b4b→#1e3a5f com ícone 🏢 centralizado quando sem foto
+- LIGHT: overlay com rgba(99,60,230,0.55) → transparent
+
+=== FAIXA DE STATS RÁPIDOS ===
+- Scroll horizontal, flex gap-6px, padding 0 14px 10px
+- Pills arredondados (border-radius 25px) com: dot colorido + valor bold + label muted
+- 4 pills: Saldo (dot verde, valor do Supabase tabela financeiro), Pendências (dot vermelho, contagem de ocorrências abertas), Manutenções (dot âmbar, count de manutenções ativas), Moradores (dot azul, count CRM)
+- DARK: bg rgba(255,255,255,0.05), borda rgba(255,255,255,0.07)
+- LIGHT: bg rgba(255,255,255,0.95), borda rgba(99,60,230,0.1), sombra 0 1px 6px rgba(99,60,230,0.06)
+
+=== BANNER SÍNDICO VIRTUAL IA ===
+- margin 14px horizontal, border-radius 14px, padding 12px 14px
+- Gradiente: #4f46e5 → #7c3aed → #9333ea (dark) / #6366f1 → #8b5cf6 (light com sombra 0 4px 16px rgba(99,102,241,0.3))
+- Círculo decorativo top-right: 60px, rgba(255,255,255,0.08)
+- Conteúdo: ícone 🤖 (quadrado 36px, bg rgba(255,255,255,0.15), radius 10px) + label "SÍNDICO VIRTUAL IA" (8px uppercase) + título "Falar com IA" (14px bold branco) + subtítulo "Consultas em tempo real" (9px, 65% opacidade)
+- Chevron "›" à direita
+- onClick: navega para /chat ou abre drawer do chat IA
+
+=== GRID DE MÓDULOS ===
+- Título seção: "OPERAÇÕES & GESTÃO" (10px uppercase, muted, tracking 0.8px) + link "ver tudo" (roxo)
+- Grid 2 colunas, gap 8px, padding 0 14px 12px
+- Cada card: border-radius 14px, padding 12px, emoji ícone (20px), nome (12px bold), badge pill (9px bold)
+- Alert dot vermelho pulsante (position absolute top-right) quando há pendências
+
+CORES DOS MÓDULOS:
+┌─────────────────┬──────────────────────────────────┬─────────────────────────────┐
+│ Módulo          │ DARK bg/texto                    │ LIGHT bg/texto              │
+├─────────────────┼──────────────────────────────────┼─────────────────────────────┤
+│ 💰 Financeiro   │ #064e3b→#065f46 / #6ee7b7        │ #f0fdf4 borda #bbf7d0 / #065f46 │
+│ 👤 Usuários     │ #1e1b4b→#2e2660 / #a5b4fc        │ #eef2ff borda #c7d2fe / #3730a3 │
+│ 🔧 Manutenção   │ #431407→#7c2d12 / #fdba74        │ #fff7ed borda #fed7aa / #9a3412 │
+│ 👥 CRM          │ #1e3a5f→#1e40af / #93c5fd        │ #eff6ff borda #bfdbfe / #1e40af │
+│ 📢 Comunicados  │ #2d1b69→#4c1d95 / #c4b5fd        │ #f5f3ff borda #ddd6fe / #5b21b6 │
+│ ✨ Insights IA  │ #1c1917→#44403c / #fde68a        │ #fffbeb borda #fde68a / #92400e │
+│ 🏪 Fornecedores │ #0c1a12→#14532d / #86efac        │ #f0fdf4 borda #bbf7d0 / #14532d │
+│ 📡 IoT Sensores │ #0c1a2e→#0f3460 / #7dd3fc        │ #f0f9ff borda #bae6fd / #0c4a6e │
+└─────────────────┴──────────────────────────────────┴─────────────────────────────┘
+
+Dados de cada badge buscados do Supabase em tempo real (useEffect + subscription).
+
+=== BOTTOM NAVIGATION ===
+- 5 itens: Início ⊞, Alertas 🔔, [botão IA central], Usuário 👤, CRM 👥
+- Botão IA central: círculo 48px, gradiente #6366f1→#a855f7, margin-top -10px, sombra roxa
+- Item ativo: ícone opacidade 1, label com cor roxa (#a78bfa dark / #6d28d9 light)
+- Inativos: opacidade 0.35, label muted
+- DARK: bg rgba(15,15,26,0.97), border-top rgba(255,255,255,0.06)
+- LIGHT: bg rgba(255,255,255,0.97), border-top rgba(99,60,230,0.08), sombra 0 -2px 12px rgba(99,60,230,0.06)
+- Sticky bottom, backdrop-filter blur(12px)
+
+=== ANIMAÇÕES ===
+- Cards de módulo: escala 0.97 no active/press (transition 0.1s)
+- Dot de alerta: pulse animation (keyframes: opacity 1→0.4→1, scale 1→1.3→1, 1.5s infinite)
+- Entrada da tela: staggered fade-up nos cards (animation-delay de 50ms entre cada card)
+- Banner IA: leve shimmer no gradiente a cada 3s
+
+=== COMPONENTES A CRIAR/ATUALIZAR ===
+1. ThemeProvider.tsx — context + toggle + localStorage
+2. CondoPhotoCard.tsx — upload foto + Supabase Storage
+3. QuickStatsStrip.tsx — faixa de pills com dados reais
+4. IABanner.tsx — banner Síndico Virtual
+5. ModuleGrid.tsx — grid de módulos com cores temáticas
+6. BottomNav.tsx — navegação inferior com botão IA central
+7. HomeScreen.tsx — composição de todos os componentes acima
+
+=== IMPORTANTE ===
+- Não quebrar rotas existentes nem lógica de autenticação
+- Manter condominio_id em todos os fetches (já implementado)
+- Usar as tabelas existentes: condominios, financeiro, ocorrencias, manutencoes, moradores, fornecedores
+- Adicionar coluna photo_url na tabela condominios caso não exista (migration SQL inclusa)
+- TypeScript strict, sem any
+- Mobile-first, width máxima 430px centralizada, sem scroll horizontal

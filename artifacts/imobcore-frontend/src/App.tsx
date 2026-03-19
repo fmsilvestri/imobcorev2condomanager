@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import SindicoHome from "./components/sindico/SindicoHome";
 import QRCode from "qrcode";
 import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis } from "recharts";
 
@@ -25,6 +26,7 @@ interface CondominioInfo {
   status?: "ativo" | "suspenso" | "trial";
   trial_expires_at?: string;
   logo_url?: string; cor_primaria?: string;
+  photo_url?: string | null;
   created_at?: string;
 }
 interface Dashboard { ordens_servico: OrdemServico[]; sensores: Sensor[]; alertas_publicos: Alerta[]; receitas: Receita[]; despesas: Despesa[]; comunicados: Comunicado[]; totais: DashTotais; condominios: CondominioInfo[] }
@@ -1510,7 +1512,7 @@ export default function App() {
   // Sub-screen navigation
   const [sindicoScreen, setSindicoScreen] = useState<string | null>(null);
   const [moradorScreen, setMoradorScreen] = useState<string | null>(null);
-  const [sindicoTheme, setSindicoTheme] = useState<"light" | "dark">("light");
+  const [sindicoTheme, setSindicoTheme] = useState<"light" | "dark">(() => (localStorage.getItem("imobcore_sindico_theme") as "light" | "dark" | null) ?? "dark");
 
   // Chat
   const [deskMsgs, setDeskMsgs] = useState<ChatMsg[]>([]);
@@ -10669,135 +10671,29 @@ Content-Type: application/json
 
       {/* ══ VIEW 2: APP SÍNDICO ════════════════════════════════════════════════ */}
       <div className={`view ${view === "sindico" ? "active" : ""}`} style={{ flexDirection:"column", overflow:"hidden", fontFamily:"'Nunito', sans-serif", position:"relative", height:"100vh", marginTop:0, ...(sindicoTheme === "dark" ? { background:"#1E1B35", "--neu-bg":"#1E1B35", "--neu-shadow-d":"#141228", "--neu-shadow-l":"#2a2650", "--neu-text":"#E2E8F0", "--neu-text-2":"rgba(190,180,240,0.55)", "--neu-purple":"#A584FC", "--card-border":"rgba(255,255,255,.08)", "--neu-out-sm":"3px 3px 8px #141228,-2px -2px 6px #2a2650", "--neu-in-sm":"inset 3px 3px 7px #141228,inset -2px -2px 5px #2a2650", "--neu-out":"5px 5px 14px #141228,-4px -4px 11px #2a2650", "--neu-grad":"linear-gradient(135deg,#A584FC,#7C5CFC)" } as React.CSSProperties : { background:"#EEEEF4" }) }}>
-            {(() => {
-              const h = new Date().getHours();
-              const greet = h < 12 ? "Bom dia," : h < 18 ? "Boa tarde," : "Boa noite,";
-              const eName = loginEmail.split("@")[0] || "Síndico";
-              const fname = eName.charAt(0).toUpperCase() + eName.slice(1);
-              const condo = dash?.condominios?.[0]?.nome || "Residencial Parque das Flores";
-              return (
-                <div className="phone-header">
-                  <div className="ph-topbar">
-                    <div className="ph-logo-row">
-                      <div className="ph-logo-icon">IC</div>
-                      <div className="ph-brand-name">ImobCore <span>v2</span></div>
-                    </div>
-                    <div className="ph-topbar-btns">
-                      <button className={`ph-btn-neu ${bellShake ? "bell-shake" : ""}`} onClick={() => setBellCount(0)} title="Notificações">
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
-                        </svg>
-                        {bellCount > 0 && <div className="ph-bell-dot"/>}
-                      </button>
-                      <button className="ph-btn-neu" onClick={() => setSindicoTheme(t => t === "light" ? "dark" : "light")} title={sindicoTheme === "dark" ? "Tema Claro" : "Tema Escuro"} style={{ fontSize:16 }}>
-                        {sindicoTheme === "dark" ? "☀️" : "🌙"}
-                      </button>
-                      <button onClick={() => setView("selector")} title="Trocar interface"
-                        style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:2, padding:"6px 10px", borderRadius:12, background:"var(--neu-bg)", border:"none", boxShadow:"var(--neu-out-sm)", cursor:"pointer", color:"var(--neu-text-2)", transition:"box-shadow .2s", minWidth:64 }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--neu-purple)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
-                        </svg>
-                        <span style={{ fontSize:9, fontWeight:700, letterSpacing:".03em", color:"var(--neu-text-2)", lineHeight:1 }}>Trocar</span>
-                      </button>
-                    </div>
-                  </div>
-                  <div className="ph-greeting-section">
-                    <div className="ph-greet-wrap">
-                      <div className="ph-greet-time">{greet}</div>
-                      <div className="ph-greet-name">{fname}</div>
-                      <div><span className="badge-role">◆ Síndico</span></div>
-                      <div className="ph-greet-condo">{condo}</div>
-                    </div>
-                    <div className="ph-av-lg">{fname.charAt(0).toUpperCase()}</div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div className="phone-content">
-              {urgentes > 0 && (
-                <div className="ph-card critical" style={{ margin: "0 14px 12px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, paddingLeft: 8 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: 10, background: "var(--neu-bg)", boxShadow: "var(--neu-out-sm)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>⚠️</div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 10, fontWeight: 900, color: "#FF5A3C", letterSpacing: ".06em", textTransform: "uppercase" as const, marginBottom: 2 }}>Atenção Urgente</div>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: "var(--neu-text)" }}>
-                        {(dash?.ordens_servico || []).find(o => o.prioridade === "urgente" && o.status === "aberta")?.titulo || "Ocorrência urgente"}
-                      </div>
-                      <div style={{ fontSize: 10, color: "var(--neu-text-2)", marginTop: 2 }}>Agora · Manutenção</div>
-                    </div>
-                    <span style={{ color: "var(--neu-text-2)", fontSize: 14 }}>›</span>
-                  </div>
-                </div>
-              )}
-
-              <div className="ph-card grad-card" onClick={() => setSindicoScreen("sindico")} style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: "rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>🤖</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 10, color: "rgba(255,255,255,.75)", letterSpacing: ".06em", textTransform: "uppercase" as const, marginBottom: 2 }}>Síndico Virtual IA</div>
-                  <div style={{ fontSize: 17, fontWeight: 900, color: "#fff", marginBottom: 2 }}>Falar com IA</div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,.8)" }}>Consultas e análises em tempo real</div>
-                </div>
-                <span style={{ color: "rgba(255,255,255,.8)", fontSize: 18 }}>›</span>
-              </div>
-
-              {/* ── Seção 1: Operações ────────────────────────────── */}
-              <div className="sec-header">
-                <div className="sec-title">Operações &amp; Gestão</div>
-                <div className="sec-link">ver tudo</div>
-              </div>
-              <div className="grid-2">
-                {[
-                  { icon: "📋", title: "Usuário", badgeColor: "#F59E0B", badgeBg: "rgba(245,158,11,.12)", sub: `${osAbertas.length} em aberto`, dot: true, screen: "planejamento" },
-                  { icon: "💰", title: "Financeiro", badgeColor: "#10B981", badgeBg: "rgba(16,185,129,.12)", sub: fmtBRL(t?.saldo || 0), dot: false, screen: "financeiro" },
-                  { icon: "🔧", title: "Manutenção", badgeColor: "var(--neu-text-2)", badgeBg: "transparent", sub: `${equipList.length} itens`, dot: false, screen: "manutencao" },
-                  { icon: "👥", title: "CRM Moradores", badgeColor: "#3B82F6", badgeBg: "rgba(59,130,246,.12)", sub: `${crmMoradores.length} cadastros`, dot: false, screen: "crm" },
-                  { icon: "📢", title: "Comunicados", badgeColor: "#F59E0B", badgeBg: "rgba(245,158,11,.12)", sub: `${(dash?.comunicados||[]).length} enviados`, dot: false, screen: "comunicados" },
-                  { icon: "💡", title: "Insights IA", badgeColor: "#7C5CFC", badgeBg: "rgba(124,92,252,.12)", sub: "Tempo real", dot: false, screen: "insights" },
-                  { icon: "🏢", title: "Fornecedores", badgeColor: "#10B981", badgeBg: "rgba(16,185,129,.12)", sub: `${fornecList.length} cadastros`, dot: false, screen: "fornecedores" },
-                ].map(m => (
-                  <div key={m.title} className="module-card" onClick={() => { setSindicoScreen(m.screen); setSindFornecDetail(null); }}>
-                    {m.dot && <div style={{ position: "absolute", top: 12, right: 12, width: 8, height: 8, borderRadius: "50%", background: "#EF4444", boxShadow: "0 0 6px #EF4444" }} />}
-                    <div className="module-card-icon">{m.icon}</div>
-                    <div className="module-card-title">{m.title}</div>
-                    <div className="module-card-sub" style={{ color: m.badgeColor, background: m.badgeBg, boxShadow: m.badgeBg === "transparent" ? "var(--neu-out-sm)" : "none" }}>{m.sub}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* ── Seção 2: Monitoramento ─────────────────────────── */}
-              <div className="sec-header" style={{ marginTop: 4 }}>
-                <div className="sec-title">Monitoramento &amp; IoT</div>
-                <div className="sec-link">ver tudo</div>
-              </div>
-              <div className="grid-2">
-                {[
-                  { icon: "💧", title: "Água & Reserv.", sub: `Nível: ${nivelMedio}%`, badgeColor: "#0D9488", badgeBg: "rgba(13,148,136,.1)", screen: "agua" },
-                  { icon: "🔥", title: "Gás", sub: `Nível: ${gasLeituras[0]?.nivel ?? 0}%${(gasLeituras[0]?.nivel ?? 0) < 20 ? " ⚠️" : ""}`, badgeColor: "#F97316", badgeBg: "rgba(249,115,22,.1)", screen: "gas" },
-                  { icon: "⚡", title: "Energia", sub: "284 kWh/mês", badgeColor: "#EAB308", badgeBg: "rgba(234,179,8,.1)", screen: "energia" },
-                  { icon: "🚨", title: "MISP", sub: `${t?.alertas_ativos || 0} alertas`, badgeColor: "#EF4444", badgeBg: "rgba(239,68,68,.1)", screen: "misp" },
-                  { icon: "📡", title: "Monitor IoT", sub: `${sseCount} eventos`, badgeColor: "#0D9488", badgeBg: "rgba(13,148,136,.1)", screen: "iot" },
-                  { icon: "🤖", title: "Síndico IA", sub: "Chat em tempo real", badgeColor: "#7C5CFC", badgeBg: "rgba(124,92,252,.1)", screen: "sindico" },
-                ].map(m => (
-                  <div key={m.title} className="module-card" onClick={() => setSindicoScreen(m.screen)}>
-                    <div className="module-card-icon">{m.icon}</div>
-                    <div className="module-card-title">{m.title}</div>
-                    <div className="module-card-sub" style={{ color: m.badgeColor, background: m.badgeBg, boxShadow: "none" }}>{m.sub}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Sub-screen overlay */}
-            {renderSindicoScreen()}
-
-            <div className="phone-bottom-nav">
-              <div className={`nav-item ${!sindicoScreen ? "active" : ""}`} onClick={() => setSindicoScreen(null)}><span>🏠</span>Início</div>
-              <div className={`nav-item ${sindicoScreen === "misp" ? "active" : ""}`} onClick={() => setSindicoScreen("misp")}><span>🚨</span>Alertas</div>
-              <button className="nav-fab" onClick={() => setSindicoScreen("sindico")}>🤖</button>
-              <div className={`nav-item ${sindicoScreen === "planejamento" ? "active" : ""}`} onClick={() => setSindicoScreen("planejamento")}><span>📋</span>Usuário</div>
-              <div className={`nav-item ${sindicoScreen === "crm" ? "active" : ""}`} onClick={() => setSindicoScreen("crm")}><span>👥</span>CRM</div>
-            </div>
+            <SindicoHome
+              sindicoTheme={sindicoTheme}
+              setSindicoTheme={setSindicoTheme}
+              sindicoScreen={sindicoScreen}
+              setSindicoScreen={setSindicoScreen}
+              setView={setView}
+              condo={dash?.condominios?.[0] ?? null}
+              condId={condId}
+              loginEmail={loginEmail}
+              bellCount={bellCount}
+              setBellCount={setBellCount}
+              bellShake={bellShake}
+              saldo={t?.saldo ?? 0}
+              osAbertasCount={osAbertas.length}
+              equipCount={equipList.length}
+              crmCount={crmMoradores.length}
+              fornecCount={fornecList.length}
+              nivelMedio={nivelMedio}
+              sseCount={sseCount}
+              comunicadosCount={(dash?.comunicados ?? []).length}
+              onPhotoUpdate={(url) => setDash(prev => prev ? { ...prev, condominios: prev.condominios.map((c, i) => i === 0 ? { ...c, photo_url: url } : c) } : prev)}
+              renderSindicoScreen={renderSindicoScreen}
+            />
       </div>
 
       {/* ══ VIEW 3: APP MORADOR ════════════════════════════════════════════════ */}

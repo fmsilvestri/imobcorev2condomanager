@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
+import multer from "multer";
 import {
   type Lancamento,
   calcularIndicadores,
@@ -983,6 +984,48 @@ router.delete("/condominios/:id", async (req: Request, res: Response) => {
     const { error } = await supabase.from("condominios").delete().eq("id", id);
     if (error) return res.status(500).json({ error: error.message });
     res.json({ ok: true });
+  } catch (e: unknown) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// POST /api/condominios/:id/photo - Upload photo to Supabase Storage
+const _multerUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+router.post("/condominios/:id/photo", _multerUpload.single("photo"), async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!id) return res.status(400).json({ error: "Condomínio ID obrigatório" });
+  if (!req.file) return res.status(400).json({ error: "Arquivo não enviado" });
+
+  try {
+    const ext = req.file.originalname.split(".").pop() ?? "jpg";
+    const path = `condo-${id}/photo-${Date.now()}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from("condo-photos")
+      .upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: true });
+
+    if (upErr) {
+      // Bucket may not exist yet — create it and retry
+      if (upErr.message?.includes("not found") || upErr.message?.includes("Bucket")) {
+        await supabase.storage.createBucket("condo-photos", { public: true });
+        const { error: upErr2 } = await supabase.storage
+          .from("condo-photos")
+          .upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: true });
+        if (upErr2) return res.status(500).json({ error: upErr2.message });
+      } else {
+        return res.status(500).json({ error: upErr.message });
+      }
+    }
+
+    const { data: urlData } = supabase.storage.from("condo-photos").getPublicUrl(path);
+    const photo_url = urlData.publicUrl;
+
+    // Persist to condominios table (best-effort; column may not exist yet)
+    try {
+      await supabase.from("condominios").update({ photo_url }).eq("id", id);
+    } catch { /* ignore if column missing */ }
+
+    res.json({ ok: true, photo_url });
   } catch (e: unknown) {
     res.status(500).json({ error: String(e) });
   }
