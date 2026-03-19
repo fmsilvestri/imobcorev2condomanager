@@ -6156,8 +6156,8 @@ export default function App() {
                         <div style={{ fontSize:15, fontWeight:800 }}>💧 Caixas d'água</div>
                         <div style={{ fontSize:11, color:"#475569" }}>IETEC • IoT em tempo real</div>
                       </div>
-                      <button onClick={() => { setResEditId(null); setResForm(EMPTY_RES_FORM); setResShowForm(!resShowForm); }} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 18px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
-                        ⚙ Config
+                      <button onClick={() => { setResEditId(null); setResForm(EMPTY_RES_FORM); setResShowForm(true); }} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 18px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                        ＋ Novo
                       </button>
                     </div>
 
@@ -6197,103 +6197,6 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Inline edit/add form */}
-                    {resShowForm && (
-                      <div style={{ background:"rgba(30,40,70,.95)", border:"1px solid rgba(59,130,246,.3)", borderRadius:12, padding:"20px 24px" }}>
-                        <div style={{ fontSize:13, fontWeight:800, color:"#60A5FA", marginBottom:16 }}>
-                          {resEditId ? `✏️ Editando: ${resForm.sensor_id}` : "＋ Novo Reservatório"}
-                        </div>
-
-                        {/* Row 1: Sensor ID + Nome */}
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
-                          <div>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Sensor ID <span style={{color:"#475569"}}>(opcional, auto-gerado se vazio)</span></div>
-                            <input value={resForm.sensor_id} onChange={e=>setResForm(f=>({...f,sensor_id:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="ex: sensor_agua_bloco_a (deixe em branco para auto)" />
-                          </div>
-                          <div>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Nome <span style={{color:"#EF4444"}}>*</span></div>
-                            <input value={resForm.nome} onChange={e=>setResForm(f=>({...f,nome:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:`1px solid ${resForm.nome.trim() ? "rgba(255,255,255,.12)" : "rgba(239,68,68,.4)"}`, borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="Ex: Caixa Bloco A, Cisterna Principal..." />
-                          </div>
-                        </div>
-
-                        {/* Row 2: Local + Capacidade */}
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
-                          <div>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Local</div>
-                            <input value={resForm.local} onChange={e=>setResForm(f=>({...f,local:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="Bloco A, cobertura" />
-                          </div>
-                          <div>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Capacidade (litros)</div>
-                            <input type="number" value={resForm.capacidade_litros} onChange={e=>setResForm(f=>({...f,capacidade_litros:Number(e.target.value)}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="20000" />
-                          </div>
-                        </div>
-
-                        {/* Row 3: Altura + MAC */}
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:20 }}>
-                          <div>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Altura da caixa (cm)</div>
-                            <input type="number" value={resForm.altura_cm} onChange={e=>setResForm(f=>({...f,altura_cm:Number(e.target.value)}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="200" />
-                          </div>
-                          <div>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>MAC Address (opcional)</div>
-                            <input value={resForm.mac_address} onChange={e=>setResForm(f=>({...f,mac_address:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="AA:BB:CC:DD:EE:FF" />
-                          </div>
-                        </div>
-
-                        {/* Cloudflare Worker section */}
-                        <div style={{ marginBottom:20 }}>
-                          <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0", marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
-                            <span style={{ fontSize:14 }}>☁️</span> Cloudflare Worker
-                          </div>
-                          <div>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>URL do Worker</div>
-                            <input value={resForm.cf_url} onChange={e=>setResForm(f=>({...f,cf_url:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="https://xxx.workers.dev" />
-                          </div>
-                        </div>
-
-                        {/* Webhook section */}
-                        <div style={{ marginBottom:20 }}>
-                          <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0", marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
-                            <span style={{ fontSize:14 }}>🔗</span> Webhook
-                          </div>
-                          <div style={{ marginBottom:12 }}>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>URL do Webhook</div>
-                            <input value={resForm.wh_url} onChange={e=>setResForm(f=>({...f,wh_url:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="https://seu-app.replit.app/api/webhook" />
-                          </div>
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
-                            <div>
-                              <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Protocolo</div>
-                              <select value={resForm.protocolo} onChange={e=>setResForm(f=>({...f,protocolo:e.target.value}))} style={{ width:"100%", background:"rgba(30,40,70,.98)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }}>
-                                <option>HTTPS POST</option>
-                                <option>HTTP POST</option>
-                                <option>MQTT</option>
-                              </select>
-                            </div>
-                            <div>
-                              <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Porta</div>
-                              <input type="number" value={resForm.porta} onChange={e=>setResForm(f=>({...f,porta:Number(e.target.value)}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="443" />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Action buttons */}
-                        <div style={{ display:"flex", gap:10, flexWrap:"wrap" as const }}>
-                          <button onClick={resSave} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"10px 22px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>Salvar</button>
-                          {resEditId && (() => {
-                            const cur = resList.find(r=>r.id===resEditId);
-                            return cur ? (<>
-                              <button onClick={()=>resTestCF(cur)} disabled={resTesting.cf} style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"10px 18px", color:"#10B981", fontSize:13, fontWeight:700, cursor:"pointer", opacity:resTesting.cf?.5:1 }}>
-                                {resTesting.cf ? "⏳" : "☁️"} Testar CF
-                              </button>
-                              <button onClick={()=>resTestWH(cur)} disabled={resTesting.wh} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:8, padding:"10px 18px", color:"#818CF8", fontSize:13, fontWeight:700, cursor:"pointer", opacity:resTesting.wh?.5:1 }}>
-                                {resTesting.wh ? "⏳" : "🔗"} Testar WH
-                              </button>
-                            </>) : null;
-                          })()}
-                          <button onClick={() => { setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM); }} style={{ background:"transparent", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"10px 18px", color:"#64748B", fontSize:13, cursor:"pointer" }}>Cancelar</button>
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -10780,6 +10683,176 @@ Content-Type: application/json
 
       {/* ══ VIEW 4: ONBOARDING ════════════════════════════════════════════════ */}
       {view === "onboarding" && renderOnboarding()}
+
+      {/* ══ MODAL: RESERVATÓRIO ADD / EDIT ════════════════════════════════════ */}
+      {resShowForm && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) { setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM); } }}
+          style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.72)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}
+        >
+          <div style={{ background:"#0F172A", border:"1px solid rgba(59,130,246,.35)", borderRadius:16, padding:"28px 28px 24px", width:"100%", maxWidth:560, maxHeight:"92vh", overflowY:"auto", boxShadow:"0 24px 80px rgba(0,0,0,.8)" }}>
+            {/* Header */}
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:22 }}>
+              <div style={{ fontSize:15, fontWeight:800, color:"#60A5FA" }}>
+                {resEditId ? "✏️ Editar Reservatório" : "＋ Novo Reservatório"}
+              </div>
+              <button onClick={() => { setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM); }} style={{ background:"none", border:"none", color:"#64748B", fontSize:20, cursor:"pointer", lineHeight:1 }}>✕</button>
+            </div>
+
+            {/* Nome + Local */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
+              <div>
+                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Nome <span style={{color:"#EF4444"}}>*</span></div>
+                <input
+                  autoFocus
+                  value={resForm.nome}
+                  onChange={e=>setResForm(f=>({...f,nome:e.target.value}))}
+                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:`1px solid ${resForm.nome.trim() ? "rgba(255,255,255,.15)" : "rgba(239,68,68,.5)"}`, borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                  placeholder="Ex: Caixa Bloco A, Cisterna Principal..."
+                />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Local</div>
+                <input
+                  value={resForm.local}
+                  onChange={e=>setResForm(f=>({...f,local:e.target.value}))}
+                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                  placeholder="Bloco A, cobertura..."
+                />
+              </div>
+            </div>
+
+            {/* Capacidade + Altura */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
+              <div>
+                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Capacidade (litros)</div>
+                <input
+                  type="number"
+                  value={resForm.capacidade_litros}
+                  onChange={e=>setResForm(f=>({...f,capacidade_litros:Number(e.target.value)}))}
+                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                  placeholder="20000"
+                />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Altura da caixa (cm)</div>
+                <input
+                  type="number"
+                  value={resForm.altura_cm}
+                  onChange={e=>setResForm(f=>({...f,altura_cm:Number(e.target.value)}))}
+                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                  placeholder="200"
+                />
+              </div>
+            </div>
+
+            {/* Sensor ID + MAC */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:20 }}>
+              <div>
+                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Sensor ID <span style={{color:"#475569", fontStyle:"italic"}}>(opcional)</span></div>
+                <input
+                  value={resForm.sensor_id}
+                  onChange={e=>setResForm(f=>({...f,sensor_id:e.target.value}))}
+                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                  placeholder="auto-gerado se vazio"
+                />
+              </div>
+              <div>
+                <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>MAC Address <span style={{color:"#475569", fontStyle:"italic"}}>(opcional)</span></div>
+                <input
+                  value={resForm.mac_address}
+                  onChange={e=>setResForm(f=>({...f,mac_address:e.target.value}))}
+                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                  placeholder="AA:BB:CC:DD:EE:FF"
+                />
+              </div>
+            </div>
+
+            {/* Cloudflare Worker URL */}
+            <div style={{ marginBottom:14 }}>
+              <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>☁️ URL Cloudflare Worker <span style={{color:"#475569", fontStyle:"italic"}}>(opcional)</span></div>
+              <input
+                value={resForm.cf_url}
+                onChange={e=>setResForm(f=>({...f,cf_url:e.target.value}))}
+                style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                placeholder="https://xxx.workers.dev"
+              />
+            </div>
+
+            {/* Webhook URL + Protocolo + Porta */}
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>🔗 URL Webhook <span style={{color:"#475569", fontStyle:"italic"}}>(opcional)</span></div>
+              <input
+                value={resForm.wh_url}
+                onChange={e=>setResForm(f=>({...f,wh_url:e.target.value}))}
+                style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const, marginBottom:10 }}
+                placeholder="https://seu-app.replit.app/api/webhook"
+              />
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                <div>
+                  <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Protocolo</div>
+                  <select
+                    value={resForm.protocolo}
+                    onChange={e=>setResForm(f=>({...f,protocolo:e.target.value}))}
+                    style={{ width:"100%", background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                  >
+                    <option>HTTPS POST</option>
+                    <option>HTTP POST</option>
+                    <option>MQTT</option>
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Porta</div>
+                  <input
+                    type="number"
+                    value={resForm.porta}
+                    onChange={e=>setResForm(f=>({...f,porta:Number(e.target.value)}))}
+                    style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:13, boxSizing:"border-box" as const }}
+                    placeholder="443"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display:"flex", gap:10, flexWrap:"wrap" as const }}>
+              <button
+                onClick={resSave}
+                style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"11px 28px", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}
+              >
+                {resEditId ? "💾 Salvar alterações" : "✅ Adicionar"}
+              </button>
+              {resEditId && (() => {
+                const cur = resList.find(r=>r.id===resEditId);
+                return cur ? (
+                  <>
+                    <button
+                      onClick={()=>resTestCF(cur)}
+                      disabled={!!resTesting.cf}
+                      style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"11px 18px", color:"#10B981", fontSize:13, fontWeight:700, cursor:"pointer", opacity:resTesting.cf?0.5:1 }}
+                    >
+                      {resTesting.cf ? "⏳" : "☁️"} Testar CF
+                    </button>
+                    <button
+                      onClick={()=>resTestWH(cur)}
+                      disabled={!!resTesting.wh}
+                      style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:8, padding:"11px 18px", color:"#818CF8", fontSize:13, fontWeight:700, cursor:"pointer", opacity:resTesting.wh?0.5:1 }}
+                    >
+                      {resTesting.wh ? "⏳" : "🔗"} Testar WH
+                    </button>
+                  </>
+                ) : null;
+              })()}
+              <button
+                onClick={() => { setResShowForm(false); setResEditId(null); setResForm(EMPTY_RES_FORM); }}
+                style={{ background:"transparent", border:"1px solid rgba(255,255,255,.15)", borderRadius:8, padding:"11px 18px", color:"#64748B", fontSize:13, cursor:"pointer", marginLeft:"auto" }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
