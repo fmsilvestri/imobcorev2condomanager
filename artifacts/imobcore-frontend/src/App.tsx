@@ -1342,18 +1342,19 @@ export default function App() {
   };
 
   const resSave = async () => {
-    if (!resForm.sensor_id.trim()) { showToast("⚠️ Preencha o Sensor ID", "warn"); return; }
     if (!resForm.nome.trim()) { showToast("⚠️ Preencha o Nome do reservatório", "warn"); return; }
+    const sensorId = resForm.sensor_id.trim() || `sensor_${Date.now()}`;
+    const formData = { ...resForm, sensor_id: sensorId };
     if (resEditId) {
-      setResList(prev => prev.map(r => r.id === resEditId ? { ...r, ...resForm, cf_online:r.cf_online, wh_online:r.wh_online } : r));
+      setResList(prev => prev.map(r => r.id === resEditId ? { ...r, ...formData, cf_online:r.cf_online, wh_online:r.wh_online } : r));
       try {
-        const r = await fetch(`/api/reservatorios/${resEditId}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(resForm) });
+        const r = await fetch(`/api/reservatorios/${resEditId}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(formData) });
         if (!r.ok) { console.error("PUT reservatorio failed", await r.text()); showToast("❌ Erro ao atualizar", "error"); }
         else showToast("✅ Reservatório atualizado", "success");
       } catch (e) { console.error("PUT reservatorio error", e); showToast("❌ Erro de conexão", "error"); }
     } else {
       const tempId = `res-${Date.now()}`;
-      const novo: Reservatorio = { id:tempId, ...resForm, cf_online:false, wh_online:false, created_at:new Date().toISOString() };
+      const novo: Reservatorio = { id:tempId, ...formData, cf_online:false, wh_online:false, created_at:new Date().toISOString() };
       setResList(prev => [novo, ...prev]);
       try {
         const r = await fetch("/api/reservatorios", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(novo) });
@@ -6206,12 +6207,12 @@ export default function App() {
                         {/* Row 1: Sensor ID + Nome */}
                         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
                           <div>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Sensor ID *</div>
-                            <input value={resForm.sensor_id} onChange={e=>setResForm(f=>({...f,sensor_id:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="sensor_agua" />
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Sensor ID <span style={{color:"#475569"}}>(opcional, auto-gerado se vazio)</span></div>
+                            <input value={resForm.sensor_id} onChange={e=>setResForm(f=>({...f,sensor_id:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="ex: sensor_agua_bloco_a (deixe em branco para auto)" />
                           </div>
                           <div>
-                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Nome</div>
-                            <input value={resForm.nome} onChange={e=>setResForm(f=>({...f,nome:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="Caixa Principal" />
+                            <div style={{ fontSize:11, color:"#64748B", marginBottom:5 }}>Nome <span style={{color:"#EF4444"}}>*</span></div>
+                            <input value={resForm.nome} onChange={e=>setResForm(f=>({...f,nome:e.target.value}))} style={{ width:"100%", background:"rgba(255,255,255,.07)", border:`1px solid ${resForm.nome.trim() ? "rgba(255,255,255,.12)" : "rgba(239,68,68,.4)"}`, borderRadius:8, padding:"9px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" as const }} placeholder="Ex: Caixa Bloco A, Cisterna Principal..." />
                           </div>
                         </div>
 
