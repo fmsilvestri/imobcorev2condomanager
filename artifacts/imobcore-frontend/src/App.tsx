@@ -1200,6 +1200,9 @@ export default function App() {
   const [aguaNovoResForm, setAguaNovoResForm] = useState({ nome:"", local:"", capacidade:"", mac:"" });
   // ── Reservatórios state ────────────────────────────────────────────────────
   const [resList, setResList] = useState<Reservatorio[]>([]);
+  // Ref síncrono para resList — usado no SSE handler para evitar closure stale
+  const resListRef = useRef<Reservatorio[]>([]);
+  useEffect(() => { resListRef.current = resList; }, [resList]);
   // Níveis em tempo real por sensor_id (atualizado via SSE sensor_leitura)
   const [resNivels, setResNivels] = useState<Record<string, { nivel: number; volume: number; ts: string }>>({});
   // Histórico de leituras por sensor_id (carregado do backend sensor_leituras)
@@ -1333,7 +1336,9 @@ export default function App() {
   const resTestWHById = async (r: Reservatorio) => {
     setResPerTesting(p => ({ ...p, [r.id]: { cf: p[r.id]?.cf ?? false, wh: true } }));
     try {
-      const resp = await fetch("/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.wh_url, method:r.protocolo.includes("POST")?"POST":"GET", payload:{ test:true, sensor_id:r.sensor_id, nivel:50, timestamp:new Date().toISOString() } }) });
+      const testNivel2 = 50;
+      const testVol2 = Math.round((r.capacidade_litros || 10000) * testNivel2 / 100);
+      const resp = await fetch("/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.wh_url, method:r.protocolo.includes("POST")?"POST":"GET", payload:{ test:true, device_id:r.sensor_id, sensor_id:r.sensor_id, nivel_percent:testNivel2, nivel:testNivel2, volume_litros:testVol2, received_at:new Date().toISOString() } }) });
       const data = await resp.json();
       const ok = data.ok as boolean;
       setResList(prev => prev.map(x => x.id === r.id ? { ...x, wh_online:ok } : x));
@@ -1482,7 +1487,9 @@ export default function App() {
   const resTestWH = async (r: Reservatorio) => {
     setResTesting(p=>({...p,wh:true}));
     try {
-      const resp = await fetch("/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.wh_url, method:r.protocolo.includes("POST")?"POST":"GET", payload:{ test:true, sensor_id:r.sensor_id } }) });
+      const testNivel = 50;
+      const testVol = Math.round((r.capacidade_litros || 10000) * testNivel / 100);
+      const resp = await fetch("/api/reservatorios/test-url", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ url:r.wh_url, method:r.protocolo.includes("POST")?"POST":"GET", payload:{ test:true, device_id:r.sensor_id, sensor_id:r.sensor_id, nivel_percent:testNivel, nivel:testNivel, volume_litros:testVol, received_at:new Date().toISOString() } }) });
       const data = await resp.json();
       const ok = data.ok as boolean;
       setResList(prev => prev.map(x => x.id === r.id ? { ...x, wh_online:ok } : x));
@@ -1813,17 +1820,32 @@ export default function App() {
         addLog("sensor_leitura", data);
         // Aceita formato Worker (nivel_percent) e formato legado (nivel)
         const nivelRaw = data.nivel_percent ?? data.nivel;
-        if (data.sensor_id && nivelRaw != null) {
-          const nivel = Math.min(100, Math.max(0, Number(nivelRaw)));
-          setResNivels(prev => ({
-            ...prev,
-            [data.sensor_id]: {
-              nivel,
-              volume: Number(data.volume_litros || 0),
-              ts: data.received_at || new Date().toISOString(),
-            }
-          }));
-        }
+        if (nivelRaw == null) return;
+        const nivel = Math.min(100, Math.max(0, Number(nivelRaw)));
+        const volume = Number(data.volume_litros || 0);
+        const ts = data.received_at || new Date().toISOString();
+
+        // Tenta resolver qual reservatório corresponde a este sensor
+        // Aceita match por sensor_id OU mac_address (tanto no campo sensor_id quanto device_id recebido)
+        setResNivels(prev => {
+          const next = { ...prev };
+          // Candidatos de identificação vindos do SSE: sensor_id e device_id
+          const candidates = [data.sensor_id, data.device_id].filter(Boolean) as string[];
+
+          // Atualiza pelo sensor_id exato que veio (garante funcionamento sem reservatórios cadastrados)
+          if (data.sensor_id) next[data.sensor_id] = { nivel, volume, ts };
+
+          // Cruza com reservatórios em memória (via ref síncrono) por sensor_id OU mac_address
+          for (const res of resListRef.current) {
+            const match = candidates.some(c =>
+              (res.sensor_id && res.sensor_id === c) ||
+              (res.mac_address && res.mac_address.toUpperCase() === c.toUpperCase())
+            );
+            if (match) next[res.sensor_id] = { nivel, volume, ts };
+          }
+
+          return next;
+        });
       });
       es.onerror = () => { setSseOnline(false); retryTimer = setTimeout(connect, 5000); };
     };
