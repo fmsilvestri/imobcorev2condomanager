@@ -67,17 +67,24 @@ export default function AguaModule({
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {(['24h', '7d', '30d'] as Period[]).map(p => (
             <button key={p} onClick={() => setPeriod(p)} style={{
-              padding: '7px 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)',
+              padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)',
               cursor: 'pointer', fontSize: 13, fontWeight: 600, transition: 'all .15s',
               background: period === p ? 'rgba(255,255,255,0.12)' : 'transparent',
-              color: period === p ? '#e0f2fe' : 'rgba(255,255,255,0.45)',
+              color: period === p ? '#e0f2fe' : 'rgba(255,255,255,0.4)',
             }}>
               {PERIOD_LABELS[p]}
             </button>
           ))}
+          <div style={{ width: 1, height: 22, background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
+          <button
+            onClick={onNovoReservatorio}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#0369a1', border: 'none', borderRadius: 8, padding: '7px 16px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+          >
+            <span style={{ fontSize: 16, lineHeight: 1 }}>＋</span> Novo
+          </button>
         </div>
       </div>
 
@@ -129,6 +136,7 @@ export default function AguaModule({
               resNivels={resNivels}
               resHistorico={resHistorico}
               onEdit={onEditReservatorio}
+              onDelete={onDeleteReservatorio}
             />
           </div>
 
