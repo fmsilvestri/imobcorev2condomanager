@@ -1681,6 +1681,11 @@ export default function App() {
   // Sync condIdRef whenever condId changes (stable ref for callbacks)
   useEffect(() => { condIdRef.current = condId; }, [condId]);
 
+  // Load piscina data when sindico piscina screen opens
+  useEffect(() => {
+    if (sindicoScreen === "piscina" && condId) loadPiscina(condId);
+  }, [sindicoScreen, condId]);
+
   // ── Dashboard ─────────────────────────────────────────────────────────────
   const loadDashboard = useCallback(async (forCondId?: string) => {
     try {
@@ -3597,6 +3602,7 @@ export default function App() {
       insights: "💡 Insights & Análises",
       fornecedores: "🏢 Fornecedores e Contatos",
       encomendas: "📦 Encomendas",
+      piscina: "🏊 Piscina & Qualidade",
     };
 
     return (
@@ -4121,6 +4127,97 @@ export default function App() {
             </div>
           </>
         )}
+        {sindicoScreen === "piscina" && (() => {
+          const ideal = {
+            ph:           { min:7.2, max:7.6, unit:"",     label:"pH" },
+            cloro:        { min:1.0, max:3.0, unit:" ppm", label:"Cloro" },
+            temperatura:  { min:24,  max:30,  unit:"°C",   label:"Temp" },
+            alcalinidade: { min:80,  max:120, unit:" ppm", label:"Alc." },
+            dureza_calcica:{ min:200,max:400, unit:" ppm", label:"Dureza" },
+          } as const;
+          type PKey2 = keyof typeof ideal;
+          const isOk2 = (key: PKey2, v?: number) => v===undefined||v===null ? true : v>=ideal[key].min && v<=ideal[key].max;
+          const last = piscinaList[0];
+          const allOk = last ? (isOk2("ph",last.ph)&&isOk2("cloro",last.cloro)&&isOk2("temperatura",last.temperatura)&&isOk2("alcalinidade",last.alcalinidade)&&isOk2("dureza_calcica",last.dureza_calcica)) : null;
+          const colPiscMap: Record<PKey2,string> = { ph:"#0EA5E9", cloro:"#22C55E", temperatura:"#F97316", alcalinidade:"#6366F1", dureza_calcica:"#A855F7" };
+          const fmtDt = (iso: string) => new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+          return (
+            <div className="ph-sub-body" style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:12 }}>
+              {/* Status geral */}
+              <div style={{ borderRadius:14, padding:"12px 14px", background: allOk===null?"var(--neu-bg)":allOk?"rgba(34,197,94,.12)":"rgba(239,68,68,.12)", border:`1px solid ${allOk===null?"var(--card-border)":allOk?"rgba(34,197,94,.3)":"rgba(239,68,68,.3)"}`, display:"flex", alignItems:"center", gap:12 }}>
+                <span style={{ fontSize:28 }}>🏊</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:800, color:"var(--neu-text)" }}>
+                    {allOk===null ? "Sem leituras registradas" : allOk ? "Água em boas condições" : "⚠️ Parâmetros fora do ideal"}
+                  </div>
+                  {last && <div style={{ fontSize:11, color:"var(--neu-text-2)", marginTop:2 }}>Última leitura: {fmtDt(last.created_at)}</div>}
+                </div>
+                {allOk!==null && (
+                  <span style={{ background:allOk?"#22C55E22":"#EF444422", color:allOk?"#16A34A":"#DC2626", border:`1px solid ${allOk?"#22C55E55":"#EF444455"}`, borderRadius:20, padding:"4px 10px", fontSize:10, fontWeight:800 }}>
+                    {allOk?"✓ OK":"⚠ ALERTA"}
+                  </span>
+                )}
+              </div>
+
+              {/* Parâmetros da última leitura */}
+              {last && (
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                  <div style={{ fontSize:11, fontWeight:800, color:"var(--neu-text-2)", textTransform:"uppercase", letterSpacing:".06em" }}>Parâmetros Atuais</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                    {(["ph","cloro","temperatura","alcalinidade","dureza_calcica"] as PKey2[]).map(key => {
+                      const cfg=ideal[key]; const val=(last as Record<string,number|undefined>)[key] as number|undefined;
+                      const ok=isOk2(key,val); const col=colPiscMap[key];
+                      return (
+                        <div key={key} style={{ background:`${col}12`, border:`1px solid ${col}25`, borderRadius:12, padding:"10px 12px" }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:2 }}>
+                            <span style={{ fontSize:10, fontWeight:700, color:col, textTransform:"uppercase" }}>{cfg.label}</span>
+                            {val!=null ? <span style={{ fontSize:9, fontWeight:700, padding:"1px 6px", borderRadius:99, background:ok?"#22C55E22":"#EF444422", color:ok?"#16A34A":"#DC2626" }}>{ok?"OK":"!"}</span> : null}
+                          </div>
+                          <div style={{ fontSize:20, fontWeight:800, color:"var(--neu-text)", lineHeight:1.1 }}>
+                            {val!=null ? `${val}${cfg.unit}` : <span style={{ color:"var(--neu-text-2)", fontSize:12 }}>N/A</span>}
+                          </div>
+                          <div style={{ fontSize:9, color:"var(--neu-text-2)", marginTop:2 }}>Ideal: {cfg.min}–{cfg.max}{cfg.unit}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Botão adicionar leitura */}
+              <button
+                onClick={() => { setPiscModal(true); setPiscEditId(null); setPiscForm(emptyPiscinaForm()); }}
+                style={{ background:"linear-gradient(135deg,#0EA5E9,#0284C7)", border:"none", borderRadius:12, padding:"12px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                ＋ Registrar Nova Leitura
+              </button>
+
+              {/* Histórico */}
+              <div style={{ fontSize:11, fontWeight:800, color:"var(--neu-text-2)", textTransform:"uppercase", letterSpacing:".06em" }}>Histórico</div>
+              {piscinaLoading && <div style={{ textAlign:"center", padding:24, color:"var(--neu-text-2)" }}>Carregando...</div>}
+              {!piscinaLoading && piscinaList.length===0 && (
+                <div style={{ textAlign:"center", padding:24, color:"var(--neu-text-2)", fontSize:13 }}>
+                  <div style={{ fontSize:32, marginBottom:8 }}>🏊</div>Sem leituras registradas.
+                </div>
+              )}
+              {!piscinaLoading && piscinaList.slice(0,10).map(l => (
+                <div key={l.id} style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, padding:"10px 12px", display:"flex", flexDirection:"column", gap:4 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <span style={{ fontSize:11, color:"var(--neu-text-2)" }}>{fmtDt(l.created_at)}</span>
+                    <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:99, background:l.status==="ok"?"#22C55E22":"#EF444422", color:l.status==="ok"?"#16A34A":"#DC2626" }}>{l.status.toUpperCase()}</span>
+                  </div>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    <span style={{ fontSize:12, fontWeight:700, color:"#0EA5E9" }}>pH {l.ph}</span>
+                    <span style={{ fontSize:12, fontWeight:700, color:"#22C55E" }}>Cl {l.cloro}ppm</span>
+                    {l.temperatura!=null && <span style={{ fontSize:12, fontWeight:700, color:"#F97316" }}>{l.temperatura}°C</span>}
+                    {l.alcalinidade!=null && <span style={{ fontSize:12, fontWeight:700, color:"#6366F1" }}>Alc {l.alcalinidade}ppm</span>}
+                  </div>
+                  {l.observacoes && <div style={{ fontSize:11, color:"var(--neu-text-2)", fontStyle:"italic" }}>{l.observacoes}</div>}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
         {sindicoScreen === "encomendas" && (() => {
           const ENC_STATUS_SIND: Record<Encomenda["status"], { label: string; color: string; bg: string }> = {
             aguardando_retirada: { label:"AGUARDANDO",  color:"#F59E0B", bg:"rgba(245,158,11,.15)" },
@@ -10776,6 +10873,8 @@ Content-Type: application/json
               comunicadosCount={(dash?.comunicados ?? []).length}
               gasNivel={gasLeituras[0]?.nivel ?? 0}
               encPendentes={encList.filter(e => e.status === "aguardando_retirada").length}
+              piscinaAlerta={piscinaList.some(l => l.status === "alerta")}
+              piscinaLastPh={piscinaList[0]?.ph ?? null}
               onPhotoUpdate={(url) => setDash(prev => prev ? { ...prev, condominios: prev.condominios.map((c, i) => i === 0 ? { ...c, photo_url: url } : c) } : prev)}
               renderSindicoScreen={renderSindicoScreen}
             />

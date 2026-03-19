@@ -32,6 +32,8 @@ export interface SindicoHomeProps {
   comunicadosCount: number;
   gasNivel: number;
   encPendentes: number;
+  piscinaAlerta: boolean;
+  piscinaLastPh: number | null;
   onPhotoUpdate: (url: string) => void;
   renderSindicoScreen: () => React.ReactNode;
 }
@@ -62,7 +64,7 @@ export default function SindicoHome({
   bellCount, setBellCount, bellShake,
   saldo, osAbertasCount, equipCount, crmCount,
   fornecCount, nivelMedio, sseCount, comunicadosCount,
-  gasNivel, encPendentes,
+  gasNivel, encPendentes, piscinaAlerta, piscinaLastPh,
   onPhotoUpdate,
   renderSindicoScreen,
 }: SindicoHomeProps) {
@@ -144,6 +146,7 @@ export default function SindicoHome({
     { icon:"🔥", title:"Gás",          screen:"gas",           sub:`${gasNivel}% nível${gasNivel<20?" ⚠️":""}`,                              hasDot:gasNivel<20,        bg:"linear-gradient(135deg,#431407,#7c2d12)", text:"#fb923c" },
     { icon:"⚡", title:"Energia",      screen:"energia",       sub:"Ver consumo",                                                            hasDot:false,              bg:"linear-gradient(135deg,#1c1a04,#3d3200)", text:"#fde047" },
     { icon:"📦", title:"Encomendas",   screen:"encomendas",    sub:`${encPendentes} aguardando`,                                             hasDot:encPendentes>0,     bg:"linear-gradient(135deg,#1e1b4b,#312e81)", text:"#818cf8" },
+    { icon:"🏊", title:"Piscina",      screen:"piscina",       sub:piscinaLastPh!=null?`pH ${piscinaLastPh}`:"Sem leitura",                   hasDot:piscinaAlerta,      bg:"linear-gradient(135deg,#0c1a2e,#075985)", text: piscinaAlerta?"#fca5a5":"#38bdf8" },
   ];
   const modsLight: LightModule[] = [
     { icon:"💰", title:"Financeiro",   screen:"financeiro",    sub: saldo>=1000?`R$${(saldo/1000).toFixed(0)}k`:`R$${saldo.toFixed(0)}`,    hasDot:false,              bg:"#f0fdf4", border:"#bbf7d0", text:"#065f46" },
@@ -157,6 +160,7 @@ export default function SindicoHome({
     { icon:"🔥", title:"Gás",          screen:"gas",           sub:`${gasNivel}% nível${gasNivel<20?" ⚠️":""}`,                              hasDot:gasNivel<20,        bg:"#fff7ed", border:"#fed7aa", text:"#c2410c" },
     { icon:"⚡", title:"Energia",      screen:"energia",       sub:"Ver consumo",                                                            hasDot:false,              bg:"#fefce8", border:"#fef08a", text:"#854d0e" },
     { icon:"📦", title:"Encomendas",   screen:"encomendas",    sub:`${encPendentes} aguardando`,                                             hasDot:encPendentes>0,     bg:"#eef2ff", border:"#c7d2fe", text:"#3730a3" },
+    { icon:"🏊", title:"Piscina",      screen:"piscina",       sub:piscinaLastPh!=null?`pH ${piscinaLastPh}`:"Sem leitura",                   hasDot:piscinaAlerta,      bg:"#f0f9ff", border:"#bae6fd", text: piscinaAlerta?"#b91c1c":"#0369a1" },
   ];
   const mods = isDark ? modsDark : modsLight;
 
