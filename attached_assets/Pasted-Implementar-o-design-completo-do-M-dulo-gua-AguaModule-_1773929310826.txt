@@ -1,0 +1,260 @@
+Implementar o design completo do Módulo Água (AguaModule) do ImobCore v2
+com dashboard de reservatórios, gráficos interativos e dados reais do Supabase/SSE.
+
+=== STACK ===
+React + TypeScript, Tailwind CSS, Chart.js (via npm install chart.js react-chartjs-2),
+Supabase (tabelas existentes: reservoirs, sensor_readings, water_readings),
+SSE já implementado no servidor Replit para tempo real.
+
+=== ESTRUTURA DE ARQUIVOS A CRIAR/ATUALIZAR ===
+src/modules/agua/
+  AguaModule.tsx          ← componente raiz da rota /agua
+  components/
+    AguaSummaryCards.tsx  ← 4 cards de resumo
+    ReservoirBarChart.tsx ← barras empilhadas volume vs capacidade
+    ReservoirDonut.tsx    ← rosca distribuição + legenda lateral
+    LevelHistoryChart.tsx ← linhas históricas com toggle 24h/7d/30d
+    ReservoirStatusList.tsx ← lista com barra de progresso + badge
+  hooks/
+    useReservoirData.ts   ← fetch + SSE subscription + agregações
+  types/
+    agua.types.ts         ← interfaces TypeScript
+
+=== PALETA DE CORES (hardcoded — Chart.js não resolve CSS vars) ===
+Fundo página:      #0d0d1a
+Cards/superfícies: #111827
+Cards internos:    #0f172a
+Borda sutil:       rgba(255,255,255,0.07)
+Border-radius:     14px (cards principais), 10px (cards internos)
+
+Cores dos sensores (FIXAS, por ordem de cadastro):
+  sensor[0]: azul   → border #38bdf8, fill #0369a1, bg vazio rgba(56,189,248,0.08)
+  sensor[1]: âmbar  → border #fbbf24, fill #b45309, bg vazio rgba(251,191,36,0.06)
+  sensor[2]: vermelho→ border #f87171, fill #991b1b, bg vazio rgba(248,113,113,0.06)
+  sensor[3+]: roxo  → border #a78bfa, fill #5b21b6 (expansão futura)
+
+Status por nível:
+  >= 70%  → "Normal"   pill verde:  bg rgba(74,222,128,0.15) text #4ade80
+  40-69%  → "Atenção"  pill âmbar:  bg rgba(251,191,36,0.15) text #fbbf24
+  < 40%   → "Crítico"  pill vermelho: bg rgba(248,113,113,0.15) text #f87171
+
+=== HOOK useReservoirData.ts ===
+Estado gerenciado:
+  interface ReservoirState {
+    reservoirs: Reservoir[]          // tabela reservoirs
+    latestReadings: SensorReading[]  // último reading por reservoir_id
+    history: HistoryPoint[][]        // array por sensor, pontos ordenados por created_at
+    loading: boolean
+    error: string | null
+  }
+
+Busca inicial (useEffect uma vez):
+  1. GET /api/reservoirs → lista todos reservoirs do condominio_id ativo
+  2. Para cada reservoir, GET /api/water-readings?reservoir_id=X&limit=200
+     → guardar em history[i] ordenado por created_at ASC
+  3. Calcular latestReadings[i] = history[i][history[i].length - 1]
+
+SSE em tempo real:
+  const es = new EventSource('/api/sse')
+  es.onmessage = (e) => {
+    const data = JSON.parse(e.data)
+    if (data.type === 'water_reading') {
+      // atualizar latestReadings e history do reservoir correspondente
+      // recalcular agregações
+    }
+  }
+  cleanup: es.close() no return do useEffect
+
+Agregações calculadas no hook (useMemo):
+  totalCapacity    = sum(r.capacity_liters)
+  totalVolume      = sum(latestReadings[i].volume_litros ?? calcVolume(r, reading))
+  avgLevel         = (totalVolume / totalCapacity) * 100
+  consumoHoje      = history filtrado por today, diferença máx-mín volume
+  alertCount       = count(latestReadings onde nivel < 40%)
+  warnCount        = count(latestReadings onde nivel >= 40 e < 70%)
+
+Cálculo de volume_litros quando nulo (lógica já existente no projeto):
+  const heightCm = reading.nivel_cm  // ou distance invertida do sensor
+  const pct = Math.min(heightCm / reservoir.height_cm, 1)
+  const volume = Math.round(pct * reservoir.capacity_liters)
+
+=== COMPONENTE AguaSummaryCards.tsx ===
+Grid 4 colunas (2 colunas em mobile), gap 10px, margin-bottom 20px.
+Cada card: bg #111827, borda rgba(255,255,255,0.07), border-radius 14px, padding 14px 16px.
+
+Card 1 — Volume total
+  label: "Volume total"  valor: totalVolume.toLocaleString('pt-BR') + ' L'
+  sub: 'de ' + totalCapacity.toLocaleString('pt-BR') + ' L capacidade'
+  cor: #38bdf8 (azul)
+
+Card 2 — Nível médio
+  label: "Nível médio"  valor: avgLevel.toFixed(0) + '%'
+  sub: variação vs leitura anterior (▲ ou ▼ + diff)
+  cor: #4ade80 (verde) se >= 70, #fbbf24 se 40-69, #f87171 se < 40
+
+Card 3 — Consumo hoje
+  label: "Consumo hoje"  valor: consumoHoje.toLocaleString('pt-BR') + ' L'
+  sub: variação % vs média dos últimos 7 dias
+  cor: #fbbf24 (âmbar)
+
+Card 4 — Alertas ativos
+  label: "Alertas ativos"  valor: alertCount + warnCount
+  sub: alertCount + ' crítico · ' + warnCount + ' atenção'
+  cor: #f87171 (vermelho)
+
+=== COMPONENTE ReservoirBarChart.tsx ===
+Chart.js type: 'bar', stacked: true
+Wrapper div: position relative, height 200px.
+
+datasets[0] — Volume atual
+  data: reservoirs.map((r,i) => latestReadings[i]?.volume_litros ?? 0)
+  backgroundColor: cores fill por índice (ver paleta)
+  borderRadius: 6, borderSkipped: false
+
+datasets[1] — Capacidade restante
+  data: reservoirs.map((r,i) => r.capacity_liters - (latestReadings[i]?.volume_litros ?? 0))
+  backgroundColor: versão rgba(0.2) de cada cor
+  borderRadius: 6, borderSkipped: false
+
+labels: reservoirs.map(r => r.nome ?? r.sensor_id.slice(-6))
+Legend: display false
+Tooltip: callback → value.toLocaleString('pt-BR') + ' L'
+Eixo Y: callback v => (v/1000).toFixed(0) + 'k'
+Cores de grid/ticks: rgba(255,255,255,0.04) / #6b7280
+
+=== COMPONENTE ReservoirDonut.tsx ===
+Chart.js type: 'doughnut', cutout: '68%'
+data: latestReadings.map(r => r.volume_litros ?? 0)
+backgroundColor: cores fill por índice
+borderWidth: 3, borderColor: '#111827'
+Legend: display false
+
+Legenda lateral custom (flex-direction column, gap 10px):
+  Para cada reservoir[i]:
+    - quadrado 10x10px border-radius 2px cor[i]
+    - nome abreviado + local
+    - volume em litros (bold, cor[i]) + '%' do total (muted)
+
+Layout do card: display flex, align-items center, gap 16px
+Canvas: height 180px, width 180px, flex-shrink 0
+
+=== COMPONENTE LevelHistoryChart.tsx ===
+Chart.js type: 'line'
+Wrapper div: position relative, height 220px
+
+Estado interno: period = '7d' | '24h' | '30d'
+Toggle buttons: 24h / 7 dias / 30 dias
+  botão ativo: bg #0369a1, color #e0f2fe
+  inativo: bg rgba(255,255,255,0.07), color rgba(255,255,255,0.4)
+
+Filtro dos dados por period:
+  '24h': history[i].filter(p => isToday(p.created_at))
+  '7d':  history[i].filter(p => isWithinDays(p.created_at, 7))
+  '30d': history[i].filter(p => isWithinDays(p.created_at, 30))
+
+Cálculo do nível % por ponto:
+  pct = Math.round((p.volume_litros / reservoir.capacity_liters) * 100)
+
+datasets por sensor:
+  borderColor: cor borda[i], backgroundColor: cor bg[i]
+  tension: 0.4, pointRadius: 3, fill: true
+
+Labels do eixo X:
+  '24h': format hora 'HH:mm'
+  '7d':  format dia semana 'EEE' (pt-BR)
+  '30d': format dia/mês 'dd/MM'
+  Usar date-fns (já no projeto) para formatação
+
+Eixo Y: min 0, max 100, callback v => v + '%'
+Legend: display false (legenda custom acima do gráfico)
+
+Legenda custom (legend-row):
+  display flex, gap 14px, flex-wrap wrap, margin-bottom 12px
+  Cada item: dot circular 8px + sensor nome abreviado + capacidade total
+
+=== COMPONENTE ReservoirStatusList.tsx ===
+Flex column, gap 10px.
+Para cada reservoir[i]:
+
+  Card interno (rcard):
+    bg #0f172a, border-radius 10px, padding 12px 14px
+    border 1px solid rgba(255,255,255,0.06)
+    display flex, align-items center, gap 14px
+
+  Ícone 32x32px border-radius 8px:
+    Normal:  bg #0c4a6e (ícone 💧)
+    Atenção: bg #451a03 (ícone ⚠ — renderizar como SVG, não emoji)
+    Crítico: bg #450a0a (ícone SVG alerta vermelho)
+
+  Info (flex 1):
+    Nome: sensor_id completo, 12px bold #e2e8f0
+    Local: nome + local + capacidade, 10px #6b7280
+
+  Barra de progresso (flex 1.5):
+    Track: height 6px, border-radius 3px, bg rgba(255,255,255,0.08)
+    Fill: width = nivel%, cor por status, transition width 0.6s ease
+    Labels 0% e 100% acima da barra (9px, #6b7280)
+
+  Valor (text-align right):
+    Percentual: 13px bold, cor por status
+    Volume: 10px #6b7280 abaixo
+
+  Badge status: pill com cor por status (ver paleta)
+
+  Dot de alerta pulsante (position absolute top-right 8px):
+    Mostrar apenas se status Crítico ou Atenção
+    Keyframe: opacity 1→0.4→1, scale 1→1.3→1, duração 1.5s infinite
+
+=== COMPONENTE AguaModule.tsx (raiz) ===
+Layout:
+  background #0d0d1a, padding 20px, min-height 100vh
+
+Header:
+  Esquerda: ícone água (36x36px, bg #0c4a6e, border-radius 10px) +
+            título "Caixas d'água" (18px bold #e0f2fe) +
+            subtítulo "IETEC · IoT em tempo real · N reservatórios" (11px #60a5fa)
+  Direita: botão "+ Novo" (bg #0369a1, color branco, border-radius 8px, 
+            onClick → abre modal de cadastro existente)
+
+Ordem dos componentes:
+  1. AguaSummaryCards
+  2. div grid 2 colunas gap 14px:
+       col 1: ReservoirBarChart (card)
+       col 2: ReservoirDonut (card)
+  3. LevelHistoryChart (card full-width)
+  4. ReservoirStatusList (card full-width)
+
+Loading state: skeleton shimmer nos cards (bg rgba(255,255,255,0.05) animado)
+Error state: mensagem centralizada com botão "Tentar novamente"
+Empty state: quando sem reservatórios cadastrados, mostrar CTA para "+ Novo"
+
+=== RESPONSIVIDADE ===
+Mobile (< 768px):
+  summary-grid: 2 colunas
+  charts-row (barras + rosca): 1 coluna (empilhados)
+  Donut: layout muda para coluna (canvas em cima, legenda embaixo)
+Tablet (768-1024px): 2 colunas nos charts
+Desktop (> 1024px): layout completo conforme acima
+
+=== REGISTRO DO CHART.JS ===
+Em AguaModule.tsx ou em arquivo de setup global:
+  import {
+    Chart as ChartJS, CategoryScale, LinearScale,
+    BarElement, LineElement, PointElement, ArcElement,
+    Title, Tooltip, Legend, Filler
+  } from 'chart.js'
+  ChartJS.register(
+    CategoryScale, LinearScale, BarElement, LineElement,
+    PointElement, ArcElement, Title, Tooltip, Legend, Filler
+  )
+
+=== IMPORTANTE ===
+- Não alterar rotas existentes nem lógica de auth
+- Manter condominio_id em todos os fetches
+- ID do dispositivo ESP32 existente: F8:B3:B7:90:9F:78
+- Conversão valor sensor: dividir por 100 para obter cm
+- Não criar novas tabelas — usar reservoirs, sensor_readings, water_readings
+- TypeScript strict, sem any
+- Reutilizar o SSE endpoint já existente em /api/sse
+- chart.js canvas NUNCA recebe height via CSS diretamente —
+  sempre via wrapper div com position: relative + height explícito
