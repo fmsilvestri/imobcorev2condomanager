@@ -44,6 +44,7 @@ Express API server with all ImobCore routes in `src/routes/imobcore.ts`:
 - `GET /api/dashboard` — full dashboard data from Supabase
 - `POST /api/sindico/chat` — AI chat (Claude)
 - `POST /api/sindico/comunicado` — AI-generated communications
+- `POST /api/di` — Di (Síndica Virtual) briefing: returns `{fala, cards:[{titulo,valor,status,detalhe}], dados}` using Claude
 - `GET /api/os` — List OS with optional filters (status, categoria, prioridade, search)
 - `POST /api/os` — Create OS with auto-numbering (max+1) or manual number + responsavel field
 - `PUT /api/os/:id` — Update OS (any field) + broadcasts SSE

@@ -2430,6 +2430,137 @@ router.delete("/piscina/:id", async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Di — Síndica Virtual: briefing inteligente com Claude
+// POST /api/di   body: { condominio_id? }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/di", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.body as { condominio_id?: string };
+
+    // ── Coletar dados do condomínio ──────────────────────────────────────────
+    const [
+      { data: cond },
+      { data: reservoirRows },
+      { data: sensoreRows },
+      { data: osAbertas },
+      { data: receitas },
+      { data: despesas },
+    ] = await Promise.all([
+      condominio_id
+        ? supabase.from("condominios").select("*").eq("id", condominio_id).single()
+        : supabase.from("condominios").select("*").limit(1).single(),
+      supabase.from("reservoirs").select("iot_sensor_id,name,iot_last_reading,capacity_liters,iot_status").limit(20),
+      supabase.from("sensores").select("nome,local,nivel_atual,capacidade_litros,volume_litros").limit(20),
+      condominio_id
+        ? supabase.from("ordens_servico").select("titulo,prioridade,status").eq("status", "aberta").eq("condominio_id", condominio_id).limit(20)
+        : supabase.from("ordens_servico").select("titulo,prioridade,status").eq("status", "aberta").limit(20),
+      condominio_id
+        ? supabase.from("financeiro_receitas").select("valor,status").eq("condominio_id", condominio_id)
+        : supabase.from("financeiro_receitas").select("valor,status"),
+      condominio_id
+        ? supabase.from("financeiro_despesas").select("valor").eq("condominio_id", condominio_id)
+        : supabase.from("financeiro_despesas").select("valor"),
+    ]);
+
+    // ── Consolidar dados dos sensores de água ──────────────────────────────
+    // Combina: tabela reservoirs (nova) + tabela sensores (legado)
+    type SensorSummary = { nome: string; nivel: number | null; status: string };
+    const aguaSensores: SensorSummary[] = [];
+
+    if (reservoirRows?.length) {
+      for (const r of reservoirRows) {
+        aguaSensores.push({
+          nome: r.name || r.iot_sensor_id,
+          nivel: r.iot_last_reading != null ? Number(r.iot_last_reading) : null,
+          status: r.iot_status || "unknown",
+        });
+      }
+    }
+    if (!aguaSensores.length && sensoreRows?.length) {
+      for (const s of sensoreRows) {
+        aguaSensores.push({
+          nome: s.nome || s.local,
+          nivel: s.nivel_atual != null ? Number(s.nivel_atual) : null,
+          status: s.nivel_atual < 25 ? "critical" : s.nivel_atual < 60 ? "warning" : "online",
+        });
+      }
+    }
+
+    // ── Calcular indicadores financeiros ──────────────────────────────────
+    const totalRec = (receitas || []).reduce((s: number, r: { valor: number }) => s + Number(r.valor), 0);
+    const totalDesp = (despesas || []).reduce((s: number, d: { valor: number }) => s + Number(d.valor), 0);
+    const saldo = totalRec - totalDesp;
+    const inadimplentes = (receitas || []).filter((r: { status: string }) => r.status === "atrasado").length;
+    const txInad = receitas?.length ? Math.round((inadimplentes / receitas.length) * 100) : 0;
+
+    // ── OS urgentes ────────────────────────────────────────────────────────
+    const osUrgentes = (osAbertas || []).filter((o: { prioridade: string }) => o.prioridade === "urgente" || o.prioridade === "alta");
+
+    // ── Nível médio de água ────────────────────────────────────────────────
+    const niveisConhecidos = aguaSensores.filter(s => s.nivel != null);
+    const nivelMedioAgua = niveisConhecidos.length
+      ? Math.round(niveisConhecidos.reduce((s, r) => s + (r.nivel ?? 0), 0) / niveisConhecidos.length)
+      : null;
+
+    // ── Prompt para a Di ────────────────────────────────────────────────────
+    const prompt = `Você é a Di, Síndica Virtual do ImobCore. Sua personalidade:
+- Profissional, simpática e direta
+- Fala em português brasileiro natural, como se estivesse conversando
+- Usa emojis com moderação
+- Prioriza sempre os problemas mais críticos
+- Mensagem curta: máximo 3 frases + 1 recomendação
+
+DADOS DO CONDOMÍNIO:
+Condomínio: ${cond?.nome || "ImobCore"}
+
+ÁGUA: ${aguaSensores.length > 0
+  ? aguaSensores.map(s => `${s.nome}: ${s.nivel != null ? s.nivel + "%" : "sem leitura"} (${s.status})`).join(", ")
+  : "Sem sensores cadastrados"}
+Nível médio: ${nivelMedioAgua != null ? nivelMedioAgua + "%" : "desconhecido"}
+
+FINANCEIRO: Saldo R$ ${saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} | Inadimplência ${txInad}%
+
+MANUTENÇÃO: ${(osAbertas || []).length} OS abertas, ${osUrgentes.length} urgentes
+
+Gere um briefing em primeira pessoa como a Di, respondendo com JSON neste exato formato:
+{
+  "fala": "texto curto de até 3 frases que a Di irá falar em voz alta",
+  "cards": [
+    { "titulo": "💧 Água", "valor": "XX%", "status": "ok|alerta|critico", "detalhe": "texto curto" },
+    { "titulo": "💰 Financeiro", "valor": "R$ XX", "status": "ok|alerta|critico", "detalhe": "texto curto" },
+    { "titulo": "🛠 Manutenção", "valor": "X abertas", "status": "ok|alerta|critico", "detalhe": "texto curto" }
+  ]
+}
+Responda APENAS com o JSON, sem markdown, sem comentários.`;
+
+    const completion = await anthropic.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 600,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = (completion.content[0] as { type: string; text: string }).text.trim();
+    // Extrai JSON mesmo se vier com markdown
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+
+    if (!parsed) {
+      return res.status(500).json({ error: "Di não conseguiu gerar resposta" });
+    }
+
+    return res.json({
+      fala: parsed.fala || "Olá! Estou monitorando o condomínio.",
+      cards: parsed.cards || [],
+      dados: { nivelMedioAgua, saldo, txInad, osTotal: (osAbertas || []).length, osUrgentes: osUrgentes.length },
+    });
+
+  } catch (err) {
+    console.error("[di] erro:", err);
+    res.status(500).json({ error: "Erro interno da Di" });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Placa Solar — CRUD (tabela: placa_solar)
 // ─────────────────────────────────────────────────────────────────────────────
 

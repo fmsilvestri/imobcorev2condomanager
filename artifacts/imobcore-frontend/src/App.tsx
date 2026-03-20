@@ -1552,6 +1552,12 @@ export default function App() {
   const [solarModal, setSolarModal] = useState(false);
   const [solarForm, setSolarForm] = useState<PlacaSolarData>({});
   const [solarSaving, setSolarSaving] = useState(false);
+
+  // ── Di — Síndica Virtual state ─────────────────────────────────────────────
+  type DiCard = { titulo: string; valor: string; status: "ok" | "alerta" | "critico"; detalhe: string };
+  const [diData, setDiData] = useState<{ fala: string; cards: DiCard[] } | null>(null);
+  const [diLoading, setDiLoading] = useState(false);
+  const [diFalando, setDiFalando] = useState(false);
   const [energiaOcorrencias, setEnergiaOcorrencias] = useState([
     { id:"oc1", titulo:"queda energia 29/01/2026", tipo:"queda",     data:"29/01/2026", hora:"10:21:16", obs:"Queda total no bloco A" },
     { id:"oc2", titulo:"energia normal",            tipo:"retorno",   data:"29/01/2026", hora:"10:21:04", obs:"Energia restaurada pela CELESC" },
@@ -5177,8 +5183,9 @@ export default function App() {
         <div className="sidebar">
           <div className="sb-label">Síndico Virtual</div>
           {[
-            { id: "sv-chat", icon: "💬", label: "Chat IA" },
-            { id: "sv-insights", icon: "💡", label: "Insights" },
+            { id: "sv-di",          icon: "🟣", label: "Di — Síndica IA" },
+            { id: "sv-chat",        icon: "💬", label: "Chat IA" },
+            { id: "sv-insights",    icon: "💡", label: "Insights" },
             { id: "sv-comunicados", icon: "📢", label: "Comunicados" },
           ].map(i => (
             <div key={i.id} className={`sb-item ${panel === i.id ? "active" : ""}`} onClick={() => setPanel(i.id)}>
@@ -5264,6 +5271,159 @@ export default function App() {
                 <div className="kpi-sub">{k.sub}</div>
               </div>
             ))}
+          </div>
+
+          {/* ══════════════════════════════════════════════════════════════
+              PANEL: DI — SÍNDICA VIRTUAL
+          ══════════════════════════════════════════════════════════════ */}
+          <div className={`panel ${panel === "sv-di" ? "active" : ""} card`} style={{ padding: 0, overflow: "hidden" }}>
+            {/* Header gradiente roxo */}
+            <div style={{ background: "linear-gradient(135deg, #3B0764 0%, #581C87 50%, #4C1D95 100%)", padding: "20px 24px 0", display: "flex", alignItems: "flex-start", gap: 20, position: "relative" }}>
+              {/* Avatar Di */}
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <img
+                  src="/di.png"
+                  alt="Di - Síndica Virtual"
+                  style={{
+                    width: 110, height: 110, borderRadius: "50%",
+                    objectFit: "cover", objectPosition: "top",
+                    border: "3px solid rgba(167,139,250,.6)",
+                    boxShadow: diFalando
+                      ? "0 0 0 6px rgba(167,139,250,.3), 0 0 30px rgba(139,92,246,.5)"
+                      : "0 4px 20px rgba(0,0,0,.4)",
+                    transition: "box-shadow .4s ease",
+                    transform: diFalando ? "scale(1.05)" : "scale(1)",
+                  }}
+                />
+                {/* Indicator pulse quando falando */}
+                {diFalando && (
+                  <div style={{ position: "absolute", bottom: 6, right: 6, width: 14, height: 14, borderRadius: "50%", background: "#A855F7", boxShadow: "0 0 8px #A855F7", animation: "pulse 1s infinite" }} />
+                )}
+              </div>
+
+              {/* Nome e status */}
+              <div style={{ flex: 1, paddingTop: 8 }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#F3E8FF", letterSpacing: "-0.5px" }}>Di</div>
+                <div style={{ fontSize: 12, color: "#C4B5FD", marginBottom: 8 }}>Síndica Virtual — Powered by Claude IA</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <span style={{ background: "rgba(167,139,250,.2)", border: "1px solid rgba(167,139,250,.4)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#C4B5FD" }}>
+                    ● {diFalando ? "Falando..." : "Online"}
+                  </span>
+                  <span style={{ background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.2)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#A78BFA" }}>
+                    ImobCore v2
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Corpo */}
+            <div style={{ padding: "20px 24px", background: "#0F0A1E" }}>
+
+              {/* Balão de fala */}
+              {diData?.fala && (
+                <div style={{ background: "rgba(139,92,246,.1)", border: "1px solid rgba(139,92,246,.25)", borderRadius: 12, padding: "14px 16px", marginBottom: 16, position: "relative" }}>
+                  <div style={{ position: "absolute", top: -8, left: 20, width: 16, height: 8, overflow: "hidden" }}>
+                    <div style={{ width: 16, height: 16, background: "rgba(139,92,246,.25)", transform: "rotate(45deg)", transformOrigin: "bottom left", border: "1px solid rgba(139,92,246,.25)" }} />
+                  </div>
+                  <div style={{ fontSize: 13, color: "#E9D5FF", lineHeight: 1.6 }}>{diData.fala}</div>
+                </div>
+              )}
+
+              {!diData && !diLoading && (
+                <div style={{ textAlign: "center", padding: "20px 0", color: "#6D28D9", fontSize: 13 }}>
+                  Clique em <strong style={{ color: "#A78BFA" }}>"Briefing da Di"</strong> para ela analisar o condomínio e falar com você.
+                </div>
+              )}
+
+              {diLoading && (
+                <div style={{ textAlign: "center", padding: "20px 0" }}>
+                  <div style={{ fontSize: 13, color: "#A78BFA" }}>⏳ Di está analisando o condomínio...</div>
+                </div>
+              )}
+
+              {/* Cards inteligentes */}
+              {diData?.cards && diData.cards.length > 0 && (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+                  {diData.cards.map((card, i) => {
+                    const statusColors: Record<string, { bg: string; border: string; val: string }> = {
+                      ok:      { bg: "rgba(16,185,129,.12)",  border: "rgba(16,185,129,.3)",  val: "#10B981" },
+                      alerta:  { bg: "rgba(234,179,8,.12)",   border: "rgba(234,179,8,.3)",   val: "#EAB308" },
+                      critico: { bg: "rgba(239,68,68,.12)",   border: "rgba(239,68,68,.3)",   val: "#EF4444" },
+                    };
+                    const c = statusColors[card.status] || statusColors.ok;
+                    return (
+                      <div key={i} style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 12, padding: "12px 14px" }}>
+                        <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 4, fontWeight: 600 }}>{card.titulo}</div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: c.val, marginBottom: 2 }}>{card.valor}</div>
+                        <div style={{ fontSize: 10, color: "#64748B" }}>{card.detalhe}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Botões de ação */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  onClick={async () => {
+                    setDiLoading(true);
+                    // Cancela voz anterior
+                    speechSynthesis.cancel();
+                    setDiFalando(false);
+                    try {
+                      const r = await fetch("/api/di", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ condominio_id: condId }) });
+                      const json = await r.json();
+                      if (json.fala) {
+                        setDiData({ fala: json.fala, cards: json.cards || [] });
+                        // Síntese de voz
+                        const u = new SpeechSynthesisUtterance(json.fala);
+                        u.lang = "pt-BR";
+                        u.rate = 0.9;
+                        u.pitch = 1.1;
+                        u.onstart = () => setDiFalando(true);
+                        u.onend   = () => setDiFalando(false);
+                        u.onerror = () => setDiFalando(false);
+                        speechSynthesis.speak(u);
+                      }
+                    } catch { showToast("Erro ao chamar a Di", "error"); }
+                    setDiLoading(false);
+                  }}
+                  disabled={diLoading}
+                  style={{ background: "linear-gradient(135deg, #7C3AED, #A855F7)", border: "none", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: diLoading ? 0.6 : 1 }}
+                >
+                  {diLoading ? "⏳ Analisando..." : "🟣 Briefing da Di"}
+                </button>
+
+                {diData?.fala && (
+                  <button
+                    onClick={() => {
+                      if (diFalando) {
+                        speechSynthesis.cancel();
+                        setDiFalando(false);
+                      } else {
+                        const u = new SpeechSynthesisUtterance(diData.fala);
+                        u.lang = "pt-BR"; u.rate = 0.9; u.pitch = 1.1;
+                        u.onstart = () => setDiFalando(true);
+                        u.onend   = () => setDiFalando(false);
+                        speechSynthesis.speak(u);
+                      }
+                    }}
+                    style={{ background: diFalando ? "rgba(239,68,68,.15)" : "rgba(167,139,250,.15)", border: `1px solid ${diFalando ? "rgba(239,68,68,.4)" : "rgba(167,139,250,.4)"}`, color: diFalando ? "#EF4444" : "#A78BFA", borderRadius: 10, padding: "10px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    {diFalando ? "⏹ Parar" : "🔊 Ouvir novamente"}
+                  </button>
+                )}
+
+                {diData && (
+                  <button
+                    onClick={() => { sendChat(`Com base no briefing "${diData.fala.slice(0, 80)}..." quero detalhes. O que devo priorizar agora?`, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setPanel("sv-chat"); }}
+                    style={{ background: "rgba(99,102,241,.15)", border: "1px solid rgba(99,102,241,.35)", color: "#818CF8", borderRadius: 10, padding: "10px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    💬 Perguntar ao Chat IA
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* PANEL: SV CHAT */}
