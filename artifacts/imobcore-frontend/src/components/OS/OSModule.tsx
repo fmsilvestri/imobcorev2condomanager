@@ -12,6 +12,7 @@ export interface OS {
   equipamento_ids?: string[]; created_at: string; updated_at?: string;
 }
 interface Comentario { id: string; autor: string; mensagem: string; foto_url?: string; created_at: string; }
+interface EqBasic { id: string; nome: string; categoria: string; catIcon: string; local: string; status: string; modelo?: string; fabricante?: string; }
 interface Props { condId: string; condNome?: string; view: "mobile" | "desktop"; onBack?: () => void; }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -162,6 +163,13 @@ function KpiStrip({ os, filter, onFilter }: { os: OS[]; filter: string; onFilter
   );
 }
 
+// ── Mapeamento categoria equipamento → OS ─────────────────────────────────────
+const EQ_TO_OS_CAT: Record<string,string> = {
+  hidraulica:"Hidráulico", eletrica:"Elétrico", estrutural:"Estrutural",
+  equipamento:"Equipamento", seguranca:"Segurança", limpeza:"Limpeza", outros:"Outro",
+};
+const STS_DOT: Record<string,string> = { operacional:"#10B981", atencao:"#EAB308", manutencao:"#EF4444", inativo:"#64748B" };
+
 // ── NovaOS Form (4 steps) ─────────────────────────────────────────────────────
 function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
   { condId:string; condNome:string; osList:OS[]; onSave:(os:OS)=>void; onCancel:()=>void; view:"mobile"|"desktop" }) {
@@ -171,8 +179,48 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
   const [diTexto, setDiTexto] = useState("");
   const [diLoading, setDiLoading] = useState(false);
   const [diId, setDiId] = useState<string|null>(null);
+  // Equipment picker state
+  const [equipamentos, setEquipamentos] = useState<EqBasic[]>([]);
+  const [selectedEquips, setSelectedEquips] = useState<EqBasic[]>([]);
+  const [equipSearch, setEquipSearch] = useState("");
+  const [showEquipList, setShowEquipList] = useState(false);
 
   const set = (k: keyof OS, v: unknown) => setForm(f => ({ ...f, [k]: v }));
+
+  // Load equipment list from maintenance module
+  useEffect(() => {
+    if (!condId) return;
+    fetch(`/api/equipamentos?condominio_id=${condId}`)
+      .then(r => r.json())
+      .then((data: EqBasic[]) => { if (Array.isArray(data)) setEquipamentos(data); })
+      .catch(() => {});
+  }, [condId]);
+
+  const filteredEquips = equipamentos.filter(eq => {
+    if (!equipSearch.trim()) return true;
+    const q = equipSearch.toLowerCase();
+    return eq.nome.toLowerCase().includes(q) || eq.local.toLowerCase().includes(q) ||
+           eq.categoria.toLowerCase().includes(q) || (eq.modelo||"").toLowerCase().includes(q);
+  }).filter(eq => !selectedEquips.find(s => s.id === eq.id));
+
+  function selectEquip(eq: EqBasic) {
+    const next = [...selectedEquips, eq];
+    setSelectedEquips(next);
+    set("equipamento_ids", next.map(e => e.id));
+    // Auto-fill local if empty
+    if (!form.local) set("local", eq.local);
+    // Suggest categoria mapping
+    const mappedCat = EQ_TO_OS_CAT[eq.categoria];
+    if (mappedCat && form.categoria === "Hidráulico") set("categoria", mappedCat);
+    setEquipSearch("");
+    setShowEquipList(false);
+  }
+
+  function removeEquip(id: string) {
+    const next = selectedEquips.filter(e => e.id !== id);
+    setSelectedEquips(next);
+    set("equipamento_ids", next.map(e => e.id));
+  }
 
   const isMob = view === "mobile";
   const fc = { background:"rgba(255,255,255,.15)", border:"2px solid rgba(255,255,255,.3)", borderRadius:10, color:"#FFFFFF", fontWeight:700, padding:"14px 16px", fontSize:16, fontFamily:"inherit", width:"100%", outline:"none" };
@@ -268,6 +316,86 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
           </div>
           <div style={grp}><label style={lbl}>Local / Área</label><input className="os-nova-input" style={fc} placeholder="Ex: Cobertura B1, Subsolo, Portaria..." value={form.local||""} onChange={e=>set("local",e.target.value)} /></div>
           <div style={grp}><label style={lbl}>Data prevista de conclusão</label><input type="date" className="os-nova-input" style={fc} value={form.data_prevista||""} min={new Date().toISOString().slice(0,10)} onChange={e=>set("data_prevista",e.target.value)} /></div>
+
+          {/* ── Equipamentos vinculados ── */}
+          <div style={grp}>
+            <label style={lbl}>
+              ⚙️ Equipamentos Vinculados
+              <span style={{ fontSize:11,fontWeight:400,color:"#64748B",marginLeft:6 }}>(opcional)</span>
+            </label>
+
+            {/* Chips dos selecionados */}
+            {selectedEquips.length > 0 && (
+              <div style={{ display:"flex",gap:6,flexWrap:"wrap",marginBottom:10 }}>
+                {selectedEquips.map(eq => (
+                  <div key={eq.id} style={{ display:"flex",alignItems:"center",gap:6,background:"rgba(99,102,241,.2)",border:"1.5px solid rgba(99,102,241,.45)",borderRadius:8,padding:"7px 10px",fontSize:13,fontWeight:700,color:"#C7D2FE" }}>
+                    <span style={{ fontSize:16 }}>{eq.catIcon||"⚙️"}</span>
+                    <div>
+                      <div style={{ lineHeight:1.2 }}>{eq.nome}</div>
+                      <div style={{ fontSize:10,fontWeight:400,color:"#818CF8" }}>{eq.local}</div>
+                    </div>
+                    <div style={{ width:8,height:8,borderRadius:"50%",background:STS_DOT[eq.status]||"#64748B",flexShrink:0 }} />
+                    <button onClick={() => removeEquip(eq.id)} style={{ background:"none",border:"none",color:"#6366F1",cursor:"pointer",fontSize:16,padding:0,lineHeight:1,marginLeft:2 }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Busca */}
+            <div style={{ position:"relative" }}>
+              <input
+                className="os-nova-input"
+                style={fc}
+                placeholder={equipamentos.length > 0
+                  ? `🔍 Buscar entre ${equipamentos.length} equipamentos...`
+                  : "Nenhum equipamento cadastrado"}
+                disabled={equipamentos.length === 0}
+                value={equipSearch}
+                onChange={e => { setEquipSearch(e.target.value); setShowEquipList(true); }}
+                onFocus={() => setShowEquipList(true)}
+              />
+
+              {/* Dropdown */}
+              {showEquipList && (equipSearch || selectedEquips.length === 0) && filteredEquips.length > 0 && (
+                <div style={{ position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:100,background:"#0F1628",border:"1.5px solid rgba(99,102,241,.4)",borderRadius:10,maxHeight:220,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.5)" }}>
+                  {filteredEquips.slice(0,20).map(eq => (
+                    <div
+                      key={eq.id}
+                      onClick={() => selectEquip(eq)}
+                      style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,.04)",transition:"background .1s" }}
+                      onMouseEnter={e => (e.currentTarget.style.background="rgba(99,102,241,.12)")}
+                      onMouseLeave={e => (e.currentTarget.style.background="transparent")}
+                    >
+                      <span style={{ fontSize:20,flexShrink:0 }}>{eq.catIcon||"⚙️"}</span>
+                      <div style={{ flex:1,minWidth:0 }}>
+                        <div style={{ fontSize:13,fontWeight:700,color:"#F1F5F9",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{eq.nome}</div>
+                        <div style={{ fontSize:11,color:"#64748B" }}>{eq.local} · {eq.categoria}</div>
+                        {eq.modelo && <div style={{ fontSize:10,color:"#475569" }}>{eq.fabricante} {eq.modelo}</div>}
+                      </div>
+                      <div style={{ display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0 }}>
+                        <div style={{ width:8,height:8,borderRadius:"50%",background:STS_DOT[eq.status]||"#64748B" }} />
+                        <span style={{ fontSize:9,color:STS_DOT[eq.status]||"#64748B",fontWeight:700,textTransform:"uppercase" }}>{eq.status}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {filteredEquips.length === 0 && (
+                    <div style={{ padding:"14px",color:"#475569",textAlign:"center",fontSize:12 }}>Nenhum equipamento encontrado</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Fechar dropdown ao clicar fora */}
+            {showEquipList && (
+              <div onClick={() => setShowEquipList(false)} style={{ position:"fixed",inset:0,zIndex:99 }} />
+            )}
+
+            {equipamentos.length === 0 && (
+              <div style={{ marginTop:8,fontSize:11,color:"#475569",fontStyle:"italic" }}>
+                Cadastre equipamentos no módulo Manutenção para vinculá-los aqui.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
