@@ -2237,12 +2237,14 @@ export default function App() {
 
   // ── QR codes para equipamentos ─────────────────────────────────────────────
   useEffect(() => {
+    if (!equipList.length) return;
     let cancelled = false;
     Promise.all(
       equipList.map(eq =>
-        QRCode.toDataURL(`EQUIP|${eq.id}|${eq.nome}|${eq.serie}|${eq.categoria}`, {
-          width: 160, margin: 1, color: { dark: "#6366F1", light: "#0F172A" }
-        })
+        QRCode.toDataURL(
+          `${window.location.origin}/?equip=${eq.id}`,
+          { width: 200, margin: 1, color: { dark: "#1e293b", light: "#ffffff" } }
+        )
       )
     ).then(urls => {
       if (cancelled) return;
@@ -2251,7 +2253,7 @@ export default function App() {
       setQrUrls(map);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [equipList]);
 
   // ── Chat ──────────────────────────────────────────────────────────────────
   const sendChat = async (
@@ -9166,34 +9168,207 @@ Content-Type: application/json
                     </div>
                     );
                   })()}
-                {/* ── ABA 5: QR CODES ───────────────────────────────────── */}
-                {mantTab === "qr" && (
-                  <div>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-                      <div style={{ fontSize:12, color:"#475569" }}>Escaneie o QR com o celular para identificar o equipamento in-loco.</div>
-                      <button onClick={()=>window.print()} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:8, padding:"7px 14px", color:"#A5B4FC", fontSize:12, cursor:"pointer", fontWeight:600 }}>
-                        🖨️ Imprimir todos
-                      </button>
-                    </div>
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(170px,1fr))", gap:12 }}>
-                      {equipList.map(eq => (
-                        <div key={eq.id} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:14, display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-                          {qrUrls[eq.id]
-                            ? <img src={qrUrls[eq.id]} alt={eq.nome} style={{ width:130, height:130, borderRadius:8 }}/>
-                            : <div style={{ width:130, height:130, background:"rgba(255,255,255,.04)", borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", color:"#334155", fontSize:12 }}>Gerando...</div>
-                          }
-                          <div style={{ textAlign:"center" }}>
-                            <div style={{ fontSize:11, fontWeight:700, lineHeight:1.3 }}>{eq.catIcon} {eq.nome}</div>
-                            <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{eq.categoria}</div>
-                            <div style={{ fontSize:9, color:"#334155", fontFamily:"monospace", marginTop:2 }}>{eq.serie}</div>
-                            <div style={{ fontSize:9, color:"#334155", marginTop:2 }}>{eq.local}</div>
+                {/* ── ABA 5: QR CODES / SELOS ───────────────────────────── */}
+                {mantTab === "qr" && (() => {
+                  const condNome = dash?.condominios?.find(c => c.id === condId)?.nome ?? "Condomínio";
+                  const allOs = dash?.ordens_servico ?? [];
+                  const fmtDateSelo = (s: string) => { try { return new Date(s).toLocaleDateString("pt-BR", { day:"2-digit", month:"short", year:"numeric" }); } catch { return s; } };
+                  const fmtBRLSelo = (v: number) => v > 0 ? `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits:2 })}` : "—";
+
+                  const buildSeloHTML = (eq: Equipamento, qrDataUrl: string): string => {
+                    const vPct = Math.min(100, Math.round(eq.instaladoHa / (eq.vidaUtilAnos || 10) * 100));
+                    const SC: Record<string,string> = { operacional:"#10B981", atencao:"#F59E0B", manutencao:"#EF4444", inativo:"#6B7280" };
+                    const SL: Record<string,string> = { operacional:"OPERACIONAL", atencao:"ATENÇÃO", manutencao:"EM MANUTENÇÃO", inativo:"INATIVO" };
+                    const vC = vPct < 50 ? "#10B981" : vPct < 75 ? "#F59E0B" : "#EF4444";
+                    const eqOs2 = allOs.filter(o => Array.isArray(o.equipamento_ids) && o.equipamento_ids.includes(eq.id));
+                    const openOs2 = eqOs2.find(o => ["aberta","em_andamento","aguardando"].includes(o.status));
+                    const histOs2 = eqOs2.filter(o => o.status === "fechada").slice(0, 5);
+                    const proxDate2 = eq.proxManutencao ? new Date(eq.proxManutencao) : null;
+                    const isVenc2 = proxDate2 && proxDate2 < new Date();
+                    const manutLbl = proxDate2 ? (isVenc2 ? `⚠ VENCIDA ${proxDate2.toLocaleDateString("pt-BR")}` : proxDate2.toLocaleDateString("pt-BR")) : "—";
+                    const shortId = `${eq.catIcon}-EQ-${eq.id.slice(-4).toUpperCase()}`;
+                    const catLbl = EQUIP_CAT_LABELS[eq.categoria] || eq.categoria;
+                    const now2 = new Date().toLocaleDateString("pt-BR");
+                    const histRows2 = histOs2.map(o => {
+                      const dt2 = fmtDateSelo(o.updated_at || o.created_at);
+                      const num2 = String(o.numero).padStart(3,"0");
+                      return `<div style="display:flex;gap:6px;padding:3px 0;border-bottom:1px solid #F1F5F9;font-size:9.5px;align-items:flex-start"><span style="color:#6366F1;font-weight:700;white-space:nowrap;flex-shrink:0">OS-${num2}</span><span style="color:#64748B;white-space:nowrap;flex-shrink:0">${dt2}</span><span style="color:#1E293B;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.titulo}</span></div>`;
+                    }).join("");
+                    const dataRows = [
+                      ["Fabricante", eq.fabricante || "—"],
+                      ["Modelo", eq.modelo || "—"],
+                      ["Nº Série", eq.serie || "—"],
+                      ["Instalação", eq.dataInstalacao ? fmtDateSelo(eq.dataInstalacao) : "—"],
+                      ["Vida útil total", `${eq.vidaUtilAnos} ano${eq.vidaUtilAnos !== 1 ? "s" : ""} · instalado há ${eq.instaladoHa}a`],
+                      ["Última manut.", eq.ultimaManutencao ? fmtDateSelo(eq.ultimaManutencao) : "—"],
+                      ["Próx. manut.", manutLbl],
+                      ["OS em aberto", openOs2 ? `OS-${String(openOs2.numero).padStart(3,"0")} em andamento` : "Nenhuma"],
+                      ["Custo manut.", fmtBRLSelo(eq.custoManutencao) + " / visita"],
+                    ].map(([l,v]) => `<div style="display:flex;gap:8px;padding:3px 0;font-size:10px;border-bottom:1px solid #F8FAFC"><span style="color:#64748B;min-width:120px;flex-shrink:0">${l}:</span><span style="color:#1E293B;font-weight:600">${v}</span></div>`).join("");
+                    return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/><title>Selo — ${eq.nome}</title><style>@page{size:A5 landscape;margin:8mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;background:#fff;color:#1E293B;print-color-adjust:exact;-webkit-print-color-adjust:exact}</style></head><body>
+<div style="border:2px solid #1E293B;border-radius:10px;overflow:hidden;width:100%">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:#1E293B;color:#fff">
+    <div><div style="font-size:16px;font-weight:900;letter-spacing:-.5px">ImobCore</div><div style="font-size:8px;color:#94A3B8;margin-top:2px">Gestão Inteligente</div></div>
+    <div style="text-align:right"><div style="font-size:14px;font-weight:800">${eq.catIcon} ${eq.nome}</div><div style="font-size:10px;color:#94A3B8;margin-top:2px">${eq.local} · ${condNome}</div></div>
+  </div>
+  <div style="display:flex;gap:8px;padding:7px 14px;background:#F8FAFC;border-bottom:1px solid #E2E8F0;align-items:center;flex-wrap:wrap">
+    <span style="padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;border:1.5px solid ${SC[eq.status]};color:${SC[eq.status]};background:${SC[eq.status]}18">${SL[eq.status]}</span>
+    <span style="padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;border:1.5px solid ${vC};color:${vC};background:${vC}18">VIDA ${vPct}%</span>
+    <span style="padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;border:1.5px solid #6366F1;color:#6366F1;background:#6366F118">${catLbl.toUpperCase()}</span>
+    ${isVenc2 ? `<span style="padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;border:1.5px solid #EF4444;color:#EF4444;background:#EF444418">⚠ MANUTENÇÃO VENCIDA</span>` : ""}
+  </div>
+  <div style="display:flex;min-height:180px">
+    <div style="width:160px;min-width:160px;padding:14px 10px;border-right:1px solid #E2E8F0;display:flex;flex-direction:column;align-items:center;gap:8px;background:#FAFBFF">
+      ${qrDataUrl ? `<img src="${qrDataUrl}" width="130" height="130" alt="QR" style="display:block"/>` : `<div style="width:130px;height:130px;background:#f1f5f9;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#94a3b8">QR indisponível</div>`}
+      <div style="font-size:8px;color:#64748B;text-align:center;line-height:1.5">Escanear para<br/>ficha completa</div>
+    </div>
+    <div style="flex:1;padding:12px 14px">
+      <div style="font-size:9px;font-weight:700;color:#475569;letter-spacing:1px;margin-bottom:6px;text-transform:uppercase;border-bottom:1px solid #E2E8F0;padding-bottom:3px">Dados Técnicos</div>
+      ${dataRows}
+    </div>
+    <div style="width:220px;min-width:220px;padding:12px 14px;border-left:1px solid #E2E8F0">
+      <div style="font-size:9px;font-weight:700;color:#475569;letter-spacing:1px;margin-bottom:6px;text-transform:uppercase;border-bottom:1px solid #E2E8F0;padding-bottom:3px">Histórico de OSs</div>
+      ${histRows2 || `<div style="font-size:10px;color:#94A3B8;font-style:italic">Nenhuma OS registrada</div>`}
+      ${openOs2 ? `<div style="margin-top:8px;padding:5px 8px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:4px;font-size:9px;color:#1D4ED8;font-weight:600">📌 OS-${String(openOs2.numero).padStart(3,"0")}: ${openOs2.titulo}</div>` : ""}
+      ${eq.descricao ? `<div style="margin-top:8px;padding:5px 8px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:4px;font-size:9px;color:#475569">💡 ${eq.descricao.slice(0,140)}${eq.descricao.length>140?"...":""}</div>` : ""}
+    </div>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 14px;background:#F8FAFC;border-top:1px solid #E2E8F0">
+    <div style="font-size:10px;font-weight:700;color:#475569;font-family:monospace">ID: ${shortId}</div>
+    <div style="font-size:10px;color:#6366F1;font-weight:800">${openOs2 ? `OS-${String(openOs2.numero).padStart(3,"0")} | ${now2}` : now2}</div>
+    <div style="font-size:9px;color:#94A3B8">ImobCore v2 · gerado ${now2}</div>
+  </div>
+</div>
+<script>window.onload=()=>{window.print();}<\/script></body></html>`;
+                  };
+
+                  const exportSelo = (eq: Equipamento) => {
+                    const html = buildSeloHTML(eq, qrUrls[eq.id] || "");
+                    const w = window.open("","_blank","width=1050,height=680");
+                    if (w) { w.document.write(html); w.document.close(); }
+                  };
+
+                  const exportAllSelos = () => {
+                    if (!equipList.length) return;
+                    const pages = equipList.map(eq => {
+                      const body = buildSeloHTML(eq, qrUrls[eq.id] || "").replace(/<script>[\s\S]*?<\/script>/gi,"");
+                      return `<div style="page-break-after:always;padding:8mm">${body.replace(/<!DOCTYPE html>[\s\S]*?<body>/i,"").replace(/<\/body>[\s\S]*?<\/html>/i,"")}</div>`;
+                    }).join("");
+                    const w = window.open("","_blank","width=1050,height=750");
+                    if (w) { w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><style>@page{size:A5 landscape;margin:0}body{margin:0}*{box-sizing:border-box}</style></head><body>${pages}<script>window.onload=()=>{window.print();}<\/script></body></html>`); w.document.close(); }
+                  };
+
+                  return (
+                    <div>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, gap:12, flexWrap:"wrap" }}>
+                        <div>
+                          <div style={{ fontSize:16, fontWeight:800, color:"var(--c-text)" }}>📱 Selos com QR Code</div>
+                          <div style={{ fontSize:12, color:"#475569", marginTop:4, lineHeight:1.6 }}>
+                            Cada selo contém QR code, dados técnicos e histórico de OS. Exporte em PDF e cole nos equipamentos.<br/>
+                            O QR code é atualizado automaticamente quando os dados do equipamento são alterados.
                           </div>
-                          <span style={{ background:stColor[eq.status]+"22", color:stColor[eq.status], fontSize:9, borderRadius:10, padding:"2px 8px", border:`1px solid ${stColor[eq.status]}44` }}>{stLabel[eq.status]}</span>
                         </div>
-                      ))}
+                        <button
+                          onClick={exportAllSelos}
+                          style={{ display:"flex", alignItems:"center", gap:8, background:"linear-gradient(135deg,#312e81,#4338ca)", border:"1.5px solid #6366F1", borderRadius:10, padding:"11px 20px", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", boxShadow:"0 4px 16px rgba(99,102,241,.35)", whiteSpace:"nowrap" as const }}
+                        >
+                          📄 Exportar Todos PDF
+                        </button>
+                      </div>
+
+                      {equipList.length === 0 ? (
+                        <div style={{ textAlign:"center", padding:48, color:"#475569" }}>
+                          <div style={{ fontSize:40, marginBottom:12 }}>📱</div>
+                          <div style={{ fontSize:15, fontWeight:700 }}>Nenhum equipamento cadastrado</div>
+                          <div style={{ fontSize:12, marginTop:6 }}>Cadastre equipamentos na aba Equipamentos e Estruturas</div>
+                        </div>
+                      ) : (
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(360px, 1fr))", gap:16 }}>
+                          {equipList.map(eq => {
+                            const eqOs3 = allOs.filter(o => Array.isArray(o.equipamento_ids) && o.equipamento_ids.includes(eq.id));
+                            const openOs3 = eqOs3.find(o => ["aberta","em_andamento","aguardando"].includes(o.status));
+                            const histOs3 = eqOs3.filter(o => o.status === "fechada").slice(0, 3);
+                            const vPct3 = Math.min(100, Math.round(eq.instaladoHa / (eq.vidaUtilAnos || 10) * 100));
+                            const vC3 = vPct3 < 50 ? "#10B981" : vPct3 < 75 ? "#F59E0B" : "#EF4444";
+                            const proxDate3 = eq.proxManutencao ? new Date(eq.proxManutencao) : null;
+                            const isVenc3 = proxDate3 && proxDate3 < new Date();
+                            const shortId3 = `${eq.catIcon}-EQ-${eq.id.slice(-4).toUpperCase()}`;
+                            return (
+                              <div key={eq.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.1)", borderRadius:12, overflow:"hidden", transition:"border-color .2s" }}>
+                                {/* Card header */}
+                                <div style={{ background:"rgba(15,23,42,.9)", padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:"1px solid rgba(255,255,255,.08)" }}>
+                                  <div>
+                                    <div style={{ fontSize:13, fontWeight:800, color:"#F8FAFC" }}>{eq.catIcon} {eq.nome}</div>
+                                    <div style={{ fontSize:10, color:"#64748B", marginTop:2 }}>{eq.local}</div>
+                                  </div>
+                                  <button
+                                    onClick={() => exportSelo(eq)}
+                                    style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.4)", borderRadius:8, padding:"6px 13px", color:"#A5B4FC", fontSize:11, fontWeight:700, cursor:"pointer" }}
+                                  >📄 PDF</button>
+                                </div>
+
+                                {/* Badges */}
+                                <div style={{ display:"flex", gap:6, padding:"7px 14px", background:"rgba(255,255,255,.02)", borderBottom:"1px solid rgba(255,255,255,.06)", flexWrap:"wrap" }}>
+                                  <span style={{ background:`${stColor[eq.status]}22`, color:stColor[eq.status], border:`1px solid ${stColor[eq.status]}55`, borderRadius:20, padding:"2px 9px", fontSize:9, fontWeight:700 }}>{stLabel[eq.status]}</span>
+                                  <span style={{ background:`${vC3}22`, color:vC3, border:`1px solid ${vC3}55`, borderRadius:20, padding:"2px 9px", fontSize:9, fontWeight:700 }}>VIDA {vPct3}%</span>
+                                  {isVenc3 && <span style={{ background:"#EF444422", color:"#EF4444", border:"1px solid #EF444455", borderRadius:20, padding:"2px 9px", fontSize:9, fontWeight:700 }}>⚠ VENCIDA</span>}
+                                </div>
+
+                                {/* Body */}
+                                <div style={{ display:"flex" }}>
+                                  {/* QR col */}
+                                  <div style={{ width:140, minWidth:140, padding:"12px 8px", display:"flex", flexDirection:"column", alignItems:"center", gap:8, borderRight:"1px solid rgba(255,255,255,.06)", background:"rgba(255,255,255,.01)" }}>
+                                    {qrUrls[eq.id]
+                                      ? <img src={qrUrls[eq.id]} alt={eq.nome} style={{ width:110, height:110, borderRadius:6, border:"1px solid rgba(255,255,255,.1)" }}/>
+                                      : <div style={{ width:110, height:110, background:"rgba(255,255,255,.04)", borderRadius:6, display:"flex", alignItems:"center", justifyContent:"center", color:"#334155", fontSize:10 }}>Gerando…</div>
+                                    }
+                                    <div style={{ fontSize:8, color:"#475569", textAlign:"center", lineHeight:1.5 }}>Escanear para<br/>ficha completa</div>
+                                    <div style={{ fontSize:8, fontFamily:"monospace", color:"#334155", textAlign:"center", wordBreak:"break-all" as const }}>{shortId3}</div>
+                                  </div>
+
+                                  {/* Data col */}
+                                  <div style={{ flex:1, padding:"10px 12px", minWidth:0 }}>
+                                    <div style={{ fontSize:9, fontWeight:700, color:"#475569", letterSpacing:"1px", marginBottom:5, textTransform:"uppercase" as const }}>Dados Técnicos</div>
+                                    {[
+                                      ["Fabricante", eq.fabricante || "—"],
+                                      ["Modelo", `${eq.modelo || "—"}${eq.serie ? ` · ${eq.serie}` : ""}`],
+                                      ["Instalação", eq.dataInstalacao ? fmtDateSelo(eq.dataInstalacao) : "—"],
+                                      ["Próx. manut.", eq.proxManutencao ? (isVenc3 ? `⚠ ${fmtDateSelo(eq.proxManutencao)}` : fmtDateSelo(eq.proxManutencao)) : "—"],
+                                      ["Custo", eq.custoManutencao > 0 ? `R$ ${eq.custoManutencao.toLocaleString("pt-BR", { minimumFractionDigits:2 })} / visita` : "—"],
+                                      ["OS aberta", openOs3 ? `OS-${String(openOs3.numero).padStart(3,"0")} — ${openOs3.titulo.slice(0,28)}${openOs3.titulo.length>28?"…":""}` : "Nenhuma"],
+                                    ].map(([l,v]) => (
+                                      <div key={l} style={{ display:"flex", gap:6, padding:"2px 0", fontSize:10, borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                                        <span style={{ color:"#475569", minWidth:76, flexShrink:0 }}>{l}:</span>
+                                        <span style={{ color: l==="Próx. manut." && isVenc3 ? "#EF4444" : "#94A3B8", fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{v}</span>
+                                      </div>
+                                    ))}
+                                    {histOs3.length > 0 && (
+                                      <div style={{ marginTop:8 }}>
+                                        <div style={{ fontSize:9, fontWeight:700, color:"#475569", letterSpacing:"1px", marginBottom:4, textTransform:"uppercase" as const }}>Histórico OS</div>
+                                        {histOs3.map(o => (
+                                          <div key={o.id} style={{ display:"flex", gap:5, fontSize:9, padding:"2px 0", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                                            <span style={{ color:"#6366F1", fontWeight:700, whiteSpace:"nowrap", flexShrink:0 }}>OS-{String(o.numero).padStart(3,"0")}</span>
+                                            <span style={{ color:"#475569", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{o.titulo}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Footer */}
+                                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"5px 14px", background:"rgba(255,255,255,.02)", borderTop:"1px solid rgba(255,255,255,.06)" }}>
+                                  <span style={{ fontSize:9, fontFamily:"monospace", color:"#334155" }}>{shortId3}</span>
+                                  <span style={{ fontSize:9, color:"#6366F1", fontWeight:700 }}>{openOs3 ? `OS-${String(openOs3.numero).padStart(3,"0")} | ` : ""}{new Date().toLocaleDateString("pt-BR")}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* ── ABA 6: DASHBOARD IA ───────────────────────────────── */}
                 {mantTab === "ia" && (
