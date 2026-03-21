@@ -175,8 +175,8 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
   const set = (k: keyof OS, v: unknown) => setForm(f => ({ ...f, [k]: v }));
 
   const isMob = view === "mobile";
-  const fc = { background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, color:"var(--neu-text,#F1F5F9)", padding:"8px 10px", fontSize:12, fontFamily:"inherit", width:"100%", outline:"none" };
-  const lbl = { fontSize:10, color:"#64748B", marginBottom:4, display:"block" as const, fontWeight:700, letterSpacing:".04em", textTransform:"uppercase" as const };
+  const fc = { background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.22)", borderRadius:8, color:"var(--neu-text,#F1F5F9)", padding:"10px 12px", fontSize:13, fontFamily:"inherit", width:"100%", outline:"none" };
+  const lbl = { fontSize:11, color:"#94A3B8", marginBottom:6, display:"block" as const, fontWeight:700, letterSpacing:".04em", textTransform:"uppercase" as const };
   const grp = { marginBottom:12 };
 
   // Auto-checklist when category changes

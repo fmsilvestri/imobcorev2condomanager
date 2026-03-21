@@ -290,14 +290,14 @@ export default function SindicoHome({
             <span style={{ fontSize:10, fontWeight:800, color:v.muted, textTransform:"uppercase", letterSpacing:"0.8px" }}>OPERAÇÕES &amp; GESTÃO</span>
             <span style={{ fontSize:11, color:"#a78bfa", fontWeight:700, cursor:"pointer" }}>ver tudo</span>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
             {mods.map((m, i) => (
               <div
                 key={m.title}
                 className="sind-card"
                 onClick={() => setSindicoScreen(m.screen)}
                 style={{
-                  borderRadius:14, padding:12, cursor:"pointer",
+                  borderRadius:16, padding:"18px 16px", cursor:"pointer",
                   background: m.bg,
                   border: isDark ? "none" : `1px solid ${(m as LightModule).border}`,
                   position:"relative", transition:"transform 0.1s",
@@ -306,11 +306,11 @@ export default function SindicoHome({
                 }}
               >
                 {m.hasDot && (
-                  <div className="sind-pulse-dot" style={{ position:"absolute", top:10, right:10, width:8, height:8, borderRadius:"50%", background:"#EF4444" }} />
+                  <div className="sind-pulse-dot" style={{ position:"absolute", top:12, right:12, width:9, height:9, borderRadius:"50%", background:"#EF4444" }} />
                 )}
-                <div style={{ fontSize:20, marginBottom:6 }}>{m.icon}</div>
-                <div style={{ fontSize:12, fontWeight:800, color:m.text, marginBottom:4, lineHeight:1.2 }}>{m.title}</div>
-                <div style={{ display:"inline-block", fontSize:9, fontWeight:700, color:m.text, background:"rgba(255,255,255,0.18)", borderRadius:20, padding:"2px 8px" }}>{m.sub}</div>
+                <div style={{ fontSize:28, marginBottom:8 }}>{m.icon}</div>
+                <div style={{ fontSize:14, fontWeight:800, color:m.text, marginBottom:6, lineHeight:1.2 }}>{m.title}</div>
+                <div style={{ display:"inline-block", fontSize:11, fontWeight:700, color:m.text, background:"rgba(255,255,255,0.18)", borderRadius:20, padding:"3px 10px" }}>{m.sub}</div>
               </div>
             ))}
           </div>
