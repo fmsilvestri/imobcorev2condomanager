@@ -3992,8 +3992,8 @@ export default function App() {
             <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
               <RelatorioExecutivo
                 condId={condId || ""}
-                condNome={condominios.find(c => c.id === condId)?.nome || "Condomínio"}
-                sindNome={condominios.find(c => c.id === condId)?.sindico_nome || "Síndico"}
+                condNome={dash?.condominios?.find((c: {id:string}) => c.id === condId)?.nome || "Condomínio"}
+                sindNome={dash?.condominios?.find((c: {id:string;sindico_nome?:string}) => c.id === condId)?.sindico_nome || "Síndico"}
                 view="mobile"
               />
             </div>
@@ -5765,8 +5765,8 @@ export default function App() {
               <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
                 <RelatorioExecutivo
                   condId={condId || ""}
-                  condNome={condominios.find(c => c.id === condId)?.nome || "Condomínio"}
-                  sindNome={condominios.find(c => c.id === condId)?.sindico_nome || "Síndico"}
+                  condNome={dash?.condominios?.find((c: {id:string}) => c.id === condId)?.nome || "Condomínio"}
+                  sindNome={dash?.condominios?.find((c: {id:string;sindico_nome?:string}) => c.id === condId)?.sindico_nome || "Síndico"}
                   view="desktop"
                 />
               </div>
