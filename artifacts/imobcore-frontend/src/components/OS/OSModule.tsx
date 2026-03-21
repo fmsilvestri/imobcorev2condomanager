@@ -525,36 +525,39 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
       {step===3 && (
         <div>
           {/* Resumo */}
-          <div style={{ background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:10,padding:12,marginBottom:12 }}>
-            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:11 }}>
+          <div style={{ background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.07)",borderRadius:14,padding:20,marginBottom:18 }}>
+            <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,fontSize:16 }}>
               {[
                 ["Título",form.titulo],["Categoria",form.categoria],["Prioridade",PRI_LABEL[form.prioridade||""]],
                 ["Local",form.local||"–"],["Responsável",form.responsavel||"–"],["SLA",`${form.sla_horas}h`],
                 ["Custo est.",`R$ ${(form.custo_estimado||0).toLocaleString("pt-BR")}`],["Prazo",fmtDate(form.data_prevista)],
               ].map(([k,v])=>(
-                <div key={k}><div style={{ color:"#64748B",marginBottom:1 }}>{k}</div><div style={{ color:"var(--neu-text,#F1F5F9)",fontWeight:600 }}>{v||"–"}</div></div>
+                <div key={k}>
+                  <div style={{ color:"#64748B",marginBottom:3,fontSize:12 }}>{k}</div>
+                  <div style={{ color:"var(--neu-text,#F1F5F9)",fontWeight:700,fontSize:16 }}>{v||"–"}</div>
+                </div>
               ))}
             </div>
           </div>
           {/* Di analysis card */}
-          <div style={{ background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.2)",borderRadius:10,padding:12,marginBottom:12 }}>
-            <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:6 }}>
-              <img src="/di.png" alt="Di" style={{ width:24,height:24,borderRadius:"50%",objectFit:"cover",objectPosition:"top" }} />
-              <span style={{ fontSize:11,fontWeight:800,color:"#C4B5FD" }}>Di — Análise da OS</span>
+          <div style={{ background:"rgba(139,92,246,.08)",border:"1px solid rgba(139,92,246,.2)",borderRadius:14,padding:18,marginBottom:18 }}>
+            <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:10 }}>
+              <img src="/di.png" alt="Di" style={{ width:38,height:38,borderRadius:"50%",objectFit:"cover",objectPosition:"top" }} />
+              <span style={{ fontSize:16,fontWeight:800,color:"#C4B5FD" }}>Di — Análise da OS</span>
             </div>
-            {diLoading && !diTexto && <div style={{ color:"#A78BFA",fontSize:11 }}>⏳ Analisando...</div>}
-            {diTexto ? <div style={{ fontSize:11,color:"#E9D5FF",lineHeight:1.6,whiteSpace:"pre-wrap" }}>{diTexto}</div>
-              : !diLoading && <div style={{ color:"#64748B",fontSize:11 }}>A Di irá analisar esta OS após criação.</div>}
+            {diLoading && !diTexto && <div style={{ color:"#A78BFA",fontSize:15 }}>⏳ Analisando...</div>}
+            {diTexto ? <div style={{ fontSize:15,color:"#E9D5FF",lineHeight:1.65,whiteSpace:"pre-wrap" }}>{diTexto}</div>
+              : !diLoading && <div style={{ color:"#64748B",fontSize:15 }}>A Di irá analisar esta OS após criação.</div>}
           </div>
           {/* Botão principal */}
           {diId ? (
             <button onClick={()=>onSave({id:diId} as OS)} disabled={diLoading}
-              style={{...btnNext,width:"100%",padding:"12px",fontSize:13,opacity:diLoading?.6:1}}>
+              style={{...btnNext,width:"100%",padding:"18px",fontSize:18,opacity:diLoading?.6:1}}>
               ✅ Fechar e ver OS
             </button>
           ) : (
             <button onClick={goStep3to4} disabled={saving}
-              style={{...btnNext,width:"100%",padding:"12px",fontSize:13}}>
+              style={{...btnNext,width:"100%",padding:"18px",fontSize:18}}>
               {saving ? "Criando..." : "🚀 Abrir OS"}
             </button>
           )}
@@ -571,7 +574,7 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
           </button>
         </div>
       )}
-      {step===3&&diId&&<button style={{...btnBack,marginTop:8}} onClick={onCancel}>← Nova OS</button>}
+      {step===3&&diId&&<button style={{...btnBack,marginTop:12,fontSize:15,padding:"10px 18px"}} onClick={onCancel}>← Nova OS</button>}
     </div>
   );
 }
