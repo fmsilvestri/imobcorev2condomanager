@@ -45,6 +45,10 @@ Express API server with all ImobCore routes in `src/routes/imobcore.ts`:
 - `POST /api/sindico/chat` — AI chat (Claude)
 - `POST /api/sindico/comunicado` — AI-generated communications
 - `POST /api/di` — Di (Síndica Virtual) briefing: returns `{fala, cards:[{titulo,valor,status,detalhe}], dados}` using Claude
+- `GET /api/bi/overview` — KPIs globais: MRR, ARR, condos, moradores, OS, inadimplência, crescimento 30d (X-Admin-Token required)
+- `GET /api/bi/charts` — Séries temporais: receita/despesa mensal, OS por categoria, crescimento condos, MRR acumulado (X-Admin-Token required)
+- `GET /api/bi/forecast` — Previsões 3 meses via moving average + trend, horizon com receita/despesa projetada (X-Admin-Token required)
+- `POST /api/bi/insights` — Claude (Di) gera insights estratégicos: {insights:[{tipo,titulo,descricao,acao}], resumo} (X-Admin-Token required)
 - `POST /api/admin/login` — Admin Global auth (email + password → token)
 - `GET /api/admin/dashboard` — Global KPIs: total condos, users, OS, inadimplência, plan counts (X-Admin-Token required)
 - `GET /api/admin/condominios` — All condominiums list (X-Admin-Token required)

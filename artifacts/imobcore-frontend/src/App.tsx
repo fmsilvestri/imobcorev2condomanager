@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import SindicoHome from "./components/sindico/SindicoHome";
 import AguaModule from "./modules/agua/AguaModule";
 import QRCode from "qrcode";
-import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis } from "recharts";
+import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis } from "recharts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface OrdemServico { id: string; numero: number; titulo: string; descricao?: string; categoria: string; status: string; prioridade: string; unidade?: string; responsavel?: string; updated_at?: string; created_at: string; equipamento_ids?: string[] }
@@ -596,7 +596,7 @@ export default function App() {
 
   // ── Admin Global state ─────────────────────────────────────────────────────
   const [adminToken, setAdminToken]     = useState<string | null>(() => sessionStorage.getItem("adminToken"));
-  const [adminSection, setAdminSection] = useState<"dashboard" | "condominios" | "usuarios" | "planos" | "sistema">("dashboard");
+  const [adminSection, setAdminSection] = useState<"dashboard" | "condominios" | "usuarios" | "planos" | "sistema" | "bi">("dashboard");
   type AdminCondo   = { id: string; nome: string; plano: string; status: string; created_at: string; total_unidades?: number; cidade?: string; estado?: string; sindico_nome?: string; sindico_email?: string };
   type AdminUser    = { id: string; nome: string; email: string; perfil: string; unidade?: string; status?: string; condominio_id?: string; telefone?: string };
   type AdminPlan    = { id: string; nome: string; color: string; preco: number; limites: Record<string, number>; features: string[] };
@@ -640,6 +640,55 @@ export default function App() {
     const r = await fetch("/api/admin/sistema", { headers: { "X-Admin-Token": adminToken } });
     const d = await r.json();
     setAdminSistem(d);
+  };
+
+  // ── BI Executivo state ─────────────────────────────────────────────────────
+  type BiOverview  = { totalCondos: number; condosAtivos: number; condosSusp: number; totalMoradores: number; osAbertas: number; osUrgentes: number; mrr: number; arr: number; inadimplencia: string; crescimento: string; planoCounts: Record<string, number>; totalReceitas: number; totalDespesas: number };
+  type BiChartPoint = Record<string, unknown>;
+  type BiCharts    = { receitaMensal: BiChartPoint[]; osPorCategoria: BiChartPoint[]; crescimentoCondos: BiChartPoint[]; mrrMensal: BiChartPoint[]; osStatus: BiChartPoint[] };
+  type BiForecastItem = { next: number; trend: "up" | "down" | "stable"; variacao: string };
+  type BiForecast  = { receita: BiForecastItem; despesa: BiForecastItem; inadimplencia: BiForecastItem; horizon: BiChartPoint[] };
+  type BiInsight   = { tipo: "alerta" | "oportunidade" | "risco" | "positivo"; titulo: string; descricao: string; acao: string };
+  type BiInsights  = { insights: BiInsight[]; resumo: string };
+  const [biOverview,   setBiOverview]   = useState<BiOverview  | null>(null);
+  const [biCharts,     setBiCharts]     = useState<BiCharts    | null>(null);
+  const [biForecastData, setBiForecastData] = useState<BiForecast | null>(null);
+  const [biInsights,   setBiInsights]   = useState<BiInsights  | null>(null);
+  const [biLoading,    setBiLoading]    = useState(false);
+  const [biInsightLoad,setBiInsightLoad]= useState(false);
+
+  const loadBiData = async (tok?: string) => {
+    const t = tok ?? adminToken;
+    if (!t) return;
+    setBiLoading(true);
+    try {
+      const hdrs = { "X-Admin-Token": t };
+      const [ovRes, chRes, fcRes] = await Promise.all([
+        fetch("/api/bi/overview", { headers: hdrs }),
+        fetch("/api/bi/charts",   { headers: hdrs }),
+        fetch("/api/bi/forecast", { headers: hdrs }),
+      ]);
+      const [ov, ch, fc] = await Promise.all([ovRes.json(), chRes.json(), fcRes.json()]);
+      setBiOverview(ov);
+      setBiCharts(ch);
+      setBiForecastData(fc);
+    } catch { showToast("Erro ao carregar BI", "error"); }
+    setBiLoading(false);
+  };
+
+  const loadBiInsights = async () => {
+    if (!adminToken || !biOverview) return;
+    setBiInsightLoad(true);
+    try {
+      const r = await fetch("/api/bi/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Admin-Token": adminToken },
+        body: JSON.stringify({ overview: biOverview, forecast: biForecastData }),
+      });
+      const d = await r.json();
+      setBiInsights(d);
+    } catch { showToast("Erro ao gerar insights", "error"); }
+    setBiInsightLoad(false);
   };
 
   const patchCondo = async (id: string, updates: { plano?: string; status?: string }) => {
@@ -11726,12 +11775,13 @@ Content-Type: application/json
             <div style={{ flex:1, padding:"12px 10px", display:"flex", flexDirection:"column", gap:2 }}>
               {([
                 { id:"dashboard",    icon:"📊", label:"Dashboard" },
+                { id:"bi",           icon:"📈", label:"BI Executivo" },
                 { id:"condominios",  icon:"🏢", label:"Condomínios" },
                 { id:"usuarios",     icon:"👥", label:"Usuários" },
                 { id:"planos",       icon:"💎", label:"Planos SaaS" },
                 { id:"sistema",      icon:"⚙️", label:"Sistema" },
               ] as const).map(item => (
-                <button key={item.id} onClick={() => { setAdminSection(item.id); if(item.id === "sistema") loadAdminSistema(); }}
+                <button key={item.id} onClick={() => { setAdminSection(item.id); if(item.id === "sistema") loadAdminSistema(); if(item.id === "bi") loadBiData(); }}
                   style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", borderRadius:9, border:"none", cursor:"pointer", fontSize:13, fontWeight:600, textAlign:"left", transition:"all .15s", background: adminSection === item.id ? "rgba(99,102,241,.2)" : "transparent", color: adminSection === item.id ? "#A5B4FC" : "#64748B", borderLeft: adminSection === item.id ? "3px solid #6366F1" : "3px solid transparent" }}>
                   <span style={{ fontSize:15 }}>{item.icon}</span>{item.label}
                 </button>
@@ -11754,7 +11804,7 @@ Content-Type: application/json
             {/* Topbar */}
             <div style={{ height:56, borderBottom:"1px solid rgba(255,255,255,.06)", display:"flex", alignItems:"center", padding:"0 24px", gap:16, flexShrink:0, background:"rgba(13,17,23,.8)", backdropFilter:"blur(8px)" }}>
               <div style={{ fontSize:16, fontWeight:700, color:"#F1F5F9" }}>
-                {{ dashboard:"📊 Dashboard Global", condominios:"🏢 Condomínios", usuarios:"👥 Usuários", planos:"💎 Planos SaaS", sistema:"⚙️ Sistema" }[adminSection]}
+                {{ dashboard:"📊 Dashboard Global", bi:"📈 BI Executivo", condominios:"🏢 Condomínios", usuarios:"👥 Usuários", planos:"💎 Planos SaaS", sistema:"⚙️ Sistema" }[adminSection]}
               </div>
               <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
                 {adminLoading && <div style={{ fontSize:12, color:"#6366F1" }}>⏳ Carregando...</div>}
@@ -12025,6 +12075,242 @@ Content-Type: application/json
                   </div>
                 </div>
               )}
+
+              {/* ══════════════════════════════════════════════════
+                  BI EXECUTIVO
+              ══════════════════════════════════════════════════ */}
+              {adminSection === "bi" && (() => {
+                const COLORS = ["#6366F1","#10B981","#F59E0B","#EF4444","#A855F7","#34D399","#FB923C","#60A5FA"];
+                const trendIcon = (t?: string) => t === "up" ? "📈" : t === "down" ? "📉" : "➡️";
+                const trendColor= (t?: string) => t === "up" ? "#10B981" : t === "down" ? "#EF4444" : "#64748B";
+                const insightColors: Record<string, { bg: string; border: string; icon: string }> = {
+                  alerta:      { bg:"rgba(234,179,8,.1)",   border:"rgba(234,179,8,.3)",   icon:"⚠️" },
+                  risco:       { bg:"rgba(239,68,68,.1)",   border:"rgba(239,68,68,.3)",   icon:"🚨" },
+                  oportunidade:{ bg:"rgba(99,102,241,.1)",  border:"rgba(99,102,241,.3)",  icon:"💡" },
+                  positivo:    { bg:"rgba(16,185,129,.1)",  border:"rgba(16,185,129,.3)",  icon:"✅" },
+                };
+                return (
+                  <div>
+                    {/* ── Refresh bar ──────────────────────────────── */}
+                    <div style={{ display:"flex", gap:10, marginBottom:20, alignItems:"center" }}>
+                      <button onClick={() => loadBiData()} disabled={biLoading}
+                        style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:9, padding:"8px 16px", color:"#818CF8", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                        {biLoading ? "⏳ Carregando..." : "🔄 Atualizar BI"}
+                      </button>
+                      <button onClick={loadBiInsights} disabled={biInsightLoad || !biOverview}
+                        style={{ background:"linear-gradient(135deg,rgba(139,92,246,.2),rgba(99,102,241,.2))", border:"1px solid rgba(139,92,246,.35)", borderRadius:9, padding:"8px 16px", color:"#A78BFA", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                        {biInsightLoad ? "🧠 Analisando..." : "🧠 Insights IA (Di)"}
+                      </button>
+                      {biInsights?.resumo && (
+                        <div style={{ flex:1, fontSize:12, color:"#64748B", fontStyle:"italic" }}>💬 {biInsights.resumo}</div>
+                      )}
+                    </div>
+
+                    {/* ── KPI Cards ────────────────────────────────── */}
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:14, marginBottom:20 }}>
+                      {[
+                        { label:"MRR",              val:`R$ ${(biOverview?.mrr||0).toLocaleString("pt-BR")}`,  sub:`ARR: R$ ${((biOverview?.arr||0)/1000).toFixed(0)}k`, icon:"💰", color:"#10B981" },
+                        { label:"Total Condomínios", val: biOverview?.totalCondos ?? "—",                       sub:`${biOverview?.condosAtivos??0} ativos · ${biOverview?.condosSusp??0} susp.`, icon:"🏢", color:"#6366F1" },
+                        { label:"Inadimplência",     val:`${biOverview?.inadimplencia ?? "—"}%`,                sub:"despesa/receita média", icon:"📉", color: Number(biOverview?.inadimplencia||0) > 80 ? "#EF4444" : "#F59E0B" },
+                        { label:"Crescimento 30d",   val: biOverview?.crescimento ?? "—",                       sub:"novos condos vs período ant.", icon:"📈", color:"#A855F7" },
+                        { label:"Receita Total",     val:`R$ ${((biOverview?.totalReceitas||0)/1000).toFixed(1)}k`, sub:"período completo", icon:"💵", color:"#34D399" },
+                        { label:"OS Abertas",        val: biOverview?.osAbertas ?? "—",                         sub:`${biOverview?.osUrgentes??0} urgentes`, icon:"🔧", color: (biOverview?.osUrgentes||0) > 0 ? "#EF4444" : "#64748B" },
+                        { label:"Moradores",         val: biOverview?.totalMoradores ?? "—",                    sub:"cadastrados na plataforma", icon:"👥", color:"#60A5FA" },
+                        { label:"Plano PRO",         val: biOverview?.planoCounts?.pro ?? "—",                  sub:`FREE: ${biOverview?.planoCounts?.free??0} · ENT: ${biOverview?.planoCounts?.enterprise??0}`, icon:"⚡", color:"#F59E0B" },
+                      ].map((k,i) => (
+                        <div key={i} style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:13, padding:"16px 18px" }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:8 }}>
+                            <div style={{ fontSize:10, color:"#475569", fontWeight:700, textTransform:"uppercase", letterSpacing:.5 }}>{k.label}</div>
+                            <span style={{ fontSize:14 }}>{k.icon}</span>
+                          </div>
+                          <div style={{ fontSize:22, fontWeight:900, color:k.color, lineHeight:1, marginBottom:4 }}>{k.val}</div>
+                          <div style={{ fontSize:10, color:"#334155" }}>{k.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* ── Charts Row 1: Receita/Despesa + Crescimento ─ */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1.4fr 1fr", gap:16, marginBottom:16 }}>
+
+                      {/* Receita × Despesa mensal */}
+                      <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9", marginBottom:4 }}>💰 Receita × Despesa Mensal</div>
+                        <div style={{ fontSize:10, color:"#475569", marginBottom:14 }}>Lançamentos reais por mês</div>
+                        {(biCharts?.receitaMensal?.length ?? 0) > 0 ? (
+                          <ResponsiveContainer width="100%" height={200}>
+                            <AreaChart data={biCharts!.receitaMensal}>
+                              <defs>
+                                <linearGradient id="biRec" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%"  stopColor="#10B981" stopOpacity={0.3}/>
+                                  <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                                </linearGradient>
+                                <linearGradient id="biDesp" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%"  stopColor="#EF4444" stopOpacity={0.3}/>
+                                  <stop offset="95%" stopColor="#EF4444" stopOpacity={0}/>
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)"/>
+                              <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                              <YAxis tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`}/>
+                              <Tooltip contentStyle={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} formatter={(v:unknown) => `R$ ${Number(v).toLocaleString("pt-BR")}`}/>
+                              <Legend wrapperStyle={{ fontSize:11, color:"#64748B" }}/>
+                              <Area type="monotone" dataKey="receita"  name="Receita"  stroke="#10B981" fill="url(#biRec)"  strokeWidth={2}/>
+                              <Area type="monotone" dataKey="despesa"  name="Despesa"  stroke="#EF4444" fill="url(#biDesp)" strokeWidth={2}/>
+                              <Line  type="monotone" dataKey="saldo"   name="Saldo"   stroke="#6366F1" strokeWidth={1.5} dot={false}/>
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div style={{ height:200, display:"flex", alignItems:"center", justifyContent:"center", color:"#334155", fontSize:12 }}>Sem lançamentos registrados</div>
+                        )}
+                      </div>
+
+                      {/* Crescimento de condos */}
+                      <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9", marginBottom:4 }}>📈 Crescimento de Condomínios</div>
+                        <div style={{ fontSize:10, color:"#475569", marginBottom:14 }}>Acumulado por mês</div>
+                        {(biCharts?.crescimentoCondos?.length ?? 0) > 0 ? (
+                          <ResponsiveContainer width="100%" height={200}>
+                            <AreaChart data={biCharts!.crescimentoCondos}>
+                              <defs>
+                                <linearGradient id="biGrow" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%"  stopColor="#6366F1" stopOpacity={0.4}/>
+                                  <stop offset="95%" stopColor="#6366F1" stopOpacity={0}/>
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)"/>
+                              <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                              <YAxis tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                              <Tooltip contentStyle={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }}/>
+                              <Area type="monotone" dataKey="total" name="Total" stroke="#6366F1" fill="url(#biGrow)" strokeWidth={2}/>
+                              <Bar  dataKey="novos" name="Novos" fill="#A855F7" radius={[4,4,0,0]}/>
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div style={{ height:200, display:"flex", alignItems:"center", justifyContent:"center", color:"#334155", fontSize:12 }}>Sem dados de crescimento</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── Charts Row 2: OS Categorias + MRR + Forecast ─ */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:16, marginBottom:16 }}>
+
+                      {/* OS por categoria */}
+                      <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9", marginBottom:14 }}>🔧 OSs por Categoria</div>
+                        {(biCharts?.osPorCategoria?.length ?? 0) > 0 ? (
+                          <ResponsiveContainer width="100%" height={180}>
+                            <BarChart data={biCharts!.osPorCategoria} layout="vertical">
+                              <XAxis type="number" tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                              <YAxis dataKey="categoria" type="category" tick={{ fontSize:10, fill:"#64748B" }} axisLine={false} tickLine={false} width={90}/>
+                              <Tooltip contentStyle={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }}/>
+                              <Bar dataKey="total" radius={[0,6,6,0]}>
+                                {biCharts!.osPorCategoria.map((_,i) => <Cell key={i} fill={COLORS[i % COLORS.length]}/>)}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div style={{ height:180, display:"flex", alignItems:"center", justifyContent:"center", color:"#334155", fontSize:12 }}>Sem OSs registradas</div>
+                        )}
+                      </div>
+
+                      {/* MRR mensal */}
+                      <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9", marginBottom:4 }}>💎 MRR Acumulado</div>
+                        <div style={{ fontSize:10, color:"#475569", marginBottom:14 }}>Receita mensal recorrente estimada</div>
+                        {(biCharts?.mrrMensal?.length ?? 0) > 0 ? (
+                          <ResponsiveContainer width="100%" height={180}>
+                            <AreaChart data={biCharts!.mrrMensal}>
+                              <defs>
+                                <linearGradient id="biMrr" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%"  stopColor="#F59E0B" stopOpacity={0.4}/>
+                                  <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)"/>
+                              <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                              <YAxis tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} tickFormatter={v => `R$${v}`}/>
+                              <Tooltip contentStyle={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} formatter={(v:unknown) => `R$ ${Number(v).toLocaleString("pt-BR")}`}/>
+                              <Area type="monotone" dataKey="mrr" name="MRR" stroke="#F59E0B" fill="url(#biMrr)" strokeWidth={2}/>
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div style={{ height:180, display:"flex", alignItems:"center", justifyContent:"center", color:"#334155", fontSize:12 }}>Sem dados de MRR</div>
+                        )}
+                      </div>
+
+                      {/* Forecast horizon */}
+                      <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:20 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9", marginBottom:4 }}>🔮 Previsão — Próximos 3 meses</div>
+                        <div style={{ fontSize:10, color:"#475569", marginBottom:14 }}>Moving average + trend</div>
+                        {biForecastData?.horizon ? (
+                          <>
+                            <ResponsiveContainer width="100%" height={140}>
+                              <BarChart data={biForecastData.horizon}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.04)"/>
+                                <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false}/>
+                                <YAxis tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} tickFormatter={v => `R$${(v/1000).toFixed(0)}k`}/>
+                                <Tooltip contentStyle={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} formatter={(v:unknown) => `R$ ${Number(v).toLocaleString("pt-BR")}`}/>
+                                <Bar dataKey="receita" name="Receita Proj." fill="#10B981" opacity={0.75} radius={[4,4,0,0]}/>
+                                <Bar dataKey="despesa" name="Despesa Proj." fill="#EF4444" opacity={0.75} radius={[4,4,0,0]}/>
+                              </BarChart>
+                            </ResponsiveContainer>
+                            <div style={{ display:"flex", gap:8, marginTop:10 }}>
+                              {[
+                                { label:"Receita",      f: biForecastData.receita },
+                                { label:"Inadimplência",f: biForecastData.inadimplencia },
+                              ].map((item,i) => (
+                                <div key={i} style={{ flex:1, background:"rgba(255,255,255,.03)", borderRadius:8, padding:"8px 10px" }}>
+                                  <div style={{ fontSize:9, color:"#334155", fontWeight:600 }}>{item.label}</div>
+                                  <div style={{ fontSize:13, fontWeight:800, color:trendColor(item.f?.trend) }}>{trendIcon(item.f?.trend)} {item.f?.variacao}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ height:180, display:"flex", alignItems:"center", justifyContent:"center", color:"#334155", fontSize:12 }}>Clique em Atualizar BI</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* ── AI Insights Di ───────────────────────────── */}
+                    {biInsights && (
+                      <div style={{ background:"linear-gradient(135deg, #0D0921 0%, #0F0A1E 100%)", border:"1px solid rgba(139,92,246,.2)", borderRadius:14, padding:20 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
+                          <div style={{ width:32, height:32, borderRadius:"50%", background:"rgba(139,92,246,.15)", border:"1px solid rgba(139,92,246,.3)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>🧠</div>
+                          <div>
+                            <div style={{ fontSize:13, fontWeight:700, color:"#E9D5FF" }}>Insights da Di — Análise Estratégica</div>
+                            <div style={{ fontSize:10, color:"#6D28D9" }}>Powered by Claude AI</div>
+                          </div>
+                          <button onClick={loadBiInsights} disabled={biInsightLoad}
+                            style={{ marginLeft:"auto", background:"rgba(139,92,246,.15)", border:"1px solid rgba(139,92,246,.3)", borderRadius:8, padding:"5px 12px", color:"#A78BFA", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                            {biInsightLoad ? "⏳" : "🔄 Atualizar"}
+                          </button>
+                        </div>
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:10 }}>
+                          {biInsights.insights.map((ins, i) => {
+                            const s = insightColors[ins.tipo] || insightColors.positivo;
+                            return (
+                              <div key={i} style={{ background:s.bg, border:`1px solid ${s.border}`, borderRadius:11, padding:"14px 16px" }}>
+                                <div style={{ fontSize:11, fontWeight:700, color:"#E2E8F0", marginBottom:6 }}>{s.icon} {ins.titulo}</div>
+                                <div style={{ fontSize:11, color:"#94A3B8", lineHeight:1.5, marginBottom:8 }}>{ins.descricao}</div>
+                                <div style={{ fontSize:10, color:"#475569", fontStyle:"italic" }}>→ {ins.acao}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {!biOverview && !biLoading && (
+                      <div style={{ textAlign:"center", padding:60, color:"#334155" }}>
+                        <div style={{ fontSize:40, marginBottom:12 }}>📈</div>
+                        <div style={{ fontSize:14, fontWeight:600, marginBottom:8 }}>BI Executivo</div>
+                        <div style={{ fontSize:12 }}>Clique em "Atualizar BI" para carregar os dados</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* ── SISTEMA ──────────────────────────────────────── */}
               {adminSection === "sistema" && (

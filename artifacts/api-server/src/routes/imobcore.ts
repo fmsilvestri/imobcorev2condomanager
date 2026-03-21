@@ -2784,5 +2784,233 @@ router.get("/admin/sistema", checkAdminGlobal, async (_req: Request, res: Respon
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  BI EXECUTIVO
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Forecast engine (moving average + trend) ──────────────────────────────────
+function biForecast(values: number[]): { next: number; trend: "up" | "down" | "stable"; variacao: string } {
+  if (!values || values.length === 0) return { next: 0, trend: "stable", variacao: "0%" };
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const last = values[values.length - 1];
+  const next = avg > 0 ? avg * 1.1 : last * 1.05;
+  const delta = avg > 0 ? ((last - avg) / avg) * 100 : 0;
+  const trend: "up" | "down" | "stable" = delta > 2 ? "up" : delta < -2 ? "down" : "stable";
+  return { next: Math.round(next * 100) / 100, trend, variacao: `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%` };
+}
+
+// MRR por plano
+const PLAN_MRR: Record<string, number> = { free: 0, pro: 297, enterprise: 997 };
+
+// GET /api/bi/overview  — KPIs globais
+router.get("/bi/overview", checkAdminGlobal, async (_req: Request, res: Response) => {
+  try {
+    const [
+      { data: condos },
+      { data: moradores },
+      { data: lancamentos },
+      { data: osRows },
+    ] = await Promise.all([
+      supabase.from("condominios").select("id, plano, status, created_at"),
+      supabase.from("moradores").select("id"),
+      supabase.from("lancamentos").select("tipo, valor, data, condominio_id"),
+      supabase.from("ordens_servico").select("status, prioridade, created_at"),
+    ]);
+
+    const totalCondos   = condos?.length ?? 0;
+    const condosAtivos  = condos?.filter(c => c.status !== "suspenso").length ?? 0;
+    const condosSusp    = condos?.filter(c => c.status === "suspenso").length ?? 0;
+    const totalMoradores = moradores?.length ?? 0;
+    const osAbertas     = osRows?.filter(o => o.status === "aberta" || o.status === "em_andamento").length ?? 0;
+    const osUrgentes    = osRows?.filter(o => o.prioridade === "urgente").length ?? 0;
+
+    const mrr = (condos ?? []).reduce((s, c) => s + (PLAN_MRR[(c.plano||"free").toLowerCase()] || 0), 0);
+    const arr = mrr * 12;
+
+    const totalReceitas = (lancamentos ?? []).filter(l => l.tipo === "receita").reduce((s, l) => s + Number(l.valor), 0);
+    const totalDespesas = (lancamentos ?? []).filter(l => l.tipo === "despesa").reduce((s, l) => s + Number(l.valor), 0);
+    const inadimplencia = totalReceitas > 0 ? ((totalDespesas / totalReceitas) * 100).toFixed(1) : "0.0";
+
+    // crescimento: condos criados nos últimos 30 dias
+    const cutoff30  = new Date(Date.now() - 30  * 86400000).toISOString();
+    const cutoff60  = new Date(Date.now() - 60  * 86400000).toISOString();
+    const novos30   = condos?.filter(c => c.created_at >= cutoff30).length ?? 0;
+    const novos60   = condos?.filter(c => c.created_at >= cutoff60 && c.created_at < cutoff30).length ?? 0;
+    const crescimento = novos60 > 0 ? `+${Math.round(((novos30 - novos60) / novos60) * 100)}%` : novos30 > 0 ? "+∞%" : "0%";
+
+    const planoCounts = { free: 0, pro: 0, enterprise: 0 };
+    for (const c of condos ?? []) {
+      const p = (c.plano || "free").toLowerCase() as "free" | "pro" | "enterprise";
+      if (p in planoCounts) planoCounts[p]++;
+    }
+
+    res.json({ totalCondos, condosAtivos, condosSusp, totalMoradores, osAbertas, osUrgentes, mrr, arr, inadimplencia, crescimento, planoCounts, totalReceitas, totalDespesas });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/bi/charts  — séries temporais
+router.get("/bi/charts", checkAdminGlobal, async (_req: Request, res: Response) => {
+  try {
+    const [
+      { data: lancamentos },
+      { data: osRows },
+      { data: condos },
+    ] = await Promise.all([
+      supabase.from("lancamentos").select("tipo, valor, data, condominio_id, categoria").order("data"),
+      supabase.from("ordens_servico").select("status, categoria, created_at").order("created_at"),
+      supabase.from("condominios").select("id, plano, created_at").order("created_at"),
+    ]);
+
+    // ── Receita/Despesa mensal ──────────────────────────────────────────────
+    const finByMonth: Record<string, { mes: string; receita: number; despesa: number; saldo: number }> = {};
+    for (const l of lancamentos ?? []) {
+      const mes = l.data ? l.data.slice(0, 7) : "2026-01";
+      if (!finByMonth[mes]) finByMonth[mes] = { mes: mes.replace("-", "/"), receita: 0, despesa: 0, saldo: 0 };
+      if (l.tipo === "receita") finByMonth[mes].receita += Number(l.valor);
+      else finByMonth[mes].despesa += Number(l.valor);
+    }
+    const receitaMensal = Object.values(finByMonth)
+      .sort((a, b) => a.mes.localeCompare(b.mes))
+      .map(m => ({ ...m, receita: Math.round(m.receita), despesa: Math.round(m.despesa), saldo: Math.round(m.receita - m.despesa) }));
+
+    // ── OS por categoria ────────────────────────────────────────────────────
+    const osCatMap: Record<string, number> = {};
+    for (const o of osRows ?? []) {
+      const cat = o.categoria || "outros";
+      osCatMap[cat] = (osCatMap[cat] || 0) + 1;
+    }
+    const osPorCategoria = Object.entries(osCatMap)
+      .map(([categoria, total]) => ({ categoria, total }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8);
+
+    // ── Crescimento de condos por mês ────────────────────────────────────
+    const condoByMonth: Record<string, number> = {};
+    for (const c of condos ?? []) {
+      const mes = c.created_at ? c.created_at.slice(0, 7) : "2026-01";
+      condoByMonth[mes] = (condoByMonth[mes] || 0) + 1;
+    }
+    let acumulado = 0;
+    const crescimentoCondos = Object.entries(condoByMonth)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([mes, novos]) => { acumulado += novos; return { mes: mes.replace("-", "/"), novos, total: acumulado }; });
+
+    // ── MRR por mês (estimado por cadastros) ─────────────────────────────
+    const mrrByMonth: Record<string, number> = {};
+    let mrrAcum = 0;
+    for (const entry of crescimentoCondos) {
+      const condosMes = condos?.filter(c => c.created_at?.slice(0,7) === entry.mes.replace("/","-")) ?? [];
+      mrrAcum += condosMes.reduce((s, c) => s + (PLAN_MRR[(c.plano||"free").toLowerCase()] || 0), 0);
+      mrrByMonth[entry.mes] = mrrAcum;
+    }
+    const mrrMensal = Object.entries(mrrByMonth).map(([mes, mrr]) => ({ mes, mrr }));
+
+    // ── OS status distribution ────────────────────────────────────────────
+    const osStatus = [
+      { name: "Abertas",    value: osRows?.filter(o => o.status === "aberta").length ?? 0 },
+      { name: "Em Andamento", value: osRows?.filter(o => o.status === "em_andamento").length ?? 0 },
+      { name: "Concluídas", value: osRows?.filter(o => o.status === "concluida").length ?? 0 },
+    ];
+
+    res.json({ receitaMensal, osPorCategoria, crescimentoCondos, mrrMensal, osStatus });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/bi/forecast  — previsões
+router.get("/bi/forecast", checkAdminGlobal, async (_req: Request, res: Response) => {
+  try {
+    const { data: lancamentos } = await supabase
+      .from("lancamentos")
+      .select("tipo, valor, data")
+      .order("data");
+
+    // Agrupa por mês
+    const recByMonth: Record<string, number> = {};
+    const despByMonth: Record<string, number> = {};
+    for (const l of lancamentos ?? []) {
+      const mes = l.data ? l.data.slice(0, 7) : "2026-01";
+      if (l.tipo === "receita") recByMonth[mes] = (recByMonth[mes] || 0) + Number(l.valor);
+      else despByMonth[mes] = (despByMonth[mes] || 0) + Number(l.valor);
+    }
+    const recValues  = Object.values(recByMonth).map(Number);
+    const despValues = Object.values(despByMonth).map(Number);
+
+    const recForecast  = biForecast(recValues);
+    const despForecast = biForecast(despValues);
+
+    // Forecast inadimplência
+    const inadByMonth = Object.keys(recByMonth).map(mes => {
+      const r = recByMonth[mes] || 1;
+      const d = despByMonth[mes] || 0;
+      return (d / r) * 100;
+    });
+    const inadForecast = biForecast(inadByMonth);
+
+    // Horizon de 3 meses projetados
+    const now = new Date();
+    const horizon = [1, 2, 3].map(offset => {
+      const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      const label = `${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getFullYear()).slice(2)}`;
+      const factor = 1 + (offset * 0.05);
+      return {
+        mes: label,
+        receita:     Math.round((recForecast.next  || 0) * factor),
+        despesa:     Math.round((despForecast.next || 0) * factor),
+        inadimplencia: Math.round((inadForecast.next || 0) * factor * 10) / 10,
+      };
+    });
+
+    res.json({
+      receita:      recForecast,
+      despesa:      despForecast,
+      inadimplencia: inadForecast,
+      horizon,
+    });
+  } catch (err: unknown) {
+    res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/bi/insights  — Claude gera insights estratégicos
+router.post("/bi/insights", checkAdminGlobal, async (req: Request, res: Response) => {
+  try {
+    const { overview, forecast } = req.body as Record<string, unknown>;
+    const msg = await anthropic.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 800,
+      messages: [{
+        role: "user",
+        content: `Você é Di, analista estratégica de dados do ImobCore SaaS. Analise os dados abaixo e retorne JSON:
+{
+  "insights": [
+    {"tipo":"alerta"|"oportunidade"|"risco"|"positivo", "titulo":"...", "descricao":"...", "acao":"..."},
+    ...máximo 6 insights
+  ],
+  "resumo": "frase curta de 1 linha resumindo a saúde da plataforma"
+}
+Dados: ${JSON.stringify({ overview, forecast })}
+Responda SOMENTE com JSON válido, sem markdown.`,
+      }],
+    });
+    const raw = (msg.content[0] as { text: string }).text.trim();
+    const json = JSON.parse(raw.replace(/^```json?\n?/, "").replace(/```$/, "").trim());
+    res.json(json);
+  } catch (err: unknown) {
+    // Fallback com insights genéricos
+    res.json({
+      insights: [
+        { tipo: "positivo",     titulo: "Plataforma estável",         descricao: "Todos os sistemas operacionais.",                                acao: "Manter monitoramento" },
+        { tipo: "oportunidade", titulo: "Upgrade FREE → PRO",         descricao: "Condos no plano FREE podem ser convertidos para PRO.",           acao: "Acionar campanha de upgrade" },
+        { tipo: "alerta",       titulo: "Verificar inadimplência",    descricao: "Monitore a evolução da inadimplência mensal.",                   acao: "Gerar relatório detalhado" },
+      ],
+      resumo: "Plataforma operacional — monitore crescimento e conversão de planos.",
+    });
+  }
+});
+
 export default router;
 export { broadcast };

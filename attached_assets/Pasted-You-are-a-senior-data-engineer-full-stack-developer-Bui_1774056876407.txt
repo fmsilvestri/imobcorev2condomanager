@@ -1,0 +1,179 @@
+You are a senior data engineer + full-stack developer.
+
+Build an ADVANCED BUSINESS INTELLIGENCE (BI) system for a SaaS platform called "Condo OS".
+
+---
+
+🎯 GOAL
+
+Create an executive dashboard that shows:
+
+- Global metrics
+- Advanced charts
+- Predictions (ML-like)
+- AI-generated insights
+
+---
+
+📁 PROJECT STRUCTURE
+
+/server
+  bi.js
+  analytics.js
+  forecast.js
+
+/client
+  pages/
+    BI.jsx
+  components/
+    Charts.jsx
+    Insights.jsx
+
+---
+
+📊 DATA SOURCES (Supabase)
+
+Tables:
+
+metricas
+- condominio_id
+- consumo_agua
+- consumo_energia
+- inadimplencia
+- created_at
+
+condominios
+- id
+- plano
+- status
+
+---
+
+📈 METRICS TO CALCULATE
+
+- total condominios
+- total revenue (estimated by plan)
+- average consumption
+- average delinquency
+- growth rate
+
+---
+
+📉 FORECAST ENGINE (IMPORTANT)
+
+Create forecast.js:
+
+Implement simple prediction:
+
+- moving average
+- trend detection
+
+Example:
+
+function forecast(values){
+  const avg = values.reduce((a,b)=>a+b,0)/values.length;
+  const trend = values[values.length-1] > avg ? "up" : "down";
+
+  return {
+    next: avg * 1.1,
+    trend
+  };
+}
+
+---
+
+📊 API
+
+GET /api/bi/overview
+→ returns metrics
+
+GET /api/bi/charts
+→ returns time series
+
+GET /api/bi/forecast
+→ returns predictions
+
+---
+
+📱 FRONTEND (React)
+
+Create BI.jsx with:
+
+---
+
+📊 EXECUTIVE CARDS
+
+- 🏢 Total condominios
+- 💰 Receita estimada
+- 📉 Inadimplência média
+- 📈 Crescimento
+
+---
+
+📈 CHARTS (IMPORTANT)
+
+Use chart library:
+
+- Line chart → consumo ao longo do tempo
+- Bar chart → comparação entre condomínios
+- Area chart → crescimento
+
+---
+
+🧠 AI INSIGHTS (DI GLOBAL)
+
+Create Insights.jsx:
+
+Generate insights like:
+
+- "3 condominios com aumento de inadimplência"
+- "Consumo de água subindo 12%"
+- "Risco de churn detectado"
+
+---
+
+📊 UI
+
+- dark mode
+- grid layout
+- modern dashboard
+- animated charts
+
+---
+
+🤖 INTELLIGENCE RULES
+
+- consumo ↑ → alerta
+- inadimplência ↑ → risco
+- plano FREE → potencial upgrade
+
+---
+
+🚀 FINAL EXPERIENCE
+
+Dashboard should:
+
+- show charts updating
+- display predictions
+- show AI insights
+- look like a fintech BI tool
+
+---
+
+📦 DEPENDENCIES
+
+Backend:
+- express
+- supabase
+
+Frontend:
+- react
+- recharts
+
+---
+
+IMPORTANT:
+
+- generate full working code
+- backend + frontend
+- no explanations
