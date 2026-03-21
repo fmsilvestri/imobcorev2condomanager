@@ -683,7 +683,7 @@ router.post("/sindico/relatorio-executivo", async (req: Request, res: Response) 
     const [osRes, moradoresRes, lancRes, resRes] = await Promise.all([
       supabase.from("ordens_servico").select("*").eq("condominio_id", condominio_id).order("created_at", { ascending: false }),
       supabase.from("moradores").select("id, unidade, bloco, status").eq("condominio_id", condominio_id),
-      supabase.from("lancamentos").select("*").eq("condominio_id", condominio_id).order("created_at", { ascending: false }).limit(200),
+      supabase.from("lancamentos_financeiros").select("*").eq("condominio_id", condominio_id).order("data", { ascending: false }).limit(200),
       supabase.from("reservatorios").select("*, sensor_readings(nivel_atual, volume_litros, created_at)").eq("condominio_id", condominio_id).limit(4),
     ]);
 
@@ -731,7 +731,7 @@ router.post("/sindico/relatorio-executivo", async (req: Request, res: Response) 
       periodo === "abr" ? "Abril 2026" : "Março 2026";
 
     const msg = await client.messages.create({
-      model: "claude-opus-4-5",
+      model: "claude-sonnet-4-6",
       max_tokens: 800,
       system: `Você é Di, síndica virtual IA do ${condNome} no ImobCore v2. Gere uma análise executiva concisa (3 parágrafos) com: 1) situação atual com destaques positivos e alertas críticos, 2) análise financeira e ocupação, 3) recomendações prioritárias e score estimado de saúde do condomínio (0-100). Use linguagem direta e profissional. Mencione números concretos. Use **negrito** para dados importantes.`,
       messages: [{

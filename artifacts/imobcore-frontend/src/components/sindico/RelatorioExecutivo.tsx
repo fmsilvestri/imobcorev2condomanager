@@ -62,40 +62,63 @@ export default function RelatorioExecutivo({ condId, condNome, sindNome = "Sínd
   const [diTexto, setDiTexto]   = useState("");
   const [phase, setPhase]       = useState<number>(0); // 0=idle 1=kpi 2=di 3=fin 4=os 5=iot 6=action
   const [copied, setCopied]     = useState(false);
+  const [errMsg, setErrMsg]     = useState<string | null>(null);
   const isMob = view === "mobile";
 
   const periodos: [string, string][] = [["jan","Jan"],["fev","Fev"],["mar","Mar"],["abr","Abr"],["tri","Trim."],["ano","Ano"]];
 
   const generate = useCallback(async () => {
     if (loading) return;
-    setLoading(true); setData(null); setDiTexto(""); setPhase(1);
+    setLoading(true); setData(null); setDiTexto(""); setPhase(1); setErrMsg(null);
 
     try {
-      const r = await fetch("/api/sindico/relatorio-executivo", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ condominio_id: condId, periodo, condominio_nome: condNome, sindico_nome: sindNome })
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
+
+      let r: Response;
+      try {
+        r = await fetch("/api/sindico/relatorio-executivo", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ condominio_id: condId, periodo, condominio_nome: condNome, sindico_nome: sindNome }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (!r.ok) {
+        const errBody = await r.text().catch(() => "");
+        throw new Error(`Erro ${r.status}: ${errBody || "falha ao gerar relatório"}`);
+      }
+
       const json: RelatorioData = await r.json();
+
+      if (!json.ok) throw new Error(json.diAnalysis || "Falha ao gerar análise");
 
       // Animate sections in sequence
       setData(json); setPhase(1);
       await delay(300);  setPhase(2);
 
-      // Stream Di analysis
+      // Stream Di analysis typewriter
       const txt = json.diAnalysis || "";
       let i = 0;
       await new Promise<void>(res => {
         const iv = setInterval(() => {
-          i += 5; setDiTexto(txt.slice(0, i));
+          i += 6; setDiTexto(txt.slice(0, i));
           if (i >= txt.length) { clearInterval(iv); res(); }
-        }, 15);
+        }, 12);
       });
 
       setPhase(3); await delay(300);
       setPhase(4); await delay(300);
       setPhase(5); await delay(300);
       setPhase(6);
-    } catch {
+    } catch (e: unknown) {
+      const msg = e instanceof Error
+        ? (e.name === "AbortError" ? "Timeout: Di demorou muito. Tente novamente." : e.message)
+        : "Erro inesperado ao gerar relatório.";
+      setErrMsg(msg);
       setPhase(0);
     } finally { setLoading(false); }
   }, [condId, condNome, sindNome, periodo, loading]);
@@ -161,8 +184,22 @@ export default function RelatorioExecutivo({ condId, condNome, sindNome = "Sínd
       {/* ── Report content ── */}
       <div style={{ flex:1, overflowY:"auto", padding:"14px 16px" }}>
 
+        {/* Error */}
+        {!data && !loading && errMsg && (
+          <div style={{ margin:"20px 0", background:"rgba(239,68,68,.1)", border:"1.5px solid rgba(239,68,68,.3)", borderRadius:14, padding:"16px 18px", display:"flex", gap:12, alignItems:"flex-start" }}>
+            <span style={{ fontSize:22, flexShrink:0 }}>⚠️</span>
+            <div>
+              <div style={{ fontSize:13, fontWeight:800, color:"#FCA5A5", marginBottom:4 }}>Di não conseguiu gerar o relatório</div>
+              <div style={{ fontSize:12, color:"#F87171", lineHeight:1.5 }}>{errMsg}</div>
+              <button onClick={generate} style={{ marginTop:10, padding:"6px 14px", borderRadius:8, border:"1px solid rgba(239,68,68,.4)", background:"rgba(239,68,68,.15)", color:"#FCA5A5", fontSize:11, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>
+                🔄 Tentar novamente
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Idle */}
-        {!data && !loading && (
+        {!data && !loading && !errMsg && (
           <div style={{ display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", minHeight:300, gap:12, textAlign:"center", padding:24 }}>
             <div style={{ fontSize:48, opacity:.3 }}>🧠</div>
             <div style={{ fontSize:16, fontWeight:700, color:"#F1F5F9", opacity:.5 }}>Di está pronta para gerar o relatório</div>
