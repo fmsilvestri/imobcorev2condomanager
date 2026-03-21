@@ -425,6 +425,46 @@ ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS equipamento_ids JSONB DEFAUL
     console.log("✅ Migration 12 (ordens_servico v2 full schema): OK");
   }
 
+  // ─── Migration 13: planos_manutencao — colunas v2 + plano_templates ──────────
+  const { error: m13Err } = await supabase.from("planos_manutencao").select("setor, frequencia_tipo, prestador_nome, custo_estimado, execucoes_realizadas, di_gerado").limit(1);
+  if (m13Err) {
+    console.log("⚠️  Migration 13 needed (planos_manutencao v2 + plano_templates). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    console.log(`
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS setor TEXT DEFAULT 'geral';
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS frequencia_tipo TEXT DEFAULT 'mensal';
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS frequencia_valor INTEGER DEFAULT 1;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS prestador_nome TEXT;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS prestador_contato TEXT;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS custo_estimado NUMERIC(12,2) DEFAULT 0;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS gerar_os_automatica BOOLEAN DEFAULT true;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS dias_antecedencia INTEGER DEFAULT 7;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT true;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS template_checklist JSONB DEFAULT '[]';
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS execucoes_realizadas INTEGER DEFAULT 0;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS execucoes_total INTEGER DEFAULT 12;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS di_gerado BOOLEAN DEFAULT false;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS ultima_execucao TIMESTAMPTZ;
+
+CREATE TABLE IF NOT EXISTS plano_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  setor TEXT NOT NULL,
+  nome TEXT NOT NULL,
+  tipo TEXT DEFAULT 'preventiva',
+  frequencia_tipo TEXT DEFAULT 'mensal',
+  frequencia_valor INTEGER DEFAULT 1,
+  custo_estimado NUMERIC(12,2) DEFAULT 0,
+  prestador_sugerido TEXT,
+  norma_tecnica TEXT,
+  instrucoes TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+`);
+    console.log();
+  } else {
+    console.log("✅ Migration 13 (planos_manutencao v2 + plano_templates): OK");
+  }
+
   console.log();
 }
 

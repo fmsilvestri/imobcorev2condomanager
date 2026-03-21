@@ -2371,13 +2371,50 @@ router.delete("/fornecedores/:id", async (req: Request, res: Response) => {
 
 // ─── PLANOS DE MANUTENÇÃO ─────────────────────────────────────────────────────
 
+// ─── Planos helpers ───────────────────────────────────────────────────────────
+// New columns (setor, frequencia_tipo, etc.) may not exist in older Supabase schemas.
+// We encode them as JSON inside the existing `instrucoes` TEXT field and decode on read.
+const META_PREFIX = "\u001FIMB_META\u001F"; // invisible separator
+
+function encodePlanoMeta(body: Record<string, unknown>): Record<string, unknown> {
+  const META_KEYS = ["setor","frequencia_tipo","frequencia_valor","prestador_nome","prestador_contato",
+    "custo_estimado","gerar_os_automatica","dias_antecedencia","ativo","template_checklist",
+    "execucoes_realizadas","execucoes_total","di_gerado","ultima_execucao"];
+  const meta: Record<string, unknown> = {};
+  const safeBody: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (META_KEYS.includes(k)) meta[k] = v;
+    else safeBody[k] = v;
+  }
+  // Map compatible fields
+  if (meta.frequencia_tipo && !safeBody.periodicidade) safeBody.periodicidade = meta.frequencia_tipo;
+  if (meta.custo_estimado !== undefined) safeBody.custo_total = Number(meta.custo_estimado) || 0;
+  // Encode meta into instrucoes
+  const realInstrucoes = String(safeBody.instrucoes || "");
+  const instrucoes = META_PREFIX + JSON.stringify(meta) + (realInstrucoes ? "\n" + realInstrucoes : "");
+  return { ...safeBody, instrucoes };
+}
+
+function decodePlanoMeta(row: Record<string, unknown>): Record<string, unknown> {
+  const instrucoes = String(row.instrucoes || "");
+  if (!instrucoes.startsWith(META_PREFIX)) return row;
+  const rest = instrucoes.slice(META_PREFIX.length);
+  const nlIdx = rest.indexOf("\n");
+  const jsonStr = nlIdx >= 0 ? rest.slice(0, nlIdx) : rest;
+  const realText = nlIdx >= 0 ? rest.slice(nlIdx + 1) : "";
+  try {
+    const meta = JSON.parse(jsonStr);
+    return { ...row, ...meta, instrucoes: realText, custo_estimado: meta.custo_estimado ?? row.custo_total };
+  } catch { return row; }
+}
+
 // GET /api/planos?condominio_id=X
 router.get("/planos", async (req: Request, res: Response) => {
   const condId = String(req.query.condominio_id || "");
   if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
   const { data, error } = await supabase.from("planos_manutencao").select("*").eq("condominio_id", condId).order("created_at", { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data || []);
+  res.json((data || []).map(row => decodePlanoMeta(row as Record<string, unknown>)));
 });
 
 // POST /api/planos
@@ -2386,12 +2423,13 @@ router.post("/planos", async (req: Request, res: Response) => {
   if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
   if (!body.nome) return res.status(400).json({ error: "nome obrigatório" });
   const itens = Array.isArray(body.equipamentos_itens) ? body.equipamentos_itens : [];
-  const custoTotal = itens.reduce((s: number, it: Record<string,unknown>) => s + (Number(it.custo_previsto) || 0), 0);
+  const bodyWithMeta = encodePlanoMeta(body);
+  const custoTotal = itens.reduce((s: number, it: Record<string,unknown>) => s + (Number(it.custo_previsto) || 0), 0) || Number(bodyWithMeta.custo_total) || 0;
   const { data, error } = await supabase.from("planos_manutencao").insert({
-    condominio_id, ...body, equipamentos_itens: itens, custo_total: custoTotal, updated_at: new Date().toISOString()
+    condominio_id, ...bodyWithMeta, equipamentos_itens: itens, custo_total: custoTotal, updated_at: new Date().toISOString()
   }).select().single();
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true, plano: data });
+  res.json({ ok: true, plano: decodePlanoMeta(data as Record<string, unknown>) });
 });
 
 // PUT /api/planos/:id
@@ -2399,12 +2437,13 @@ router.put("/planos/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   const { condominio_id: _cid, ...body } = req.body as Record<string, unknown>;
   const itens = Array.isArray(body.equipamentos_itens) ? body.equipamentos_itens : [];
-  const custoTotal = itens.reduce((s: number, it: Record<string,unknown>) => s + (Number(it.custo_previsto) || 0), 0);
+  const bodyWithMeta = encodePlanoMeta(body);
+  const custoTotal = itens.reduce((s: number, it: Record<string,unknown>) => s + (Number(it.custo_previsto) || 0), 0) || Number(bodyWithMeta.custo_total) || 0;
   const { data, error } = await supabase.from("planos_manutencao").update({
-    ...body, equipamentos_itens: itens, custo_total: custoTotal, updated_at: new Date().toISOString()
+    ...bodyWithMeta, equipamentos_itens: itens, custo_total: custoTotal, updated_at: new Date().toISOString()
   }).eq("id", id).select().single();
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true, plano: data });
+  res.json({ ok: true, plano: decodePlanoMeta(data as Record<string, unknown>) });
 });
 
 // DELETE /api/planos/:id
@@ -2413,6 +2452,109 @@ router.delete("/planos/:id", async (req: Request, res: Response) => {
   const { error } = await supabase.from("planos_manutencao").delete().eq("id", id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
+});
+
+// GET /api/plano-templates — templates predefinidos por setor
+router.get("/plano-templates", async (_req: Request, res: Response) => {
+  try {
+    const { data, error } = await supabase.from("plano_templates").select("*").order("setor");
+    if (error) {
+      // Table may not exist yet — return built-in defaults
+      const defaults = [
+        { setor:"hidraulico", nome:"Revisão bombas piscina", tipo:"preventiva", frequencia_tipo:"mensal", frequencia_valor:1, custo_estimado:2500, prestador_sugerido:"Jacuzzi" },
+        { setor:"elevador", nome:"Manutenção elevadores NR-13", tipo:"preventiva", frequencia_tipo:"mensal", frequencia_valor:1, custo_estimado:800, prestador_sugerido:"Neomot" },
+        { setor:"eletrico", nome:"Inspeção quadros elétricos", tipo:"preventiva", frequencia_tipo:"semestral", frequencia_valor:6, custo_estimado:650, prestador_sugerido:"EletroTec" },
+        { setor:"hidraulico", nome:"Limpeza reservatórios água", tipo:"preventiva", frequencia_tipo:"semestral", frequencia_valor:6, custo_estimado:480, norma_tecnica:"ABNT NBR 5626" },
+        { setor:"seguranca", nome:"Inspeção câmeras e portões", tipo:"inspecao", frequencia_tipo:"mensal", frequencia_valor:1, custo_estimado:220 },
+        { setor:"incendio", nome:"Revisão sistema incêndio", tipo:"corretiva", frequencia_tipo:"anual", frequencia_valor:12, custo_estimado:1800, norma_tecnica:"IT-21 CBPMESP" },
+        { setor:"jardinagem", nome:"Manutenção áreas verdes", tipo:"preventiva", frequencia_tipo:"mensal", frequencia_valor:1, custo_estimado:380 },
+        { setor:"piscina", nome:"Tratamento água piscina", tipo:"inspecao", frequencia_tipo:"semanal", frequencia_valor:7, custo_estimado:120, norma_tecnica:"ABNT NBR 10339" },
+        { setor:"estrutural", nome:"Inspeção fachada e lajes", tipo:"inspecao", frequencia_tipo:"anual", frequencia_valor:12, custo_estimado:2200, norma_tecnica:"ABNT NBR 16747" },
+        { setor:"limpeza", nome:"Limpeza caixas gordura", tipo:"preventiva", frequencia_tipo:"semestral", frequencia_valor:6, custo_estimado:3600 },
+      ];
+      return res.json(defaults);
+    }
+    res.json(data || []);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/planos/gerar-com-di — gerar planos com Claude IA
+router.post("/planos/gerar-com-di", async (req: Request, res: Response) => {
+  const { condominio_id, condominio_nome, setores, mes_inicio, tipo, gerar_os_automatica, equipamentos } = req.body as {
+    condominio_id: string; condominio_nome: string; setores: string[]; mes_inicio: number; tipo: string; gerar_os_automatica: boolean; equipamentos: string[];
+  };
+  if (!condominio_id || !setores?.length) return res.status(400).json({ error: "condominio_id e setores obrigatórios" });
+  try {
+    // Fetch templates for selected sectors
+    const { data: tpls } = await supabase.from("plano_templates").select("*").in("setor", setores);
+    const templates = tpls || [];
+    const mesNome = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"][(mes_inicio||1)-1];
+    const prompt = `Você é Di, síndica virtual IA do condomínio ${condominio_nome}. Crie planos de manutenção personalizados para os setores: ${setores.join(", ")}.
+Tipo principal: ${tipo}. Início: ${mesNome}.
+Equipamentos cadastrados no condomínio: ${(equipamentos||[]).slice(0,20).join(", ") || "não informados"}.
+Templates base disponíveis: ${JSON.stringify(templates.slice(0,8))}.
+
+Responda APENAS com um array JSON válido (sem markdown, sem explicações) com objetos contendo:
+nome, setor, tipo, frequencia_tipo (semanal|mensal|trimestral|semestral|anual), frequencia_valor (número), custo_estimado (número), prestador_nome, instrucoes (string curta com orientações).
+
+Gere 1-2 planos por setor selecionado, priorizando manutenções preventivas e normas técnicas brasileiras.`;
+    const aiResp = await anthropic.messages.create({
+      model: "claude-sonnet-4-6", max_tokens: 2000,
+      messages: [{ role:"user", content: prompt }],
+    });
+    const rawText = (aiResp.content[0] as { type: string; text: string }).text.replace(/```json|```/g, "").trim();
+    let planos: unknown[];
+    try { planos = JSON.parse(rawText); }
+    catch { return res.status(500).json({ error: "Resposta inválida da IA", raw: rawText.slice(0, 300) }); }
+    if (!Array.isArray(planos)) return res.status(500).json({ error: "IA não retornou array" });
+    res.json({ ok: true, planos });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/planos/:id/gerar-os — criar OS a partir de um plano
+router.post("/planos/:id/gerar-os", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { condominio_id } = req.body as { condominio_id: string };
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    // Load plano
+    const { data: plano, error: pErr } = await supabase.from("planos_manutencao").select("*").eq("id", id).single();
+    if (pErr || !plano) return res.status(404).json({ error: "Plano não encontrado" });
+    // Generate OS number
+    const { count } = await supabase.from("ordens_servico").select("*", { count:"exact", head:true }).eq("condominio_id", condominio_id);
+    const numero = (count || 0) + 1;
+    // Calc next date
+    const ft = plano.frequencia_tipo || plano.periodicidade || "mensal";
+    const fv = plano.frequencia_valor || 1;
+    const dias = ft === "semanal" ? 7*fv : ft === "mensal" ? 30*fv : ft === "bimestral" ? 60 : ft === "trimestral" ? 90 : ft === "semestral" ? 180 : 365;
+    const proxData = new Date(Date.now() + dias * 86_400_000).toISOString().split("T")[0];
+    // Insert OS (only columns that exist in ordens_servico table)
+    const { data: os, error: osErr } = await supabase.from("ordens_servico").insert({
+      condominio_id, numero,
+      titulo: plano.nome,
+      descricao: `[Plano ${plano.frequencia_tipo||"mensal"}] ${plano.instrucoes || plano.nome}. Prestador: ${plano.prestador_nome || "—"}. Próxima exec: ${proxData}.`,
+      categoria: plano.setor || "manutencao",
+      status: "aberta", prioridade: "media",
+      responsavel: plano.prestador_nome || null,
+      created_at: new Date().toISOString(),
+    }).select().single();
+    if (osErr) return res.status(500).json({ error: osErr.message });
+    // Update plano meta: increment execucoes_realizadas + ultima_execucao (via instrucoes encoding)
+    const decodedPlano = decodePlanoMeta(plano as Record<string, unknown>);
+    const updateBody = encodePlanoMeta({
+      ultima_execucao: new Date().toISOString(),
+      execucoes_realizadas: (Number(decodedPlano.execucoes_realizadas) || 0) + 1,
+      instrucoes: decodedPlano.instrucoes,
+      // preserve other meta fields
+      setor: decodedPlano.setor, frequencia_tipo: decodedPlano.frequencia_tipo,
+      frequencia_valor: decodedPlano.frequencia_valor, prestador_nome: decodedPlano.prestador_nome,
+      custo_estimado: decodedPlano.custo_estimado, gerar_os_automatica: decodedPlano.gerar_os_automatica,
+      dias_antecedencia: decodedPlano.dias_antecedencia, ativo: decodedPlano.ativo,
+      execucoes_total: decodedPlano.execucoes_total, di_gerado: decodedPlano.di_gerado,
+    });
+    await supabase.from("planos_manutencao").update(updateBody).eq("id", id);
+    res.json({ ok: true, os });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── DIAGNÓSTICO INTELIGENTE ─────────────────────────────────────────────────

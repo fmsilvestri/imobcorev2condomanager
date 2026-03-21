@@ -1,0 +1,445 @@
+# PROMPT — Planos de Manutenção v2 · ImobCore
+# Cole no Replit Agent (aba "Agent")
+
+---
+
+## CONTEXTO
+
+Projeto: ImobCore v2 — SaaS condomínios
+Stack: React + TypeScript + Vite, Supabase (PostgreSQL), Realtime
+Design: Dark theme com CSS vars (`--card-bg`, `--card-border`, `--grad`)
+Módulo atual: tela "Plano" com 3 planos simples (lista estática, sem gerador, sem calendário)
+Objetivo: transformar em gerador dinâmico completo com 9 setores, templates, calendário anual e Di IA
+
+---
+
+## 1. BANCO DE DADOS — Supabase
+
+### Alterar `planos_manutencao` (adicionar colunas):
+
+```sql
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS setor TEXT;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'preventiva';
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS frequencia_tipo TEXT DEFAULT 'mensal';
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS frequencia_valor INTEGER DEFAULT 1;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS prestador_nome TEXT;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS prestador_contato TEXT;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS custo_estimado NUMERIC(10,2) DEFAULT 0;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS gerar_os_automatica BOOLEAN DEFAULT true;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS dias_antecedencia INTEGER DEFAULT 7;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT true;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS template_checklist JSONB DEFAULT '[]';
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS execucoes_realizadas INTEGER DEFAULT 0;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS execucoes_total INTEGER DEFAULT 12;
+ALTER TABLE planos_manutencao ADD COLUMN IF NOT EXISTS di_gerado BOOLEAN DEFAULT false;
+```
+
+### Nova tabela `plano_templates`:
+
+```sql
+CREATE TABLE IF NOT EXISTS plano_templates (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  setor TEXT NOT NULL,
+  nome TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  frequencia_tipo TEXT NOT NULL,
+  frequencia_valor INTEGER DEFAULT 1,
+  custo_estimado NUMERIC(10,2),
+  prestador_sugerido TEXT,
+  equipamentos TEXT[],
+  checklist JSONB DEFAULT '[]',
+  norma_tecnica TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+INSERT INTO plano_templates (setor, nome, tipo, frequencia_tipo, frequencia_valor, custo_estimado, prestador_sugerido, equipamentos, norma_tecnica) VALUES
+('hidraulico',   'Revisão bombas piscina',        'preventiva', 'mensal',    1,  2500, 'Jacuzzi',        ARRAY['Bomba Filtro 1','Bomba Filtro 2','Bomba Kids 1','Bomba Kids 2','Bomba Hidro'], 'ABNT NBR 10339'),
+('elevador',     'Manutenção elevadores NR-13',   'preventiva', 'mensal',    1,   800, 'Neomot',         ARRAY['Elevador A','Elevador B'], 'NR-13'),
+('eletrico',     'Inspeção quadros elétricos',    'preventiva', 'semestral', 6,   650, 'EletroTec',      ARRAY['Quadro Geral','QDL Torres'], 'NR-10'),
+('hidraulico',   'Limpeza reservatórios água',    'preventiva', 'semestral', 6,   480, 'HidroClean',     ARRAY['Reservatório A','Reservatório B'], 'ABNT NBR 5626'),
+('seguranca',    'Inspeção câmeras e portões',    'inspecao',   'mensal',    1,   220, 'Intelbras',      ARRAY['12 câmeras CFTV','Portão garagem','Portão pedestre'], NULL),
+('incendio',     'Revisão sistema incêndio',      'corretiva',  'anual',    12,  1800, 'Kidde Brasil',   ARRAY['Extintores','Sprinklers','Central alarme'], 'IT-21 CBPMESP'),
+('jardinagem',   'Manutenção áreas verdes',       'preventiva', 'mensal',    1,   380, 'VerdeMais',      ARRAY['Jardins','Paisagismo externo'], NULL),
+('garagem',      'Revisão portão e vagas',        'inspecao',   'semestral', 6,   260, 'Garen',          ARRAY['Portão automático','Sinalização'], NULL),
+('estrutural',   'Inspeção fachada e lajes',      'inspecao',   'anual',    12,  2200, 'TechEngenharia', ARRAY['Fachada','Lajes cobertura','Garagem'], 'ABNT NBR 16747'),
+('limpeza',      'Limpeza caixas gordura',        'preventiva', 'semestral', 6,  3600, 'HidroClean',     ARRAY['Caixas gordura Torres A/B'], 'ANVISA RDC 216'),
+('piscina',      'Tratamento água piscina',       'inspecao',   'semanal',   7,   120, 'Aquatech',       ARRAY['Piscina adulto','Piscina kids'], 'ABNT NBR 10339'),
+('eletrico',     'Inspeção SPDA para-raios',      'inspecao',   'anual',    12,   450, 'ParaRaios Tech', ARRAY['SPDA Torres A/B'], 'ABNT NBR 5419');
+```
+
+---
+
+## 2. COMPONENTES REACT
+
+### `src/components/Planos/PlanosModule.tsx` — Container principal
+
+```typescript
+// Props: condominioId, view: 'desktop' | 'mobile'
+// State: planos[], templates[], activeTab, filtroSetor, showGerador
+// 4 tabs: Visão Geral | Por Setor | Gerador Di | Calendário Anual
+// Realtime: supabase.channel('planos').on('postgres_changes'...)
+```
+
+### `src/components/Planos/PlanosKPI.tsx` — KPIs
+
+```typescript
+// 4 cards: Total planos | Orçamento anual | Equip. cobertos | Próxima execução
+// Calcular custo_anual: somar custo_estimado * (12 / frequencia_valor) de cada plano
+// Calcular cobertura: distinct count de equipamentos cobertos
+```
+
+### `src/components/Planos/SetoresGrid.tsx` — Grid 9 setores
+
+```typescript
+// Card por setor com: ícone, nome, count de planos, count de equipamentos, badges de tipo
+// Clicar filtra a lista de planos pelo setor
+// Cor de accent lateral por setor (constante SETOR_COLORS)
+
+const SETOR_COLORS = {
+  hidraulico: '#0ea5e9', elevador: '#8b5cf6', eletrico: '#f59e0b',
+  seguranca: '#10b981',  incendio: '#ef4444',  jardinagem: '#06b6d4',
+  garagem: '#f97316',    estrutural: '#6b7280', limpeza: '#a78bfa',
+  piscina: '#06b6d4',    geral: '#94a3b8'
+}
+
+const SETOR_ICONS = {
+  hidraulico:'💧', elevador:'🛗', eletrico:'⚡', seguranca:'🔒',
+  incendio:'🔥', jardinagem:'🌿', garagem:'🚗', estrutural:'🏗',
+  limpeza:'🧹', piscina:'🏊', geral:'🏢'
+}
+```
+
+### `src/components/Planos/PlanoCard.tsx` — Card expandível
+
+Cada card deve mostrar:
+- Header: número, título, tipo/frequência badges, ícone do setor
+- Barra de progresso: `execucoes_realizadas / execucoes_total` com %
+- Chips de equipamentos com custo individual
+- Footer: data próxima execução + custo total + botões "Gerar OS" e "Editar"
+- Expanded: checklist de itens, histórico de execuções, prestador com contato
+- Botão "Gerar OS" → chama `osService.createFromPlano(plano)` → INSERT em `ordens_servico`
+
+```typescript
+// Calcular próxima execução:
+function calcProxima(plano: PlanoManutencao): Date {
+  const base = plano.ultima_execucao ? new Date(plano.ultima_execucao) : new Date(plano.created_at)
+  const dias = plano.frequencia_tipo === 'mensal' ? 30 * plano.frequencia_valor
+             : plano.frequencia_tipo === 'semanal' ? 7 * plano.frequencia_valor
+             : plano.frequencia_tipo === 'semestral' ? 180
+             : plano.frequencia_tipo === 'anual' ? 365 : 30
+  return new Date(base.getTime() + dias * 86400000)
+}
+
+// Status de urgência da próxima execução:
+function urgencia(proxima: Date): 'vencido' | 'urgente' | 'ok' {
+  const diff = (proxima.getTime() - Date.now()) / 86400000
+  if(diff < 0) return 'vencido'
+  if(diff <= 7) return 'urgente'
+  return 'ok'
+}
+```
+
+### `src/components/Planos/GeradorDi.tsx` — Gerador automático com IA
+
+```typescript
+// UI:
+// 1. Grid de checkboxes dos 9 setores (3 colunas)
+// 2. Selects: mês de início, tipo padrão, gerar OSs automáticas
+// 3. Botão "Gerar planos com Di" → chama Claude API
+// 4. Pré-visualização dos planos gerados antes de importar
+// 5. Botão "Importar todos" → INSERT em planos_manutencao
+
+async function gerarComDi(setoresSelecionados: string[], config: GeradorConfig) {
+  // Buscar templates dos setores selecionados
+  const templates = await supabase
+    .from('plano_templates')
+    .select('*')
+    .in('setor', setoresSelecionados)
+  
+  // Buscar equipamentos cadastrados do condomínio
+  const equipamentos = await supabase
+    .from('equipamentos')
+    .select('id, nome, categoria, local')
+    .eq('condominio_id', condominioId)
+  
+  // Chamar Di para personalizar e completar
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1200,
+      system: `Você é Di, síndica virtual do ${condominioNome}. 
+               Gere planos de manutenção personalizados em JSON.
+               Responda APENAS com JSON válido, sem markdown, sem explicações.
+               Formato: array de objetos com campos: nome, setor, tipo, frequencia_tipo, frequencia_valor, custo_estimado, prestador_nome, equipamentos (array strings), checklist (array strings), norma_tecnica.`,
+      messages: [{
+        role: 'user',
+        content: `Crie planos de manutenção para os setores: ${setoresSelecionados.join(', ')}.
+                  Equipamentos cadastrados: ${JSON.stringify(equipamentos.data?.map(e=>e.nome))}.
+                  Templates base: ${JSON.stringify(templates.data)}.
+                  Início: ${config.mesInicio}. Tipo: ${config.tipo}.
+                  Personalize para o condomínio ${condominioNome} com ${unidades} unidades em Florianópolis/SC.`
+      }]
+    })
+  })
+  
+  const data = await res.json()
+  const text = data.content[0].text.replace(/```json|```/g, '').trim()
+  return JSON.parse(text)
+}
+
+// Importar planos gerados:
+async function importarPlanos(planos: PlanoGerado[]) {
+  const inserts = planos.map(p => ({
+    condominio_id: condominioId,
+    nome: p.nome,
+    setor: p.setor,
+    tipo: p.tipo,
+    frequencia_tipo: p.frequencia_tipo,
+    frequencia_valor: p.frequencia_valor,
+    custo_estimado: p.custo_estimado,
+    prestador_nome: p.prestador_nome,
+    template_checklist: p.checklist.map(item => ({item, done: false})),
+    gerar_os_automatica: config.gerarOSAutomatica,
+    di_gerado: true,
+    ativo: true
+  }))
+  await supabase.from('planos_manutencao').insert(inserts)
+}
+```
+
+### `src/components/Planos/CalendarioAnual.tsx` — Calendário visual
+
+```typescript
+// Timeline horizontal de 12 meses com eventos de manutenção
+// Calcular automaticamente todas as datas de execução de todos os planos ativos
+// Código de cores: verde (concluído), âmbar (vencendo em 7d), azul (agendado), cinza (anual)
+// Grid de custo mensal estimado (12 cards com R$ de cada mês)
+// Botão exportar PDF do calendário → chamar generateCalendarioPDF()
+
+function gerarEventosCalendario(planos: PlanoManutencao[]): CalendarioEvent[] {
+  const eventos: CalendarioEvent[] = []
+  const hoje = new Date()
+  
+  planos.forEach(plano => {
+    const diasFreq = plano.frequencia_tipo === 'mensal' ? 30 * plano.frequencia_valor
+                   : plano.frequencia_tipo === 'semanal' ? 7 * plano.frequencia_valor
+                   : plano.frequencia_tipo === 'semestral' ? 180
+                   : plano.frequencia_tipo === 'anual' ? 365 : 30
+    
+    let data = new Date(hoje.getFullYear(), 0, 1) // 01/jan do ano atual
+    while(data.getFullYear() === hoje.getFullYear()) {
+      eventos.push({
+        data: new Date(data),
+        planoId: plano.id,
+        planoNome: plano.nome,
+        setor: plano.setor,
+        custo: plano.custo_estimado
+      })
+      data = new Date(data.getTime() + diasFreq * 86400000)
+    }
+  })
+  
+  return eventos.sort((a,b) => a.data.getTime() - b.data.getTime())
+}
+```
+
+### `src/utils/generateCalendarioPDF.ts` — Exportar PDF anual
+
+```typescript
+// Usar jsPDF (já disponível ou adicionar)
+// Página A3 landscape com:
+// - Header ImobCore + nome do condomínio + ano
+// - Grid 12 meses com eventos coloridos por setor
+// - Tabela de custos mensais
+// - Tabela resumo por setor (total anual, frequência, prestador)
+// - Rodapé com Di e timestamp
+```
+
+---
+
+## 3. GERAR OS AUTOMÁTICA A PARTIR DO PLANO
+
+Em `src/services/osService.ts`, adicionar função:
+
+```typescript
+async function createFromPlano(plano: PlanoManutencao): Promise<OrdemServico> {
+  const proxima = calcProxima(plano)
+  const numero = await generateNumero(plano.condominio_id)
+  
+  const os: Partial<OrdemServico> = {
+    condominio_id: plano.condominio_id,
+    numero,
+    titulo: plano.nome,
+    categoria: plano.setor,
+    status: 'aberta',
+    prioridade: 'media',
+    responsavel: plano.prestador_nome,
+    prestador_nome: plano.prestador_nome,
+    custo_estimado: plano.custo_estimado,
+    data_prevista: proxima.toISOString().split('T')[0],
+    sla_horas: 48,
+    checklist: (plano.template_checklist as any[] || []).map(c => 
+      typeof c === 'string' ? {item: c, done: false} : c
+    ),
+    aprovacao_necessaria: (plano.custo_estimado || 0) > 500
+  }
+  
+  const {data, error} = await supabase.from('ordens_servico').insert([os]).select().single()
+  if(error) throw error
+  
+  // Atualizar ultima_execucao no plano
+  await supabase.from('planos_manutencao')
+    .update({ultima_execucao: new Date().toISOString(), execucoes_realizadas: (plano.execucoes_realizadas || 0) + 1})
+    .eq('id', plano.id)
+  
+  return data
+}
+```
+
+---
+
+## 4. CRON JOB — Supabase Edge Function (geração automática)
+
+Criar `supabase/functions/gerar-os-automaticas/index.ts`:
+
+```typescript
+// Executar diariamente via cron (ou Cloudflare Workers)
+// Lógica:
+// 1. Buscar todos os planos ativos com gerar_os_automatica = true
+// 2. Para cada plano, calcular próxima execução
+// 3. Se próxima execução <= hoje + dias_antecedencia → criar OS automaticamente
+// 4. Evitar duplicatas verificando se já existe OS aberta/em andamento para este plano
+// 5. Notificar síndico via realtime channel
+
+Deno.serve(async () => {
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+  
+  const {data: planos} = await supabase
+    .from('planos_manutencao')
+    .select('*')
+    .eq('ativo', true)
+    .eq('gerar_os_automatica', true)
+  
+  for(const plano of planos || []) {
+    const proxima = calcProxima(plano)
+    const diasRestantes = (proxima.getTime() - Date.now()) / 86400000
+    
+    if(diasRestantes <= plano.dias_antecedencia) {
+      // Verificar se já existe OS aberta para este plano
+      const {data: existing} = await supabase
+        .from('ordens_servico')
+        .select('id')
+        .eq('condominio_id', plano.condominio_id)
+        .eq('titulo', plano.nome)
+        .in('status', ['aberta', 'andamento'])
+        .single()
+      
+      if(!existing) {
+        await createFromPlano(plano, supabase)
+      }
+    }
+  }
+  
+  return new Response('OK')
+})
+```
+
+---
+
+## 5. INTEGRAÇÃO NA INTERFACE EXISTENTE
+
+Na tela "Plano" atual (arquivo do Desktop Gestor com a tab "Plano"):
+
+Substituir o componente atual por:
+```tsx
+<PlanosModule condominioId={condominioId} view="desktop" />
+```
+
+Na barra de tabs de Manutenção, adicionar contexto para o novo módulo.
+
+---
+
+## 6. TEMPLATES PRÉ-DEFINIDOS POR SETOR
+
+Usar constante no frontend para geração rápida sem chamar IA:
+
+```typescript
+export const PLANO_TEMPLATES_DEFAULTS = {
+  piscina: {
+    preventivos: [{nome:'Revisão bombas filtragem',freq:'mensal',custo:2500,prestador:'Jacuzzi'}],
+    inspecoes: [{nome:'Análise química água',freq:'semanal',custo:120,prestador:'Aquatech'}]
+  },
+  elevador: {
+    preventivos: [{nome:'Manutenção preventiva NR-13',freq:'mensal',custo:800,prestador:'Fabricante'}]
+  },
+  incendio: {
+    obrigatorios: [{nome:'Recarga extintores + inspeção SPDA',freq:'anual',custo:1800,norma:'IT-21 CBPMESP'}]
+  },
+  hidraulico: {
+    preventivos: [
+      {nome:'Limpeza reservatórios',freq:'semestral',custo:480,norma:'ABNT NBR 5626'},
+      {nome:'Limpeza caixas gordura',freq:'semestral',custo:3600,norma:'ANVISA RDC 216'},
+    ]
+  },
+  eletrico: {
+    preventivos: [{nome:'Inspeção SPDA para-raios',freq:'anual',custo:450,norma:'ABNT NBR 5419'}],
+    inspecoes: [{nome:'Termografia quadros elétricos',freq:'anual',custo:800,norma:'NR-10'}]
+  }
+}
+```
+
+---
+
+## 7. VISUAL — Manter design system existente
+
+Usar apenas classes e CSS vars já existentes:
+- Cards: `.card` com `.card-title`
+- Badges: `.pill`, `.pill-green`, `.pill-amber`, `.pill-blue`, `.pill-purple`
+- Botões: `.btn`, `.btn-primary`, `.btn-ghost`, `.btn-sm`
+- Inputs: `.form-control`, `.form-group`, `.form-label`
+- Layouts: `.kpi-row`, `.kpi-card`, `.kpi-value`, `.kpi-label`
+
+Para o setor do card, adicionar borda lateral colorida:
+```css
+/* Adicionar ao CSS global */
+.plano-setor-hidraulico { border-left: 3px solid #0ea5e9; }
+.plano-setor-elevador   { border-left: 3px solid #8b5cf6; }
+.plano-setor-eletrico   { border-left: 3px solid #f59e0b; }
+.plano-setor-seguranca  { border-left: 3px solid #10b981; }
+.plano-setor-incendio   { border-left: 3px solid #ef4444; }
+.plano-setor-piscina    { border-left: 3px solid #06b6d4; }
+.plano-setor-garagem    { border-left: 3px solid #f97316; }
+.plano-setor-estrutural { border-left: 3px solid #6b7280; }
+.plano-setor-jardinagem { border-left: 3px solid #10b981; }
+```
+
+---
+
+## 8. PRIORIDADE DE IMPLEMENTAÇÃO
+
+1. SQL: ALTER TABLE + INSERT templates (5 min)
+2. `PlanoCard.tsx` com progresso e barra de urgência (1h)
+3. `SetoresGrid.tsx` + filtro por setor (30min)
+4. `GeradorDi.tsx` com Claude API + importação (1h30)
+5. `CalendarioAnual.tsx` com timeline visual (1h)
+6. `createFromPlano()` no osService (30min)
+7. Edge Function cron automático (1h)
+8. Export PDF calendário (1h)
+
+---
+
+## 9. TESTE APÓS IMPLEMENTAR
+
+- [ ] Gerador Di cria planos personalizados para os 9 setores
+- [ ] Botão "Gerar OS" de um plano cria OS no módulo OS Integrado
+- [ ] Barra de progresso atualiza ao registrar execução
+- [ ] Calendário anual mostra todos os eventos de todos os planos
+- [ ] Custo mensal calculado corretamente por frequência
+- [ ] Edge Function gera OS automaticamente X dias antes
+- [ ] Filtro por setor funciona no grid e na lista
+
+---
+
+*Gerado por Di — Síndica Virtual IA · ImobCore v2 · claude-sonnet-4 · 21/03/2026*

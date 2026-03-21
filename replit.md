@@ -128,5 +128,6 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. Always 
 - AI insights generation
 - 3-view interface: Gestor desktop + Síndico mobile + Morador mobile
 - Equipment management (CRUD) with Supabase persistence (tabela: equipamentos)
-- Maintenance plans CRUD (tabela: planos_manutencao) with equipment selection, per-equipment cost, and auto-calculated budget forecast
+- Maintenance plans v2 (PlanosModule.tsx — `src/components/Planos/PlanosModule.tsx`): 4 sub-tabs: Visão Geral (CRUD with setor/prestador/custo/progress bar/Gerar OS button), Por Setor (10 sector cards with click-to-filter), Gerador Di (Claude AI plan generator for selected sectors), Calendário Anual (12-month bar timeline + sector summary table). New fields (setor, frequencia_tipo, prestador_nome, custo_estimado, ativo, etc.) stored via meta-encoding in instrucoes field for schema backward-compatibility.
+- New API endpoints: GET /api/plano-templates, POST /api/planos/gerar-com-di (Claude AI), POST /api/planos/:id/gerar-os (creates OS + updates plan execution count)
 - Smart diagnostic scoring with AI analysis (tabelas: score_condominio, insights_ia)
