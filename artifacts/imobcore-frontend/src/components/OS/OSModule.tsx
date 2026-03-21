@@ -59,10 +59,10 @@ function SLABar({ created_at, sla_horas }: { created_at: string; sla_horas: numb
   void tick;
   return (
     <div>
-      <div style={{ height:4, background:"rgba(255,255,255,.08)", borderRadius:2, overflow:"hidden", marginBottom:3 }}>
-        <div style={{ width:`${Math.min(pct,100)}%`, height:"100%", background:barColor, borderRadius:2, transition:"width .5s" }} />
+      <div style={{ height:6, background:"rgba(255,255,255,.08)", borderRadius:3, overflow:"hidden", marginBottom:5 }}>
+        <div style={{ width:`${Math.min(pct,100)}%`, height:"100%", background:barColor, borderRadius:3, transition:"width .5s" }} />
       </div>
-      <div style={{ fontSize:9, color:barColor, fontWeight:600 }}>
+      <div style={{ fontSize:18, color:barColor, fontWeight:700 }}>
         {vencida ? `⚠️ Vencida há ${Math.abs(restH)}h` : `${restH}h restantes`}
       </div>
     </div>
@@ -80,31 +80,32 @@ function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: (
     <div
       onClick={onSelect}
       style={{
-        background:"rgba(255,255,255,.025)", border:`1px solid rgba(255,255,255,.07)`,
-        borderLeft:`3px solid ${pc}`, borderRadius:10, padding:compact?"10px 12px":"12px 14px",
-        marginBottom:8, cursor:"pointer", position:"relative",
-        boxShadow: isUrgente ? `0 0 12px ${pc}22` : "none",
+        background:"rgba(255,255,255,.04)", border:`1.5px solid rgba(255,255,255,.10)`,
+        borderLeft:`5px solid ${pc}`, borderRadius:12, padding:compact?"14px 16px":"16px 18px",
+        marginBottom:10, cursor:"pointer", position:"relative",
+        boxShadow: isUrgente ? `0 0 18px ${pc}33` : "0 2px 8px rgba(0,0,0,.25)",
         transition:"background .12s",
       }}
     >
       {/* Urgent pulse */}
       {isUrgente && (
-        <div style={{ position:"absolute",top:10,right:10,width:8,height:8,borderRadius:"50%",background:pc,boxShadow:`0 0 6px ${pc}`,animation:"pulse 1s infinite" }} />
+        <div style={{ position:"absolute",top:14,right:14,width:12,height:12,borderRadius:"50%",background:pc,boxShadow:`0 0 8px ${pc}`,animation:"pulse 1s infinite" }} />
       )}
+
       {/* Header row */}
-      <div style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:6 }}>
-        <span style={{ fontFamily:"monospace", fontSize:10, color:"#818CF8", fontWeight:800, flexShrink:0, marginTop:1 }}>{fmtNum(os.numero)}</span>
+      <div style={{ display:"flex", alignItems:"flex-start", gap:12, marginBottom:10 }}>
+        <span style={{ fontFamily:"monospace", fontSize:20, color:"#A5B4FC", fontWeight:900, flexShrink:0, marginTop:2, letterSpacing:".03em" }}>{fmtNum(os.numero)}</span>
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:compact?12:13, fontWeight:700, color:"var(--neu-text,#F1F5F9)", lineHeight:1.3, marginBottom:3 }}>{os.titulo}</div>
-          <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-            <span style={{ fontSize:9, fontWeight:700, color:pc, background:pc+"22", border:`1px solid ${pc}44`, borderRadius:4, padding:"1px 6px" }}>{PRI_LABEL[os.prioridade]||os.prioridade}</span>
-            <span style={{ fontSize:9, fontWeight:600, color:sc, background:sc+"15", borderRadius:4, padding:"1px 6px" }}>{STS_LABEL[os.status]||os.status}</span>
-            <span style={{ fontSize:9, color:"#64748B" }}>{CAT_ICON[os.categoria]} {os.categoria}</span>
+          <div style={{ fontSize:compact?22:24, fontWeight:800, color:"#FFFFFF", lineHeight:1.3, marginBottom:6 }}>{os.titulo}</div>
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+            <span style={{ fontSize:18, fontWeight:800, color:pc, background:pc+"22", border:`1.5px solid ${pc}55`, borderRadius:6, padding:"3px 10px" }}>{PRI_LABEL[os.prioridade]||os.prioridade}</span>
+            <span style={{ fontSize:18, fontWeight:700, color:sc, background:sc+"18", border:`1px solid ${sc}44`, borderRadius:6, padding:"3px 10px" }}>{STS_LABEL[os.status]||os.status}</span>
+            <span style={{ fontSize:18, color:"#94A3B8", fontWeight:600 }}>{CAT_ICON[os.categoria]} <span style={{ color:"#CBD5E1" }}>{os.categoria}</span></span>
           </div>
         </div>
         {/* Avatar */}
         {os.responsavel && (
-          <div title={os.responsavel} style={{ width:28,height:28,borderRadius:"50%",background:avatarColor(os.responsavel),display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#fff",flexShrink:0 }}>
+          <div title={os.responsavel} style={{ width:42,height:42,borderRadius:"50%",background:avatarColor(os.responsavel),display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:900,color:"#fff",flexShrink:0,boxShadow:"0 2px 6px rgba(0,0,0,.4)" }}>
             {initials(os.responsavel)}
           </div>
         )}
@@ -117,23 +118,23 @@ function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: (
 
       {/* Progress bar */}
       {!compact && (
-        <div style={{ marginTop:6 }}>
-          <div style={{ height:3, background:"rgba(255,255,255,.06)", borderRadius:2, overflow:"hidden" }}>
-            <div style={{ width:`${prog}%`,height:"100%",background:sc,borderRadius:2,transition:"width .5s" }} />
+        <div style={{ marginTop:8 }}>
+          <div style={{ height:5, background:"rgba(255,255,255,.07)", borderRadius:3, overflow:"hidden" }}>
+            <div style={{ width:`${prog}%`,height:"100%",background:sc,borderRadius:3,transition:"width .5s",boxShadow:`0 0 6px ${sc}88` }} />
           </div>
         </div>
       )}
 
       {/* Meta row */}
       {!compact && (
-        <div style={{ display:"flex",gap:8,marginTop:6,flexWrap:"wrap",alignItems:"center" }}>
-          {os.local && <span style={{ fontSize:10,color:"#64748B" }}>📍 {os.local}</span>}
-          {os.custo_estimado! > 0 && <span style={{ fontSize:10,color:"#64748B" }}>💰 R$ {os.custo_estimado!.toLocaleString("pt-BR")}</span>}
-          {os.data_prevista && <span style={{ fontSize:10,color:"#64748B" }}>📅 {fmtDate(os.data_prevista)}</span>}
-          {os.aprovacao_necessaria && <span style={{ fontSize:9,fontWeight:700,color:"#EAB308",background:"rgba(234,179,8,.15)",borderRadius:4,padding:"1px 6px" }}>⚠️ Aprovação</span>}
-          <div style={{ marginLeft:"auto",display:"flex",gap:4 }}>
-            {os.status==="aberta"&&<button onClick={e=>{e.stopPropagation();onStatusChange(os.id,"em_andamento");}} style={{ fontSize:9,padding:"2px 8px",background:"rgba(6,182,212,.15)",border:"1px solid rgba(6,182,212,.3)",borderRadius:4,color:"#67E8F9",cursor:"pointer",fontWeight:600 }}>▶ Iniciar</button>}
-            {os.status==="em_andamento"&&<button onClick={e=>{e.stopPropagation();onStatusChange(os.id,"fechada");}} style={{ fontSize:9,padding:"2px 8px",background:"rgba(16,185,129,.15)",border:"1px solid rgba(16,185,129,.3)",borderRadius:4,color:"#34D399",cursor:"pointer",fontWeight:600 }}>✓ Concluir</button>}
+        <div style={{ display:"flex",gap:12,marginTop:10,flexWrap:"wrap",alignItems:"center" }}>
+          {os.local && <span style={{ fontSize:20,color:"#7DD3FC",fontWeight:600 }}>📍 <span style={{ color:"#BAE6FD" }}>{os.local}</span></span>}
+          {os.custo_estimado! > 0 && <span style={{ fontSize:20,color:"#86EFAC",fontWeight:600 }}>💰 <span style={{ color:"#BBF7D0" }}>R$ {os.custo_estimado!.toLocaleString("pt-BR")}</span></span>}
+          {os.data_prevista && <span style={{ fontSize:20,color:"#FCA5A5",fontWeight:600 }}>📅 <span style={{ color:"#FECACA" }}>{fmtDate(os.data_prevista)}</span></span>}
+          {os.aprovacao_necessaria && <span style={{ fontSize:18,fontWeight:800,color:"#FDE68A",background:"rgba(234,179,8,.18)",border:"1px solid rgba(234,179,8,.35)",borderRadius:6,padding:"3px 10px" }}>⚠️ Aprovação</span>}
+          <div style={{ marginLeft:"auto",display:"flex",gap:6 }}>
+            {os.status==="aberta"&&<button onClick={e=>{e.stopPropagation();onStatusChange(os.id,"em_andamento");}} style={{ fontSize:18,padding:"5px 16px",background:"rgba(6,182,212,.18)",border:"1.5px solid rgba(6,182,212,.4)",borderRadius:8,color:"#67E8F9",cursor:"pointer",fontWeight:700 }}>▶ Iniciar</button>}
+            {os.status==="em_andamento"&&<button onClick={e=>{e.stopPropagation();onStatusChange(os.id,"fechada");}} style={{ fontSize:18,padding:"5px 16px",background:"rgba(16,185,129,.18)",border:"1.5px solid rgba(16,185,129,.4)",borderRadius:8,color:"#34D399",cursor:"pointer",fontWeight:700 }}>✓ Concluir</button>}
           </div>
         </div>
       )}
