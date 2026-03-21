@@ -482,15 +482,17 @@ router.get("/condominios", async (_req: Request, res: Response) => {
 // GET /api/os - Listar OSs (com filtros opcionais)
 router.get("/os", async (req: Request, res: Response) => {
   try {
-    const { status, categoria, prioridade, search } = req.query as Record<string, string>;
+    const { condominio_id, status, categoria, prioridade, search } = req.query as Record<string, string>;
     let q = supabase.from("ordens_servico").select("*").order("created_at", { ascending: false });
+    // MULTI-TENANCY: sempre filtrar por condominio_id
+    if (condominio_id) q = q.eq("condominio_id", condominio_id);
     if (status && status !== "todos") q = q.eq("status", status);
     if (categoria && categoria !== "todos") q = q.eq("categoria", categoria);
     if (prioridade && prioridade !== "todos") q = q.eq("prioridade", prioridade);
-    if (search) q = q.ilike("titulo", `%${search}%`);
+    if (search) q = q.or(`titulo.ilike.%${search}%,local.ilike.%${search}%,responsavel.ilike.%${search}%`);
     const { data, error } = await q;
     if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
+    res.json(data ?? []);
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
@@ -501,7 +503,7 @@ router.post("/os", async (req: Request, res: Response) => {
   try {
     const body = req.body as Record<string, unknown>;
     const { condominio_id, titulo, descricao, categoria, prioridade, unidade, responsavel,
-            equipamento_ids, prestador_nome, custo_estimado, data_prevista, sla_horas,
+            equipamento_ids, prestador_nome, fornecedor_id, custo_estimado, data_prevista, sla_horas,
             checklist, aprovacao_necessaria, local } = body;
 
     const { data: cond } = await supabase.from("condominios").select("id").limit(1).single();
@@ -535,6 +537,7 @@ router.post("/os", async (req: Request, res: Response) => {
       local,
       responsavel,
       prestador_nome,
+      fornecedor_id: fornecedor_id || null,
       custo_estimado: Number(custo_estimado) || 0,
       data_prevista: data_prevista || null,
       sla_horas: slaFinal,
@@ -581,8 +584,9 @@ router.put("/os/:id", async (req: Request, res: Response) => {
     // Retry 2: apenas campos core garantidos (inclui novos campos v2)
     if (colErr(error)) {
       const os_core = ["titulo","descricao","categoria","prioridade","unidade","status","responsavel","numero",
-                       "prestador_nome","custo_estimado","custo_real","data_prevista","sla_horas",
-                       "foto_antes","foto_depois","checklist","aprovacao_necessaria","aprovado_por","di_sugestao","local"];
+                       "prestador_nome","fornecedor_id","custo_estimado","custo_real","data_prevista","sla_horas",
+                       "foto_antes","foto_depois","checklist","aprovacao_necessaria","aprovado_por","aprovado_em","di_sugestao","local",
+                       "equipamento_ids"];
       const safe = Object.fromEntries(Object.entries(updates).filter(([k]) => os_core.includes(k)));
       const r3 = await supabase.from("ordens_servico").update(safe).eq("id", id).select().single();
       data = r3.data; error = r3.error;

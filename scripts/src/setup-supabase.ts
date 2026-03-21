@@ -398,6 +398,33 @@ ALTER TABLE sensor_leituras ADD COLUMN IF NOT EXISTS device_id TEXT;
     console.log("✅ Migration 11c (sensor_leituras Cloudflare columns): OK");
   }
 
+  // ─── Migration 12: ordens_servico — fornecedor_id + colunas v2 completas ───
+  const { error: m12Err } = await supabase.from("ordens_servico")
+    .select("fornecedor_id, sla_horas, local, checklist, di_sugestao, aprovacao_necessaria, foto_antes, foto_depois, custo_real, prestador_nome, data_prevista").limit(1);
+  if (m12Err) {
+    console.log("⚠️  Migration 12 needed (ordens_servico v2 full schema). Run in SQL Editor:");
+    console.log(`   ${sqlEditorUrl}\n`);
+    console.log(`
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS sla_horas INTEGER DEFAULT 48;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS local TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]';
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS di_sugestao JSONB;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS aprovacao_necessaria BOOLEAN DEFAULT false;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS aprovado_por TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS aprovado_em TIMESTAMPTZ;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS foto_antes TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS foto_depois TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS custo_real NUMERIC(12,2);
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS prestador_nome TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS data_prevista DATE;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS fornecedor_id UUID REFERENCES fornecedores(id) ON DELETE SET NULL;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS equipamento_ids JSONB DEFAULT '[]';
+`);
+    console.log();
+  } else {
+    console.log("✅ Migration 12 (ordens_servico v2 full schema): OK");
+  }
+
   console.log();
 }
 
