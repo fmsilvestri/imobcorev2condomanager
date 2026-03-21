@@ -3887,6 +3887,194 @@ export default function App() {
   const renderSindicoScreen = () => {
     if (!sindicoScreen) return null;
 
+    // ── Di Síndica Virtual — tela mobile completa ─────────────────────────────
+    if (sindicoScreen === "di") {
+      type DiCard = {
+        tipo: "critico" | "atencao" | "info" | "insight";
+        titulo: string; mensagem: string; acao: string; badge?: string;
+      };
+      const tipoConfig: Record<string, { bg: string; border: string; accent: string; label: string; labelBg: string }> = {
+        critico: { bg:"rgba(239,68,68,.12)",   border:"rgba(239,68,68,.4)",   accent:"#EF4444", label:"🚨 CRÍTICO",    labelBg:"rgba(239,68,68,.22)" },
+        atencao: { bg:"rgba(234,179,8,.09)",   border:"rgba(234,179,8,.4)",   accent:"#EAB308", label:"⚠️ ATENÇÃO",   labelBg:"rgba(234,179,8,.2)" },
+        info:    { bg:"rgba(16,185,129,.09)",  border:"rgba(16,185,129,.35)", accent:"#10B981", label:"📊 NORMAL",    labelBg:"rgba(16,185,129,.2)" },
+        insight: { bg:"rgba(168,85,247,.12)",  border:"rgba(168,85,247,.4)",  accent:"#A855F7", label:"🧠 INSIGHT IA",labelBg:"rgba(168,85,247,.22)" },
+      };
+
+      const diCards: DiCard[] = (diData?.cards as DiCard[] | undefined) || [];
+      const criticos = diCards.filter(c => c.tipo === "critico").length;
+      const atencoes = diCards.filter(c => c.tipo === "atencao").length;
+
+      return (
+        <div style={{ position:"absolute", inset:0, zIndex:50, display:"flex", flexDirection:"column", background:"#0B0A1A", overflowY:"auto", fontFamily:"'Nunito',sans-serif" }}>
+          {/* ── Header gradiente Di ── */}
+          <div style={{ background:"linear-gradient(160deg,#3B0764 0%,#581C87 55%,#4C1D95 100%)", padding:"12px 18px 0", flexShrink:0 }}>
+            {/* Voltar */}
+            <button onClick={() => setSindicoScreen(null)} style={{ background:"rgba(255,255,255,.12)", border:"none", borderRadius:20, padding:"5px 12px", fontSize:12, color:"#C4B5FD", cursor:"pointer", fontWeight:700, marginBottom:10 }}>
+              ← Voltar
+            </button>
+            {/* Avatar + info */}
+            <div style={{ display:"flex", alignItems:"flex-start", gap:14, paddingBottom:16 }}>
+              <div style={{ position:"relative", flexShrink:0 }}>
+                <img
+                  src="/di.png"
+                  alt="Di"
+                  style={{
+                    width:80, height:80, borderRadius:"50%",
+                    objectFit:"cover", objectPosition:"top",
+                    border:"2.5px solid rgba(167,139,250,.55)",
+                    boxShadow: diFalando
+                      ? "0 0 0 5px rgba(167,139,250,.25),0 0 20px rgba(139,92,246,.45)"
+                      : "0 4px 16px rgba(0,0,0,.5)",
+                    transition:"box-shadow .4s",
+                    transform: diFalando ? "scale(1.04)" : "scale(1)",
+                  }}
+                />
+                {diFalando && (
+                  <div style={{ position:"absolute", bottom:4, right:4, width:12, height:12, borderRadius:"50%", background:"#A855F7", boxShadow:"0 0 6px #A855F7", animation:"pulse 1s infinite" }} />
+                )}
+              </div>
+              <div style={{ flex:1, paddingTop:6 }}>
+                <div style={{ fontSize:22, fontWeight:900, color:"#F3E8FF", letterSpacing:"-0.5px" }}>Di</div>
+                <div style={{ fontSize:11, color:"#C4B5FD", marginBottom:8 }}>Síndica Virtual — Powered by Claude IA</div>
+                <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                  <span style={{ background:"rgba(167,139,250,.2)", border:"1px solid rgba(167,139,250,.4)", borderRadius:20, padding:"2px 10px", fontSize:9, color:"#C4B5FD" }}>
+                    ● {diFalando ? "Falando..." : "Online"}
+                  </span>
+                  {criticos > 0 && (
+                    <span style={{ background:"rgba(239,68,68,.25)", border:"1px solid rgba(239,68,68,.45)", borderRadius:20, padding:"2px 10px", fontSize:9, color:"#FCA5A5", fontWeight:700 }}>
+                      🚨 {criticos} crítico{criticos > 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {atencoes > 0 && (
+                    <span style={{ background:"rgba(234,179,8,.2)", border:"1px solid rgba(234,179,8,.4)", borderRadius:20, padding:"2px 10px", fontSize:9, color:"#FDE68A", fontWeight:600 }}>
+                      ⚠️ {atencoes} atenção
+                    </span>
+                  )}
+                  {diData && criticos === 0 && atencoes === 0 && (
+                    <span style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.35)", borderRadius:20, padding:"2px 10px", fontSize:9, color:"#6EE7B7", fontWeight:600 }}>
+                      ✅ Tudo OK
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Corpo scrollável ── */}
+          <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 100px" }}>
+            {/* Balão de fala */}
+            {diData?.fala && (
+              <div style={{ background:"rgba(139,92,246,.1)", border:"1px solid rgba(139,92,246,.25)", borderRadius:14, padding:"14px 16px", marginBottom:14, position:"relative" }}>
+                <div style={{ position:"absolute", top:-8, left:22, width:16, height:8, overflow:"hidden" }}>
+                  <div style={{ width:16, height:16, background:"rgba(139,92,246,.25)", transform:"rotate(45deg)", transformOrigin:"bottom left", border:"1px solid rgba(139,92,246,.25)" }} />
+                </div>
+                <div style={{ fontSize:13, color:"#E9D5FF", lineHeight:1.6 }}>{diData.fala}</div>
+              </div>
+            )}
+            {!diData && !diLoading && (
+              <div style={{ textAlign:"center", padding:"24px 0 16px", color:"#4B3B7D", fontSize:13 }}>
+                Toque em <strong style={{ color:"#A78BFA" }}>"Briefing da Di"</strong> para analisar o condomínio.
+              </div>
+            )}
+            {diLoading && (
+              <div style={{ textAlign:"center", padding:"24px 0", color:"#A78BFA", fontSize:13 }}>
+                ⏳ Di está analisando o condomínio...
+              </div>
+            )}
+
+            {/* Cards inteligentes */}
+            {diCards.length > 0 && (
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                {diCards.map((card, i) => {
+                  const cfg = tipoConfig[card.tipo] || tipoConfig.info;
+                  return (
+                    <div key={i} style={{
+                      background:cfg.bg, border:`1px solid ${cfg.border}`, borderRadius:14,
+                      padding:"12px 13px", display:"flex", flexDirection:"column", gap:7,
+                      boxShadow: card.tipo === "critico" ? "0 0 14px rgba(239,68,68,.15)" : "none",
+                    }}>
+                      {/* Badge tipo + badge personalizado */}
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:4 }}>
+                        <span style={{ background:cfg.labelBg, color:cfg.accent, borderRadius:5, padding:"2px 7px", fontSize:8, fontWeight:800, letterSpacing:".5px" }}>
+                          {cfg.label}
+                        </span>
+                        {card.badge && (
+                          <span style={{ background:"rgba(255,255,255,.06)", border:`1px solid ${cfg.border}`, color:cfg.accent, borderRadius:20, padding:"1px 6px", fontSize:8, fontWeight:600 }}>
+                            {card.badge}
+                          </span>
+                        )}
+                      </div>
+                      {/* Título */}
+                      <div style={{ fontSize:12, fontWeight:800, color:"#F1F5F9", lineHeight:1.3 }}>{card.titulo}</div>
+                      {/* Mensagem */}
+                      <div style={{ fontSize:11, color:"#94A3B8", lineHeight:1.45 }}>{card.mensagem}</div>
+                      {/* Ação */}
+                      <div style={{ borderTop:`1px solid ${cfg.border}`, paddingTop:7, fontSize:10, color:cfg.accent, fontWeight:600, display:"flex", gap:4, alignItems:"flex-start" }}>
+                        <span style={{ flexShrink:0 }}>👉</span>
+                        <span>{card.acao}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── Botões de ação fixos no rodapé ── */}
+          <div style={{ position:"sticky", bottom:0, background:"rgba(11,10,26,.97)", borderTop:"1px solid rgba(139,92,246,.2)", padding:"12px 16px", display:"flex", gap:8, flexWrap:"wrap", backdropFilter:"blur(12px)" }}>
+            <button
+              disabled={diLoading}
+              onClick={async () => {
+                setDiLoading(true);
+                speechSynthesis.cancel();
+                setDiFalando(false);
+                try {
+                  const r = await fetch("/api/di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id: condId }) });
+                  const json = await r.json();
+                  if (json.fala) {
+                    setDiData({ fala: json.fala, cards: json.cards || [] });
+                    const u = new SpeechSynthesisUtterance(json.fala);
+                    u.lang = "pt-BR"; u.rate = 0.9; u.pitch = 1.1;
+                    u.onstart = () => setDiFalando(true);
+                    u.onend   = () => setDiFalando(false);
+                    u.onerror = () => setDiFalando(false);
+                    speechSynthesis.speak(u);
+                  }
+                } catch { /* silent */ }
+                setDiLoading(false);
+              }}
+              style={{ flex:1, background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", color:"#fff", borderRadius:12, padding:"11px 8px", fontSize:12, fontWeight:800, cursor:diLoading?"not-allowed":"pointer", opacity:diLoading?.6:1 }}
+            >
+              {diLoading ? "⏳ Analisando..." : "🟣 Briefing da Di"}
+            </button>
+
+            {diData?.fala && (
+              <button
+                onClick={() => {
+                  if (diFalando) { speechSynthesis.cancel(); setDiFalando(false); return; }
+                  const u = new SpeechSynthesisUtterance(diData.fala);
+                  u.lang = "pt-BR"; u.rate = 0.9; u.pitch = 1.1;
+                  u.onstart = () => setDiFalando(true);
+                  u.onend   = () => setDiFalando(false);
+                  speechSynthesis.speak(u);
+                }}
+                style={{ background: diFalando ? "rgba(239,68,68,.15)" : "rgba(167,139,250,.15)", border:`1px solid ${diFalando ? "rgba(239,68,68,.4)" : "rgba(167,139,250,.4)"}`, color: diFalando ? "#EF4444" : "#A78BFA", borderRadius:12, padding:"11px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}
+              >
+                {diFalando ? "⏹ Parar" : "🔊 Ouvir"}
+              </button>
+            )}
+
+            <button
+              onClick={() => setSindicoScreen("sindico")}
+              style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.4)", color:"#A5B4FC", borderRadius:12, padding:"11px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}
+            >
+              💬 Chat IA
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const screenTitle: Record<string, string> = {
       planejamento: "👤 Meu Perfil",
       sindico: "🤖 Síndico Virtual IA",

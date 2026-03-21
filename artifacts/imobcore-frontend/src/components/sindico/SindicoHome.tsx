@@ -242,28 +242,44 @@ export default function SindicoHome({
           ))}
         </div>
 
-        {/* IA BANNER */}
-        <div
-          className="sind-ia-banner"
-          onClick={() => setSindicoScreen("sindico")}
-          style={{
-            margin:"0 14px 14px", borderRadius:14, padding:"12px 14px",
-            background: isDark
-              ? "linear-gradient(135deg,#4f46e5,#7c3aed,#9333ea)"
-              : "linear-gradient(135deg,#6366f1,#8b5cf6)",
-            boxShadow: isDark ? "none" : "0 4px 16px rgba(99,102,241,0.30)",
-            cursor:"pointer", display:"flex", alignItems:"center", gap:12,
-            position:"relative", overflow:"hidden",
-          }}
-        >
-          <div style={{ position:"absolute", top:-18, right:-18, width:70, height:70, borderRadius:"50%", background:"rgba(255,255,255,0.08)" }} />
-          <div style={{ width:36, height:36, borderRadius:10, flexShrink:0, background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>🤖</div>
-          <div style={{ flex:1 }}>
-            <div style={{ fontSize:8, color:"rgba(255,255,255,0.65)", letterSpacing:"0.08em", textTransform:"uppercase", marginBottom:2 }}>SÍNDICO VIRTUAL IA</div>
-            <div style={{ fontSize:14, fontWeight:900, color:"#fff", lineHeight:1.2 }}>Falar com IA</div>
-            <div style={{ fontSize:9, color:"rgba(255,255,255,0.65)", marginTop:1 }}>Consultas em tempo real</div>
+        {/* IA BANNER — Di Síndica Virtual */}
+        <div style={{ margin:"0 14px 10px", display:"flex", gap:8 }}>
+          {/* Di card (primary) */}
+          <div
+            className="sind-ia-banner"
+            onClick={() => setSindicoScreen("di")}
+            style={{
+              flex:2, borderRadius:14, padding:"12px 14px",
+              background: isDark
+                ? "linear-gradient(135deg,#3B0764,#7C3AED,#A855F7)"
+                : "linear-gradient(135deg,#6d28d9,#a855f7)",
+              boxShadow: isDark ? "0 0 20px rgba(168,85,247,.25)" : "0 4px 16px rgba(124,58,237,0.35)",
+              cursor:"pointer", display:"flex", alignItems:"center", gap:10,
+              position:"relative", overflow:"hidden",
+            }}
+          >
+            <div style={{ position:"absolute", top:-14, right:-14, width:56, height:56, borderRadius:"50%", background:"rgba(255,255,255,0.08)" }} />
+            <img src="/di.png" alt="Di" style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover", objectPosition:"top", border:"2px solid rgba(255,255,255,0.3)", flexShrink:0 }} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:8, color:"rgba(255,255,255,0.65)", letterSpacing:"0.08em", textTransform:"uppercase" as const, marginBottom:1 }}>SÍNDICA VIRTUAL IA</div>
+              <div style={{ fontSize:14, fontWeight:900, color:"#fff", lineHeight:1.2 }}>Di — Briefing</div>
+              <div style={{ fontSize:9, color:"rgba(255,255,255,0.65)", marginTop:1 }}>Análise + cards inteligentes</div>
+            </div>
+            <span style={{ color:"rgba(255,255,255,0.8)", fontSize:22, fontWeight:300 }}>›</span>
           </div>
-          <span style={{ color:"rgba(255,255,255,0.8)", fontSize:22, fontWeight:300, lineHeight:1 }}>›</span>
+          {/* Chat IA (secondary) */}
+          <div
+            onClick={() => setSindicoScreen("sindico")}
+            style={{
+              flex:1, borderRadius:14, padding:"12px 10px",
+              background: isDark ? "rgba(99,102,241,.15)" : "rgba(99,102,241,.1)",
+              border:`1px solid ${isDark ? "rgba(99,102,241,.3)" : "rgba(99,102,241,.2)"}`,
+              cursor:"pointer", display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center", gap:4,
+            }}
+          >
+            <span style={{ fontSize:22 }}>💬</span>
+            <div style={{ fontSize:10, fontWeight:800, color: isDark ? "#A5B4FC" : "#4f46e5", textAlign:"center" as const, lineHeight:1.2 }}>Chat IA</div>
+          </div>
         </div>
 
         {/* MODULE GRID */}
@@ -319,8 +335,8 @@ export default function SindicoHome({
       }}>
         {navItem("⊞", "Início",   null,           () => setSindicoScreen(null))}
         {navItem("🔔", "Alertas", "misp",          () => setSindicoScreen("misp"))}
-        {/* FAB */}
-        <button onClick={() => setSindicoScreen("sindico")} style={{ width:48, height:48, borderRadius:"50%", background:"linear-gradient(135deg,#6366f1,#a855f7)", border:"none", cursor:"pointer", marginTop:-10, boxShadow:"0 4px 14px rgba(99,102,241,0.55)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🤖</button>
+        {/* FAB — Di */}
+        <button onClick={() => setSindicoScreen("di")} style={{ width:48, height:48, borderRadius:"50%", background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", cursor:"pointer", marginTop:-10, boxShadow:"0 4px 14px rgba(168,85,247,0.55)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🟣</button>
         {navItem("👤", "Usuário", "planejamento",  () => setSindicoScreen("planejamento"))}
         {navItem("👥", "CRM",     "crm",           () => setSindicoScreen("crm"))}
       </div>
