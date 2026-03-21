@@ -144,23 +144,37 @@ function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: (
 
 // ── KPI Strip ────────────────────────────────────────────────────────────────
 function KpiStrip({ os, filter, onFilter }: { os: OS[]; filter: string; onFilter:(f:string)=>void }) {
-  const stats = {
-    total:     { v:os.length, icon:"📊", label:"Total", color:"#94A3B8", bg:"rgba(148,163,184,.1)", filt:"todos" },
-    abertas:   { v:os.filter(o=>o.status==="aberta").length, icon:"📋", label:"Abertas", color:"#F59E0B", bg:"rgba(245,158,11,.08)", filt:"aberta" },
-    andamento: { v:os.filter(o=>o.status==="em_andamento").length, icon:"🔄", label:"Andamento", color:"#06B6D4", bg:"rgba(6,182,212,.08)", filt:"em_andamento" },
-    concluidas:{ v:os.filter(o=>o.status==="fechada").length, icon:"✅", label:"Concluídas", color:"#10B981", bg:"rgba(16,185,129,.08)", filt:"fechada" },
-    urgentes:  { v:os.filter(o=>o.prioridade==="urgente"&&o.status!=="fechada").length, icon:"🚨", label:"Urgentes", color:"#EF4444", bg:"rgba(239,68,68,.1)", filt:"urgente" },
-  };
+  const urgentesCount = os.filter(o=>o.prioridade==="urgente"&&o.status!=="fechada").length;
+  const stats = [
+    { k:"todos",     v:os.length,                                                  icon:"📊", label:"Total",      color:"#A5B4FC", bg:"rgba(165,180,252,.08)", glow:"rgba(165,180,252,.25)", filt:"todos"       },
+    { k:"aberta",    v:os.filter(o=>o.status==="aberta").length,                   icon:"📋", label:"Abertas",    color:"#FCD34D", bg:"rgba(252,211,77,.09)",  glow:"rgba(252,211,77,.28)",  filt:"aberta"      },
+    { k:"andamento", v:os.filter(o=>o.status==="em_andamento").length,             icon:"🔄", label:"Andamento",  color:"#22D3EE", bg:"rgba(34,211,238,.09)", glow:"rgba(34,211,238,.28)",  filt:"em_andamento" },
+    { k:"fechada",   v:os.filter(o=>o.status==="fechada").length,                  icon:"✅", label:"Concluídas", color:"#34D399", bg:"rgba(52,211,153,.09)", glow:"rgba(52,211,153,.28)",  filt:"fechada"     },
+    { k:"urgente",   v:urgentesCount,                                              icon:"🚨", label:"Urgentes",   color:"#F87171", bg:urgentesCount>0?"rgba(248,113,113,.14)":"rgba(248,113,113,.06)", glow:"rgba(248,113,113,.38)", filt:"urgente" },
+  ];
   return (
-    <div style={{ display:"flex",gap:8,marginBottom:14,flexWrap:"wrap" }}>
-      {Object.entries(stats).map(([k,s]) => (
-        <div key={k} onClick={()=>onFilter(filter===s.filt?"todos":s.filt)}
-          style={{ flex:"1 1 80px",background:s.bg,border:`1.5px solid ${filter===s.filt?s.color:"transparent"}`,borderRadius:12,padding:"10px 12px",textAlign:"center",cursor:"pointer",transition:"border-color .15s",minWidth:70 }}>
-          <div style={{ fontSize:16,marginBottom:2 }}>{s.icon}</div>
-          <div style={{ fontSize:20,fontWeight:900,color:s.color,lineHeight:1 }}>{s.v}</div>
-          <div style={{ fontSize:9,color:s.color,opacity:.8,marginTop:2,fontWeight:600 }}>{s.label}</div>
-        </div>
-      ))}
+    <div style={{ display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flex:1 }}>
+      {stats.map(s => {
+        const active = filter === s.filt;
+        const urgent = s.k === "urgente" && s.v > 0;
+        return (
+          <div key={s.k} onClick={()=>onFilter(active?"todos":s.filt)}
+            style={{
+              flex:"1 1 90px", minWidth:80,
+              background: active ? s.bg.replace(/\.\d+\)$/,".22)") : s.bg,
+              border:`2px solid ${active ? s.color : urgent ? s.color+"55" : "rgba(255,255,255,.07)"}`,
+              borderTop:`3px solid ${active || urgent ? s.color : "rgba(255,255,255,.07)"}`,
+              borderRadius:14, padding:"14px 10px 12px", textAlign:"center",
+              cursor:"pointer",
+              boxShadow: active ? `0 0 18px ${s.glow}` : urgent ? `0 0 10px ${s.glow}` : "none",
+              transition:"all .18s ease",
+            }}>
+            <div style={{ fontSize:24,marginBottom:4,lineHeight:1 }}>{s.icon}</div>
+            <div style={{ fontSize:26,fontWeight:900,color:s.color,lineHeight:1,letterSpacing:"-1px" }}>{s.v}</div>
+            <div style={{ fontSize:11,color:s.color,opacity: active ? 1 : .75,marginTop:4,fontWeight:700,letterSpacing:".02em" }}>{s.label}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -999,13 +1013,15 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
           🚨 <strong>{slaBreach}</strong> OS(s) com SLA ultrapassando 80% — atenção imediata necessária!
         </div>
       )}
-      {/* KPIs + Nova OS */}
-      <div style={{ display:"flex",gap:10,marginBottom:16,alignItems:"flex-start" }}>
-        <KpiStrip os={osList} filter={filter} onFilter={setFilter} />
-        <button onClick={()=>setShowForm(true)} style={{ flexShrink:0,padding:"0 20px",height:52,background:"linear-gradient(135deg,#6366F1,#818CF8)",border:"none",borderRadius:12,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",letterSpacing:".03em",boxShadow:"0 4px 14px rgba(99,102,241,.4)",whiteSpace:"nowrap" }}>
+      {/* Header row: title + button */}
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14 }}>
+        <div style={{ fontSize:18,fontWeight:900,color:"#F1F5F9",letterSpacing:"-.01em" }}>Ordens de Serviço</div>
+        <button onClick={()=>setShowForm(true)} style={{ padding:"10px 22px",background:"linear-gradient(135deg,#6366F1,#818CF8)",border:"none",borderRadius:12,color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",fontFamily:"inherit",letterSpacing:".03em",boxShadow:"0 4px 14px rgba(99,102,241,.45)",whiteSpace:"nowrap" }}>
           + Nova OS
         </button>
       </div>
+      {/* KPIs */}
+      <KpiStrip os={osList} filter={filter} onFilter={setFilter} />
 
       {/* Toolbar */}
       <div style={{ display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center" }}>
