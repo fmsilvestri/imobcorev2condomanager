@@ -2734,6 +2734,309 @@ Sem markdown, sem explicação.`,
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICAÇÕES MULTICANAL — Telegram | WhatsApp | Expo Push
+// Tabelas: notificacoes_config (config por condo) + notificacoes_log (histórico)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface NotifConfig {
+  telegram_ativo: boolean;
+  telegram_token: string;
+  telegram_chat_id: string;
+  whatsapp_ativo: boolean;
+  whatsapp_token: string;
+  whatsapp_phone_id: string;
+  whatsapp_numero: string;
+  push_ativo: boolean;
+  push_token: string;
+}
+
+interface NotifCard {
+  tipo: "critico" | "atencao" | "info" | "insight";
+  titulo: string;
+  mensagem: string;
+  acao: string;
+  badge?: string;
+}
+
+function montarMensagem(card: NotifCard): string {
+  const icon = { critico: "🚨", atencao: "⚠️", info: "📊", insight: "🧠" }[card.tipo] || "📩";
+  return `${icon} *Di — ImobCore*\n\n*${card.titulo}*\n${card.mensagem}\n\n👉 _Ação: ${card.acao}_`;
+}
+
+function montarMensagemTexto(card: NotifCard): string {
+  const icon = { critico: "🚨", atencao: "⚠️", info: "📊", insight: "🧠" }[card.tipo] || "📩";
+  return `${icon} Di — ImobCore\n\n${card.titulo}\n${card.mensagem}\n\n👉 Ação: ${card.acao}`;
+}
+
+// Canais por tipo de card
+function canaisPorTipo(tipo: string): ("telegram" | "whatsapp" | "push")[] {
+  if (tipo === "critico")  return ["telegram", "whatsapp", "push"];
+  if (tipo === "atencao")  return ["telegram", "push"];
+  if (tipo === "info")     return ["push"];
+  if (tipo === "insight")  return ["push"];
+  return ["push"];
+}
+
+// ── Senders ───────────────────────────────────────────────────────────────────
+async function enviarTelegram(token: string, chatId: string, msg: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: "Markdown" }),
+    });
+    const json = await r.json() as { ok: boolean; description?: string };
+    return json.ok ? { ok: true } : { ok: false, error: json.description || "Telegram error" };
+  } catch (e: unknown) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+async function enviarWhatsApp(token: string, phoneId: string, numero: string, msg: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", to: numero, type: "text", text: { body: msg } }),
+    });
+    const json = await r.json() as { messages?: unknown[]; error?: { message: string } };
+    return json.messages ? { ok: true } : { ok: false, error: json.error?.message || "WhatsApp error" };
+  } catch (e: unknown) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+async function enviarPush(pushToken: string, titulo: string, msg: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: pushToken, sound: "default", title: titulo, body: msg }),
+    });
+    const json = await r.json() as { data?: { status: string; message?: string } };
+    const status = json.data?.status;
+    return status === "ok" ? { ok: true } : { ok: false, error: json.data?.message || "Push error" };
+  } catch (e: unknown) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+// ── Salvar log de notificação ──────────────────────────────────────────────────
+async function salvarLogNotif(condId: string, card: NotifCard, canal: string, status: string, erro?: string) {
+  try {
+    await supabase.from("notificacoes_log").insert({
+      condominio_id: condId,
+      tipo_card: card.tipo,
+      titulo: card.titulo,
+      mensagem: card.mensagem,
+      canal,
+      status,
+      erro: erro || null,
+      created_at: new Date().toISOString(),
+    });
+  } catch { /* tabela pode não existir ainda */ }
+}
+
+// GET /api/notificacoes/config?condominio_id=X
+router.get("/notificacoes/config", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const { data } = await supabase
+      .from("notificacoes_config")
+      .select("*")
+      .eq("condominio_id", condId)
+      .maybeSingle();
+    return res.json({ config: data || null });
+  } catch {
+    return res.json({ config: null });
+  }
+});
+
+// POST /api/notificacoes/config
+router.post("/notificacoes/config", async (req: Request, res: Response) => {
+  const { condominio_id, ...config } = req.body as { condominio_id: string } & NotifConfig;
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const { data: existing } = await supabase
+      .from("notificacoes_config")
+      .select("id")
+      .eq("condominio_id", condominio_id)
+      .maybeSingle();
+    if (existing) {
+      await supabase.from("notificacoes_config").update({ ...config, updated_at: new Date().toISOString() }).eq("condominio_id", condominio_id);
+    } else {
+      await supabase.from("notificacoes_config").insert({ condominio_id, ...config, created_at: new Date().toISOString() });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /api/notificacoes/disparar   — roda Di + envia notificações pelos canais configurados
+router.post("/notificacoes/disparar", async (req: Request, res: Response) => {
+  const { condominio_id } = req.body as { condominio_id?: string };
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+
+  try {
+    // Busca config de canais
+    const { data: cfgRow } = await supabase.from("notificacoes_config").select("*").eq("condominio_id", condominio_id).maybeSingle();
+    const cfg = cfgRow as NotifConfig | null;
+    if (!cfg) return res.status(400).json({ error: "Nenhum canal configurado. Configure os canais primeiro." });
+
+    // Gera cards via Di (reutiliza lógica do /api/di)
+    const diResp = await fetch(`http://localhost:${process.env.PORT || 8080}/api/notificacoes/_gerar_cards`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ condominio_id }),
+    });
+    const { cards } = await diResp.json() as { cards: NotifCard[] };
+
+    const resultado: { canal: string; card: string; status: string; erro?: string }[] = [];
+    const cardsParaEnviar = cards.filter(c => c.tipo === "critico" || c.tipo === "atencao");
+
+    if (cardsParaEnviar.length === 0) {
+      return res.json({ ok: true, enviados: 0, resultado: [], mensagem: "Nenhum alerta crítico ou de atenção para disparar." });
+    }
+
+    for (const card of cardsParaEnviar) {
+      const canais = canaisPorTipo(card.tipo);
+      const msgMd   = montarMensagem(card);
+      const msgText = montarMensagemTexto(card);
+
+      for (const canal of canais) {
+        if (canal === "telegram" && cfg.telegram_ativo && cfg.telegram_token && cfg.telegram_chat_id) {
+          const r = await enviarTelegram(cfg.telegram_token, cfg.telegram_chat_id, msgMd);
+          await salvarLogNotif(condominio_id, card, "telegram", r.ok ? "enviado" : "erro", r.error);
+          resultado.push({ canal: "telegram", card: card.titulo, status: r.ok ? "enviado" : "erro", erro: r.error });
+        }
+        if (canal === "whatsapp" && cfg.whatsapp_ativo && cfg.whatsapp_token && cfg.whatsapp_phone_id && cfg.whatsapp_numero) {
+          const r = await enviarWhatsApp(cfg.whatsapp_token, cfg.whatsapp_phone_id, cfg.whatsapp_numero, msgText);
+          await salvarLogNotif(condominio_id, card, "whatsapp", r.ok ? "enviado" : "erro", r.error);
+          resultado.push({ canal: "whatsapp", card: card.titulo, status: r.ok ? "enviado" : "erro", erro: r.error });
+        }
+        if (canal === "push" && cfg.push_ativo && cfg.push_token) {
+          const r = await enviarPush(cfg.push_token, card.titulo, msgText);
+          await salvarLogNotif(condominio_id, card, "push", r.ok ? "enviado" : "erro", r.error);
+          resultado.push({ canal: "push", card: card.titulo, status: r.ok ? "enviado" : "erro", erro: r.error });
+        }
+      }
+    }
+
+    return res.json({ ok: true, enviados: resultado.length, resultado });
+  } catch (err) {
+    console.error("[notificacoes/disparar]", err);
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /api/notificacoes/_gerar_cards (interno — gera cards da Di sem Claude)
+router.post("/notificacoes/_gerar_cards", async (req: Request, res: Response) => {
+  const { condominio_id } = req.body as { condominio_id?: string };
+  try {
+    const [
+      { data: reservoirRows },
+      { data: osAbertas },
+      { data: lancamentos },
+    ] = await Promise.all([
+      supabase.from("reservoirs").select("name,iot_sensor_id,iot_last_reading,iot_status").limit(20),
+      condominio_id
+        ? supabase.from("ordens_servico").select("titulo,prioridade").in("status", ["aberta","em_andamento"]).eq("condominio_id", condominio_id).limit(20)
+        : supabase.from("ordens_servico").select("titulo,prioridade").in("status", ["aberta","em_andamento"]).limit(20),
+      condominio_id
+        ? supabase.from("lancamentos").select("tipo,valor,status").eq("condominio_id", condominio_id)
+        : supabase.from("lancamentos").select("tipo,valor,status"),
+    ]);
+
+    type SensorSummary = { nome: string; nivel: number | null; status: string };
+    const aguaSensores: SensorSummary[] = (reservoirRows || []).map(r => ({
+      nome: r.name || r.iot_sensor_id,
+      nivel: r.iot_last_reading != null ? Number(r.iot_last_reading) : null,
+      status: r.iot_status || "unknown",
+    }));
+
+    const totalRec  = (lancamentos || []).filter(l => l.tipo === "receita").reduce((s, l) => s + Number(l.valor), 0);
+    const totalDesp = (lancamentos || []).filter(l => l.tipo === "despesa").reduce((s, l) => s + Number(l.valor), 0);
+    const saldo = totalRec - totalDesp;
+    const inadimplentes = (lancamentos || []).filter(l => l.tipo === "receita" && l.status === "atrasado").length;
+    const totalRecCount = (lancamentos || []).filter(l => l.tipo === "receita").length;
+    const txInad = totalRecCount > 0 ? Math.round((inadimplentes / totalRecCount) * 100) : 0;
+    const osUrgentes = (osAbertas || []).filter(o => o.prioridade === "urgente" || o.prioridade === "alta");
+    const niveisConhecidos = aguaSensores.filter(s => s.nivel != null);
+    const nivelMedioAgua   = niveisConhecidos.length
+      ? Math.round(niveisConhecidos.reduce((s, r) => s + (r.nivel ?? 0), 0) / niveisConhecidos.length)
+      : null;
+
+    const cards = gerarCardsInteligentes({
+      aguaSensores, nivelMedioAgua, saldo, txInad, totalRec, totalDesp,
+      osTotal: (osAbertas || []).length, osUrgentes: osUrgentes.length,
+      osAbertas: (osAbertas || []) as { titulo: string; prioridade: string }[],
+      condNome: "ImobCore",
+    });
+
+    return res.json({ cards });
+  } catch (err) {
+    return res.status(500).json({ error: String(err), cards: [] });
+  }
+});
+
+// POST /api/notificacoes/teste  — envia mensagem de teste em um canal específico
+router.post("/notificacoes/teste", async (req: Request, res: Response) => {
+  const { canal, telegram_token, telegram_chat_id, whatsapp_token, whatsapp_phone_id, whatsapp_numero, push_token } = req.body as {
+    canal: string;
+    telegram_token?: string; telegram_chat_id?: string;
+    whatsapp_token?: string; whatsapp_phone_id?: string; whatsapp_numero?: string;
+    push_token?: string;
+  };
+
+  const cardTeste: NotifCard = {
+    tipo: "info",
+    titulo: "✅ Teste de Conexão",
+    mensagem: "Este é um teste do sistema de notificações ImobCore. Tudo funcionando!",
+    acao: "Nenhuma ação necessária — apenas confirmação de conectividade.",
+  };
+  const msgMd   = montarMensagem(cardTeste);
+  const msgText = montarMensagemTexto(cardTeste);
+
+  try {
+    let result: { ok: boolean; error?: string };
+    if (canal === "telegram") {
+      if (!telegram_token || !telegram_chat_id) return res.status(400).json({ error: "token e chat_id obrigatórios" });
+      result = await enviarTelegram(telegram_token, telegram_chat_id, msgMd);
+    } else if (canal === "whatsapp") {
+      if (!whatsapp_token || !whatsapp_phone_id || !whatsapp_numero) return res.status(400).json({ error: "token, phone_id e número obrigatórios" });
+      result = await enviarWhatsApp(whatsapp_token, whatsapp_phone_id, whatsapp_numero, msgText);
+    } else if (canal === "push") {
+      if (!push_token) return res.status(400).json({ error: "push_token obrigatório" });
+      result = await enviarPush(push_token, cardTeste.titulo, msgText);
+    } else {
+      return res.status(400).json({ error: "canal inválido" });
+    }
+    return res.json(result);
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// GET /api/notificacoes/historico?condominio_id=X
+router.get("/notificacoes/historico", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const { data } = await supabase
+      .from("notificacoes_log")
+      .select("*")
+      .eq("condominio_id", condId)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    return res.json({ historico: data || [] });
+  } catch {
+    return res.json({ historico: [] });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Placa Solar — CRUD (tabela: placa_solar)
 // ─────────────────────────────────────────────────────────────────────────────
 

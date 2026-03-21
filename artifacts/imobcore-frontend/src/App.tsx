@@ -1369,6 +1369,13 @@ export default function App() {
 
   useEffect(() => { if (panel === "financeiro") { finFetchLancamentos(); finFetchOrcamento(); } }, [panel, finFetchLancamentos, finFetchOrcamento]);
 
+  useEffect(() => {
+    if (panel === "sv-notificacoes" && condId) {
+      loadNotifConfig(condId);
+      loadNotifHistorico(condId);
+    }
+  }, [panel, condId]);
+
   const finSalvarLancamento = async () => {
     if (!finForm.descricao || !finForm.valor || !finForm.data) return;
     setFinSaving(true);
@@ -1673,6 +1680,40 @@ export default function App() {
   const [diData, setDiData] = useState<{ fala: string; cards: DiCard[] } | null>(null);
   const [diLoading, setDiLoading] = useState(false);
   const [diFalando, setDiFalando] = useState(false);
+
+  // ── Notificações multicanal ────────────────────────────────────────────────
+  type NotifCfg = {
+    telegram_ativo: boolean; telegram_token: string; telegram_chat_id: string;
+    whatsapp_ativo: boolean; whatsapp_token: string; whatsapp_phone_id: string; whatsapp_numero: string;
+    push_ativo: boolean; push_token: string;
+  };
+  type NotifLog = { id?: string; tipo_card: string; titulo: string; canal: string; status: string; erro?: string; created_at: string };
+  const [notifCfg, setNotifCfg] = useState<NotifCfg>({
+    telegram_ativo: false, telegram_token: "", telegram_chat_id: "",
+    whatsapp_ativo: false, whatsapp_token: "", whatsapp_phone_id: "", whatsapp_numero: "",
+    push_ativo: false, push_token: "",
+  });
+  const [notifLog, setNotifLog] = useState<NotifLog[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [notifDisparando, setNotifDisparando] = useState(false);
+  const [notifTestandoCh, setNotifTestandoCh] = useState<string | null>(null);
+  const [notifResultado, setNotifResultado] = useState<{enviados: number; resultado: {canal: string; card: string; status: string; erro?: string}[]; mensagem?: string} | null>(null);
+
+  const loadNotifConfig = async (cId: string) => {
+    try {
+      const r = await fetch(`/api/notificacoes/config?condominio_id=${cId}`);
+      const j = await r.json();
+      if (j.config) setNotifCfg(prev => ({ ...prev, ...j.config }));
+    } catch { /* silent */ }
+  };
+  const loadNotifHistorico = async (cId: string) => {
+    try {
+      const r = await fetch(`/api/notificacoes/historico?condominio_id=${cId}`);
+      const j = await r.json();
+      setNotifLog(j.historico || []);
+    } catch { /* silent */ }
+  };
   const [energiaOcorrencias, setEnergiaOcorrencias] = useState([
     { id:"oc1", titulo:"queda energia 29/01/2026", tipo:"queda",     data:"29/01/2026", hora:"10:21:16", obs:"Queda total no bloco A" },
     { id:"oc2", titulo:"energia normal",            tipo:"retorno",   data:"29/01/2026", hora:"10:21:04", obs:"Energia restaurada pela CELESC" },
@@ -5313,10 +5354,11 @@ export default function App() {
         <div className="sidebar">
           <div className="sb-label">Síndico Virtual</div>
           {[
-            { id: "sv-di",          icon: "🟣", label: "Di — Síndica IA" },
-            { id: "sv-chat",        icon: "💬", label: "Chat IA" },
-            { id: "sv-insights",    icon: "💡", label: "Insights" },
-            { id: "sv-comunicados", icon: "📢", label: "Comunicados" },
+            { id: "sv-di",            icon: "🟣", label: "Di — Síndica IA" },
+            { id: "sv-chat",          icon: "💬", label: "Chat IA" },
+            { id: "sv-insights",      icon: "💡", label: "Insights" },
+            { id: "sv-comunicados",   icon: "📢", label: "Comunicados" },
+            { id: "sv-notificacoes",  icon: "🔔", label: "Notificações" },
           ].map(i => (
             <div key={i.id} className={`sb-item ${panel === i.id ? "active" : ""}`} onClick={() => setPanel(i.id)}>
               <span className="sb-icon">{i.icon}</span>{i.label}
@@ -5725,6 +5767,242 @@ export default function App() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* PANEL: NOTIFICAÇÕES MULTICANAL */}
+          <div className={`panel ${panel === "sv-notificacoes" ? "active" : ""} card`} style={{ padding: 0, overflow: "hidden" }}>
+            {/* Header */}
+            <div style={{ background: "linear-gradient(135deg, #0F172A 0%, #1E1B4B 100%)", padding: "20px 24px 16px", borderBottom: "1px solid rgba(99,102,241,.2)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4 }}>
+                <div style={{ fontSize: 28 }}>🔔</div>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "#E0E7FF" }}>Notificações Inteligentes</div>
+                  <div style={{ fontSize: 11, color: "#818CF8" }}>WhatsApp · Telegram · Push — Disparados pela Di automaticamente</div>
+                </div>
+              </div>
+              {/* Regras de roteamento */}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                {[
+                  { tipo: "🚨 Crítico", canais: "WhatsApp + Telegram + Push", bg: "rgba(239,68,68,.15)", border: "rgba(239,68,68,.3)", color: "#FCA5A5" },
+                  { tipo: "⚠️ Atenção", canais: "Telegram + Push", bg: "rgba(234,179,8,.12)", border: "rgba(234,179,8,.3)", color: "#FDE68A" },
+                  { tipo: "📊 Info",    canais: "Push apenas", bg: "rgba(16,185,129,.1)", border: "rgba(16,185,129,.25)", color: "#6EE7B7" },
+                  { tipo: "🧠 Insight", canais: "Push apenas", bg: "rgba(168,85,247,.1)", border: "rgba(168,85,247,.25)", color: "#C4B5FD" },
+                ].map(r => (
+                  <div key={r.tipo} style={{ background: r.bg, border: `1px solid ${r.border}`, borderRadius: 8, padding: "3px 10px", fontSize: 10, color: r.color }}>
+                    <strong>{r.tipo}</strong> → {r.canais}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Corpo */}
+            <div style={{ padding: "20px 24px", background: "#0B0F1A", display: "flex", flexDirection: "column", gap: 16 }}>
+
+              {/* ── Cards de canal ── */}
+              {([
+                {
+                  id: "telegram", icon: "📲", label: "Telegram", color: "#2AABEE", bg: "rgba(42,171,238,.08)", border: "rgba(42,171,238,.25)",
+                  ativo: notifCfg.telegram_ativo,
+                  toggle: () => setNotifCfg(p => ({ ...p, telegram_ativo: !p.telegram_ativo })),
+                  fields: [
+                    { label: "Bot Token", key: "telegram_token" as keyof NotifCfg, type: "password", placeholder: "1234567890:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+                    { label: "Chat ID / Grupo ID", key: "telegram_chat_id" as keyof NotifCfg, type: "text", placeholder: "-1001234567890" },
+                  ],
+                  dica: "Crie o bot com @BotFather no Telegram e adicione ao grupo. Use @userinfobot para obter o Chat ID.",
+                },
+                {
+                  id: "whatsapp", icon: "💬", label: "WhatsApp Business API", color: "#25D366", bg: "rgba(37,211,102,.08)", border: "rgba(37,211,102,.25)",
+                  ativo: notifCfg.whatsapp_ativo,
+                  toggle: () => setNotifCfg(p => ({ ...p, whatsapp_ativo: !p.whatsapp_ativo })),
+                  fields: [
+                    { label: "Access Token Meta", key: "whatsapp_token" as keyof NotifCfg, type: "password", placeholder: "EAAxxxxxxxxxxxxx..." },
+                    { label: "Phone Number ID", key: "whatsapp_phone_id" as keyof NotifCfg, type: "text", placeholder: "123456789012345" },
+                    { label: "Número Destino (+55DDD)", key: "whatsapp_numero" as keyof NotifCfg, type: "text", placeholder: "5511999999999" },
+                  ],
+                  dica: "Acesse developers.facebook.com → WhatsApp → Cloud API. Exige número verificado Meta.",
+                },
+                {
+                  id: "push", icon: "📱", label: "Push Notification (Expo)", color: "#A855F7", bg: "rgba(168,85,247,.08)", border: "rgba(168,85,247,.25)",
+                  ativo: notifCfg.push_ativo,
+                  toggle: () => setNotifCfg(p => ({ ...p, push_ativo: !p.push_ativo })),
+                  fields: [
+                    { label: "Expo Push Token", key: "push_token" as keyof NotifCfg, type: "text", placeholder: "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]" },
+                  ],
+                  dica: "Token gerado automaticamente pelo app móvel ImobCore ao fazer login.",
+                },
+              ] as const).map(ch => (
+                <div key={ch.id} style={{ background: ch.ativo ? ch.bg : "rgba(255,255,255,.02)", border: `1px solid ${ch.ativo ? ch.border : "rgba(255,255,255,.08)"}`, borderRadius: 14, padding: "14px 16px", transition: "all .2s" }}>
+                  {/* Header canal */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: ch.ativo ? 12 : 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 20 }}>{ch.icon}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: ch.ativo ? ch.color : "#64748B" }}>{ch.label}</span>
+                      {ch.ativo && <span style={{ background: ch.bg, border: `1px solid ${ch.border}`, color: ch.color, borderRadius: 12, padding: "1px 8px", fontSize: 9, fontWeight: 700 }}>ATIVO</span>}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {ch.ativo && (
+                        <button
+                          disabled={notifTestandoCh === ch.id}
+                          onClick={async () => {
+                            setNotifTestandoCh(ch.id);
+                            try {
+                              const body: Record<string, string | boolean> = { canal: ch.id };
+                              ch.fields.forEach(f => { body[f.key] = notifCfg[f.key]; });
+                              const r = await fetch("/api/notificacoes/teste", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+                              const j = await r.json();
+                              showToast(j.ok ? `✅ ${ch.label}: mensagem de teste enviada!` : `❌ ${ch.label}: ${j.error}`, j.ok ? "success" : "error");
+                            } catch { showToast("Erro ao testar canal", "error"); }
+                            setNotifTestandoCh(null);
+                          }}
+                          style={{ background: "rgba(255,255,255,.06)", border: `1px solid ${ch.border}`, color: ch.color, borderRadius: 8, padding: "4px 10px", fontSize: 10, fontWeight: 600, cursor: "pointer" }}
+                        >
+                          {notifTestandoCh === ch.id ? "⏳" : "🔍 Testar"}
+                        </button>
+                      )}
+                      {/* Toggle switch */}
+                      <div
+                        onClick={ch.toggle}
+                        style={{ width: 40, height: 22, borderRadius: 11, background: ch.ativo ? ch.color : "#1E293B", border: `2px solid ${ch.ativo ? ch.color : "#334155"}`, cursor: "pointer", position: "relative", transition: "all .2s", flexShrink: 0 }}
+                      >
+                        <div style={{ position: "absolute", top: 2, left: ch.ativo ? 18 : 2, width: 14, height: 14, borderRadius: "50%", background: "#fff", transition: "left .2s" }} />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Fields */}
+                  {ch.ativo && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {ch.fields.map(f => (
+                        <div key={f.key}>
+                          <div style={{ fontSize: 10, color: "#64748B", marginBottom: 3, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".4px" }}>{f.label}</div>
+                          <input
+                            type={f.type}
+                            value={String(notifCfg[f.key] ?? "")}
+                            onChange={e => setNotifCfg(p => ({ ...p, [f.key]: e.target.value }))}
+                            placeholder={f.placeholder}
+                            style={{ width: "100%", background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, padding: "7px 10px", fontSize: 12, color: "#E2E8F0", boxSizing: "border-box" as const, fontFamily: f.type === "password" ? "monospace" : "inherit" }}
+                          />
+                        </div>
+                      ))}
+                      <div style={{ fontSize: 10, color: "#475569", lineHeight: 1.4, marginTop: 2 }}>💡 {ch.dica}</div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* Botões de ação */}
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  disabled={notifSaving}
+                  onClick={async () => {
+                    if (!condId) return showToast("Selecione um condomínio", "error");
+                    setNotifSaving(true);
+                    try {
+                      const r = await fetch("/api/notificacoes/config", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ condominio_id: condId, ...notifCfg }),
+                      });
+                      const j = await r.json();
+                      j.ok ? showToast("✅ Configuração salva!", "success") : showToast("Erro ao salvar", "error");
+                    } catch { showToast("Erro ao salvar", "error"); }
+                    setNotifSaving(false);
+                  }}
+                  style={{ background: "rgba(99,102,241,.15)", border: "1px solid rgba(99,102,241,.4)", color: "#A5B4FC", borderRadius: 10, padding: "9px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  {notifSaving ? "⏳ Salvando..." : "💾 Salvar Configuração"}
+                </button>
+
+                <button
+                  disabled={notifDisparando}
+                  onClick={async () => {
+                    if (!condId) return showToast("Selecione um condomínio", "error");
+                    setNotifDisparando(true);
+                    setNotifResultado(null);
+                    try {
+                      const r = await fetch("/api/notificacoes/disparar", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ condominio_id: condId }),
+                      });
+                      const j = await r.json();
+                      if (j.error) { showToast(`❌ ${j.error}`, "error"); }
+                      else {
+                        setNotifResultado(j);
+                        showToast(j.enviados > 0 ? `🔔 ${j.enviados} notificaç${j.enviados === 1 ? "ão enviada" : "ões enviadas"}!` : "Nenhum alerta para disparar", j.enviados > 0 ? "success" : "info");
+                        await loadNotifHistorico(condId);
+                      }
+                    } catch { showToast("Erro ao disparar", "error"); }
+                    setNotifDisparando(false);
+                  }}
+                  style={{ background: "linear-gradient(135deg, #7C3AED, #A855F7)", border: "none", color: "#fff", borderRadius: 10, padding: "9px 16px", fontSize: 12, fontWeight: 700, cursor: notifDisparando ? "not-allowed" : "pointer", opacity: notifDisparando ? 0.6 : 1 }}
+                >
+                  {notifDisparando ? "⏳ Disparando..." : "🔔 Disparar Alertas Agora"}
+                </button>
+
+                <button
+                  disabled={notifLoading}
+                  onClick={async () => {
+                    if (!condId) return;
+                    setNotifLoading(true);
+                    await loadNotifHistorico(condId);
+                    setNotifLoading(false);
+                  }}
+                  style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.1)", color: "#64748B", borderRadius: 10, padding: "9px 12px", fontSize: 11, cursor: "pointer" }}
+                >
+                  🔄 Atualizar histórico
+                </button>
+              </div>
+
+              {/* Resultado do último disparo */}
+              {notifResultado && (
+                <div style={{ background: "rgba(99,102,241,.06)", border: "1px solid rgba(99,102,241,.2)", borderRadius: 12, padding: "12px 14px" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#A5B4FC", marginBottom: 8 }}>
+                    📊 Resultado: {notifResultado.enviados} envio{notifResultado.enviados !== 1 ? "s" : ""}
+                    {notifResultado.mensagem && <span style={{ fontWeight: 400, color: "#64748B", marginLeft: 8 }}>{notifResultado.mensagem}</span>}
+                  </div>
+                  {notifResultado.resultado.map((r, i) => {
+                    const canalIcon: Record<string, string> = { telegram: "📲", whatsapp: "💬", push: "📱" };
+                    return (
+                      <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11, padding: "3px 0", borderBottom: i < notifResultado.resultado.length - 1 ? "1px solid rgba(255,255,255,.05)" : "none" }}>
+                        <span>{canalIcon[r.canal] || "📩"}</span>
+                        <span style={{ color: "#94A3B8", flex: 1 }}>{r.card}</span>
+                        <span style={{ color: r.status === "enviado" ? "#34D399" : "#F87171", fontWeight: 600 }}>{r.status === "enviado" ? "✓ enviado" : `✗ ${r.erro || "erro"}`}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Histórico */}
+              <div style={{ borderTop: "1px solid rgba(255,255,255,.06)", paddingTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span>📋 Histórico de Notificações</span>
+                  <span style={{ fontWeight: 400, fontSize: 10 }}>{notifLog.length} registro{notifLog.length !== 1 ? "s" : ""}</span>
+                </div>
+                {notifLog.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "16px 0", color: "#334155", fontSize: 12 }}>
+                    Nenhuma notificação enviada ainda.
+                    {notifLog.length === 0 && <div style={{ fontSize: 10, marginTop: 4, color: "#1E293B" }}>Configure os canais e clique em "Disparar Alertas"</div>}
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {notifLog.slice(0, 20).map((l, i) => {
+                      const tipoColor: Record<string, string> = { critico: "#EF4444", atencao: "#EAB308", info: "#10B981", insight: "#A855F7" };
+                      const canalIcon: Record<string, string> = { telegram: "📲", whatsapp: "💬", push: "📱" };
+                      return (
+                        <div key={i} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 8, alignItems: "center", padding: "6px 10px", background: "rgba(255,255,255,.02)", borderRadius: 8, fontSize: 11 }}>
+                          <span style={{ color: tipoColor[l.tipo_card] || "#64748B" }}>●</span>
+                          <span style={{ color: "#94A3B8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.titulo}</span>
+                          <span style={{ color: "#475569" }}>{canalIcon[l.canal] || l.canal}</span>
+                          <span style={{ color: l.status === "enviado" ? "#34D399" : "#F87171", fontWeight: 600, fontSize: 10 }}>{l.status === "enviado" ? "✓" : "✗"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
             </div>
           </div>
 

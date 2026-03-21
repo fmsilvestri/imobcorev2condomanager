@@ -45,6 +45,12 @@ Express API server with all ImobCore routes in `src/routes/imobcore.ts`:
 - `POST /api/sindico/chat` — AI chat (Claude)
 - `POST /api/sindico/comunicado` — AI-generated communications
 - `POST /api/di` — Di (Síndica Virtual) briefing executivo: returns `{fala, cards:[{tipo,titulo,mensagem,acao,badge?}], dados}`. 4 tipos: critico|atencao|info|insight. Geração determinística + Claude para fala personalizada.
+- `GET /api/notificacoes/config?condominio_id=X` — canal config (telegram/whatsapp/push tokens)
+- `POST /api/notificacoes/config` — salvar config canais por condomínio (tabela: notificacoes_config)
+- `POST /api/notificacoes/disparar` — gera cards Di + dispara por canal segundo tipo (critico→todos; atencao→telegram+push; info/insight→push)
+- `POST /api/notificacoes/teste` — envia mensagem de teste num canal específico
+- `GET /api/notificacoes/historico?condominio_id=X` — histórico de notificações (tabela: notificacoes_log)
+- `POST /api/notificacoes/_gerar_cards` — endpoint interno: gera cards Di sem Claude (usado pelo disparador)
 - `GET /api/bi/overview` — KPIs globais: MRR, ARR, condos, moradores, OS, inadimplência, crescimento 30d (X-Admin-Token required)
 - `GET /api/bi/charts` — Séries temporais: receita/despesa mensal, OS por categoria, crescimento condos, MRR acumulado (X-Admin-Token required)
 - `GET /api/bi/forecast` — Previsões 3 meses via moving average + trend, horizon com receita/despesa projetada (X-Admin-Token required)
