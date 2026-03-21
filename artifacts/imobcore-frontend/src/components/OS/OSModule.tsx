@@ -175,9 +175,9 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
   const set = (k: keyof OS, v: unknown) => setForm(f => ({ ...f, [k]: v }));
 
   const isMob = view === "mobile";
-  const fc = { background:"rgba(255,255,255,.12)", border:"1.5px solid rgba(255,255,255,.22)", borderRadius:8, color:"var(--neu-text,#F1F5F9)", padding:"10px 12px", fontSize:13, fontFamily:"inherit", width:"100%", outline:"none" };
-  const lbl = { fontSize:11, color:"#94A3B8", marginBottom:6, display:"block" as const, fontWeight:700, letterSpacing:".04em", textTransform:"uppercase" as const };
-  const grp = { marginBottom:12 };
+  const fc = { background:"rgba(255,255,255,.15)", border:"2px solid rgba(255,255,255,.3)", borderRadius:10, color:"#FFFFFF", fontWeight:700, padding:"14px 16px", fontSize:16, fontFamily:"inherit", width:"100%", outline:"none" };
+  const lbl = { fontSize:13, color:"#CBD5E1", marginBottom:8, display:"block" as const, fontWeight:800, letterSpacing:".05em", textTransform:"uppercase" as const };
+  const grp = { marginBottom:18 };
 
   // Auto-checklist when category changes
   useEffect(() => {
@@ -235,38 +235,39 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
 
   return (
     <div style={panelStyle}>
+      <style>{`.os-nova-input::placeholder{color:rgba(255,255,255,.45);font-weight:400}`}</style>
       {/* Stepper indicator */}
-      <div style={{ display:"flex",gap:4,marginBottom:18,alignItems:"center" }}>
+      <div style={{ display:"flex",gap:4,marginBottom:22,alignItems:"center" }}>
         {steps.map((s,i) => (
           <div key={i} style={{ display:"flex",alignItems:"center",gap:4,flex:i<steps.length-1?1:undefined }}>
-            <div style={{ width:24,height:24,borderRadius:"50%",background:i<=step?"linear-gradient(135deg,#6366F1,#818CF8)":"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:i<=step?"#fff":"#475569",flexShrink:0 }}>{i+1}</div>
-            <span style={{ fontSize:9,color:i===step?"#A5B4FC":"#475569",fontWeight:i===step?700:400,whiteSpace:"nowrap",display:isMob?"none":"inline" }}>{s.split(" ").slice(1).join(" ")}</span>
+            <div style={{ width:28,height:28,borderRadius:"50%",background:i<=step?"linear-gradient(135deg,#6366F1,#818CF8)":"rgba(255,255,255,.06)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:i<=step?"#fff":"#475569",flexShrink:0 }}>{i+1}</div>
+            <span style={{ fontSize:10,color:i===step?"#A5B4FC":"#475569",fontWeight:i===step?700:400,whiteSpace:"nowrap",display:isMob?"none":"inline" }}>{s.split(" ").slice(1).join(" ")}</span>
             {i<steps.length-1&&<div style={{ flex:1,height:2,background:i<step?"#6366F1":"rgba(255,255,255,.06)",borderRadius:1,minWidth:8 }} />}
           </div>
         ))}
       </div>
-      <div style={{ fontSize:13,fontWeight:800,color:"var(--neu-text,#F1F5F9)",marginBottom:14 }}>{steps[step]}</div>
+      <div style={{ fontSize:17,fontWeight:900,color:"#FFFFFF",marginBottom:18,paddingBottom:10,borderBottom:"1px solid rgba(255,255,255,.08)" }}>{steps[step]}</div>
 
       {/* Step 0: Identificação */}
       {step===0 && (
         <div>
-          <div style={grp}><label style={lbl}>Título *</label><input style={fc} placeholder="Descrição resumida do problema" value={form.titulo||""} onChange={e=>set("titulo",e.target.value)} /></div>
+          <div style={grp}><label style={lbl}>Título *</label><input className="os-nova-input" style={fc} placeholder="Descrição resumida do problema" value={form.titulo||""} onChange={e=>set("titulo",e.target.value)} /></div>
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
             <div style={grp}>
               <label style={lbl}>Categoria</label>
-              <select style={fc} value={form.categoria||"Hidráulico"} onChange={e=>set("categoria",e.target.value)}>
+              <select className="os-nova-input" style={fc} value={form.categoria||"Hidráulico"} onChange={e=>set("categoria",e.target.value)}>
                 {CATS.map(c=><option key={c} value={c}>{CAT_ICON[c]} {c}</option>)}
               </select>
             </div>
             <div style={grp}>
               <label style={lbl}>Prioridade</label>
-              <select style={fc} value={form.prioridade||"media"} onChange={e=>set("prioridade",e.target.value)}>
+              <select className="os-nova-input" style={fc} value={form.prioridade||"media"} onChange={e=>set("prioridade",e.target.value)}>
                 {[["urgente","🔴 Urgente"],["alta","🟡 Alta"],["media","🔵 Média"],["baixa","🟢 Baixa"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
               </select>
             </div>
           </div>
-          <div style={grp}><label style={lbl}>Local / Área</label><input style={fc} placeholder="Ex: Cobertura B1, Subsolo, Portaria..." value={form.local||""} onChange={e=>set("local",e.target.value)} /></div>
-          <div style={grp}><label style={lbl}>Data prevista de conclusão</label><input type="date" style={fc} value={form.data_prevista||""} min={new Date().toISOString().slice(0,10)} onChange={e=>set("data_prevista",e.target.value)} /></div>
+          <div style={grp}><label style={lbl}>Local / Área</label><input className="os-nova-input" style={fc} placeholder="Ex: Cobertura B1, Subsolo, Portaria..." value={form.local||""} onChange={e=>set("local",e.target.value)} /></div>
+          <div style={grp}><label style={lbl}>Data prevista de conclusão</label><input type="date" className="os-nova-input" style={fc} value={form.data_prevista||""} min={new Date().toISOString().slice(0,10)} onChange={e=>set("data_prevista",e.target.value)} /></div>
         </div>
       )}
 
@@ -299,14 +300,14 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
             </div>
           )}
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
-            <div style={grp}><label style={lbl}>Responsável</label><input style={fc} placeholder="Nome do técnico..." value={form.responsavel||""} onChange={e=>set("responsavel",e.target.value)} /></div>
-            <div style={grp}><label style={lbl}>Prestador / Empresa</label><input style={fc} placeholder="Empresa contratada..." value={form.prestador_nome||""} onChange={e=>set("prestador_nome",e.target.value)} /></div>
+            <div style={grp}><label style={lbl}>Responsável</label><input className="os-nova-input" style={fc} placeholder="Nome do técnico..." value={form.responsavel||""} onChange={e=>set("responsavel",e.target.value)} /></div>
+            <div style={grp}><label style={lbl}>Prestador / Empresa</label><input className="os-nova-input" style={fc} placeholder="Empresa contratada..." value={form.prestador_nome||""} onChange={e=>set("prestador_nome",e.target.value)} /></div>
           </div>
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
-            <div style={grp}><label style={lbl}>Custo estimado (R$)</label><input type="number" style={fc} min={0} step={10} value={form.custo_estimado||0} onChange={e=>set("custo_estimado",Number(e.target.value))} /></div>
+            <div style={grp}><label style={lbl}>Custo estimado (R$)</label><input type="number" className="os-nova-input" style={fc} min={0} step={10} value={form.custo_estimado||0} onChange={e=>set("custo_estimado",Number(e.target.value))} /></div>
             <div style={grp}>
               <label style={lbl}>SLA</label>
-              <select style={fc} value={form.sla_horas||48} onChange={e=>set("sla_horas",Number(e.target.value))}>
+              <select className="os-nova-input" style={fc} value={form.sla_horas||48} onChange={e=>set("sla_horas",Number(e.target.value))}>
                 {SLA_OPTS.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
               </select>
             </div>
