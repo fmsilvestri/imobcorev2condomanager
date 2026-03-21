@@ -353,6 +353,20 @@ textarea.fc:focus{outline:none;border-color:rgba(99,102,241,.5)}
 .ph-subscreen .recharts-tooltip-wrapper .recharts-default-tooltip{background:var(--neu-bg) !important;border:1px solid #d4d6e0 !important;color:var(--neu-text) !important;box-shadow:var(--neu-out) !important}
 /* Textarea and inputs inside subscreens */
 .ph-subscreen textarea,.ph-subscreen input{background:var(--neu-bg) !important;border:1px solid #d4d6e0 !important;color:var(--neu-text) !important;box-shadow:var(--neu-in-sm) !important}
+/* ── Chat bubbles inside phone subscreens — corrige tema light/dark ─────── */
+.ph-subscreen .chat-area{background:var(--neu-bg) !important;box-shadow:var(--neu-in) !important;border:1px solid #d4d6e0 !important}
+.ph-subscreen .msg.ai .msg-bubble{background:rgba(99,102,241,.08) !important;border:1px solid rgba(99,102,241,.18) !important;color:var(--neu-text) !important}
+.ph-subscreen .msg.user .msg-bubble{background:var(--neu-bg) !important;border:1px solid #d4d6e0 !important;color:var(--neu-text) !important;box-shadow:var(--neu-out-sm) !important}
+.ph-subscreen .msg-time{color:var(--neu-text-2) !important}
+/* Chips (sugestões de chat) */
+.ph-subscreen .chip{background:var(--neu-bg) !important;border:1px solid #d4d6e0 !important;color:var(--neu-text-2) !important;box-shadow:var(--neu-out-sm) !important}
+.ph-subscreen .chip:hover{background:rgba(99,102,241,.1) !important;border-color:rgba(99,102,241,.25) !important;color:var(--neu-purple) !important;box-shadow:var(--neu-in-sm) !important}
+/* Botão enviar */
+.ph-subscreen .btn-send{background:linear-gradient(135deg,var(--neu-purple),#A855F7) !important;color:#fff !important;border:none !important;box-shadow:var(--neu-out-sm) !important}
+/* Typing indicator */
+.ph-subscreen .typing-dot{background:var(--neu-purple) !important}
+/* Texto genérico com cor inline herdada do body dentro do subscreen */
+.ph-subscreen p,.ph-subscreen span,.ph-subscreen div:not([style*="color"]){color:inherit}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:10px}
 .cal-day{text-align:center;padding:6px 2px;border-radius:8px;font-size:12px;cursor:pointer;transition:all .15s}
 .cal-day.avail{background:rgba(16,185,129,.12);color:#34D399;border:1px solid rgba(16,185,129,.2)}
@@ -4153,7 +4167,7 @@ export default function App() {
         {/* SÍNDICO IA: chat fullscreen */}
         {sindicoScreen === "sindico" && (
           <>
-            <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 12px", borderBottom: "1px solid var(--card-border)", flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 12px", borderBottom: "1px solid #d4d6e0", flexShrink: 0, background: "var(--neu-bg)" }}>
               {[["📊 Resumo", "Resumo rápido do condomínio"], ["🔴 Urgentes", "Quais OSs urgentes?"], ["💧 Água", "Status dos sensores"], ["🔧 Manutenção", "Análise dos equipamentos e planos de manutenção"], ["⚙️ Críticos", "Quais equipamentos precisam de atenção imediata?"]].map(([l, m]) => (
                 <button key={l} className="chip" style={{ whiteSpace: "nowrap", fontSize: 11 }}
                   onClick={() => sendChat(m, mobileHistory, setMobileMsgs, setMobileTyping, setMobileHistory)}>{l}</button>
