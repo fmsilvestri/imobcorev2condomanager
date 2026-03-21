@@ -336,7 +336,9 @@ export default function SindicoHome({
         {navItem("⊞", "Início",   null,           () => setSindicoScreen(null))}
         {navItem("🔔", "Alertas", "misp",          () => setSindicoScreen("misp"))}
         {/* FAB — Di */}
-        <button onClick={() => setSindicoScreen("di")} style={{ width:48, height:48, borderRadius:"50%", background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", cursor:"pointer", marginTop:-10, boxShadow:"0 4px 14px rgba(168,85,247,0.55)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>🟣</button>
+        <button onClick={() => setSindicoScreen("di")} style={{ width:52, height:52, borderRadius:"50%", background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"2.5px solid rgba(167,139,250,.7)", cursor:"pointer", marginTop:-12, boxShadow:"0 4px 18px rgba(168,85,247,0.65),0 0 0 3px rgba(168,85,247,.2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, padding:0, overflow:"hidden" }}>
+          <img src="/di.png" alt="Di" style={{ width:"100%", height:"100%", objectFit:"cover", objectPosition:"top", borderRadius:"50%", display:"block" }} />
+        </button>
         {navItem("👤", "Usuário", "planejamento",  () => setSindicoScreen("planejamento"))}
         {navItem("👥", "CRM",     "crm",           () => setSindicoScreen("crm"))}
       </div>
