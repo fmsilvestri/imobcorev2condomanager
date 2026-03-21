@@ -1,0 +1,364 @@
+# PROMPT — Módulo de Ordens de Serviço v2 · ImobCore
+# Cole este prompt no Replit Agent (aba "Agent" do seu projeto)
+
+---
+
+## CONTEXTO DO PROJETO
+
+Projeto: **ImobCore v2** — SaaS de gestão de condomínios
+Stack: React + TypeScript, Vite, Supabase (PostgreSQL), Tailwind/CSS custom
+Design system: neumórfico com variáveis CSS (`--neu-bg`, `--neu-out`, `--neu-grad`, etc.)
+App mobile síndico: componentes `.ph-subscreen`, `.ph-os-item`, `.phone-frame`
+App desktop gestor: layout com `.sidebar` + `.main-area` + `.panel`
+Supabase projeto: já configurado com `condominio_id` como FK em todas as tabelas
+
+---
+
+## OBJETIVO
+
+Implementar o **Módulo de Ordens de Serviço v2** completo com as melhorias abaixo.
+O módulo deve funcionar no **App Síndico (mobile)** e no **Painel Desktop Gestor**.
+
+---
+
+## 1. BANCO DE DADOS — Supabase
+
+### Alterar tabela `ordens_servico` (já existe, adicionar colunas):
+
+```sql
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS equipamento_id UUID REFERENCES equipamentos(id);
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS responsavel TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS prestador_nome TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS custo_estimado NUMERIC(10,2) DEFAULT 0;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS custo_real NUMERIC(10,2);
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS data_prevista DATE;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS sla_horas INTEGER DEFAULT 48;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS foto_antes TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS foto_depois TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS checklist JSONB DEFAULT '[]';
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS aprovacao_necessaria BOOLEAN DEFAULT false;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS aprovado_por TEXT;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS aprovado_em TIMESTAMPTZ;
+ALTER TABLE ordens_servico ADD COLUMN IF NOT EXISTS di_sugestao JSONB;
+```
+
+### Nova tabela `os_comentarios`:
+
+```sql
+CREATE TABLE IF NOT EXISTS os_comentarios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  os_id UUID REFERENCES ordens_servico(id) ON DELETE CASCADE,
+  condominio_id UUID REFERENCES condominios(id),
+  autor TEXT NOT NULL,
+  mensagem TEXT NOT NULL,
+  foto_url TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE os_comentarios ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Acesso por condominio" ON os_comentarios
+  USING (condominio_id = current_setting('app.condominio_id')::UUID);
+```
+
+### Habilitar Realtime na tabela `ordens_servico`:
+
+```sql
+ALTER TABLE ordens_servico REPLICA IDENTITY FULL;
+```
+
+---
+
+## 2. COMPONENTES REACT — Criar os seguintes arquivos
+
+### `src/components/OS/OSModule.tsx` — Container principal
+
+```typescript
+// Container que engloba toda a lógica do módulo
+// Props: condominioId, view: 'mobile' | 'desktop'
+// State: lista de OSs, filtros, OS selecionada, modal aberto
+// Realtime: supabase.channel('os-changes').on('postgres_changes'...)
+```
+
+### `src/components/OS/OSKpiStrip.tsx` — KPIs clicáveis
+
+```typescript
+// 5 cards clicáveis: Total | Abertas | Em andamento | Concluídas | Urgentes
+// Cada card ao clicar seta filtro ativo na lista
+// Variação vs mês anterior em cada card
+// Props: stats: OSStats, activeFilter, onFilterChange
+```
+
+### `src/components/OS/OSList.tsx` — Lista redesenhada
+
+Cards de OS com:
+- **Borda lateral esquerda colorida** por prioridade: vermelho (urgente), âmbar (média), cinza (baixa)
+- **Barra de SLA visual** — segmentos coloridos verde→âmbar→vermelho proporcional ao tempo decorrido/SLA total
+- **Contador de horas decorridas** — `há Xh` ou `há Xd` calculado em tempo real
+- **Avatar do responsável** — círculo com iniciais
+- **Barra de progresso** da execução (0% aberta, 50% em andamento, 100% concluída)
+- **Badge pulsante** para urgentes com `animation: pulse 1s infinite`
+- **Di insight strip** no topo: analisar OSs com SLA vencendo e exibir alerta
+
+```typescript
+// Props: os: OrdemServico[], onSelect, onStatusChange, onNewOS
+// Ordenação padrão: urgentes primeiro, depois por SLA (menor tempo restante)
+```
+
+### `src/components/OS/OSCard.tsx` — Card individual expandível
+
+```typescript
+// Collapsed: título, badges status/prioridade, SLA bar, responsável, custo
+// Expanded: adicionar timeline de comentários, checklist, fotos antes/depois
+// Botões de ação: Iniciar | Concluir | Editar | Atribuir Di
+```
+
+### `src/components/OS/NovaOSForm.tsx` — Formulário nova OS v2
+
+**Stepper de 4 etapas:**
+
+**Etapa 1 — Identificação:**
+- Título (texto livre)
+- Categoria (select: Hidráulico / Elétrico / Estrutural / Equipamento / Segurança / Limpeza / Outro)
+- Equipamento vinculado (select dos equipamentos cadastrados — ao selecionar, puxar histórico de OSs anteriores)
+- Local (preenchido automaticamente pelo equipamento ou texto livre)
+- Prioridade (select: Urgente / Média / Baixa)
+- Data prevista para conclusão (date picker)
+
+**Etapa 2 — Diagnóstico:**
+- Descrição do problema (textarea)
+- Foto do problema — antes (input file, upload para Supabase Storage bucket `os-fotos`)
+- Checklist dinâmico por categoria (array de checkboxes carregado por categoria selecionada)
+
+```typescript
+const CHECKLISTS: Record<string, string[]> = {
+  'Hidráulico': ['Verificar nível/pressão','Inspecionar vedações','Limpar filtros','Verificar vazamentos','Solicitar laudo técnico'],
+  'Elétrico':   ['Medir tensão/corrente','Verificar disjuntores','Inspecionar fiação','Testar aterramento','Verificar quadro de força'],
+  'Equipamento':['Verificar ruído/vibração','Inspecionar vedações','Lubrificar partes móveis','Medir consumo elétrico','Verificar vida útil'],
+  'Estrutural': ['Fotografar extensão do dano','Verificar infiltração','Mapear área afetada','Avaliar risco estrutural'],
+  'Segurança':  ['Verificar cabos de rede','Testar POE switch','Verificar firmware','Testar visão/gravação'],
+  'Limpeza':    ['Listar áreas','Verificar materiais necessários','Agendamento com zelador'],
+  'Outro':      ['Descrever problema','Avaliar urgência','Designar responsável'],
+}
+```
+
+**Etapa 3 — Atribuição:**
+- Responsável / Prestador (texto com autocomplete do histórico de prestadores)
+- Custo estimado (número)
+- SLA em horas (select: 4h urgente / 24h / 48h / 72h / 7 dias)
+- Alerta automático: se custo > R$ 500 ou prioridade = Urgente → `aprovacao_necessaria = true` → exibir banner amarelo "Aprovação do síndico necessária"
+
+**Etapa 4 — Confirmação:**
+- Resumo de todos os dados
+- **Di análise** (chamada Claude API):
+  ```typescript
+  // POST https://api.anthropic.com/v1/messages
+  // System: "Você é Di, síndica virtual do {condominioNome}. Analise esta OS."
+  // User: JSON.stringify({os: dadosOS, historicoEquipamento, ultimasOSsCategoria})
+  // Exibir resposta com streaming typewriter no card di-suggestion
+  ```
+- Botão "Abrir OS" → INSERT em `ordens_servico` + toast de sucesso
+
+### `src/components/OS/OSDetail.tsx` — Drawer/Modal de detalhes
+
+```typescript
+// Slide-in panel com detalhes completos da OS
+// Seções: Informações | Timeline de comentários | Checklist | Fotos | Di análise
+// Campo para adicionar comentário + foto
+// Botão "Concluir OS" → abre modal de conclusão com foto-depois obrigatória e custo real
+// Botão "Exportar PDF" → chamar função generateOSPDF()
+```
+
+### `src/components/OS/SLABar.tsx` — Componente reutilizável
+
+```typescript
+// Props: createdAt: Date, slaHoras: number
+// Calcula percentual decorrido
+// Renderiza segmentos coloridos: verde (0-60%), âmbar (60-85%), vermelho (85-100%+)
+// Exibe texto "Xh restantes" ou "Vencida há Xh" em cor correspondente
+// Atualiza a cada minuto via setInterval
+```
+
+---
+
+## 3. SERVIÇOS — `src/services/osService.ts`
+
+```typescript
+import { supabase } from '../lib/supabase'
+
+export interface OrdemServico {
+  id: string
+  condominio_id: string
+  numero: string                    // gerado: OS-001, OS-002...
+  titulo: string
+  categoria: string
+  status: 'aberta' | 'andamento' | 'concluida' | 'cancelada'
+  prioridade: 'urgente' | 'media' | 'baixa'
+  equipamento_id?: string
+  responsavel?: string
+  prestador_nome?: string
+  custo_estimado?: number
+  custo_real?: number
+  data_prevista?: string
+  sla_horas: number
+  foto_antes?: string
+  foto_depois?: string
+  checklist: { item: string; done: boolean }[]
+  aprovacao_necessaria: boolean
+  aprovado_por?: string
+  di_sugestao?: { texto: string; prestador_sugerido: string; risco: string }
+  created_at: string
+  updated_at: string
+}
+
+// Funções:
+export const osService = {
+  list: (condominioId: string, filters?) => ...,
+  create: (os: Partial<OrdemServico>) => ...,
+  update: (id: string, data: Partial<OrdemServico>) => ...,
+  delete: (id: string) => ...,
+  getStats: (condominioId: string) => ...,         // conta por status
+  addComentario: (osId: string, msg, foto?) => ...,
+  uploadFoto: (file: File, path: string) => ...,   // Supabase Storage
+  generateNumero: (condominioId: string) => ...,   // próximo OS-XXX
+  subscribeRealtime: (condominioId: string, cb) => ...,
+}
+```
+
+---
+
+## 4. INTEGRAÇÃO DI — Claude API
+
+Em `NovaOSForm.tsx` etapa 4 e em `OSDetail.tsx`, chamar:
+
+```typescript
+async function getDiAnalysis(os: Partial<OrdemServico>, historico: OrdemServico[]) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 600,
+      system: `Você é Di, síndica virtual do condomínio ${condominioNome} em Florianópolis. 
+               Analise a OS em até 3 parágrafos curtos. 
+               Sugira prestador baseado no histórico, estime risco de recorrência e recomende prazo.
+               Seja objetiva e use dados reais fornecidos.`,
+      messages: [{
+        role: 'user',
+        content: `Nova OS: ${JSON.stringify(os)}\nHistórico de OSs desta categoria: ${JSON.stringify(historico.slice(-5))}`
+      }]
+    })
+  })
+  const data = await res.json()
+  return data.content[0].text
+}
+```
+
+Exibir com efeito typewriter no card `di-suggestion` (classes já existentes no CSS).
+
+---
+
+## 5. INTEGRAÇÃO NO APP SÍNDICO (mobile)
+
+Em `src/views/Sindico/MobileApp.tsx` (ou arquivo equivalente do App Síndico):
+
+Substituir o componente atual de OS pelo novo `OSModule` com `view="mobile"`:
+
+```tsx
+// Na subscreen de Manutenção, substituir renderização de OSs:
+<OSModule condominioId={condominioId} view="mobile" />
+```
+
+O `OSModule` no modo mobile deve usar:
+- `.ph-subscreen`, `.ph-sub-header`, `.ph-sub-body` para o layout
+- `.ph-os-item` com estilo neumórfico para cada card
+- `NovaOSForm` como subscreen adicional ao clicar em "+ Nova OS"
+
+---
+
+## 6. INTEGRAÇÃO NO DESKTOP GESTOR
+
+Em `src/views/Gestor/DesktopGestor.tsx` (ou arquivo equivalente):
+
+```tsx
+// No painel de Manutenção / OS Integrado:
+<OSModule condominioId={condominioId} view="desktop" />
+```
+
+No modo desktop usar layout com sidebar de filtros + lista principal + drawer de detalhes.
+
+---
+
+## 7. EXPORTAR PDF DA OS
+
+Criar `src/utils/generateOSPDF.ts`:
+
+```typescript
+// Usar biblioteca já disponível (jsPDF ou html2canvas)
+// Gerar PDF A4 com: cabeçalho ImobCore, dados da OS, checklist, fotos antes/depois,
+// timeline de comentários, assinatura do responsável, rodapé com QR Code da OS
+// Chamar: generateOSPDF(os: OrdemServico, comentarios: OSComentario[])
+```
+
+---
+
+## 8. NOTIFICAÇÕES AUTOMÁTICAS
+
+Em `src/services/osService.ts`, adicionar triggers de notificação:
+
+```typescript
+// Ao criar OS urgente → notificar síndico via SSE/realtime
+// Ao SLA ultrapassar 80% → toast warning na interface
+// Ao OS vencer SLA → toast danger + entrada no log de alertas MISP
+// Ao concluir OS → toast success + atualizar score do condomínio
+```
+
+---
+
+## 9. REGRAS DE VALIDAÇÃO
+
+```typescript
+// Campos obrigatórios na abertura: titulo, categoria, prioridade
+// Se prioridade === 'urgente' → sla_horas = 4, aprovacao_necessaria = true
+// Se custo_estimado > 500 → aprovacao_necessaria = true  
+// foto_antes: obrigatória apenas se categoria in ['Hidráulico', 'Estrutural', 'Segurança']
+// data_prevista: não pode ser anterior a hoje
+// responsavel: obrigatório antes de mudar status para 'andamento'
+// foto_depois: obrigatória para mudar status para 'concluida'
+// custo_real: obrigatório para mudar status para 'concluida'
+```
+
+---
+
+## 10. TESTES MÍNIMOS
+
+Após implementar, verificar:
+- [ ] Criar OS urgente → aparece com barra vermelha e badge pulsante
+- [ ] SLA bar atualiza conforme tempo decorrido
+- [ ] Di gera análise ao criar OS (etapa 4 do stepper)
+- [ ] Upload de foto funciona (Supabase Storage)
+- [ ] Realtime: abrir OS em duas abas, status mudado em uma reflete na outra
+- [ ] KPI cards filtram a lista ao clicar
+- [ ] Exportar PDF gera arquivo com dados corretos
+- [ ] OS sem responsável não pode ser iniciada
+
+---
+
+## REFERÊNCIA VISUAL
+
+O design deve seguir o sistema já existente:
+- **Mobile (síndico)**: neumorphism, `--neu-bg`, `--neu-out`, `--neu-grad` (indigo→violet→purple)
+- **Desktop (gestor)**: dark theme, `--card-bg`, `--card-border`, `var(--grad)` 
+- Badges de status: `.pill-red`, `.pill-amber`, `.pill-green`, `.pill-blue`
+- Botões: `.btn`, `.btn-primary`, `.btn-ghost`, `.btn-danger`, `.btn-success`
+- Cards: `.card`, `.ph-card`, `.ph-os-item`
+
+---
+
+## PRIORIDADE DE IMPLEMENTAÇÃO
+
+1. **Primeiro** (crítico): `ordens_servico` schema + `OSList` com SLA bar + `NovaOSForm` com responsável obrigatório + foto na abertura
+2. **Segundo**: Di análise na etapa 4 + KPIs clicáveis + `OSDetail` com comentários
+3. **Terceiro**: Export PDF + checklist dinâmico + notificações automáticas
+
+---
+
+*Gerado por Di — Síndica Virtual IA · ImobCore v2 · claude-sonnet-4 · 21/03/2026*

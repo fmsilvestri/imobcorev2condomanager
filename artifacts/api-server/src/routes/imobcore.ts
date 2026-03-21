@@ -499,16 +499,10 @@ router.get("/os", async (req: Request, res: Response) => {
 // POST /api/os - Criar OS
 router.post("/os", async (req: Request, res: Response) => {
   try {
-    const { condominio_id, titulo, descricao, categoria, prioridade, unidade, responsavel, equipamento_ids } = req.body as {
-      condominio_id?: string;
-      titulo: string;
-      descricao?: string;
-      categoria: string;
-      prioridade: string;
-      unidade?: string;
-      responsavel?: string;
-      equipamento_ids?: string[];
-    };
+    const body = req.body as Record<string, unknown>;
+    const { condominio_id, titulo, descricao, categoria, prioridade, unidade, responsavel,
+            equipamento_ids, prestador_nome, custo_estimado, data_prevista, sla_horas,
+            checklist, aprovacao_necessaria, local } = body;
 
     const { data: cond } = await supabase.from("condominios").select("id").limit(1).single();
 
@@ -521,6 +515,15 @@ router.post("/os", async (req: Request, res: Response) => {
       .single();
     const nextNumero = ((lastOs?.numero as number) || 0) + 1;
 
+    // SLA automático por prioridade
+    const slaDefault: Record<string, number> = { urgente: 4, alta: 24, media: 48, baixa: 168 };
+    const slaFinal = Number(sla_horas) || slaDefault[String(prioridade || "media")] || 48;
+
+    // Aprovação necessária: urgente ou custo > 500
+    const aprovNecessaria = Boolean(aprovacao_necessaria) ||
+      String(prioridade) === "urgente" ||
+      Number(custo_estimado) > 500;
+
     const baseInsert: Record<string, unknown> = {
       condominio_id: condominio_id || cond?.id,
       numero: nextNumero,
@@ -529,16 +532,23 @@ router.post("/os", async (req: Request, res: Response) => {
       categoria,
       prioridade: prioridade || "media",
       unidade,
+      local,
       responsavel,
+      prestador_nome,
+      custo_estimado: Number(custo_estimado) || 0,
+      data_prevista: data_prevista || null,
+      sla_horas: slaFinal,
+      checklist: checklist ?? [],
+      aprovacao_necessaria: aprovNecessaria,
       status: "aberta",
       equipamento_ids: equipamento_ids ?? [],
     };
 
     let { data, error } = await supabase.from("ordens_servico").insert(baseInsert).select().single();
-    // Retry sem equipamento_ids se coluna não existir
-    if (error && error.message?.includes("equipamento_ids")) {
-      const { equipamento_ids: _drop, ...fallback } = baseInsert;
-      const r2 = await supabase.from("ordens_servico").insert(fallback).select().single();
+    // Retry progressivo se colunas não existirem
+    if (error && (error.message?.includes("equipamento_ids") || error.message?.includes("column"))) {
+      const safe: Record<string, unknown> = { condominio_id: baseInsert.condominio_id, numero: nextNumero, titulo, descricao, categoria, prioridade: prioridade || "media", unidade, responsavel, status: "aberta" };
+      const r2 = await supabase.from("ordens_servico").insert(safe).select().single();
       data = r2.data; error = r2.error;
     }
 
@@ -568,9 +578,11 @@ router.put("/os/:id", async (req: Request, res: Response) => {
       const r2 = await supabase.from("ordens_servico").update(fallback).eq("id", id).select().single();
       data = r2.data; error = r2.error;
     }
-    // Retry 2: apenas campos core garantidos
+    // Retry 2: apenas campos core garantidos (inclui novos campos v2)
     if (colErr(error)) {
-      const os_core = ["titulo","descricao","categoria","prioridade","unidade","status","responsavel","numero"];
+      const os_core = ["titulo","descricao","categoria","prioridade","unidade","status","responsavel","numero",
+                       "prestador_nome","custo_estimado","custo_real","data_prevista","sla_horas",
+                       "foto_antes","foto_depois","checklist","aprovacao_necessaria","aprovado_por","di_sugestao","local"];
       const safe = Object.fromEntries(Object.entries(updates).filter(([k]) => os_core.includes(k)));
       const r3 = await supabase.from("ordens_servico").update(safe).eq("id", id).select().single();
       data = r3.data; error = r3.error;
@@ -595,6 +607,62 @@ router.delete("/os/:id", async (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
+});
+
+// GET /api/os-comentarios?os_id=X — listar comentários
+router.get("/os-comentarios", async (req: Request, res: Response) => {
+  try {
+    const { os_id } = req.query as { os_id: string };
+    if (!os_id) return res.status(400).json({ error: "os_id required" });
+    const { data, error } = await supabase
+      .from("os_comentarios").select("*").eq("os_id", os_id).order("created_at", { ascending: true });
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// POST /api/os-comentarios — adicionar comentário
+router.post("/os-comentarios", async (req: Request, res: Response) => {
+  try {
+    const { os_id, condominio_id, autor, mensagem, foto_url } = req.body as Record<string, string>;
+    const { data, error } = await supabase
+      .from("os_comentarios").insert({ os_id, condominio_id, autor, mensagem, foto_url }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// POST /api/os/:id/di — Di analisa uma OS (Claude)
+router.post("/os/:id/di", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { condominio_nome, historico } = req.body as { condominio_nome?: string; historico?: unknown[] };
+
+    const { data: os, error: osErr } = await supabase.from("ordens_servico").select("*").eq("id", id).single();
+    if (osErr || !os) return res.status(404).json({ error: "OS não encontrada" });
+
+    const condNome = condominio_nome || "o condomínio";
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const msg = await client.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 600,
+      system: `Você é Di, síndica virtual de ${condNome} em Florianópolis, SC. Analise a OS em 2-3 parágrafos curtos e objetivos. Sugira prestador baseado no histórico, estime risco de recorrência e recomende prazo. Seja direta e prática. Use emojis com moderação.`,
+      messages: [{
+        role: "user",
+        content: `OS a analisar:\n${JSON.stringify(os, null, 2)}\n\nHistórico de OSs desta categoria (últimas 5):\n${JSON.stringify((historico || []).slice(-5), null, 2)}`
+      }]
+    });
+
+    const texto = (msg.content[0] as { type: string; text: string }).type === "text"
+      ? (msg.content[0] as { text: string }).text : "";
+
+    // Salvar sugestão na OS
+    await supabase.from("ordens_servico").update({ di_sugestao: { texto, gerado_em: new Date().toISOString() } }).eq("id", id);
+
+    res.json({ texto });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
 });
 
 // POST /api/sensores/dados - Atualizar sensor

@@ -136,6 +136,7 @@ export default function SindicoHome({
 
   const modsDark: DarkModule[] = [
     { icon:"💰", title:"Financeiro",   screen:"financeiro",    sub: saldo>=1000?`R$${(saldo/1000).toFixed(0)}k`:`R$${saldo.toFixed(0)}`,    hasDot:false,              bg:"linear-gradient(135deg,#064e3b,#065f46)", text:"#6ee7b7" },
+    { icon:"⚙️", title:"Ordens Serv.", screen:"os",            sub:`${osAbertasCount} abertas`,                                              hasDot:osAbertasCount>0,   bg:"linear-gradient(135deg,#1e1b4b,#3730a3)", text:"#a5b4fc" },
     { icon:"👤", title:"Usuários",     screen:"planejamento",  sub:`${osAbertasCount} pendentes`,                                            hasDot:osAbertasCount>0,   bg:"linear-gradient(135deg,#1e1b4b,#2e2660)", text:"#a5b4fc" },
     { icon:"🔧", title:"Manutenção",   screen:"manutencao",    sub:`${equipCount} itens`,                                                    hasDot:false,              bg:"linear-gradient(135deg,#431407,#7c2d12)", text:"#fdba74" },
     { icon:"👥", title:"CRM",          screen:"crm",           sub:`${crmCount} moradores`,                                                  hasDot:false,              bg:"linear-gradient(135deg,#1e3a5f,#1e40af)", text:"#93c5fd" },
@@ -150,6 +151,7 @@ export default function SindicoHome({
   ];
   const modsLight: LightModule[] = [
     { icon:"💰", title:"Financeiro",   screen:"financeiro",    sub: saldo>=1000?`R$${(saldo/1000).toFixed(0)}k`:`R$${saldo.toFixed(0)}`,    hasDot:false,              bg:"#f0fdf4", border:"#bbf7d0", text:"#065f46" },
+    { icon:"⚙️", title:"Ordens Serv.", screen:"os",            sub:`${osAbertasCount} abertas`,                                              hasDot:osAbertasCount>0,   bg:"#eef2ff", border:"#c7d2fe", text:"#3730a3" },
     { icon:"👤", title:"Usuários",     screen:"planejamento",  sub:`${osAbertasCount} pendentes`,                                            hasDot:osAbertasCount>0,   bg:"#eef2ff", border:"#c7d2fe", text:"#3730a3" },
     { icon:"🔧", title:"Manutenção",   screen:"manutencao",    sub:`${equipCount} itens`,                                                    hasDot:false,              bg:"#fff7ed", border:"#fed7aa", text:"#9a3412" },
     { icon:"👥", title:"CRM",          screen:"crm",           sub:`${crmCount} moradores`,                                                  hasDot:false,              bg:"#eff6ff", border:"#bfdbfe", text:"#1e40af" },
