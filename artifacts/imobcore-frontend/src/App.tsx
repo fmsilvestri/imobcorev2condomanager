@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import SindicoHome from "./components/sindico/SindicoHome";
+import RelatorioExecutivo from "./components/sindico/RelatorioExecutivo";
 import AguaModule from "./modules/agua/AguaModule";
 import OSModule from "./components/OS/OSModule";
 import QRCode from "qrcode";
@@ -1695,6 +1696,7 @@ export default function App() {
   const [diData, setDiData] = useState<{ fala: string; cards: DiCard[] } | null>(null);
   const [diLoading, setDiLoading] = useState(false);
   const [diFalando, setDiFalando] = useState(false);
+  const [diView, setDiView] = useState<"briefing" | "relatorio">("briefing");
 
   // ── Notificações multicanal ────────────────────────────────────────────────
   type NotifCfg = {
@@ -3975,7 +3977,27 @@ export default function App() {
             </div>
           </div>
 
-          {/* ── Corpo scrollável ── */}
+          {/* ── Tabs Di ── */}
+          <div style={{ display:"flex", borderBottom:"1px solid rgba(255,255,255,.07)", background:"#0A0818", flexShrink:0 }}>
+            {(["briefing","relatorio"] as const).map(v => (
+              <button key={v} onClick={() => setDiView(v)}
+                style={{ flex:1, padding:"10px 4px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:11, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit" }}>
+                {v==="briefing" ? "🟣 Briefing" : "📊 Relatório"}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Corpo condicional ── */}
+          {diView === "relatorio" ? (
+            <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+              <RelatorioExecutivo
+                condId={condId || ""}
+                condNome={condominios.find(c => c.id === condId)?.nome || "Condomínio"}
+                sindNome={condominios.find(c => c.id === condId)?.sindico_nome || "Síndico"}
+                view="mobile"
+              />
+            </div>
+          ) : (<>
           <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 100px" }}>
             {/* Balão de fala */}
             {diData?.fala && (
@@ -4086,6 +4108,7 @@ export default function App() {
               💬 Chat IA
             </button>
           </div>
+          </>)}
         </div>
       );
     }
@@ -5727,7 +5750,27 @@ export default function App() {
               </div>
             </div>
 
-            {/* Corpo */}
+            {/* Tabs Di */}
+            <div style={{ display:"flex", gap:0, borderBottom:"1px solid rgba(255,255,255,.07)", background:"#0A0818", flexShrink:0 }}>
+              {(["briefing","relatorio"] as const).map(v => (
+                <button key={v} onClick={() => setDiView(v)}
+                  style={{ flex:1, padding:"11px 8px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:12, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit" }}>
+                  {v==="briefing" ? "🟣 Briefing da Di" : "📊 Relatório Executivo"}
+                </button>
+              ))}
+            </div>
+
+            {/* Corpo Di — view condicional */}
+            {diView === "relatorio" ? (
+              <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+                <RelatorioExecutivo
+                  condId={condId || ""}
+                  condNome={condominios.find(c => c.id === condId)?.nome || "Condomínio"}
+                  sindNome={condominios.find(c => c.id === condId)?.sindico_nome || "Síndico"}
+                  view="desktop"
+                />
+              </div>
+            ) : (
             <div style={{ padding: "20px 24px", background: "#0F0A1E" }}>
 
               {/* Balão de fala */}
@@ -5909,6 +5952,7 @@ export default function App() {
                 )}
               </div>
             </div>
+            )}
           </div>
 
           {/* PANEL: SV CHAT */}

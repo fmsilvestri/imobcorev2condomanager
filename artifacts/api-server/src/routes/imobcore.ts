@@ -665,6 +665,132 @@ router.post("/os/:id/di", async (req: Request, res: Response) => {
   } catch (err) { res.status(500).json({ error: String(err) }); }
 });
 
+// POST /api/sindico/relatorio-executivo — Coleta dados + gera análise Di via Claude
+router.post("/sindico/relatorio-executivo", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, periodo = "mes", condominio_nome, sindico_nome } = req.body as {
+      condominio_id: string; periodo?: string; condominio_nome?: string; sindico_nome?: string;
+    };
+    if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+
+    const condNome = condominio_nome || "o condomínio";
+
+    // ── Coletar dados em paralelo ─────────────────────────────────────────────
+    const [osRes, moradoresRes, lancRes, resRes] = await Promise.all([
+      supabase.from("ordens_servico").select("*").eq("condominio_id", condominio_id).order("created_at", { ascending: false }),
+      supabase.from("moradores").select("id, unidade, bloco, status").eq("condominio_id", condominio_id),
+      supabase.from("lancamentos").select("*").eq("condominio_id", condominio_id).order("created_at", { ascending: false }).limit(200),
+      supabase.from("reservatorios").select("*, sensor_readings(nivel_atual, volume_litros, created_at)").eq("condominio_id", condominio_id).limit(4),
+    ]);
+
+    const osList   = osRes.data   || [];
+    const moradores = moradoresRes.data || [];
+    const lancs    = lancRes.data  || [];
+    const reservs  = resRes.data   || [];
+
+    // ── Calcular KPIs ────────────────────────────────────────────────────────
+    const osAberta    = osList.filter(o => o.status === "aberta").length;
+    const osAndamento = osList.filter(o => o.status === "em_andamento").length;
+    const osConcluida = osList.filter(o => o.status === "fechada").length;
+    const osUrgentes  = osList.filter(o => o.prioridade === "urgente" && o.status !== "fechada").length;
+    const osList5     = osList.filter(o => o.status !== "fechada").slice(0, 5).map(o => ({
+      numero: o.numero, titulo: o.titulo, prioridade: o.prioridade,
+      status: o.status, responsavel: o.responsavel || "–",
+      custo_estimado: o.custo_estimado || 0, local: o.local || "–",
+    }));
+
+    const receitas  = lancs.filter(l => l.tipo === "receita");
+    const despesas  = lancs.filter(l => l.tipo === "despesa");
+    const totalReceita  = receitas.reduce((s: number, l: {valor?: number}) => s + (l.valor || 0), 0);
+    const totalDespesa  = despesas.reduce((s: number, l: {valor?: number}) => s + (l.valor || 0), 0);
+    const saldo = totalReceita - totalDespesa;
+
+    const totalMoradores = moradores.length;
+    const moradoresAtivos = moradores.filter((m: {status?: string}) => m.status !== "inativo").length;
+
+    const iotData = reservs.map((r: {nome?: string; capacidade_litros?: number; sensor_readings?: {nivel_atual?: number; volume_litros?: number}[]}) => {
+      const latest = r.sensor_readings && r.sensor_readings.length > 0 ? r.sensor_readings[r.sensor_readings.length - 1] : null;
+      return {
+        nome: r.nome, capacidade: r.capacidade_litros,
+        nivel: latest?.nivel_atual || null,
+        volume: latest?.volume_litros || null,
+      };
+    });
+
+    // ── Gerar análise Di com Claude ───────────────────────────────────────────
+    const client = hasProxy
+      ? new Anthropic({ apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY!, baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL })
+      : new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" });
+
+    const periodoLabel = periodo === "tri" ? "1º Trimestre 2026" : periodo === "ano" ? "Ano 2026" :
+      periodo === "jan" ? "Janeiro 2026" : periodo === "fev" ? "Fevereiro 2026" :
+      periodo === "abr" ? "Abril 2026" : "Março 2026";
+
+    const msg = await client.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 800,
+      system: `Você é Di, síndica virtual IA do ${condNome} no ImobCore v2. Gere uma análise executiva concisa (3 parágrafos) com: 1) situação atual com destaques positivos e alertas críticos, 2) análise financeira e ocupação, 3) recomendações prioritárias e score estimado de saúde do condomínio (0-100). Use linguagem direta e profissional. Mencione números concretos. Use **negrito** para dados importantes.`,
+      messages: [{
+        role: "user",
+        content: `Analise os dados do período ${periodoLabel} do ${condNome}:
+
+ORDENS DE SERVIÇO:
+- Total abertas: ${osAberta}
+- Em andamento: ${osAndamento}
+- Concluídas: ${osConcluida}
+- Urgentes pendentes: ${osUrgentes}
+- OS abertas: ${JSON.stringify(osList5, null, 2)}
+
+FINANCEIRO:
+- Total receitas: R$ ${totalReceita.toLocaleString("pt-BR")}
+- Total despesas: R$ ${totalDespesa.toLocaleString("pt-BR")}
+- Saldo: R$ ${saldo.toLocaleString("pt-BR")}
+- Total lançamentos: ${lancs.length}
+
+MORADORES:
+- Total cadastrados: ${totalMoradores}
+- Ativos: ${moradoresAtivos}
+
+IoT / RESERVATÓRIOS:
+${iotData.map((r: {nome?: string; nivel?: number | null; capacidade?: number}) => `- ${r.nome}: ${r.nivel !== null ? r.nivel + "%" : "sem leitura"} (cap. ${(r.capacidade || 0).toLocaleString()} L)`).join("\n")}
+
+Gere a análise executiva:`
+      }]
+    });
+
+    const diAnalysis = (msg.content[0] as { type: string; text: string }).type === "text"
+      ? (msg.content[0] as { text: string }).text : "";
+
+    // ── Calcular score ────────────────────────────────────────────────────────
+    let score = 80;
+    if (osUrgentes > 0) score -= osUrgentes * 8;
+    if (saldo < 0) score -= 15;
+    if (saldo > 0) score += 5;
+    if (osConcluida > osAberta) score += 5;
+    score = Math.max(20, Math.min(100, score));
+
+    res.json({
+      ok: true,
+      periodo: periodoLabel,
+      condNome,
+      sindNome: sindico_nome || "Síndico",
+      score,
+      kpis: {
+        osAberta, osAndamento, osConcluida, osUrgentes,
+        totalReceita, totalDespesa, saldo,
+        totalMoradores, moradoresAtivos,
+      },
+      osList: osList5,
+      iot: iotData,
+      financeiro: {
+        receitas: receitas.slice(0, 5).map((l: {descricao?: string; valor?: number; categoria?: string; created_at?: string}) => ({ descricao: l.descricao, valor: l.valor, categoria: l.categoria, data: l.created_at })),
+        despesas: despesas.slice(0, 5).map((l: {descricao?: string; valor?: number; categoria?: string; created_at?: string}) => ({ descricao: l.descricao, valor: l.valor, categoria: l.categoria, data: l.created_at })),
+      },
+      diAnalysis,
+    });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
 // POST /api/os/:id/notificacao-moradores — Gera comunicado para moradores via Di
 router.post("/os/:id/notificacao-moradores", async (req: Request, res: Response) => {
   try {
