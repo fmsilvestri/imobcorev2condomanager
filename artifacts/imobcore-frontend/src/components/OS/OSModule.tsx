@@ -638,9 +638,27 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
     navigator.clipboard.writeText(notifTexto).then(()=>{ setNotifCopied(true); setTimeout(()=>setNotifCopied(false),2000); });
   }
 
-  const tabBtn = (t:typeof tab,lbl:string) => (
-    <button key={t} onClick={()=>setTab(t)} style={{ padding:"6px 12px",border:"none",background:tab===t?"rgba(99,102,241,.3)":"transparent",color:tab===t?"#A5B4FC":"#64748B",fontSize:11,fontWeight:tab===t?700:400,cursor:"pointer",borderRadius:6,fontFamily:"inherit" }}>{lbl}</button>
-  );
+  const tabBtn = (t:typeof tab, icon:string, lbl:string, big?:boolean) => {
+    const active = tab === t;
+    return (
+      <button key={t} onClick={()=>setTab(t)} style={{
+        flex: big ? "1.35" : "1",
+        display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4,
+        padding: big ? "10px 4px 9px" : "9px 4px 8px",
+        border:"none",
+        borderBottom: `3px solid ${active ? (big ? "#F472B6" : "#818CF8") : "transparent"}`,
+        background: active
+          ? big ? "rgba(244,114,182,.12)" : "rgba(99,102,241,.15)"
+          : "transparent",
+        color: active ? (big ? "#F9A8D4" : "#A5B4FC") : "#4B5563",
+        cursor:"pointer", fontFamily:"inherit",
+        transition:"all .18s ease",
+      }}>
+        <span style={{ fontSize: big ? 22 : 18, lineHeight:1, filter: active ? "none" : "grayscale(60%) opacity(.6)" }}>{icon}</span>
+        <span style={{ fontSize: big ? 12 : 10, fontWeight: active ? 800 : 600, letterSpacing:".2px", whiteSpace:"nowrap" }}>{lbl}</span>
+      </button>
+    );
+  };
 
   const pc = PRI_COLOR[os.prioridade]||"#64748B";
 
@@ -671,8 +689,12 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
           </div>
         </div>
         {/* Tabs */}
-        <div style={{ padding:"8px 12px 4px",borderBottom:"1px solid rgba(255,255,255,.05)",flexShrink:0 }}>
-          {tabBtn("info","ℹ️ Info")}{tabBtn("checklist","☑️ Checklist")}{tabBtn("comentarios",`💬 (${comments.length})`)}{tabBtn("di","🟣 Di")}{tabBtn("notif","📢 Avisar")}
+        <div style={{ display:"flex", width:"100%", borderBottom:"2px solid rgba(255,255,255,.06)", background:"#080B14", flexShrink:0 }}>
+          {tabBtn("info","ℹ️","Info")}
+          {tabBtn("checklist","☑️","Checklist")}
+          {tabBtn("comentarios","💬",`(${comments.length})`)}
+          {tabBtn("di","🟣","Di")}
+          {tabBtn("notif","📢","Avisar",true)}
         </div>
         {/* Tab content */}
         <div style={{ flex:1,overflowY:"auto",padding:"14px 18px" }}>
