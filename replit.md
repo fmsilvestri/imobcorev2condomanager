@@ -45,6 +45,13 @@ Express API server with all ImobCore routes in `src/routes/imobcore.ts`:
 - `POST /api/sindico/chat` — AI chat (Claude)
 - `POST /api/sindico/comunicado` — AI-generated communications
 - `POST /api/di` — Di (Síndica Virtual) briefing: returns `{fala, cards:[{titulo,valor,status,detalhe}], dados}` using Claude
+- `POST /api/admin/login` — Admin Global auth (email + password → token)
+- `GET /api/admin/dashboard` — Global KPIs: total condos, users, OS, inadimplência, plan counts (X-Admin-Token required)
+- `GET /api/admin/condominios` — All condominiums list (X-Admin-Token required)
+- `PATCH /api/admin/condominio/:id` — Update plano/status (X-Admin-Token required)
+- `GET /api/admin/usuarios` — All users/residents (X-Admin-Token required)
+- `GET /api/admin/planos` — SaaS plan configs (FREE/PRO/ENTERPRISE) with limits & features
+- `GET /api/admin/sistema` — System health: Supabase latency, API uptime, memory, SSE clients (X-Admin-Token required)
 - `GET /api/os` — List OS with optional filters (status, categoria, prioridade, search)
 - `POST /api/os` — Create OS with auto-numbering (max+1) or manual number + responsavel field
 - `PUT /api/os/:id` — Update OS (any field) + broadcasts SSE

@@ -2619,5 +2619,170 @@ router.delete("/placa-solar/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  ADMIN GLOBAL
+// ══════════════════════════════════════════════════════════════════════════════
+
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "imobcore-admin-2026";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@imobcore.com";
+const ADMIN_PASS  = process.env.ADMIN_PASS  || "ImobCore@Admin2026";
+
+// Middleware: valida token no header X-Admin-Token
+const checkAdminGlobal = (req: Request, res: Response, next: () => void) => {
+  const token = req.headers["x-admin-token"];
+  if (!token || token !== ADMIN_TOKEN) {
+    return res.status(403).json({ error: "Acesso negado — apenas admin_global" });
+  }
+  next();
+};
+
+// POST /api/admin/login  — autentica admin global
+router.post("/admin/login", (req: Request, res: Response) => {
+  const { email, password } = req.body as { email: string; password: string };
+  if (email?.trim() === ADMIN_EMAIL && password === ADMIN_PASS) {
+    return res.json({ ok: true, token: ADMIN_TOKEN, role: "admin_global" });
+  }
+  return res.status(401).json({ error: "Credenciais inválidas" });
+});
+
+// GET /api/admin/dashboard  — métricas globais
+router.get("/admin/dashboard", checkAdminGlobal, async (_req: Request, res: Response) => {
+  try {
+    const [
+      { data: condos, error: e1 },
+      { data: lancamentos, error: e2 },
+      { data: osRows, error: e3 },
+      { data: moradores, error: e4 },
+    ] = await Promise.all([
+      supabase.from("condominios").select("id, nome, plano, status, created_at, total_unidades, cidade, estado"),
+      supabase.from("lancamentos").select("tipo, valor, condominio_id"),
+      supabase.from("ordens_servico").select("status, condominio_id"),
+      supabase.from("moradores").select("id, condominio_id"),
+    ]);
+
+    if (e1) return res.status(500).json({ error: e1.message });
+
+    const totalCondos   = condos?.length ?? 0;
+    const totalMoradores= moradores?.length ?? 0;
+    const osAbertas     = osRows?.filter(o => o.status === "aberta" || o.status === "em_andamento").length ?? 0;
+    const osConcluidas  = osRows?.filter(o => o.status === "concluida").length ?? 0;
+
+    // inadimplência média por condomínio
+    let somaInad = 0;
+    let condosComDados = 0;
+    if (lancamentos && condos) {
+      for (const c of condos) {
+        const lan = lancamentos.filter(l => l.condominio_id === c.id);
+        const totalRec = lan.filter(l => l.tipo === "receita").reduce((s, l) => s + Number(l.valor), 0);
+        const totalDesp = lan.filter(l => l.tipo === "despesa").reduce((s, l) => s + Number(l.valor), 0);
+        if (totalRec > 0) { somaInad += Math.max(0, (totalDesp / totalRec) * 100); condosComDados++; }
+      }
+    }
+    const inadMedia = condosComDados > 0 ? (somaInad / condosComDados).toFixed(1) : "0.0";
+
+    const planoCounts = { free: 0, pro: 0, enterprise: 0 };
+    for (const c of condos ?? []) {
+      const p = (c.plano || "free").toLowerCase() as "free" | "pro" | "enterprise";
+      if (p in planoCounts) planoCounts[p]++;
+    }
+
+    res.json({
+      totalCondos, totalMoradores, osAbertas, osConcluidas,
+      inadMedia, planoCounts,
+      condosAtivos:    condos?.filter(c => c.status !== "suspenso").length ?? 0,
+      condosSuspensos: condos?.filter(c => c.status === "suspenso").length ?? 0,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
+// GET /api/admin/condominios  — lista todos os condomínios
+router.get("/admin/condominios", checkAdminGlobal, async (_req: Request, res: Response) => {
+  const { data, error } = await supabase
+    .from("condominios")
+    .select("id, nome, plano, status, created_at, total_unidades, cidade, estado, sindico_nome, sindico_email")
+    .order("created_at", { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ data });
+});
+
+// PATCH /api/admin/condominio/:id  — atualiza plano ou status
+router.patch("/admin/condominio/:id", checkAdminGlobal, async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { plano, status } = req.body as { plano?: string; status?: string };
+  const updates: Record<string, unknown> = {};
+  if (plano  !== undefined) updates.plano  = plano;
+  if (status !== undefined) updates.status = status;
+  if (!Object.keys(updates).length) return res.status(400).json({ error: "Nenhum campo enviado" });
+  const { data, error } = await supabase.from("condominios").update(updates).eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, data });
+});
+
+// GET /api/admin/usuarios  — lista todos os moradores/usuários
+router.get("/admin/usuarios", checkAdminGlobal, async (_req: Request, res: Response) => {
+  const { data, error } = await supabase
+    .from("moradores")
+    .select("id, nome, email, perfil, unidade, status, condominio_id, telefone, created_at")
+    .order("created_at", { ascending: false });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ data });
+});
+
+// GET /api/admin/planos  — configuração de planos SaaS
+router.get("/admin/planos", checkAdminGlobal, (_req: Request, res: Response) => {
+  res.json({
+    data: [
+      {
+        id: "free",
+        nome: "FREE",
+        color: "#10B981",
+        preco: 0,
+        limites: { condominios: 1, unidades: 50, usuarios: 10, ia_mensagens: 50 },
+        features: ["Dashboard básico", "1 condomínio", "Chat IA (50 msgs/mês)", "Notificações básicas"],
+      },
+      {
+        id: "pro",
+        nome: "PRO",
+        color: "#6366F1",
+        preco: 297,
+        limites: { condominios: 5, unidades: 500, usuarios: 100, ia_mensagens: 1000 },
+        features: ["Tudo do FREE", "Até 5 condomínios", "IoT avançado", "Relatórios PDF", "Chat IA ilimitado", "Di — Síndica Virtual"],
+      },
+      {
+        id: "enterprise",
+        nome: "ENTERPRISE",
+        color: "#F59E0B",
+        preco: 997,
+        limites: { condominios: -1, unidades: -1, usuarios: -1, ia_mensagens: -1 },
+        features: ["Tudo do PRO", "Condomínios ilimitados", "White-label", "API dedicada", "SLA garantido", "Suporte 24/7", "Integração ERP"],
+      },
+    ],
+  });
+});
+
+// GET /api/admin/sistema  — saúde do sistema
+router.get("/admin/sistema", checkAdminGlobal, async (_req: Request, res: Response) => {
+  try {
+    const start = Date.now();
+    const { error } = await supabase.from("condominios").select("id").limit(1);
+    const latency = Date.now() - start;
+    res.json({
+      status: error ? "degraded" : "ok",
+      supabase_latency_ms: latency,
+      api_uptime_s: Math.floor(process.uptime()),
+      node_version: process.version,
+      memory_mb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      sse_clients: sseClients.size,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+  }
+});
+
 export default router;
 export { broadcast };

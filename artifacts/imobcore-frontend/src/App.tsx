@@ -577,7 +577,7 @@ const MANUT_SCHEDULE: { mes: string; items: { equip: string; tipo: "preventiva"|
 ];
 
 export default function App() {
-  const [view, setView] = useState<"login" | "selector" | "gestor" | "sindico" | "morador" | "onboarding">("login");
+  const [view, setView] = useState<"login" | "selector" | "gestor" | "sindico" | "morador" | "onboarding" | "admin">("login");
   const [panel, setPanel] = useState("sv-chat");
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [condId, setCondId] = useState<string | null>(null);
@@ -593,6 +593,66 @@ export default function App() {
   const [bellShake, setBellShake] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [loginMode, setLoginMode] = useState<"morador" | "sindico" | "gestor">("morador");
+
+  // ── Admin Global state ─────────────────────────────────────────────────────
+  const [adminToken, setAdminToken]     = useState<string | null>(() => sessionStorage.getItem("adminToken"));
+  const [adminSection, setAdminSection] = useState<"dashboard" | "condominios" | "usuarios" | "planos" | "sistema">("dashboard");
+  type AdminCondo   = { id: string; nome: string; plano: string; status: string; created_at: string; total_unidades?: number; cidade?: string; estado?: string; sindico_nome?: string; sindico_email?: string };
+  type AdminUser    = { id: string; nome: string; email: string; perfil: string; unidade?: string; status?: string; condominio_id?: string; telefone?: string };
+  type AdminPlan    = { id: string; nome: string; color: string; preco: number; limites: Record<string, number>; features: string[] };
+  type AdminMetrics = { totalCondos: number; totalMoradores: number; osAbertas: number; osConcluidas: number; inadMedia: string; planoCounts: Record<string, number>; condosAtivos: number; condosSuspensos: number };
+  type SistemData   = { status: string; supabase_latency_ms: number; api_uptime_s: number; node_version: string; memory_mb: number; sse_clients: number; timestamp: string };
+  const [adminMetrics, setAdminMetrics] = useState<AdminMetrics | null>(null);
+  const [adminCondos,  setAdminCondos]  = useState<AdminCondo[]>([]);
+  const [adminUsers,   setAdminUsers]   = useState<AdminUser[]>([]);
+  const [adminPlans,   setAdminPlans]   = useState<AdminPlan[]>([]);
+  const [adminSistem,  setAdminSistem]  = useState<SistemData | null>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminCondoFilter, setAdminCondoFilter] = useState("");
+  const [adminUserFilter,  setAdminUserFilter]  = useState("");
+  const [adminPatchId,     setAdminPatchId]     = useState<string | null>(null);
+
+  const adminFetch = (path: string, opts: RequestInit = {}) =>
+    fetch(`/api${path}`, { ...opts, headers: { ...(opts.headers as Record<string,string> || {}), "X-Admin-Token": adminToken || "", "Content-Type": "application/json" } });
+
+  const loadAdminDashboard = async (tok?: string) => {
+    const t = tok ?? adminToken;
+    if (!t) return;
+    setAdminLoading(true);
+    try {
+      const [mRes, cRes, uRes, pRes] = await Promise.all([
+        fetch("/api/admin/dashboard", { headers: { "X-Admin-Token": t } }),
+        fetch("/api/admin/condominios", { headers: { "X-Admin-Token": t } }),
+        fetch("/api/admin/usuarios",   { headers: { "X-Admin-Token": t } }),
+        fetch("/api/admin/planos",     { headers: { "X-Admin-Token": t } }),
+      ]);
+      const [m, c, u, p] = await Promise.all([mRes.json(), cRes.json(), uRes.json(), pRes.json()]);
+      setAdminMetrics(m);
+      setAdminCondos(c.data || []);
+      setAdminUsers(u.data || []);
+      setAdminPlans(p.data || []);
+    } catch { showToast("Erro ao carregar dados admin", "error"); }
+    setAdminLoading(false);
+  };
+
+  const loadAdminSistema = async () => {
+    if (!adminToken) return;
+    const r = await fetch("/api/admin/sistema", { headers: { "X-Admin-Token": adminToken } });
+    const d = await r.json();
+    setAdminSistem(d);
+  };
+
+  const patchCondo = async (id: string, updates: { plano?: string; status?: string }) => {
+    setAdminPatchId(id);
+    try {
+      const r = await adminFetch(`/admin/condominio/${id}`, { method: "PATCH", body: JSON.stringify(updates) });
+      const res = await r.json();
+      if (!r.ok) { showToast(res.error || "Erro", "error"); return; }
+      setAdminCondos(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+      showToast("Condomínio atualizado!", "success");
+    } catch { showToast("Erro ao atualizar", "error"); }
+    setAdminPatchId(null);
+  };
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [showLoginPass, setShowLoginPass] = useState(false);
@@ -4822,9 +4882,24 @@ export default function App() {
       gestor:   { icon: "⚡", label: "Painel Gestor",  dest: "gestor"   as const, btnLabel: "Acessar Painel Gestor", desc: "Interface Desktop" },
     }[loginMode];
 
-    const handleLogin = () => {
+    const handleLogin = async () => {
       if (!loginEmail.trim()) { showToast("Informe o e-mail", "warn"); return; }
       if (!loginPass.trim())  { showToast("Informe a senha", "warn"); return; }
+      // Admin global login
+      if (loginEmail.trim().toLowerCase() === "admin@imobcore.com") {
+        try {
+          const r = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: loginEmail.trim(), password: loginPass }) });
+          const res = await r.json();
+          if (!r.ok) { showToast(res.error || "Credenciais inválidas", "error"); return; }
+          setAdminToken(res.token);
+          sessionStorage.setItem("adminToken", res.token);
+          setAdminSection("dashboard");
+          await loadAdminDashboard(res.token);
+          setView("admin");
+          showToast("🛡️ Acesso Admin Global liberado!", "success");
+        } catch { showToast("Erro de autenticação", "error"); }
+        return;
+      }
       setView("selector");
     };
 
@@ -11623,6 +11698,367 @@ Content-Type: application/json
               >
                 ✓ Salvar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          VIEW: ADMIN GLOBAL
+      ══════════════════════════════════════════════════════════════════════ */}
+      {view === "admin" && (
+        <div style={{ display:"flex", width:"100vw", height:"100vh", background:"#060A14", fontFamily:"'Inter', 'Nunito', sans-serif", overflow:"hidden" }}>
+
+          {/* ── Sidebar ─────────────────────────────────────────── */}
+          <div style={{ width:240, flexShrink:0, background:"#0D1117", borderRight:"1px solid rgba(99,102,241,.15)", display:"flex", flexDirection:"column", padding:"0 0 16px" }}>
+            {/* Logo */}
+            <div style={{ padding:"20px 20px 12px", borderBottom:"1px solid rgba(255,255,255,.06)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:4 }}>
+                <div style={{ width:34, height:34, borderRadius:10, background:"linear-gradient(135deg,#6366F1,#A855F7)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>🛡️</div>
+                <div>
+                  <div style={{ fontSize:14, fontWeight:800, color:"#F1F5F9" }}>ImobCore</div>
+                  <div style={{ fontSize:10, color:"#6366F1", fontWeight:600, letterSpacing:1 }}>ADMIN GLOBAL</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Nav items */}
+            <div style={{ flex:1, padding:"12px 10px", display:"flex", flexDirection:"column", gap:2 }}>
+              {([
+                { id:"dashboard",    icon:"📊", label:"Dashboard" },
+                { id:"condominios",  icon:"🏢", label:"Condomínios" },
+                { id:"usuarios",     icon:"👥", label:"Usuários" },
+                { id:"planos",       icon:"💎", label:"Planos SaaS" },
+                { id:"sistema",      icon:"⚙️", label:"Sistema" },
+              ] as const).map(item => (
+                <button key={item.id} onClick={() => { setAdminSection(item.id); if(item.id === "sistema") loadAdminSistema(); }}
+                  style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", borderRadius:9, border:"none", cursor:"pointer", fontSize:13, fontWeight:600, textAlign:"left", transition:"all .15s", background: adminSection === item.id ? "rgba(99,102,241,.2)" : "transparent", color: adminSection === item.id ? "#A5B4FC" : "#64748B", borderLeft: adminSection === item.id ? "3px solid #6366F1" : "3px solid transparent" }}>
+                  <span style={{ fontSize:15 }}>{item.icon}</span>{item.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding:"12px 14px", borderTop:"1px solid rgba(255,255,255,.06)" }}>
+              <div style={{ fontSize:11, color:"#334155", marginBottom:8 }}>admin@imobcore.com</div>
+              <button onClick={() => { sessionStorage.removeItem("adminToken"); setAdminToken(null); setView("login"); }}
+                style={{ width:"100%", padding:"8px", borderRadius:8, background:"rgba(239,68,68,.12)", border:"1px solid rgba(239,68,68,.25)", color:"#EF4444", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                🚪 Sair do Admin
+              </button>
+            </div>
+          </div>
+
+          {/* ── Main content ─────────────────────────────────────── */}
+          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+
+            {/* Topbar */}
+            <div style={{ height:56, borderBottom:"1px solid rgba(255,255,255,.06)", display:"flex", alignItems:"center", padding:"0 24px", gap:16, flexShrink:0, background:"rgba(13,17,23,.8)", backdropFilter:"blur(8px)" }}>
+              <div style={{ fontSize:16, fontWeight:700, color:"#F1F5F9" }}>
+                {{ dashboard:"📊 Dashboard Global", condominios:"🏢 Condomínios", usuarios:"👥 Usuários", planos:"💎 Planos SaaS", sistema:"⚙️ Sistema" }[adminSection]}
+              </div>
+              <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
+                {adminLoading && <div style={{ fontSize:12, color:"#6366F1" }}>⏳ Carregando...</div>}
+                <button onClick={() => loadAdminDashboard()}
+                  style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:8, padding:"6px 14px", color:"#818CF8", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                  🔄 Atualizar
+                </button>
+              </div>
+            </div>
+
+            {/* Scrollable body */}
+            <div style={{ flex:1, overflowY:"auto", padding:24 }}>
+
+              {/* ── DASHBOARD ─────────────────────────────────────── */}
+              {adminSection === "dashboard" && (
+                <div>
+                  {/* KPI Cards */}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:16, marginBottom:24 }}>
+                    {[
+                      { label:"Total Condomínios", val: adminMetrics?.totalCondos ?? "—", icon:"🏢", color:"#6366F1", bg:"rgba(99,102,241,.1)", sub: `${adminMetrics?.condosAtivos??0} ativos · ${adminMetrics?.condosSuspensos??0} suspensos` },
+                      { label:"Total Usuários",    val: adminMetrics?.totalMoradores ?? "—", icon:"👥", color:"#10B981", bg:"rgba(16,185,129,.1)", sub:"moradores cadastrados" },
+                      { label:"OSs Abertas",       val: adminMetrics?.osAbertas ?? "—", icon:"🔧", color:"#F59E0B", bg:"rgba(245,158,11,.1)", sub: `${adminMetrics?.osConcluidas??0} concluídas` },
+                      { label:"Inadimplência Média", val: adminMetrics?.inadMedia ? `${adminMetrics.inadMedia}%` : "—", icon:"💰", color:"#EF4444", bg:"rgba(239,68,68,.1)", sub:"média de despesa/receita" },
+                    ].map((k,i) => (
+                      <div key={i} style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:"18px 20px" }}>
+                        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                          <div style={{ fontSize:11, color:"#475569", fontWeight:600, textTransform:"uppercase", letterSpacing:.5 }}>{k.label}</div>
+                          <div style={{ width:34, height:34, borderRadius:9, background:k.bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16 }}>{k.icon}</div>
+                        </div>
+                        <div style={{ fontSize:30, fontWeight:900, color:k.color, lineHeight:1, marginBottom:6 }}>{k.val}</div>
+                        <div style={{ fontSize:11, color:"#334155" }}>{k.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Planos distribuição + Condos recentes lado a lado */}
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1.8fr", gap:16 }}>
+
+                    {/* Planos */}
+                    <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:20 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9", marginBottom:16 }}>💎 Distribuição de Planos</div>
+                      {adminPlans.map(p => {
+                        const count = adminMetrics?.planoCounts?.[p.id] ?? 0;
+                        const total = adminMetrics?.totalCondos || 1;
+                        const pct   = Math.round((count / total) * 100);
+                        return (
+                          <div key={p.id} style={{ marginBottom:14 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                              <span style={{ fontSize:12, color:p.color, fontWeight:700 }}>{p.nome}</span>
+                              <span style={{ fontSize:12, color:"#64748B" }}>{count} condos ({pct}%)</span>
+                            </div>
+                            <div style={{ height:6, borderRadius:99, background:"rgba(255,255,255,.05)", overflow:"hidden" }}>
+                              <div style={{ height:"100%", width:`${pct}%`, background:p.color, borderRadius:99, transition:"width .5s" }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {adminPlans.length === 0 && <div style={{ color:"#334155", fontSize:12 }}>Sem dados</div>}
+                    </div>
+
+                    {/* Últimos condomínios */}
+                    <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:20 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9", marginBottom:16 }}>🏢 Últimos Condomínios Cadastrados</div>
+                      <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                        {adminCondos.slice(0,6).map(c => (
+                          <div key={c.id} style={{ display:"flex", alignItems:"center", gap:12, padding:"8px 12px", background:"rgba(255,255,255,.02)", borderRadius:9 }}>
+                            <div style={{ width:32, height:32, borderRadius:8, background:"rgba(99,102,241,.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13 }}>🏢</div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:12, fontWeight:600, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{c.nome}</div>
+                              <div style={{ fontSize:10, color:"#475569" }}>{c.cidade||"—"} · {c.total_unidades||"—"} unid.</div>
+                            </div>
+                            <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                              <span style={{ fontSize:10, padding:"2px 8px", borderRadius:20, background: c.status==="suspenso" ? "rgba(239,68,68,.15)" : "rgba(16,185,129,.15)", color: c.status==="suspenso" ? "#EF4444" : "#10B981", fontWeight:600 }}>{c.status||"ativo"}</span>
+                              <span style={{ fontSize:10, padding:"2px 8px", borderRadius:20, background:"rgba(99,102,241,.15)", color:"#818CF8", fontWeight:600 }}>{(c.plano||"free").toUpperCase()}</span>
+                            </div>
+                          </div>
+                        ))}
+                        {adminCondos.length === 0 && <div style={{ color:"#334155", fontSize:12 }}>Sem condomínios cadastrados</div>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── CONDOMÍNIOS ──────────────────────────────────── */}
+              {adminSection === "condominios" && (
+                <div>
+                  <div style={{ display:"flex", gap:12, marginBottom:18, alignItems:"center" }}>
+                    <input
+                      value={adminCondoFilter} onChange={e=>setAdminCondoFilter(e.target.value)}
+                      placeholder="🔍 Buscar condomínio..."
+                      style={{ flex:1, background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 14px", color:"#E2E8F0", fontSize:13 }}
+                    />
+                    <div style={{ fontSize:12, color:"#475569" }}>{adminCondos.length} condomínios</div>
+                  </div>
+                  <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, overflow:"hidden" }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                      <thead>
+                        <tr style={{ background:"rgba(255,255,255,.03)" }}>
+                          {["Nome","Cidade","Plano","Status","Síndico","Unidades","Ações"].map(h => (
+                            <th key={h} style={{ padding:"12px 16px", textAlign:"left", fontSize:11, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:.5, borderBottom:"1px solid rgba(255,255,255,.06)" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminCondos
+                          .filter(c => !adminCondoFilter || c.nome?.toLowerCase().includes(adminCondoFilter.toLowerCase()) || c.cidade?.toLowerCase().includes(adminCondoFilter.toLowerCase()))
+                          .map(c => (
+                          <tr key={c.id} style={{ borderBottom:"1px solid rgba(255,255,255,.04)", transition:"background .15s" }}>
+                            <td style={{ padding:"12px 16px" }}>
+                              <div style={{ fontSize:13, fontWeight:600, color:"#E2E8F0" }}>{c.nome}</div>
+                              <div style={{ fontSize:10, color:"#334155" }}>{c.id.slice(0,8)}...</div>
+                            </td>
+                            <td style={{ padding:"12px 16px", fontSize:12, color:"#64748B" }}>{c.cidade||"—"}/{c.estado||"—"}</td>
+                            <td style={{ padding:"12px 16px" }}>
+                              <select
+                                value={c.plano||"free"}
+                                onChange={e => patchCondo(c.id, { plano: e.target.value })}
+                                disabled={adminPatchId === c.id}
+                                style={{ background:"rgba(99,102,241,.12)", border:"1px solid rgba(99,102,241,.25)", borderRadius:6, padding:"4px 8px", color:"#818CF8", fontSize:11, fontWeight:700, cursor:"pointer" }}
+                              >
+                                <option value="free">FREE</option>
+                                <option value="pro">PRO</option>
+                                <option value="enterprise">ENTERPRISE</option>
+                              </select>
+                            </td>
+                            <td style={{ padding:"12px 16px" }}>
+                              <span style={{ fontSize:11, padding:"3px 10px", borderRadius:20, fontWeight:700, background: c.status==="suspenso" ? "rgba(239,68,68,.15)" : "rgba(16,185,129,.15)", color: c.status==="suspenso" ? "#EF4444" : "#10B981" }}>
+                                {c.status==="suspenso" ? "Suspenso" : "Ativo"}
+                              </span>
+                            </td>
+                            <td style={{ padding:"12px 16px" }}>
+                              <div style={{ fontSize:12, color:"#64748B" }}>{c.sindico_nome||"—"}</div>
+                              <div style={{ fontSize:10, color:"#334155" }}>{c.sindico_email||""}</div>
+                            </td>
+                            <td style={{ padding:"12px 16px", fontSize:12, color:"#475569" }}>{c.total_unidades||"—"}</td>
+                            <td style={{ padding:"12px 16px" }}>
+                              <div style={{ display:"flex", gap:6 }}>
+                                {c.status !== "suspenso" ? (
+                                  <button onClick={() => patchCondo(c.id, { status:"suspenso" })} disabled={adminPatchId===c.id}
+                                    style={{ padding:"5px 10px", borderRadius:6, border:"1px solid rgba(239,68,68,.3)", background:"rgba(239,68,68,.1)", color:"#EF4444", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                                    ⏸ Suspender
+                                  </button>
+                                ) : (
+                                  <button onClick={() => patchCondo(c.id, { status:"ativo" })} disabled={adminPatchId===c.id}
+                                    style={{ padding:"5px 10px", borderRadius:6, border:"1px solid rgba(16,185,129,.3)", background:"rgba(16,185,129,.1)", color:"#10B981", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                                    ▶ Ativar
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {adminCondos.length === 0 && !adminLoading && (
+                      <div style={{ padding:40, textAlign:"center", color:"#334155", fontSize:13 }}>Nenhum condomínio encontrado</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── USUÁRIOS ─────────────────────────────────────── */}
+              {adminSection === "usuarios" && (
+                <div>
+                  <div style={{ display:"flex", gap:12, marginBottom:18, alignItems:"center" }}>
+                    <input
+                      value={adminUserFilter} onChange={e=>setAdminUserFilter(e.target.value)}
+                      placeholder="🔍 Buscar por nome ou e-mail..."
+                      style={{ flex:1, background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 14px", color:"#E2E8F0", fontSize:13 }}
+                    />
+                    <div style={{ fontSize:12, color:"#475569" }}>{adminUsers.length} usuários</div>
+                  </div>
+                  <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, overflow:"hidden" }}>
+                    <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                      <thead>
+                        <tr style={{ background:"rgba(255,255,255,.03)" }}>
+                          {["Usuário","E-mail","Perfil","Unidade","Status","Condomínio ID"].map(h => (
+                            <th key={h} style={{ padding:"12px 16px", textAlign:"left", fontSize:11, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:.5, borderBottom:"1px solid rgba(255,255,255,.06)" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminUsers
+                          .filter(u => !adminUserFilter || u.nome?.toLowerCase().includes(adminUserFilter.toLowerCase()) || u.email?.toLowerCase().includes(adminUserFilter.toLowerCase()))
+                          .map(u => (
+                          <tr key={u.id} style={{ borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                            <td style={{ padding:"12px 16px" }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                <div style={{ width:28, height:28, borderRadius:8, background:"rgba(99,102,241,.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"#818CF8" }}>
+                                  {(u.nome||u.email||"?")[0].toUpperCase()}
+                                </div>
+                                <div style={{ fontSize:13, fontWeight:600, color:"#E2E8F0" }}>{u.nome||"—"}</div>
+                              </div>
+                            </td>
+                            <td style={{ padding:"12px 16px", fontSize:12, color:"#64748B" }}>{u.email||"—"}</td>
+                            <td style={{ padding:"12px 16px" }}>
+                              <span style={{ fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700, background:{ morador:"rgba(16,185,129,.12)", sindico:"rgba(99,102,241,.12)", gestor:"rgba(245,158,11,.12)", zelador:"rgba(239,68,68,.12)" }[u.perfil]||"rgba(100,116,139,.12)", color:{ morador:"#10B981", sindico:"#818CF8", gestor:"#F59E0B", zelador:"#EF4444" }[u.perfil]||"#64748B" }}>
+                                {u.perfil||"morador"}
+                              </span>
+                            </td>
+                            <td style={{ padding:"12px 16px", fontSize:12, color:"#475569" }}>{u.unidade||"—"}</td>
+                            <td style={{ padding:"12px 16px" }}>
+                              <span style={{ fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700, background: u.status==="ativo" ? "rgba(16,185,129,.12)" : "rgba(239,68,68,.12)", color: u.status==="ativo" ? "#10B981" : "#EF4444" }}>
+                                {u.status||"ativo"}
+                              </span>
+                            </td>
+                            <td style={{ padding:"12px 16px", fontSize:11, color:"#334155", fontFamily:"monospace" }}>{u.condominio_id?.slice(0,12)||"—"}...</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {adminUsers.length === 0 && !adminLoading && (
+                      <div style={{ padding:40, textAlign:"center", color:"#334155", fontSize:13 }}>Nenhum usuário encontrado</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── PLANOS ───────────────────────────────────────── */}
+              {adminSection === "planos" && (
+                <div>
+                  <div style={{ fontSize:13, color:"#475569", marginBottom:20 }}>Configure os limites e recursos de cada plano da plataforma.</div>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:20 }}>
+                    {adminPlans.map(p => (
+                      <div key={p.id} style={{ background:"#0D1117", border:`1px solid ${p.color}30`, borderRadius:16, padding:24, position:"relative", overflow:"hidden" }}>
+                        <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:p.color }} />
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:16 }}>
+                          <div>
+                            <div style={{ fontSize:20, fontWeight:900, color:p.color }}>{p.nome}</div>
+                            <div style={{ fontSize:24, fontWeight:800, color:"#F1F5F9", marginTop:4 }}>
+                              {p.preco === 0 ? "Grátis" : `R$ ${p.preco.toLocaleString("pt-BR")}`}
+                              {p.preco > 0 && <span style={{ fontSize:12, color:"#475569", fontWeight:400 }}>/mês</span>}
+                            </div>
+                          </div>
+                          <div style={{ width:40, height:40, borderRadius:12, background:`${p.color}20`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>
+                            {{ free:"🌱", pro:"⚡", enterprise:"🏆" }[p.id]}
+                          </div>
+                        </div>
+
+                        {/* Limites */}
+                        <div style={{ background:"rgba(255,255,255,.03)", borderRadius:10, padding:"12px 14px", marginBottom:14 }}>
+                          <div style={{ fontSize:10, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Limites</div>
+                          {Object.entries(p.limites).map(([k, v]) => (
+                            <div key={k} style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                              <span style={{ fontSize:11, color:"#64748B" }}>{k.replace(/_/g," ")}</span>
+                              <span style={{ fontSize:11, fontWeight:700, color: v === -1 ? "#10B981" : "#94A3B8" }}>{v === -1 ? "∞ ilimitado" : v}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Features */}
+                        <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+                          {p.features.map((f,i) => (
+                            <div key={i} style={{ display:"flex", alignItems:"center", gap:8, fontSize:12, color:"#94A3B8" }}>
+                              <span style={{ color:p.color, flexShrink:0 }}>✓</span>{f}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Contagem */}
+                        <div style={{ marginTop:16, padding:"10px 14px", background:`${p.color}12`, borderRadius:9, border:`1px solid ${p.color}25`, textAlign:"center" }}>
+                          <div style={{ fontSize:22, fontWeight:800, color:p.color }}>{adminMetrics?.planoCounts?.[p.id] ?? 0}</div>
+                          <div style={{ fontSize:10, color:"#475569" }}>condomínios neste plano</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── SISTEMA ──────────────────────────────────────── */}
+              {adminSection === "sistema" && (
+                <div>
+                  <button onClick={loadAdminSistema} style={{ marginBottom:20, background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:9, padding:"9px 18px", color:"#818CF8", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                    🔄 Verificar Saúde do Sistema
+                  </button>
+                  {adminSistem ? (
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(3, 1fr)", gap:16 }}>
+                      {[
+                        { label:"Status Supabase",   val: adminSistem.status === "ok" ? "✅ OK" : "⚠️ Degradado", color: adminSistem.status === "ok" ? "#10B981" : "#F59E0B" },
+                        { label:"Latência Supabase",  val: `${adminSistem.supabase_latency_ms} ms`,   color:"#6366F1" },
+                        { label:"API Uptime",          val: `${Math.floor(adminSistem.api_uptime_s/60)} min`, color:"#10B981" },
+                        { label:"Node.js Version",     val: adminSistem.node_version,                  color:"#A78BFA" },
+                        { label:"Memória Heap",        val: `${adminSistem.memory_mb} MB`,             color:"#F59E0B" },
+                        { label:"Clientes SSE",        val: String(adminSistem.sse_clients),            color:"#34D399" },
+                      ].map((item,i) => (
+                        <div key={i} style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:13, padding:"18px 20px" }}>
+                          <div style={{ fontSize:11, color:"#475569", fontWeight:600, textTransform:"uppercase", letterSpacing:.5, marginBottom:10 }}>{item.label}</div>
+                          <div style={{ fontSize:22, fontWeight:800, color:item.color }}>{item.val}</div>
+                        </div>
+                      ))}
+                      <div style={{ gridColumn:"1/-1", background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:13, padding:"14px 20px", fontSize:11, color:"#334155", fontFamily:"monospace" }}>
+                        Última verificação: {new Date(adminSistem.timestamp).toLocaleString("pt-BR")}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:40, textAlign:"center", color:"#334155", fontSize:13 }}>
+                      Clique em "Verificar Saúde do Sistema" para ver as métricas
+                    </div>
+                  )}
+                </div>
+              )}
+
             </div>
           </div>
         </div>

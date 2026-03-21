@@ -1,0 +1,206 @@
+You are a senior full-stack engineer.
+
+Build a GLOBAL ADMIN PANEL for a SaaS platform called "Condo OS".
+
+---
+
+🎯 GOAL
+
+Create a centralized admin dashboard where the platform owner can:
+
+- Manage all condominiums
+- View global metrics
+- Control users
+- Monitor system status
+- Manage SaaS plans
+
+---
+
+📁 PROJECT STRUCTURE
+
+/server
+  admin.js
+  middleware.js
+  db.js
+
+/client
+  pages/
+    AdminDashboard.jsx
+    Condominios.jsx
+    Usuarios.jsx
+    Planos.jsx
+
+---
+
+🧠 DATABASE (Supabase / PostgreSQL)
+
+Tables:
+
+condominios
+- id
+- nome
+- plano
+- status (ativo, suspenso)
+- created_at
+
+users
+- id
+- email
+- role (admin_global, sindico, morador)
+- condominio_id
+
+metricas
+- condominio_id
+- consumo_agua
+- consumo_energia
+- inadimplencia
+
+---
+
+🔐 ADMIN GLOBAL ACCESS
+
+Create role:
+
+admin_global
+
+Only this role can:
+
+- access admin panel
+- view ALL condominios
+- override permissions
+
+---
+
+🔑 MIDDLEWARE
+
+checkAdminGlobal:
+
+if user.role !== "admin_global" → deny access
+
+---
+
+⚙️ API (ADMIN)
+
+Create endpoints:
+
+GET /api/admin/condominios
+→ list all condominios
+
+GET /api/admin/metricas
+→ aggregated data
+
+GET /api/admin/usuarios
+→ list all users
+
+PATCH /api/admin/condominio/:id
+→ update plano/status
+
+---
+
+📊 GLOBAL DASHBOARD
+
+Show:
+
+- total condominios
+- total users
+- average consumption
+- average delinquency
+
+---
+
+📱 FRONTEND (React)
+
+Create AdminDashboard.jsx with:
+
+Cards:
+
+- 🏢 Total condominios
+- 👥 Total usuários
+- 💧 Consumo médio
+- 💰 Inadimplência média
+
+---
+
+📋 CONDOMINIOS PAGE
+
+List all condominios:
+
+- nome
+- plano
+- status
+
+Buttons:
+
+- ativar / suspender
+- alterar plano
+
+---
+
+👥 USERS PAGE
+
+List users:
+
+- email
+- role
+- condomínio
+
+---
+
+💰 PLANOS PAGE
+
+Show plans:
+
+- FREE
+- PRO
+- ENTERPRISE
+
+Allow editing limits
+
+---
+
+🎨 UI
+
+- dark mode
+- grid layout
+- modern dashboard style
+
+---
+
+📦 DEPENDENCIES
+
+Backend:
+- express
+- jsonwebtoken
+- supabase
+
+Frontend:
+- react
+- axios
+
+---
+
+🔐 SECURITY
+
+- protect all admin routes
+- only admin_global access
+
+---
+
+🚀 FINAL RESULT
+
+System must:
+
+- show all condominios
+- allow admin control
+- manage users
+- display metrics
+- be ready for SaaS scaling
+
+---
+
+IMPORTANT:
+
+- generate full working code
+- backend + frontend
+- clean architecture
+- no explanations
