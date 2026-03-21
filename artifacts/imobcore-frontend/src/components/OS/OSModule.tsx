@@ -410,8 +410,8 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
                 <label key={i} style={{ display:"flex",alignItems:"center",gap:8,cursor:"pointer" }}>
                   <input type="checkbox" checked={item.done} onChange={e=>{
                     const cl=[...(form.checklist||[])]; cl[i]={...cl[i],done:e.target.checked}; set("checklist",cl);
-                  }} style={{ accentColor:"#6366F1",width:14,height:14 }} />
-                  <span style={{ fontSize:12,color:item.done?"#10B981":"var(--neu-text,#CBD5E1)",textDecoration:item.done?"line-through":"none" }}>{item.item}</span>
+                  }} style={{ accentColor:"#6366F1",width:24,height:24,flexShrink:0 }} />
+                  <span style={{ fontSize:24,fontWeight:700,color:item.done?"#10B981":"#FFFFFF",textDecoration:item.done?"line-through":"none" }}>{item.item}</span>
                 </label>
               ))}
             </div>
@@ -600,8 +600,8 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
               <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
                 {checklist.map((item,i)=>(
                   <label key={i} style={{ display:"flex",alignItems:"center",gap:10,cursor:"pointer",padding:"8px 10px",background:"rgba(255,255,255,.03)",borderRadius:8,border:`1px solid ${item.done?"rgba(16,185,129,.2)":"rgba(255,255,255,.05)"}` }}>
-                    <input type="checkbox" checked={item.done} onChange={e=>{const cl=[...checklist];cl[i]={...cl[i],done:e.target.checked};saveChecklist(cl);}} style={{ accentColor:"#10B981",width:15,height:15 }} />
-                    <span style={{ fontSize:12,color:item.done?"#10B981":"#CBD5E1",textDecoration:item.done?"line-through":"none" }}>{item.item}</span>
+                    <input type="checkbox" checked={item.done} onChange={e=>{const cl=[...checklist];cl[i]={...cl[i],done:e.target.checked};saveChecklist(cl);}} style={{ accentColor:"#10B981",width:24,height:24,flexShrink:0 }} />
+                    <span style={{ fontSize:24,fontWeight:700,color:item.done?"#10B981":"#FFFFFF",textDecoration:item.done?"line-through":"none" }}>{item.item}</span>
                   </label>
                 ))}
                 {checklist.length===0&&<div style={{ color:"#334155",textAlign:"center",padding:20 }}>Sem checklist para esta OS</div>}
