@@ -13,6 +13,7 @@ export interface OS {
 }
 interface Comentario { id: string; autor: string; mensagem: string; foto_url?: string; created_at: string; }
 interface EqBasic { id: string; nome: string; categoria: string; catIcon: string; local: string; status: string; modelo?: string; fabricante?: string; }
+interface FornecBasic { id: string; nome: string; categoria: string; icone?: string; telefone?: string; whatsapp?: string; email?: string; status?: string; }
 interface Props { condId: string; condNome?: string; view: "mobile" | "desktop"; onBack?: () => void; }
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -184,6 +185,11 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
   const [selectedEquips, setSelectedEquips] = useState<EqBasic[]>([]);
   const [equipSearch, setEquipSearch] = useState("");
   const [showEquipList, setShowEquipList] = useState(false);
+  // Fornecedor (supplier) picker state
+  const [fornecedores, setFornecedores] = useState<FornecBasic[]>([]);
+  const [fornecSearch, setFornecSearch] = useState("");
+  const [showFornecList, setShowFornecList] = useState(false);
+  const [selectedFornec, setSelectedFornec] = useState<FornecBasic | null>(null);
 
   const set = (k: keyof OS, v: unknown) => setForm(f => ({ ...f, [k]: v }));
 
@@ -195,6 +201,35 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
       .then((data: EqBasic[]) => { if (Array.isArray(data)) setEquipamentos(data); })
       .catch(() => {});
   }, [condId]);
+
+  // Load supplier list
+  useEffect(() => {
+    if (!condId) return;
+    fetch(`/api/fornecedores?condominio_id=${condId}`)
+      .then(r => r.json())
+      .then((data: FornecBasic[]) => { if (Array.isArray(data)) setFornecedores(data); })
+      .catch(() => {});
+  }, [condId]);
+
+  const filteredFornec = fornecedores.filter(f => {
+    if (!fornecSearch.trim()) return true;
+    const q = fornecSearch.toLowerCase();
+    return f.nome.toLowerCase().includes(q) || f.categoria.toLowerCase().includes(q) ||
+           (f.email||"").toLowerCase().includes(q) || (f.telefone||"").includes(q);
+  });
+
+  function selectFornec(f: FornecBasic) {
+    setSelectedFornec(f);
+    set("prestador_nome", f.nome);
+    setFornecSearch(f.nome);
+    setShowFornecList(false);
+  }
+
+  function clearFornec() {
+    setSelectedFornec(null);
+    setFornecSearch("");
+    set("prestador_nome", "");
+  }
 
   const filteredEquips = equipamentos.filter(eq => {
     if (!equipSearch.trim()) return true;
@@ -429,7 +464,49 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
           )}
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
             <div style={grp}><label style={lbl}>Responsável</label><input className="os-nova-input" style={fc} placeholder="Nome do técnico..." value={form.responsavel||""} onChange={e=>set("responsavel",e.target.value)} /></div>
-            <div style={grp}><label style={lbl}>Prestador / Empresa</label><input className="os-nova-input" style={fc} placeholder="Empresa contratada..." value={form.prestador_nome||""} onChange={e=>set("prestador_nome",e.target.value)} /></div>
+            <div style={grp}>
+              <label style={lbl}>Prestador / Empresa</label>
+              {/* Selected supplier chip */}
+              {selectedFornec ? (
+                <div style={{ display:"flex",alignItems:"center",gap:10,background:"rgba(59,130,246,.15)",border:"1.5px solid rgba(59,130,246,.4)",borderRadius:10,padding:"10px 14px",marginBottom:6 }}>
+                  <span style={{ fontSize:22,flexShrink:0 }}>{selectedFornec.icone||"🏢"}</span>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontSize:14,fontWeight:700,color:"#F1F5F9",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{selectedFornec.nome}</div>
+                    <div style={{ fontSize:11,color:"#60A5FA" }}>{selectedFornec.categoria}{(selectedFornec.telefone||selectedFornec.whatsapp)?" · 📞 "+(selectedFornec.telefone||selectedFornec.whatsapp):""}</div>
+                  </div>
+                  <button onClick={clearFornec} style={{ background:"none",border:"none",color:"#60A5FA",cursor:"pointer",fontSize:18,padding:0,lineHeight:1,flexShrink:0 }}>✕</button>
+                </div>
+              ) : (
+                <div style={{ position:"relative" }}>
+                  <input
+                    className="os-nova-input"
+                    style={fc}
+                    placeholder={fornecedores.length > 0 ? `🔍 Buscar entre ${fornecedores.length} fornecedores...` : "Empresa contratada..."}
+                    value={fornecSearch}
+                    onChange={e => { setFornecSearch(e.target.value); set("prestador_nome",e.target.value); setShowFornecList(true); }}
+                    onFocus={() => setShowFornecList(true)}
+                  />
+                  {showFornecList && filteredFornec.length > 0 && (
+                    <div style={{ position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:100,background:"#0F1628",border:"1.5px solid rgba(59,130,246,.4)",borderRadius:10,maxHeight:200,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,.5)" }}>
+                      {filteredFornec.slice(0,15).map(f => (
+                        <div key={f.id} onClick={() => selectFornec(f)}
+                          style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,.04)",transition:"background .1s" }}
+                          onMouseEnter={e=>(e.currentTarget.style.background="rgba(59,130,246,.12)")}
+                          onMouseLeave={e=>(e.currentTarget.style.background="transparent")}>
+                          <span style={{ fontSize:20,flexShrink:0 }}>{f.icone||"🏢"}</span>
+                          <div style={{ flex:1,minWidth:0 }}>
+                            <div style={{ fontSize:13,fontWeight:700,color:"#F1F5F9",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" }}>{f.nome}</div>
+                            <div style={{ fontSize:11,color:"#64748B" }}>{f.categoria}{(f.telefone||f.whatsapp)?" · "+(f.telefone||f.whatsapp):""}</div>
+                          </div>
+                          {f.status && <span style={{ fontSize:9,color:f.status==="ativo"?"#10B981":"#64748B",fontWeight:700,textTransform:"uppercase",flexShrink:0 }}>{f.status}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {showFornecList && <div onClick={()=>setShowFornecList(false)} style={{ position:"fixed",inset:0,zIndex:99 }} />}
+                </div>
+              )}
+            </div>
           </div>
           <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
             <div style={grp}><label style={lbl}>Custo estimado (R$)</label><input type="number" className="os-nova-input" style={fc} min={0} step={10} value={form.custo_estimado||0} onChange={e=>set("custo_estimado",Number(e.target.value))} /></div>
