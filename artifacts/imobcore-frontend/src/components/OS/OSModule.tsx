@@ -582,8 +582,16 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
   const [newMsg, setNewMsg]     = useState("");
   const [diTexto, setDiTexto]   = useState((os.di_sugestao as {texto?:string}|undefined)?.texto || "");
   const [diLoading, setDiLoading] = useState(false);
-  const [tab, setTab]           = useState<"info"|"checklist"|"comentarios"|"di">("info");
+  const [tab, setTab]           = useState<"info"|"checklist"|"comentarios"|"di"|"notif">("info");
   const [checklist, setChecklist] = useState<{item:string;done:boolean}[]>(os.checklist||[]);
+  // Notification to residents
+  const [notifTem, setNotifTem]         = useState(false);
+  const [notifPrazo, setNotifPrazo]     = useState("");
+  const [notifDet, setNotifDet]         = useState("");
+  const [notifSind, setNotifSind]       = useState("Síndico");
+  const [notifTexto, setNotifTexto]     = useState("");
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifCopied, setNotifCopied]   = useState(false);
 
   useEffect(() => {
     fetch(`/api/os-comentarios?os_id=${os.id}`).then(r=>r.json()).then(setComments).catch(()=>{});
@@ -613,6 +621,21 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
   async function changeStatus(status: string) {
     const r = await fetch(`/api/os/${os.id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ status }) });
     const updated = await r.json(); if (updated.id) onUpdate(updated);
+  }
+
+  async function generateNotif() {
+    setNotifLoading(true); setNotifTexto(""); setTab("notif");
+    const r = await fetch(`/api/os/${os.id}/notificacao-moradores`, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ condominio_nome:condNome, sindico_nome:notifSind, tem_interrupcao:notifTem, prazo_interrupcao:notifPrazo, detalhes_interrupcao:notifDet })
+    });
+    const json = await r.json();
+    const txt: string = json.texto || "Erro ao gerar comunicado.";
+    let i=0; const iv=setInterval(()=>{ i+=4; setNotifTexto(txt.slice(0,i)); if(i>=txt.length){clearInterval(iv);setNotifLoading(false);} },18);
+  }
+
+  function copyNotif() {
+    navigator.clipboard.writeText(notifTexto).then(()=>{ setNotifCopied(true); setTimeout(()=>setNotifCopied(false),2000); });
   }
 
   const tabBtn = (t:typeof tab,lbl:string) => (
@@ -649,7 +672,7 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
         </div>
         {/* Tabs */}
         <div style={{ padding:"8px 12px 4px",borderBottom:"1px solid rgba(255,255,255,.05)",flexShrink:0 }}>
-          {tabBtn("info","ℹ️ Info")}{tabBtn("checklist","☑️ Checklist")}{tabBtn("comentarios",`💬 (${comments.length})`)}{tabBtn("di","🟣 Di")}
+          {tabBtn("info","ℹ️ Info")}{tabBtn("checklist","☑️ Checklist")}{tabBtn("comentarios",`💬 (${comments.length})`)}{tabBtn("di","🟣 Di")}{tabBtn("notif","📢 Avisar")}
         </div>
         {/* Tab content */}
         <div style={{ flex:1,overflowY:"auto",padding:"14px 18px" }}>
@@ -717,6 +740,98 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
               {diLoading&&!diTexto&&<div style={{ color:"#A78BFA",fontSize:12 }}>⏳ Analisando...</div>}
               {diTexto?<div style={{ fontSize:12,color:"#E9D5FF",lineHeight:1.7,whiteSpace:"pre-wrap" }}>{diTexto}</div>
                 :<div style={{ color:"#4B3B7D",fontSize:12 }}>Clique em "🟣 Di" no header para obter uma análise.</div>}
+            </div>
+          )}
+
+          {/* ── Notificação aos Moradores ── */}
+          {tab==="notif" && (
+            <div>
+              {/* Header card */}
+              <div style={{ background:"linear-gradient(135deg,rgba(99,102,241,.18),rgba(139,92,246,.12))",border:"1.5px solid rgba(99,102,241,.3)",borderRadius:12,padding:"12px 14px",marginBottom:14 }}>
+                <div style={{ fontSize:13,fontWeight:800,color:"#A5B4FC",marginBottom:4 }}>📢 Comunicado aos Moradores</div>
+                <div style={{ fontSize:11,color:"#94A3B8",lineHeight:1.5 }}>
+                  Gere um comunicado formal sobre esta OS para enviar aos moradores. A Di redige o texto automaticamente com base nos detalhes da ordem.
+                </div>
+              </div>
+
+              {/* ── Opções ── */}
+              {/* Interrupção de serviços */}
+              <div style={{ marginBottom:14 }}>
+                <div style={{ fontSize:11,color:"#CBD5E1",fontWeight:700,marginBottom:8,letterSpacing:".04em",textTransform:"uppercase" }}>Haverá interrupção dos serviços?</div>
+                <div style={{ display:"flex",gap:8 }}>
+                  <button onClick={()=>setNotifTem(false)} style={{ flex:1,padding:"10px",borderRadius:8,border:`2px solid ${!notifTem?"#10B981":"rgba(255,255,255,.08)"}`,background:!notifTem?"rgba(16,185,129,.15)":"rgba(255,255,255,.03)",color:!notifTem?"#34D399":"#64748B",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",transition:"all .15s" }}>
+                    ✅ Não — funcionamento normal
+                  </button>
+                  <button onClick={()=>setNotifTem(true)} style={{ flex:1,padding:"10px",borderRadius:8,border:`2px solid ${notifTem?"#F97316":"rgba(255,255,255,.08)"}`,background:notifTem?"rgba(249,115,22,.15)":"rgba(255,255,255,.03)",color:notifTem?"#FB923C":"#64748B",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",transition:"all .15s" }}>
+                    ⚠️ Sim — haverá interrupção
+                  </button>
+                </div>
+              </div>
+
+              {/* Prazo (só quando tem interrupção) */}
+              {notifTem && (
+                <div style={{ marginBottom:14 }}>
+                  <label style={{ fontSize:11,color:"#CBD5E1",fontWeight:700,display:"block",marginBottom:5,letterSpacing:".04em",textTransform:"uppercase" }}>Prazo estimado de interrupção</label>
+                  <input
+                    placeholder="Ex: 4 horas, das 8h às 12h, 24 horas..."
+                    value={notifPrazo}
+                    onChange={e=>setNotifPrazo(e.target.value)}
+                    style={{ width:"100%",background:"rgba(255,255,255,.07)",border:"1.5px solid rgba(249,115,22,.3)",borderRadius:8,padding:"10px 12px",color:"#FFF",fontWeight:600,fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box" as const }}
+                  />
+                  <textarea
+                    placeholder="Detalhes adicionais sobre a interrupção (opcional)..."
+                    value={notifDet}
+                    onChange={e=>setNotifDet(e.target.value)}
+                    rows={2}
+                    style={{ width:"100%",background:"rgba(255,255,255,.07)",border:"1.5px solid rgba(249,115,22,.3)",borderRadius:8,padding:"10px 12px",color:"#FFF",fontWeight:600,fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box" as const,resize:"vertical" as const,marginTop:6 }}
+                  />
+                </div>
+              )}
+
+              {/* Nome do síndico */}
+              <div style={{ marginBottom:14 }}>
+                <label style={{ fontSize:11,color:"#CBD5E1",fontWeight:700,display:"block",marginBottom:5,letterSpacing:".04em",textTransform:"uppercase" }}>Assinatura do Síndico</label>
+                <input
+                  placeholder="Nome do síndico..."
+                  value={notifSind}
+                  onChange={e=>setNotifSind(e.target.value)}
+                  style={{ width:"100%",background:"rgba(255,255,255,.07)",border:"1.5px solid rgba(255,255,255,.12)",borderRadius:8,padding:"10px 12px",color:"#FFF",fontWeight:600,fontSize:13,fontFamily:"inherit",outline:"none",boxSizing:"border-box" as const }}
+                />
+              </div>
+
+              {/* Gerar button */}
+              <button
+                onClick={generateNotif}
+                disabled={notifLoading}
+                style={{ width:"100%",padding:"12px",background:"linear-gradient(135deg,#6366F1,#8B5CF6)",border:"none",borderRadius:10,color:"#fff",fontWeight:800,fontSize:13,cursor:notifLoading?"not-allowed":"pointer",opacity:notifLoading?.6:1,fontFamily:"inherit",marginBottom:14,boxShadow:"0 4px 14px rgba(99,102,241,.4)" }}
+              >
+                {notifLoading ? "⏳ Di gerando comunicado..." : "🤖 Gerar Comunicado com Di"}
+              </button>
+
+              {/* Preview do comunicado */}
+              {notifTexto && (
+                <div>
+                  <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6 }}>
+                    <span style={{ fontSize:11,color:"#818CF8",fontWeight:700 }}>📄 Comunicado gerado</span>
+                    <button
+                      onClick={copyNotif}
+                      style={{ fontSize:11,padding:"4px 12px",background:notifCopied?"rgba(16,185,129,.2)":"rgba(99,102,241,.2)",border:`1px solid ${notifCopied?"rgba(16,185,129,.4)":"rgba(99,102,241,.4)"}`,borderRadius:6,color:notifCopied?"#34D399":"#A5B4FC",cursor:"pointer",fontWeight:700,fontFamily:"inherit",transition:"all .2s" }}
+                    >
+                      {notifCopied ? "✓ Copiado!" : "📋 Copiar"}
+                    </button>
+                  </div>
+                  <div style={{ background:"rgba(255,255,255,.03)",border:"1px solid rgba(255,255,255,.08)",borderRadius:10,padding:"14px 16px",fontSize:12,color:"#E2E8F0",lineHeight:1.8,whiteSpace:"pre-wrap",fontFamily:"Georgia, serif" }}>
+                    {notifTexto}
+                    {notifLoading && <span style={{ display:"inline-block",width:8,height:14,background:"#818CF8",borderRadius:2,animation:"pulse .6s infinite",verticalAlign:"middle",marginLeft:3 }} />}
+                  </div>
+                </div>
+              )}
+
+              {!notifTexto && !notifLoading && (
+                <div style={{ textAlign:"center",color:"#334155",fontSize:12,marginTop:10 }}>
+                  Configure as opções acima e clique em "Gerar" para criar o comunicado.
+                </div>
+              )}
             </div>
           )}
         </div>

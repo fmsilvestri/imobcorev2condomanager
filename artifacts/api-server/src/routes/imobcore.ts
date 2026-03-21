@@ -665,6 +665,78 @@ router.post("/os/:id/di", async (req: Request, res: Response) => {
   } catch (err) { res.status(500).json({ error: String(err) }); }
 });
 
+// POST /api/os/:id/notificacao-moradores — Gera comunicado para moradores via Di
+router.post("/os/:id/notificacao-moradores", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      condominio_nome, sindico_nome,
+      tem_interrupcao, prazo_interrupcao, detalhes_interrupcao
+    } = req.body as {
+      condominio_nome?: string; sindico_nome?: string;
+      tem_interrupcao?: boolean; prazo_interrupcao?: string; detalhes_interrupcao?: string;
+    };
+
+    const { data: os, error: osErr } = await supabase.from("ordens_servico").select("*").eq("id", id).single();
+    if (osErr || !os) return res.status(404).json({ error: "OS não encontrada" });
+
+    const condNome   = condominio_nome || "o condomínio";
+    const sindNome   = sindico_nome || "O Síndico";
+    const dataPrev   = os.data_prevista ? new Date(os.data_prevista).toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" }) : "data a confirmar";
+
+    let interrupcaoInfo = "";
+    if (tem_interrupcao) {
+      const prazo = prazo_interrupcao || "";
+      const det   = detalhes_interrupcao || "";
+      interrupcaoInfo = `Haverá interrupção do serviço/equipamento durante a manutenção. Prazo estimado de interrupção: ${prazo}. ${det}`;
+    } else {
+      interrupcaoInfo = "Não haverá interrupção dos serviços durante a manutenção. O funcionamento normal será mantido.";
+    }
+
+    const client = hasProxy
+      ? new Anthropic({ apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY!, baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL })
+      : new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY || "" });
+
+    const msg = await client.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 700,
+      system: `Você é Di, síndica virtual IA do ImobCore. Seu papel é redigir comunicados profissionais, claros e acolhedores para os moradores do condomínio ${condNome}. Use linguagem respeitosa e direta. Inclua emojis com moderação (1-2 no máximo). Assine sempre em nome do síndico e mencione Di no final como geradora do comunicado.`,
+      messages: [{
+        role: "user",
+        content: `Redija um comunicado formal aos moradores do ${condNome} sobre a seguinte ordem de serviço:
+
+Título: ${os.titulo}
+Categoria: ${os.categoria}
+Prioridade: ${os.prioridade}
+Local/Área: ${os.local || "área comum"}
+Data prevista: ${dataPrev}
+Descrição: ${os.descricao || "(sem descrição adicional)"}
+Prestador: ${os.prestador_nome || "equipe de manutenção"}
+
+Informação sobre interrupção:
+${interrupcaoInfo}
+
+Sindico: ${sindNome}
+
+O comunicado deve:
+1. Iniciar com "📢 Aviso aos Moradores" e o motivo
+2. Informar a data e local da manutenção
+3. Explicar claramente se há ou não interrupção dos serviços (com prazo se houver)
+4. Mencionar que é parte do plano preventivo gerenciado pela Di — Síndica Virtual IA do ImobCore
+5. Terminar com saudações do síndico e nome do condomínio
+6. Linha final: "🤖 Comunicado gerado por Di — Síndica Virtual ImobCore"
+
+Seja conciso (máx 3 parágrafos centrais) mas completo.`
+      }]
+    });
+
+    const texto = (msg.content[0] as { type: string; text: string }).type === "text"
+      ? (msg.content[0] as { text: string }).text : "";
+
+    res.json({ texto });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
 // POST /api/sensores/dados - Atualizar sensor
 router.post("/sensores/dados", async (req: Request, res: Response) => {
   try {
