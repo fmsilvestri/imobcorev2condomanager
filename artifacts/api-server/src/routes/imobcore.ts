@@ -2430,21 +2430,200 @@ router.delete("/piscina/:id", async (req: Request, res: Response) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Di — Síndica Virtual: briefing inteligente com Claude
 // POST /api/di   body: { condominio_id? }
+// Di — Síndica Virtual executiva com cards inteligentes acionáveis
+// 4 tipos: critico | atencao | info | insight
 // ─────────────────────────────────────────────────────────────────────────────
+
+type DiCardType = "critico" | "atencao" | "info" | "insight";
+interface DiSmartCard {
+  tipo: DiCardType;
+  titulo: string;
+  mensagem: string;
+  acao: string;
+  badge?: string;
+}
+
+// Gerador determinístico de cards a partir dos dados reais
+function gerarCardsInteligentes(d: {
+  aguaSensores: { nome: string; nivel: number | null; status: string }[];
+  nivelMedioAgua: number | null;
+  saldo: number;
+  txInad: number;
+  totalRec: number;
+  totalDesp: number;
+  osTotal: number;
+  osUrgentes: number;
+  osAbertas: { titulo: string; prioridade: string }[];
+  condNome: string;
+}): DiSmartCard[] {
+  const cards: DiSmartCard[] = [];
+
+  // ── 🚨 ÁGUA CRÍTICA (< 25%) ────────────────────────────────────────────────
+  const sensoresCriticos = d.aguaSensores.filter(s => s.nivel != null && s.nivel < 25);
+  const sensoresAtencao  = d.aguaSensores.filter(s => s.nivel != null && s.nivel >= 25 && s.nivel < 50);
+  const sensoresOffline  = d.aguaSensores.filter(s => s.status === "offline" || s.status === "critical" || s.status === "error");
+
+  if (sensoresCriticos.length > 0) {
+    cards.push({
+      tipo: "critico",
+      titulo: "💧 Água Crítica",
+      mensagem: `${sensoresCriticos.map(s => `${s.nome}: ${s.nivel}%`).join(", ")}. Risco iminente de desabastecimento.`,
+      acao: "Acionar manutenção imediata e alertar moradores",
+      badge: `${sensoresCriticos.length} reservatório${sensoresCriticos.length > 1 ? "s" : ""}`,
+    });
+  } else if (sensoresAtencao.length > 0) {
+    cards.push({
+      tipo: "atencao",
+      titulo: "💧 Nível de Água Baixo",
+      mensagem: `${sensoresAtencao.map(s => `${s.nome}: ${s.nivel}%`).join(", ")}. Monitorar reposição.`,
+      acao: "Verificar programação do sistema de reposição",
+      badge: `${sensoresAtencao.length} alerta${sensoresAtencao.length > 1 ? "s" : ""}`,
+    });
+  } else if (d.aguaSensores.length > 0 && d.nivelMedioAgua != null) {
+    cards.push({
+      tipo: "info",
+      titulo: "💧 Água Normal",
+      mensagem: `Nível médio em ${d.nivelMedioAgua}%. Todos os reservatórios dentro do padrão operacional.`,
+      acao: "Continuar monitoramento automático",
+    });
+  }
+
+  // ── 🔌 SENSORES OFFLINE ─────────────────────────────────────────────────────
+  if (sensoresOffline.length > 0) {
+    cards.push({
+      tipo: "critico",
+      titulo: "🔌 Sensor Offline",
+      mensagem: `${sensoresOffline.map(s => s.nome).join(", ")} sem comunicação. Leitura de nível comprometida.`,
+      acao: "Verificar conectividade e bateria do sensor IoT",
+      badge: "IoT",
+    });
+  }
+
+  // ── 🚨 OS URGENTES ──────────────────────────────────────────────────────────
+  if (d.osUrgentes > 0) {
+    const urgTitles = d.osAbertas.filter(o => o.prioridade === "urgente" || o.prioridade === "alta").slice(0, 2).map(o => o.titulo).join(", ");
+    cards.push({
+      tipo: "critico",
+      titulo: "🔧 OSs Urgentes",
+      mensagem: `${d.osUrgentes} ordem${d.osUrgentes > 1 ? "ns" : ""} urgente${d.osUrgentes > 1 ? "s" : ""}: ${urgTitles || "aguardando triagem"}.`,
+      acao: "Atribuir responsável e iniciar atendimento imediato",
+      badge: `${d.osUrgentes} urgente${d.osUrgentes > 1 ? "s" : ""}`,
+    });
+  } else if (d.osTotal > 3) {
+    cards.push({
+      tipo: "atencao",
+      titulo: "🔧 Backlog de OSs",
+      mensagem: `${d.osTotal} ordens de serviço abertas. Backlog acima do ideal para o porte do condomínio.`,
+      acao: "Priorizar e distribuir para equipe de manutenção",
+      badge: `${d.osTotal} abertas`,
+    });
+  } else if (d.osTotal > 0) {
+    cards.push({
+      tipo: "info",
+      titulo: "🔧 Manutenção",
+      mensagem: `${d.osTotal} OS${d.osTotal > 1 ? "s" : ""} em andamento, sem urgências. Operação dentro do normal.`,
+      acao: "Acompanhar evolução no painel de OSs",
+    });
+  } else {
+    cards.push({
+      tipo: "info",
+      titulo: "🔧 Manutenção OK",
+      mensagem: "Nenhuma ordem de serviço aberta. Estrutura do condomínio em dia.",
+      acao: "Registrar próxima preventiva no calendário",
+    });
+  }
+
+  // ── 💰 FINANCEIRO ───────────────────────────────────────────────────────────
+  if (d.txInad > 20) {
+    cards.push({
+      tipo: "critico",
+      titulo: "💰 Inadimplência Alta",
+      mensagem: `Taxa de ${d.txInad}% representa risco ao fluxo de caixa. Saldo atual: R$ ${d.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}.`,
+      acao: "Enviar comunicados e acionar cobrança amigável",
+      badge: `${d.txInad}% inad.`,
+    });
+  } else if (d.txInad > 10) {
+    cards.push({
+      tipo: "atencao",
+      titulo: "💰 Inadimplência Moderada",
+      mensagem: `${d.txInad}% de inadimplência. Saldo R$ ${d.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Monitorar evolução.`,
+      acao: "Emitir boletos e enviar lembretes automáticos",
+      badge: `${d.txInad}%`,
+    });
+  } else if (d.saldo < 0) {
+    cards.push({
+      tipo: "critico",
+      titulo: "💸 Saldo Negativo",
+      mensagem: `Saldo em R$ ${d.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Despesas (R$ ${d.totalDesp.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}) superam receitas.`,
+      acao: "Renegociar contratos e revisar orçamento urgente",
+      badge: "Saldo negativo",
+    });
+  } else {
+    cards.push({
+      tipo: "info",
+      titulo: "💰 Financeiro Saudável",
+      mensagem: `Saldo positivo de R$ ${d.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Inadimplência em ${d.txInad}%.`,
+      acao: "Manter reserva de emergência atualizada",
+    });
+  }
+
+  // ── 🧠 INSIGHT DA DI (sempre presente) ────────────────────────────────────
+  const totalProblemas = sensoresCriticos.length + (d.osUrgentes > 0 ? 1 : 0) + (d.txInad > 20 ? 1 : 0);
+  if (totalProblemas >= 2) {
+    cards.push({
+      tipo: "insight",
+      titulo: "🧠 Análise de Risco",
+      mensagem: `Detectei ${totalProblemas} indicadores críticos simultâneos. Recomendo reunião emergencial com síndico e equipe de manutenção.`,
+      acao: "Agendar reunião de crise nas próximas 24h",
+      badge: "Risco elevado",
+    });
+  } else if (d.aguaSensores.length === 0) {
+    cards.push({
+      tipo: "insight",
+      titulo: "🧠 IoT não configurado",
+      mensagem: "Nenhum sensor de água conectado. O monitoramento em tempo real não está ativo para este condomínio.",
+      acao: "Cadastrar reservatórios e sensores IoT no módulo Água",
+      badge: "Oportunidade",
+    });
+  } else {
+    cards.push({
+      tipo: "insight",
+      titulo: "🧠 Insight da Di",
+      mensagem: `Padrão operacional estável em ${d.condNome}. Boa gestão preventiva evita 73% das emergências condominiais.`,
+      acao: "Agendar próxima vistoria preventiva",
+      badge: "Estável",
+    });
+  }
+
+  return cards;
+}
+
+// Gera o resumo executivo (fala da Di) com base nos cards
+function gerarResumoExecutivo(cards: DiSmartCard[], condNome: string): string {
+  const criticos = cards.filter(c => c.tipo === "critico");
+  const atencoes = cards.filter(c => c.tipo === "atencao");
+
+  if (criticos.length > 0) {
+    return `Oi! Analisei o ${condNome} e encontrei ${criticos.length} situação${criticos.length > 1 ? "ões críticas" : " crítica"} que exige${criticos.length > 1 ? "m" : ""} ação imediata. ${criticos[0].mensagem.split(".")[0]}. Confira os cards abaixo!`;
+  }
+  if (atencoes.length > 0) {
+    return `Olá! O ${condNome} está operacional, mas há ${atencoes.length} ponto${atencoes.length > 1 ? "s" : ""} de atenção que ${atencoes.length > 1 ? "precisam" : "precisa"} de acompanhamento. ${atencoes[0].mensagem.split(".")[0]}. Veja os detalhes nos cards!`;
+  }
+  return `Oi! Boa notícia: o ${condNome} está com todos os sistemas dentro do normal. Nível de água, financeiro e manutenção estão OK. Continue assim!`;
+}
+
 router.post("/di", async (req: Request, res: Response) => {
   try {
     const { condominio_id } = req.body as { condominio_id?: string };
 
-    // ── Coletar dados do condomínio ──────────────────────────────────────────
+    // ── Coletar dados reais do condomínio ──────────────────────────────────
     const [
       { data: cond },
       { data: reservoirRows },
       { data: sensoreRows },
       { data: osAbertas },
-      { data: receitas },
-      { data: despesas },
+      { data: lancamentos },
     ] = await Promise.all([
       condominio_id
         ? supabase.from("condominios").select("*").eq("id", condominio_id).single()
@@ -2452,18 +2631,14 @@ router.post("/di", async (req: Request, res: Response) => {
       supabase.from("reservoirs").select("iot_sensor_id,name,iot_last_reading,capacity_liters,iot_status").limit(20),
       supabase.from("sensores").select("nome,local,nivel_atual,capacidade_litros,volume_litros").limit(20),
       condominio_id
-        ? supabase.from("ordens_servico").select("titulo,prioridade,status").eq("status", "aberta").eq("condominio_id", condominio_id).limit(20)
-        : supabase.from("ordens_servico").select("titulo,prioridade,status").eq("status", "aberta").limit(20),
+        ? supabase.from("ordens_servico").select("titulo,prioridade,status").in("status", ["aberta","em_andamento"]).eq("condominio_id", condominio_id).limit(20)
+        : supabase.from("ordens_servico").select("titulo,prioridade,status").in("status", ["aberta","em_andamento"]).limit(20),
       condominio_id
-        ? supabase.from("financeiro_receitas").select("valor,status").eq("condominio_id", condominio_id)
-        : supabase.from("financeiro_receitas").select("valor,status"),
-      condominio_id
-        ? supabase.from("financeiro_despesas").select("valor").eq("condominio_id", condominio_id)
-        : supabase.from("financeiro_despesas").select("valor"),
+        ? supabase.from("lancamentos").select("tipo,valor,status").eq("condominio_id", condominio_id)
+        : supabase.from("lancamentos").select("tipo,valor,status"),
     ]);
 
-    // ── Consolidar dados dos sensores de água ──────────────────────────────
-    // Combina: tabela reservoirs (nova) + tabela sensores (legado)
+    // ── Consolidar sensores de água ────────────────────────────────────────
     type SensorSummary = { nome: string; nivel: number | null; status: string };
     const aguaSensores: SensorSummary[] = [];
 
@@ -2487,70 +2662,68 @@ router.post("/di", async (req: Request, res: Response) => {
     }
 
     // ── Calcular indicadores financeiros ──────────────────────────────────
-    const totalRec = (receitas || []).reduce((s: number, r: { valor: number }) => s + Number(r.valor), 0);
-    const totalDesp = (despesas || []).reduce((s: number, d: { valor: number }) => s + Number(d.valor), 0);
+    const totalRec  = (lancamentos || []).filter(l => l.tipo === "receita").reduce((s, l) => s + Number(l.valor), 0);
+    const totalDesp = (lancamentos || []).filter(l => l.tipo === "despesa").reduce((s, l) => s + Number(l.valor), 0);
     const saldo = totalRec - totalDesp;
-    const inadimplentes = (receitas || []).filter((r: { status: string }) => r.status === "atrasado").length;
-    const txInad = receitas?.length ? Math.round((inadimplentes / receitas.length) * 100) : 0;
+    const inadimplentes = (lancamentos || []).filter(l => l.tipo === "receita" && l.status === "atrasado").length;
+    const totalRecCount = (lancamentos || []).filter(l => l.tipo === "receita").length;
+    const txInad = totalRecCount > 0 ? Math.round((inadimplentes / totalRecCount) * 100) : 0;
 
     // ── OS urgentes ────────────────────────────────────────────────────────
-    const osUrgentes = (osAbertas || []).filter((o: { prioridade: string }) => o.prioridade === "urgente" || o.prioridade === "alta");
-
-    // ── Nível médio de água ────────────────────────────────────────────────
+    const osUrgentes = (osAbertas || []).filter(o => o.prioridade === "urgente" || o.prioridade === "alta");
     const niveisConhecidos = aguaSensores.filter(s => s.nivel != null);
-    const nivelMedioAgua = niveisConhecidos.length
+    const nivelMedioAgua   = niveisConhecidos.length
       ? Math.round(niveisConhecidos.reduce((s, r) => s + (r.nivel ?? 0), 0) / niveisConhecidos.length)
       : null;
 
-    // ── Prompt para a Di ────────────────────────────────────────────────────
-    const prompt = `Você é a Di, Síndica Virtual do ImobCore. Sua personalidade:
-- Profissional, simpática e direta
-- Fala em português brasileiro natural, como se estivesse conversando
-- Usa emojis com moderação
-- Prioriza sempre os problemas mais críticos
-- Mensagem curta: máximo 3 frases + 1 recomendação
+    const condNome = cond?.nome || "ImobCore";
 
-DADOS DO CONDOMÍNIO:
-Condomínio: ${cond?.nome || "ImobCore"}
-
-ÁGUA: ${aguaSensores.length > 0
-  ? aguaSensores.map(s => `${s.nome}: ${s.nivel != null ? s.nivel + "%" : "sem leitura"} (${s.status})`).join(", ")
-  : "Sem sensores cadastrados"}
-Nível médio: ${nivelMedioAgua != null ? nivelMedioAgua + "%" : "desconhecido"}
-
-FINANCEIRO: Saldo R$ ${saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} | Inadimplência ${txInad}%
-
-MANUTENÇÃO: ${(osAbertas || []).length} OS abertas, ${osUrgentes.length} urgentes
-
-Gere um briefing em primeira pessoa como a Di, respondendo com JSON neste exato formato:
-{
-  "fala": "texto curto de até 3 frases que a Di irá falar em voz alta",
-  "cards": [
-    { "titulo": "💧 Água", "valor": "XX%", "status": "ok|alerta|critico", "detalhe": "texto curto" },
-    { "titulo": "💰 Financeiro", "valor": "R$ XX", "status": "ok|alerta|critico", "detalhe": "texto curto" },
-    { "titulo": "🛠 Manutenção", "valor": "X abertas", "status": "ok|alerta|critico", "detalhe": "texto curto" }
-  ]
-}
-Responda APENAS com o JSON, sem markdown, sem comentários.`;
-
-    const completion = await anthropic.messages.create({
-      model: "claude-sonnet-4-5",
-      max_tokens: 600,
-      messages: [{ role: "user", content: prompt }],
+    // ── Gerar cards inteligentes (determinístico) ─────────────────────────
+    const cardsBase = gerarCardsInteligentes({
+      aguaSensores, nivelMedioAgua, saldo, txInad, totalRec, totalDesp,
+      osTotal: (osAbertas || []).length, osUrgentes: osUrgentes.length,
+      osAbertas: (osAbertas || []) as { titulo: string; prioridade: string }[],
+      condNome,
     });
 
-    const raw = (completion.content[0] as { type: string; text: string }).text.trim();
-    // Extrai JSON mesmo se vier com markdown
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    // ── Enriquecer com Claude (gera fala personalizada + pode adicionar cards extra) ──
+    let fala = gerarResumoExecutivo(cardsBase, condNome);
+    let cards: DiSmartCard[] = cardsBase;
 
-    if (!parsed) {
-      return res.status(500).json({ error: "Di não conseguiu gerar resposta" });
+    try {
+      const criticos  = cardsBase.filter(c => c.tipo === "critico").length;
+      const atencoes  = cardsBase.filter(c => c.tipo === "atencao").length;
+      const completion = await anthropic.messages.create({
+        model: "claude-sonnet-4-5",
+        max_tokens: 700,
+        messages: [{
+          role: "user",
+          content: `Você é a Di, Síndica Virtual do ImobCore. Personalidade: profissional, simpática, direta, português brasileiro natural com emojis moderados.
+
+SITUAÇÃO ATUAL de "${condNome}":
+- Água: nível médio ${nivelMedioAgua != null ? nivelMedioAgua + "%" : "desconhecido"} | ${aguaSensores.length} sensor(es)
+- Financeiro: saldo R$ ${saldo.toFixed(2)} | inadimplência ${txInad}%
+- Manutenção: ${(osAbertas||[]).length} OSs abertas, ${osUrgentes.length} urgentes
+- Alertas: ${criticos} crítico(s), ${atencoes} atenção
+
+Gere SOMENTE a "fala" da Di (máximo 2 frases naturais, direto ao ponto, que ela vai falar em voz alta).
+Responda com JSON: { "fala": "..." }
+Sem markdown, sem explicação.`,
+        }],
+      });
+      const raw = (completion.content[0] as { type: string; text: string }).text.trim();
+      const jsonMatch = raw.match(/\{[\s\S]*?\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed?.fala) fala = parsed.fala;
+      }
+    } catch {
+      // Mantém fala determinística gerada acima
     }
 
     return res.json({
-      fala: parsed.fala || "Olá! Estou monitorando o condomínio.",
-      cards: parsed.cards || [],
+      fala,
+      cards,
       dados: { nivelMedioAgua, saldo, txInad, osTotal: (osAbertas || []).length, osUrgentes: osUrgentes.length },
     });
 

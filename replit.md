@@ -44,7 +44,7 @@ Express API server with all ImobCore routes in `src/routes/imobcore.ts`:
 - `GET /api/dashboard` — full dashboard data from Supabase
 - `POST /api/sindico/chat` — AI chat (Claude)
 - `POST /api/sindico/comunicado` — AI-generated communications
-- `POST /api/di` — Di (Síndica Virtual) briefing: returns `{fala, cards:[{titulo,valor,status,detalhe}], dados}` using Claude
+- `POST /api/di` — Di (Síndica Virtual) briefing executivo: returns `{fala, cards:[{tipo,titulo,mensagem,acao,badge?}], dados}`. 4 tipos: critico|atencao|info|insight. Geração determinística + Claude para fala personalizada.
 - `GET /api/bi/overview` — KPIs globais: MRR, ARR, condos, moradores, OS, inadimplência, crescimento 30d (X-Admin-Token required)
 - `GET /api/bi/charts` — Séries temporais: receita/despesa mensal, OS por categoria, crescimento condos, MRR acumulado (X-Admin-Token required)
 - `GET /api/bi/forecast` — Previsões 3 meses via moving average + trend, horizon com receita/despesa projetada (X-Admin-Token required)

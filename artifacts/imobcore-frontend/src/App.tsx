@@ -1663,7 +1663,13 @@ export default function App() {
   const [solarSaving, setSolarSaving] = useState(false);
 
   // ── Di — Síndica Virtual state ─────────────────────────────────────────────
-  type DiCard = { titulo: string; valor: string; status: "ok" | "alerta" | "critico"; detalhe: string };
+  type DiCard = {
+    tipo: "critico" | "atencao" | "info" | "insight";
+    titulo: string;
+    mensagem: string;
+    acao: string;
+    badge?: string;
+  };
   const [diData, setDiData] = useState<{ fala: string; cards: DiCard[] } | null>(null);
   const [diLoading, setDiLoading] = useState(false);
   const [diFalando, setDiFalando] = useState(false);
@@ -5429,13 +5435,33 @@ export default function App() {
               <div style={{ flex: 1, paddingTop: 8 }}>
                 <div style={{ fontSize: 20, fontWeight: 800, color: "#F3E8FF", letterSpacing: "-0.5px" }}>Di</div>
                 <div style={{ fontSize: 12, color: "#C4B5FD", marginBottom: 8 }}>Síndica Virtual — Powered by Claude IA</div>
-                <div style={{ display: "flex", gap: 6 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   <span style={{ background: "rgba(167,139,250,.2)", border: "1px solid rgba(167,139,250,.4)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#C4B5FD" }}>
                     ● {diFalando ? "Falando..." : "Online"}
                   </span>
-                  <span style={{ background: "rgba(167,139,250,.1)", border: "1px solid rgba(167,139,250,.2)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#A78BFA" }}>
-                    ImobCore v2
-                  </span>
+                  {diData?.cards && (() => {
+                    const criticos = diData.cards.filter(c => c.tipo === "critico").length;
+                    const atencoes = diData.cards.filter(c => c.tipo === "atencao").length;
+                    return (
+                      <>
+                        {criticos > 0 && (
+                          <span style={{ background: "rgba(239,68,68,.25)", border: "1px solid rgba(239,68,68,.5)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#FCA5A5", fontWeight: 700 }}>
+                            🚨 {criticos} crítico{criticos > 1 ? "s" : ""}
+                          </span>
+                        )}
+                        {atencoes > 0 && (
+                          <span style={{ background: "rgba(234,179,8,.2)", border: "1px solid rgba(234,179,8,.4)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#FDE68A", fontWeight: 600 }}>
+                            ⚠️ {atencoes} atenção
+                          </span>
+                        )}
+                        {criticos === 0 && atencoes === 0 && (
+                          <span style={{ background: "rgba(16,185,129,.15)", border: "1px solid rgba(16,185,129,.35)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#6EE7B7", fontWeight: 600 }}>
+                            ✅ Tudo OK
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -5465,21 +5491,95 @@ export default function App() {
                 </div>
               )}
 
-              {/* Cards inteligentes */}
+              {/* Cards inteligentes — 4 tipos: critico | atencao | info | insight */}
               {diData?.cards && diData.cards.length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
                   {diData.cards.map((card, i) => {
-                    const statusColors: Record<string, { bg: string; border: string; val: string }> = {
-                      ok:      { bg: "rgba(16,185,129,.12)",  border: "rgba(16,185,129,.3)",  val: "#10B981" },
-                      alerta:  { bg: "rgba(234,179,8,.12)",   border: "rgba(234,179,8,.3)",   val: "#EAB308" },
-                      critico: { bg: "rgba(239,68,68,.12)",   border: "rgba(239,68,68,.3)",   val: "#EF4444" },
+                    const tipoConfig: Record<string, { bg: string; border: string; accent: string; label: string; labelBg: string }> = {
+                      critico: {
+                        bg: "rgba(239,68,68,.1)",
+                        border: "rgba(239,68,68,.35)",
+                        accent: "#EF4444",
+                        label: "🚨 CRÍTICO",
+                        labelBg: "rgba(239,68,68,.2)",
+                      },
+                      atencao: {
+                        bg: "rgba(234,179,8,.08)",
+                        border: "rgba(234,179,8,.35)",
+                        accent: "#EAB308",
+                        label: "⚠️ ATENÇÃO",
+                        labelBg: "rgba(234,179,8,.2)",
+                      },
+                      info: {
+                        bg: "rgba(16,185,129,.08)",
+                        border: "rgba(16,185,129,.3)",
+                        accent: "#10B981",
+                        label: "📊 NORMAL",
+                        labelBg: "rgba(16,185,129,.18)",
+                      },
+                      insight: {
+                        bg: "rgba(168,85,247,.1)",
+                        border: "rgba(168,85,247,.35)",
+                        accent: "#A855F7",
+                        label: "🧠 INSIGHT IA",
+                        labelBg: "rgba(168,85,247,.2)",
+                      },
                     };
-                    const c = statusColors[card.status] || statusColors.ok;
+                    const cfg = tipoConfig[card.tipo] || tipoConfig.info;
                     return (
-                      <div key={i} style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 12, padding: "12px 14px" }}>
-                        <div style={{ fontSize: 11, color: "#94A3B8", marginBottom: 4, fontWeight: 600 }}>{card.titulo}</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: c.val, marginBottom: 2 }}>{card.valor}</div>
-                        <div style={{ fontSize: 10, color: "#64748B" }}>{card.detalhe}</div>
+                      <div key={i} style={{
+                        background: cfg.bg,
+                        border: `1px solid ${cfg.border}`,
+                        borderRadius: 14,
+                        padding: "14px 16px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                        boxShadow: card.tipo === "critico" ? `0 0 16px rgba(239,68,68,.15)` : "none",
+                      }}>
+                        {/* Tipo badge + badge personalizado */}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                          <span style={{
+                            background: cfg.labelBg,
+                            color: cfg.accent,
+                            borderRadius: 6,
+                            padding: "2px 8px",
+                            fontSize: 9,
+                            fontWeight: 800,
+                            letterSpacing: ".5px",
+                          }}>{cfg.label}</span>
+                          {card.badge && (
+                            <span style={{
+                              background: "rgba(255,255,255,.06)",
+                              border: `1px solid ${cfg.border}`,
+                              color: cfg.accent,
+                              borderRadius: 20,
+                              padding: "1px 8px",
+                              fontSize: 9,
+                              fontWeight: 600,
+                            }}>{card.badge}</span>
+                          )}
+                        </div>
+                        {/* Título */}
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#F1F5F9", lineHeight: 1.3 }}>{card.titulo}</div>
+                        {/* Mensagem */}
+                        <div style={{ fontSize: 12, color: "#94A3B8", lineHeight: 1.5 }}>{card.mensagem}</div>
+                        {/* Ação */}
+                        <div style={{
+                          marginTop: 2,
+                          background: "rgba(255,255,255,.04)",
+                          borderTop: `1px solid ${cfg.border}`,
+                          paddingTop: 8,
+                          fontSize: 11,
+                          color: cfg.accent,
+                          fontWeight: 600,
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: 5,
+                        }}>
+                          <span style={{ flexShrink: 0, marginTop: 1 }}>👉</span>
+                          <span>{card.acao}</span>
+                        </div>
                       </div>
                     );
                   })}

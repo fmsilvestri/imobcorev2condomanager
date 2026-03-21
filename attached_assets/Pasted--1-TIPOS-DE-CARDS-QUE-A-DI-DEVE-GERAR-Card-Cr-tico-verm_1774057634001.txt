@@ -1,0 +1,168 @@
+🔥 1. TIPOS DE CARDS QUE A DI DEVE GERAR
+🚨 Card Crítico (vermelho)
+
+risco imediato
+
+precisa ação
+
+Ex:
+
+“Nível da água abaixo de 25% + sensor offline”
+
+⚠️ Card Atenção (amarelo)
+
+tendência negativa
+
+Ex:
+
+“Consumo de água 20% acima da média”
+
+📊 Card Informativo (verde)
+
+tudo normal
+
+Ex:
+
+“Energia dentro do padrão”
+
+🧠 Card Insight (roxo/IA)
+
+inteligência + previsão
+
+Ex:
+
+“3 condomínios com aumento de inadimplência”
+
+⚙️ 2. BACKEND — GERADOR DE CARDS INTELIGENTES
+📌 /server/insights.js
+export function gerarCardsInteligentes(d){
+
+  const cards = [];
+
+  // 🚨 ÁGUA CRÍTICA
+  if(d.agua.nivel < 25){
+    cards.push({
+      tipo:"critico",
+      titulo:"💧 Água Crítica",
+      mensagem:`Nível em ${d.agua.nivel}%. Risco de desabastecimento.`,
+      acao:"Acionar manutenção imediata"
+    });
+  }
+
+  // ⚠️ CONSUMO ALTO
+  if(d.agua.consumo > d.agua.media * 1.2){
+    cards.push({
+      tipo:"atencao",
+      titulo:"📈 Consumo Elevado",
+      mensagem:"Consumo acima da média. Possível vazamento.",
+      acao:"Verificar tubulações"
+    });
+  }
+
+  // 💰 FINANCEIRO
+  if(d.financeiro.inadimplencia > 10){
+    cards.push({
+      tipo:"atencao",
+      titulo:"💰 Inadimplência",
+      mensagem:`${d.financeiro.inadimplencia}% de inadimplência`,
+      acao:"Enviar comunicados automáticos"
+    });
+  }
+
+  // 🧠 INSIGHT IA
+  cards.push({
+    tipo:"insight",
+    titulo:"🤖 Insight da Di",
+    mensagem:"Padrão de aumento de consumo detectado nos últimos dias",
+    acao:"Monitorar próximos 3 dias"
+  });
+
+  return cards;
+}
+🧠 3. API DA DI (INTEGRADA)
+app.post("/api/di", async (req,res)=>{
+
+  const dados = await carregarDados();
+
+  const cards = gerarCardsInteligentes(dados);
+
+  const resumo = gerarResumoExecutivo(cards);
+
+  res.json({
+    resumo,
+    cards
+  });
+});
+
+function gerarResumoExecutivo(cards){
+
+  let texto = "Análise do condomínio concluída 👇 ";
+
+  if(cards.some(c=>c.tipo==="critico")){
+    texto += "Identifiquei situações críticas que exigem atenção imediata. ";
+  }
+
+  if(cards.some(c=>c.tipo==="atencao")){
+    texto += "Há pontos de atenção que podem evoluir para problemas. ";
+  }
+
+  return texto;
+}
+📱🎨 4. FRONTEND — CARDS VISUAIS (ESTILO SUA TELA)
+function CardInteligente({card}){
+
+  const cores = {
+    critico:"bg-red-500",
+    atencao:"bg-yellow-500",
+    info:"bg-green-500",
+    insight:"bg-purple-500"
+  };
+
+  return (
+    <div className={`p-4 rounded-xl text-white ${cores[card.tipo]}`}>
+
+      <h3 className="font-bold">{card.titulo}</h3>
+
+      <p className="text-sm mt-1">{card.mensagem}</p>
+
+      <div className="mt-3 text-xs opacity-80">
+        👉 {card.acao}
+      </div>
+
+    </div>
+  );
+}
+🎭 5. DI COMO APRESENTADORA DOS CARDS
+function DiResumo({resumo}){
+
+  return (
+    <div className="bg-purple-900 p-4 rounded-xl">
+
+      <div className="flex items-center gap-3">
+        <img src="/di.png" className="w-12 rounded-full"/>
+        <div>
+          <b>Di</b>
+          <p className="text-sm opacity-80">Síndica Virtual</p>
+        </div>
+      </div>
+
+      <p className="mt-3">{resumo}</p>
+
+    </div>
+  );
+}
+🔁 6. EXPERIÊNCIA COMPLETA (IGUAL SUA IMAGEM)
+
+Fluxo real:
+
+Carrega dashboard
+     ↓
+API /di
+     ↓
+IA gera resumo + cards
+     ↓
+Di exibe mensagem
+     ↓
+Cards aparecem coloridos
+     ↓
+Usuário age

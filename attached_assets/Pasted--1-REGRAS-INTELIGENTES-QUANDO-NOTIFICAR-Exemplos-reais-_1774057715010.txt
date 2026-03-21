@@ -1,0 +1,154 @@
+🔥 1. REGRAS INTELIGENTES (QUANDO NOTIFICAR)
+
+Exemplos reais:
+
+🚨 Água < 25% → WhatsApp + Telegram + Push
+
+⚠️ Inadimplência > 10% → Push + Telegram
+
+🛠️ Manutenção urgente → WhatsApp síndico
+
+📊 Insight → apenas Push
+
+⚙️ 2. BACKEND — MOTOR DE NOTIFICAÇÃO
+📁 /server/notify.js
+import fetch from "node-fetch";
+
+export async function enviarNotificacoes(cards, usuarios){
+
+  for(const card of cards){
+
+    if(card.tipo === "critico"){
+      await notificarTodos(card, usuarios);
+    }
+
+    if(card.tipo === "atencao"){
+      await notificarSindico(card, usuarios);
+    }
+
+  }
+}
+📲 3. TELEGRAM (RÁPIDO E GRATUITO)
+Criar bot no Telegram:
+
+👉 fale com Telegram → @BotFather
+
+Código:
+const TELEGRAM_TOKEN = "SEU_TOKEN";
+const CHAT_ID = "ID_DO_GRUPO";
+
+export async function enviarTelegram(msg){
+
+  await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({
+      chat_id: CHAT_ID,
+      text: msg
+    })
+  });
+
+}
+💬 4. WHATSAPP (OFICIAL VIA API)
+
+Use API do WhatsApp (Cloud API)
+
+Exemplo:
+export async function enviarWhatsApp(msg, telefone){
+
+  await fetch("https://graph.facebook.com/v18.0/PHONE_ID/messages",{
+    method:"POST",
+    headers:{
+      "Authorization":"Bearer SEU_TOKEN",
+      "Content-Type":"application/json"
+    },
+    body: JSON.stringify({
+      messaging_product:"whatsapp",
+      to: telefone,
+      type:"text",
+      text:{ body: msg }
+    })
+  });
+
+}
+📱 5. PUSH NOTIFICATION (APP)
+
+Use:
+
+👉 Expo Notifications
+
+Backend:
+export async function enviarPush(token, msg){
+
+  await fetch("https://exp.host/--/api/v2/push/send",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({
+      to: token,
+      sound:"default",
+      body: msg
+    })
+  });
+
+}
+🧠 6. MENSAGEM INTELIGENTE DA DI
+function montarMensagem(card){
+
+  return `🤖 Di informa:
+
+${card.titulo}
+${card.mensagem}
+
+👉 Ação: ${card.acao}`;
+}
+🔗 7. INTEGRANDO TUDO
+for(const user of usuarios){
+
+  const msg = montarMensagem(card);
+
+  if(user.canal === "telegram"){
+    await enviarTelegram(msg);
+  }
+
+  if(user.canal === "whatsapp"){
+    await enviarWhatsApp(msg, user.telefone);
+  }
+
+  if(user.canal === "push"){
+    await enviarPush(user.push_token, msg);
+  }
+
+}
+📊 8. PERSONALIZAÇÃO POR PERFIL
+Perfil	Canal
+Síndico	WhatsApp + Push
+Morador	Push
+Administrador	Telegram
+🔥 9. AUTOMAÇÃO (SEM INTERVENÇÃO HUMANA)
+
+Rodar a cada X minutos:
+
+setInterval(async ()=>{
+
+  const dados = await carregarDados();
+  const cards = gerarCardsInteligentes(dados);
+  const usuarios = await carregarUsuarios();
+
+  await enviarNotificacoes(cards, usuarios);
+
+}, 60000);
+💎 RESULTADO FINAL
+
+Agora sua Di:
+
+🤖 pensa
+
+✔️ analisa dados
+
+🚨 decide
+
+✔️ prioriza problemas
+
+📲 age
+
+✔️ envia alertas automaticamente
