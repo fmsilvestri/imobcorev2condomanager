@@ -186,6 +186,122 @@ const EQ_TO_OS_CAT: Record<string,string> = {
 };
 const STS_DOT: Record<string,string> = { operacional:"#10B981", atencao:"#EAB308", manutencao:"#EF4444", inativo:"#64748B" };
 
+// ── Helpers de foto ──────────────────────────────────────────────────────────
+async function uploadOsFoto(osId: string, file: File, tipo: "antes" | "depois"): Promise<string> {
+  const fd = new FormData();
+  fd.append("foto", file);
+  fd.append("tipo", tipo);
+  const r = await fetch(`/api/os/${osId}/foto`, { method: "POST", body: fd });
+  const j = await r.json() as { ok?: boolean; url?: string; error?: string };
+  if (!j.ok || !j.url) throw new Error(j.error || "Falha no upload");
+  return j.url;
+}
+
+// ── FotoUpload — Seletor + preview (inline, sem upload automático) ─────────────
+// Para uso no formulário de criação (upload acontece depois, quando OS já tem ID)
+function FotoPicker({
+  label, file, preview, onChange, onClear, disabled
+}: {
+  label: string; file: File | null; preview: string | null;
+  onChange: (f: File, url: string) => void; onClear: () => void; disabled?: boolean;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { setErr("Foto muito grande (máx 8 MB)"); return; }
+    setErr(null);
+    onChange(f, URL.createObjectURL(f));
+    if (ref.current) ref.current.value = "";
+  }
+
+  return (
+    <div>
+      <input ref={ref} type="file" accept="image/*" capture="environment" style={{ display:"none" }} onChange={handleChange} />
+      {preview ? (
+        <div style={{ position:"relative", borderRadius:12, overflow:"hidden", border:"2px solid rgba(99,102,241,.4)" }}>
+          <img src={preview} alt={label} style={{ width:"100%", maxHeight:200, objectFit:"cover", display:"block" }} />
+          <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,.3)", display:"flex", alignItems:"flex-end", justifyContent:"space-between", padding:"8px 10px" }}>
+            <span style={{ fontSize:11, color:"#fff", fontWeight:700, textShadow:"0 1px 3px rgba(0,0,0,.9)" }}>
+              📎 {file?.name || label} {file ? `(${(file.size/1024).toFixed(0)} KB)` : ""}
+            </span>
+            <div style={{ display:"flex", gap:6 }}>
+              <button onClick={() => ref.current?.click()} disabled={disabled}
+                style={{ background:"rgba(255,255,255,.2)", border:"none", borderRadius:6, color:"#fff", padding:"3px 8px", fontSize:11, cursor:"pointer", fontWeight:700 }}>
+                🔄
+              </button>
+              <button onClick={onClear} disabled={disabled}
+                style={{ background:"rgba(239,68,68,.8)", border:"none", borderRadius:6, color:"#fff", padding:"3px 8px", fontSize:11, cursor:"pointer", fontWeight:700 }}>
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <button type="button" disabled={disabled} onClick={() => ref.current?.click()}
+          style={{ width:"100%", padding:"18px 12px", borderRadius:12, border:"2px dashed rgba(99,102,241,.35)", background:"rgba(99,102,241,.06)", color:"#818CF8", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+          📷 {label}
+        </button>
+      )}
+      {err && <div style={{ fontSize:11, color:"#F87171", marginTop:4 }}>{err}</div>}
+    </div>
+  );
+}
+
+// ── FotoUploadCard — Mostra foto existente + permite upload (para OSDetail) ────
+function FotoCard({
+  osId, tipo, currentUrl, label, onUploaded
+}: {
+  osId: string; tipo: "antes" | "depois"; currentUrl?: string; label: string; onUploaded: (url: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState(currentUrl || "");
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]; if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { setErr("Máx 8 MB"); return; }
+    setErr(null); setUploading(true);
+    const local = URL.createObjectURL(f);
+    setPreview(local);
+    try {
+      const url = await uploadOsFoto(osId, f, tipo);
+      setPreview(url); onUploaded(url);
+    } catch (e2: unknown) { setErr(e2 instanceof Error ? e2.message : "Erro"); }
+    finally { setUploading(false); if (ref.current) ref.current.value = ""; }
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize:11, color:"#94A3B8", fontWeight:700, marginBottom:6, textTransform:"uppercase", letterSpacing:".06em" }}>{label}</div>
+      <input ref={ref} type="file" accept="image/*" capture="environment" style={{ display:"none" }} onChange={handleChange} />
+      {preview ? (
+        <div style={{ position:"relative", borderRadius:10, overflow:"hidden", border:"1px solid rgba(255,255,255,.1)" }}>
+          <img src={preview} alt={label} style={{ width:"100%", maxHeight:200, objectFit:"cover", display:"block" }} />
+          {uploading && (
+            <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,.6)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, color:"#A78BFA", fontWeight:700 }}>
+              ⏳ Enviando...
+            </div>
+          )}
+          <button onClick={() => ref.current?.click()} disabled={uploading}
+            style={{ position:"absolute", bottom:8, right:8, background:"rgba(0,0,0,.7)", border:"1px solid rgba(255,255,255,.2)", borderRadius:6, color:"#E2E8F0", padding:"4px 10px", fontSize:11, cursor:"pointer", fontWeight:700 }}>
+            🔄 Trocar
+          </button>
+        </div>
+      ) : (
+        <button type="button" disabled={uploading} onClick={() => ref.current?.click()}
+          style={{ width:"100%", padding:"16px 12px", borderRadius:10, border:"2px dashed rgba(99,102,241,.3)", background:"rgba(99,102,241,.05)", color:"#6366F1", fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"inherit", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+          {uploading ? "⏳ Enviando..." : `📷 Adicionar ${label}`}
+        </button>
+      )}
+      {err && <div style={{ fontSize:11, color:"#F87171", marginTop:4 }}>{err}</div>}
+    </div>
+  );
+}
+
 // ── NovaOS Form (4 steps) ─────────────────────────────────────────────────────
 function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
   { condId:string; condNome:string; osList:OS[]; onSave:(os:OS)=>void; onCancel:()=>void; view:"mobile"|"desktop" }) {
@@ -195,6 +311,10 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
   const [diTexto, setDiTexto] = useState("");
   const [diLoading, setDiLoading] = useState(false);
   const [diId, setDiId] = useState<string|null>(null);
+  // Foto antes state
+  const [fotoAntesFile, setFotoAntesFile] = useState<File | null>(null);
+  const [fotoAntesPreview, setFotoAntesPreview] = useState<string | null>(null);
+  const [fotoUploading, setFotoUploading] = useState(false);
   // Equipment picker state
   const [equipamentos, setEquipamentos] = useState<EqBasic[]>([]);
   const [selectedEquips, setSelectedEquips] = useState<EqBasic[]>([]);
@@ -322,6 +442,11 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
       body: JSON.stringify({ ...form, condominio_id: condId })
     });
     const created: OS = await r.json();
+    if (created.id && fotoAntesFile) {
+      setFotoUploading(true);
+      try { await uploadOsFoto(created.id, fotoAntesFile, "antes"); } catch { /* non-fatal */ }
+      setFotoUploading(false);
+    }
     setSaving(false);
     if (created.id) { setDiId(created.id); setStep(3); getDiAnalysis(created.id); }
   }
@@ -465,6 +590,19 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
                 </label>
               ))}
             </div>
+          </div>
+          {/* Foto antes (optativo) */}
+          <div style={grp}>
+            <label style={lbl}>📷 Foto do Problema <span style={{ fontSize:11,fontWeight:400,color:"#64748B",marginLeft:6 }}>(opcional)</span></label>
+            <FotoPicker
+              label="Tirar/selecionar foto do problema"
+              file={fotoAntesFile}
+              preview={fotoAntesPreview}
+              onChange={(f, url) => { setFotoAntesFile(f); setFotoAntesPreview(url); }}
+              onClear={() => { setFotoAntesFile(null); setFotoAntesPreview(null); }}
+              disabled={saving || fotoUploading}
+            />
+            {fotoUploading && <div style={{ fontSize:11,color:"#A78BFA",marginTop:6,fontWeight:700 }}>⏳ Enviando foto para o servidor...</div>}
           </div>
         </div>
       )}
@@ -726,6 +864,18 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
               </div>
               {os.status!=="fechada"&&<div style={{ marginTop:12 }}><div style={{ fontSize:10,color:"#64748B",marginBottom:4 }}>SLA Progress</div><SLABar created_at={os.created_at} sla_horas={os.sla_horas||48} /></div>}
               {os.aprovacao_necessaria&&<div style={{ marginTop:10,background:"rgba(234,179,8,.08)",border:"1px solid rgba(234,179,8,.2)",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#FDE68A" }}>⚠️ Aprovação necessária{os.aprovado_por?` — Aprovado por ${os.aprovado_por}`:""}</div>}
+
+              {/* ── Fotos ── */}
+              <div style={{ marginTop:16, display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                <FotoCard
+                  osId={os.id} tipo="antes" label="Foto Antes" currentUrl={os.foto_antes}
+                  onUploaded={url => onUpdate({ ...os, foto_antes: url })}
+                />
+                <FotoCard
+                  osId={os.id} tipo="depois" label="Foto Depois" currentUrl={os.foto_depois}
+                  onUploaded={url => onUpdate({ ...os, foto_depois: url })}
+                />
+              </div>
             </div>
           )}
           {/* Checklist */}

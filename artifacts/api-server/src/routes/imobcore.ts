@@ -613,6 +613,48 @@ router.delete("/os/:id", async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/os/:id/foto — Upload foto_antes ou foto_depois para bucket os-fotos
+const _osUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
+router.post("/os/:id/foto", _osUpload.single("foto"), async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const tipo = (req.body as { tipo?: string }).tipo || "antes"; // "antes" | "depois"
+  if (!id) return res.status(400).json({ error: "OS ID obrigatório" });
+  if (!req.file) return res.status(400).json({ error: "Arquivo não enviado" });
+  if (!["antes", "depois"].includes(tipo)) return res.status(400).json({ error: "tipo deve ser 'antes' ou 'depois'" });
+
+  try {
+    const ext = (req.file.originalname.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const filePath = `os-${id}/foto_${tipo}_${Date.now()}.${ext}`;
+    const bucket = "os-fotos";
+
+    const tryUpload = async () =>
+      supabase.storage.from(bucket).upload(filePath, req.file!.buffer, { contentType: req.file!.mimetype, upsert: true });
+
+    let { error: upErr } = await tryUpload();
+
+    if (upErr) {
+      if (upErr.message?.includes("not found") || upErr.message?.toLowerCase().includes("bucket")) {
+        await supabase.storage.createBucket(bucket, { public: true });
+        const retry = await tryUpload();
+        if (retry.error) return res.status(500).json({ error: retry.error.message });
+      } else {
+        return res.status(500).json({ error: upErr.message });
+      }
+    }
+
+    const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(filePath);
+    const url = urlData.publicUrl;
+
+    const campo = tipo === "antes" ? "foto_antes" : "foto_depois";
+    await supabase.from("ordens_servico").update({ [campo]: url, updated_at: new Date().toISOString() }).eq("id", id);
+
+    broadcast("os_atualizada", { id, [campo]: url });
+    res.json({ ok: true, url, campo });
+  } catch (e: unknown) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // GET /api/os-comentarios?os_id=X — listar comentários
 router.get("/os-comentarios", async (req: Request, res: Response) => {
   try {
