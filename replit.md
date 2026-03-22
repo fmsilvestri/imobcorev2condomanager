@@ -124,7 +124,7 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. Always 
 - OS CRUD with priority/status management
 - Financial dashboard with receitas/despesas
 - MISP public security alerts
-- AI-generated comunicados (announcements)
+- Comunicados v2 multicanal (ComunicadosModule.tsx — `src/components/Comunicados/ComunicadosModule.tsx`): 5 sub-tabs: Novo (Di insight strip + CanalSelector + Composer + preview WA/TG side-by-side), Templates (8 templates clicáveis), Histórico (filtro/busca + reenvio + badges), Agendados (agendamentos + regras automáticas), Métricas (KPIs + barras por canal/categoria + relatório Di). Envio real via Z-API (WhatsApp) e Telegram Bot API. Canal config salvo em canal_config table. Schema compat via meta-encoding em corpo (Migration 14).
 - AI insights generation
 - 3-view interface: Gestor desktop + Síndico mobile + Morador mobile
 - Equipment management (CRUD) with Supabase persistence (tabela: equipamentos)

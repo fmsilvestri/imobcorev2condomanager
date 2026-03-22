@@ -532,6 +532,37 @@ CREATE TABLE IF NOT EXISTS comunicados (
   condominio_id UUID, titulo TEXT, corpo TEXT,
   gerado_por_ia BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT NOW()
 );
+-- Migration 14: Comunicados v2 multicanal
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS canais TEXT[] DEFAULT ARRAY['app'];
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'aviso_geral';
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS publico_alvo TEXT DEFAULT 'todos';
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS prioridade TEXT DEFAULT 'normal';
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS agendado_para TIMESTAMPTZ;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS enviado_em TIMESTAMPTZ;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'rascunho';
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS total_destinatarios INTEGER DEFAULT 0;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS total_entregues INTEGER DEFAULT 0;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS total_lidos INTEGER DEFAULT 0;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS di_gerado BOOLEAN DEFAULT false;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS template_key TEXT;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS wa_message_id TEXT;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS tg_message_id TEXT;
+CREATE TABLE IF NOT EXISTS canal_config (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES condominios(id) UNIQUE,
+  wa_token TEXT, wa_numero TEXT, wa_instance TEXT, wa_provider TEXT DEFAULT 'zapi',
+  tg_bot_token TEXT, tg_chat_id TEXT,
+  email_from TEXT, email_smtp TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS comunicado_regras (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES condominios(id),
+  nome TEXT NOT NULL, gatilho TEXT NOT NULL,
+  canais TEXT[] DEFAULT ARRAY['whatsapp'],
+  template_key TEXT, ativo BOOLEAN DEFAULT true, delay_minutos INTEGER DEFAULT 5,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS sindico_historico (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   condominio_id UUID, sessao_id TEXT, pergunta TEXT, resposta TEXT,

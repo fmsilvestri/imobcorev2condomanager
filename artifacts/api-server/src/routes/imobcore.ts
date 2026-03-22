@@ -1166,14 +1166,208 @@ Seja objetivo, direto e use linguagem de síndico profissional.`;
   } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
 });
 
+// ─── COMUNICADOS META ENCODING ────────────────────────────────────────────────
+// New columns (canais, categoria, etc.) stored as JSON inside `corpo` until Migration 14 applied
+const COM_META_SEP = "\u001FIMB_COM_META\u001F";
+const COM_META_KEYS = ["canais","categoria","publico_alvo","prioridade","agendado_para","enviado_em","status","total_destinatarios","total_entregues","total_lidos","di_gerado","template_key","wa_message_id","tg_message_id"];
+
+function encodeComunicadoMeta(fields: Record<string, unknown>): Record<string, unknown> {
+  const { corpo, ...rest } = fields;
+  const metaKeys = COM_META_KEYS.filter(k => rest[k] !== undefined);
+  if (metaKeys.length === 0) return { corpo };
+  const meta: Record<string, unknown> = {};
+  metaKeys.forEach(k => { meta[k] = rest[k]; });
+  const corpoPure = typeof corpo === "string" ? corpo : (rest.instrucoes as string || "");
+  return { corpo: `${corpoPure}${COM_META_SEP}${JSON.stringify(meta)}` };
+}
+
+function decodeComunicadoMeta(row: Record<string, unknown>): Record<string, unknown> {
+  if (!row) return row;
+  const corpo = (row.corpo as string) || "";
+  const idx = corpo.lastIndexOf(COM_META_SEP);
+  if (idx === -1) {
+    // Return with defaults for new fields
+    return { ...row, corpo, canais: ["app"], categoria: "aviso_geral", publico_alvo: "todos", prioridade: "normal", status: "enviado", total_destinatarios: 0, total_entregues: 0, total_lidos: 0, di_gerado: row.gerado_por_ia || false, template_key: null };
+  }
+  const corpoReal = corpo.substring(0, idx);
+  try {
+    const meta = JSON.parse(corpo.substring(idx + COM_META_SEP.length));
+    return { ...row, corpo: corpoReal, ...meta, di_gerado: meta.di_gerado ?? row.gerado_por_ia ?? false };
+  } catch {
+    return { ...row, corpo };
+  }
+}
+
 // GET /api/comunicados - Comunicados
-router.get("/comunicados", async (_req: Request, res: Response) => {
-  const { data, error } = await supabase
-    .from("comunicados")
-    .select("*")
-    .order("created_at", { ascending: false });
+router.get("/comunicados", async (req: Request, res: Response) => {
+  const { condominio_id } = req.query as { condominio_id?: string };
+  let q = supabase.from("comunicados").select("*").order("created_at", { ascending: false });
+  if (condominio_id) q = q.eq("condominio_id", condominio_id);
+  const { data, error } = await q;
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  res.json((data || []).map(r => decodeComunicadoMeta(r as Record<string, unknown>)));
+});
+
+// POST /api/comunicados — criar/salvar comunicado
+router.post("/comunicados", async (req: Request, res: Response) => {
+  const { condominio_id, titulo, corpo, categoria, publico_alvo, prioridade, canais, agendado_para, template_key, di_gerado } = req.body as Record<string, unknown>;
+  if (!condominio_id || !titulo || !corpo) return res.status(400).json({ error: "condominio_id, titulo e corpo obrigatórios" });
+  const status = agendado_para ? "agendado" : "rascunho";
+  // Try full schema first
+  const baseRow = { condominio_id, titulo, gerado_por_ia: di_gerado || false };
+  const metaEncoded = encodeComunicadoMeta({ corpo, canais: canais || ["app"], categoria: categoria || "aviso_geral", publico_alvo: publico_alvo || "todos", prioridade: prioridade || "normal", status, total_destinatarios: 0, total_entregues: 0, total_lidos: 0, di_gerado: di_gerado || false, template_key: template_key || null, agendado_para: agendado_para || null });
+  let { data, error } = await supabase.from("comunicados").insert({ ...baseRow, ...metaEncoded }).select().single();
+  if (error) {
+    // Fallback: plain corpo
+    const fb = await supabase.from("comunicados").insert({ ...baseRow, corpo: corpo as string }).select().single();
+    if (fb.error) return res.status(500).json({ error: fb.error.message });
+    data = fb.data;
+  }
+  res.json({ ok: true, comunicado: decodeComunicadoMeta(data as Record<string, unknown>) });
+});
+
+// PUT /api/comunicados/:id — atualizar comunicado
+router.put("/comunicados/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const fields = req.body as Record<string, unknown>;
+  const { titulo, corpo, categoria, publico_alvo, prioridade, canais, agendado_para, status, template_key, di_gerado, total_entregues, total_lidos, total_destinatarios, enviado_em } = fields;
+  const baseUpd: Record<string, unknown> = {};
+  if (titulo !== undefined) baseUpd.titulo = titulo;
+  if (di_gerado !== undefined) baseUpd.gerado_por_ia = di_gerado;
+  // Get current row to preserve meta
+  const { data: cur } = await supabase.from("comunicados").select("*").eq("id", id).single();
+  if (!cur) return res.status(404).json({ error: "not found" });
+  const curDecoded = decodeComunicadoMeta(cur as Record<string, unknown>);
+  const merged = { ...curDecoded, ...(corpo !== undefined ? { corpo } : {}), ...(categoria !== undefined ? { categoria } : {}), ...(publico_alvo !== undefined ? { publico_alvo } : {}), ...(prioridade !== undefined ? { prioridade } : {}), ...(canais !== undefined ? { canais } : {}), ...(agendado_para !== undefined ? { agendado_para } : {}), ...(status !== undefined ? { status } : {}), ...(template_key !== undefined ? { template_key } : {}), ...(di_gerado !== undefined ? { di_gerado } : {}), ...(total_entregues !== undefined ? { total_entregues } : {}), ...(total_lidos !== undefined ? { total_lidos } : {}), ...(total_destinatarios !== undefined ? { total_destinatarios } : {}), ...(enviado_em !== undefined ? { enviado_em } : {}) };
+  const metaEncoded = encodeComunicadoMeta(merged);
+  const { data, error } = await supabase.from("comunicados").update({ ...baseUpd, ...metaEncoded }).eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, comunicado: decodeComunicadoMeta(data as Record<string, unknown>) });
+});
+
+// DELETE /api/comunicados/:id
+router.delete("/comunicados/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { error } = await supabase.from("comunicados").delete().eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true });
+});
+
+// POST /api/comunicados/gerar-com-di — gerar texto via Claude
+router.post("/comunicados/gerar-com-di", async (req: Request, res: Response) => {
+  const { condominio_id, condominio_nome, sindico_nome, categoria, contexto, oss_abertas, titulo_base } = req.body as Record<string, unknown>;
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const condNome = condominio_nome || "Condomínio";
+    const sindNome = sindico_nome || "Síndico";
+    const cat = categoria || "aviso_geral";
+    const prompt = `Você é Di, síndica virtual do ${condNome} em Florianópolis.
+Categoria do comunicado: ${cat}
+Assunto/Contexto: ${titulo_base || ""}
+OSs abertas relevantes: ${JSON.stringify(oss_abertas || [])}
+Dados adicionais: ${JSON.stringify(contexto || {})}
+
+Escreva um comunicado profissional e cordial para os moradores. Máx 200 palavras. Tom claro, sem jargão técnico. NÃO use markdown, asteriscos ou formatação especial. Termine com: Atenciosamente, ${sindNome} - Síndico / Di - Síndica Virtual ImobCore.`;
+    const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL });
+    const msg = await ai.messages.create({ model: "claude-sonnet-4-5", max_tokens: 700, messages: [{ role: "user", content: prompt }] });
+    const texto = (msg.content[0] as { text: string }).text;
+    // Also generate a title
+    const tituloMsg = await ai.messages.create({ model: "claude-sonnet-4-5", max_tokens: 50, messages: [{ role: "user", content: `Crie um título conciso (máx 8 palavras) para este comunicado condominial:\n\n${texto}` }] });
+    const titulo = (tituloMsg.content[0] as { text: string }).text.replace(/["*]/g, "").trim();
+    res.json({ ok: true, titulo, corpo: texto });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/comunicados/:id/enviar — envio multicanal (WA + TG + App)
+router.post("/comunicados/:id/enviar", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { condominio_id, canais } = req.body as { condominio_id: string; canais: string[] };
+  if (!condominio_id || !canais?.length) return res.status(400).json({ error: "condominio_id e canais obrigatórios" });
+  try {
+    // Load comunicado
+    const { data: com } = await supabase.from("comunicados").select("*").eq("id", id).single();
+    if (!com) return res.status(404).json({ error: "comunicado não encontrado" });
+    const decoded = decodeComunicadoMeta(com as Record<string, unknown>) as { titulo: string; corpo: string; [key: string]: unknown };
+    // Load canal config
+    const { data: cfg } = await supabase.from("canal_config").select("*").eq("condominio_id", condominio_id).single().catch(() => ({ data: null, error: null }));
+    // Load moradores for WA
+    const { data: moradores } = await supabase.from("moradores").select("telefone,nome").eq("condominio_id", condominio_id).limit(200);
+    const numeros = (moradores || []).map((m: Record<string, unknown>) => m.telefone as string).filter(Boolean);
+    const condo = { nome: "Condomínio" };
+    const { data: condData } = await supabase.from("condominios").select("nome").eq("id", condominio_id).single().catch(() => ({ data: null, error: null }));
+    if (condData) Object.assign(condo, condData);
+    const resultados: Record<string, unknown> = {};
+    // WhatsApp via Z-API
+    if (canais.includes("whatsapp") && cfg?.wa_token && cfg?.wa_instance) {
+      const msg = `📢 *${condo.nome}*\n\n*${decoded.titulo}*\n\n${decoded.corpo}\n\n_via ImobCore · Síndica Virtual Di_`;
+      let waOk = 0;
+      for (const num of numeros.slice(0, 100)) {
+        try {
+          const r = await fetch(`https://api.z-api.io/instances/${cfg.wa_instance}/token/${cfg.wa_token}/send-text`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: num, message: msg }) });
+          if (r.ok) waOk++;
+        } catch { /* continue */ }
+      }
+      resultados.whatsapp = { ok: waOk, total: numeros.length };
+    } else if (canais.includes("whatsapp")) {
+      resultados.whatsapp = { ok: 0, total: 0, erro: "WhatsApp não configurado" };
+    }
+    // Telegram via Bot API
+    if (canais.includes("telegram") && cfg?.tg_bot_token && cfg?.tg_chat_id) {
+      const msg = `🏢 *${condo.nome}*\n\n*${decoded.titulo}*\n\n${decoded.corpo}\n\n_ImobCore v2 · Di - Síndica Virtual_`;
+      const tgUrl = `https://api.telegram.org/bot${cfg.tg_bot_token}/sendMessage`;
+      const r = await fetch(tgUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: cfg.tg_chat_id, text: msg, parse_mode: "Markdown" }) });
+      const tgRes = await r.json() as { ok?: boolean; description?: string };
+      resultados.telegram = { ok: tgRes.ok, message_id: (tgRes as Record<string, unknown>)?.result ? ((tgRes as Record<string, unknown>).result as Record<string, unknown>)?.message_id : null };
+    } else if (canais.includes("telegram")) {
+      resultados.telegram = { ok: false, erro: "Telegram não configurado" };
+    }
+    // Mark as sent + update stats
+    const agora = new Date().toISOString();
+    const entregues = (resultados.whatsapp as { ok?: number })?.ok || 0;
+    const updEncoded = encodeComunicadoMeta({ corpo: decoded.corpo, canais, categoria: decoded.categoria, publico_alvo: decoded.publico_alvo, prioridade: decoded.prioridade, status: "enviado", total_destinatarios: numeros.length || 1, total_entregues: entregues, total_lidos: 0, di_gerado: decoded.di_gerado, template_key: decoded.template_key, enviado_em: agora, wa_message_id: null, tg_message_id: (resultados.telegram as { message_id?: string })?.message_id || null });
+    await supabase.from("comunicados").update(updEncoded).eq("id", id);
+    res.json({ ok: true, resultados, enviado_em: agora });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/comunicados/canal-config — config de canais do condomínio
+router.get("/comunicados/canal-config", async (req: Request, res: Response) => {
+  const { condominio_id } = req.query as { condominio_id?: string };
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const { data, error } = await supabase.from("canal_config").select("*").eq("condominio_id", condominio_id).single();
+    if (error || !data) return res.json({ condominio_id, wa_token: null, wa_numero: null, wa_instance: null, wa_provider: "zapi", tg_bot_token: null, tg_chat_id: null, email_from: null, email_smtp: null });
+    res.json(data);
+  } catch { res.json({ condominio_id, wa_token: null, wa_numero: null, wa_instance: null, wa_provider: "zapi", tg_bot_token: null, tg_chat_id: null, email_from: null, email_smtp: null }); }
+});
+
+// PUT /api/comunicados/canal-config — salvar config de canais
+router.put("/comunicados/canal-config", async (req: Request, res: Response) => {
+  const { condominio_id, wa_token, wa_numero, wa_instance, wa_provider, tg_bot_token, tg_chat_id, email_from, email_smtp } = req.body as Record<string, string>;
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const row = { condominio_id, wa_token: wa_token || null, wa_numero: wa_numero || null, wa_instance: wa_instance || null, wa_provider: wa_provider || "zapi", tg_bot_token: tg_bot_token || null, tg_chat_id: tg_chat_id || null, email_from: email_from || null, email_smtp: email_smtp || null, updated_at: new Date().toISOString() };
+    const { data: existing } = await supabase.from("canal_config").select("id").eq("condominio_id", condominio_id).single();
+    if (existing?.id) {
+      const { error } = await supabase.from("canal_config").update(row).eq("condominio_id", condominio_id);
+      if (error) return res.status(500).json({ error: error.message });
+    } else {
+      const { error } = await supabase.from("canal_config").insert(row);
+      if (error) return res.status(500).json({ error: error.message });
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/comunicados/regras — regras automáticas do condomínio
+router.get("/comunicados/regras", async (req: Request, res: Response) => {
+  const { condominio_id } = req.query as { condominio_id?: string };
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const { data, error } = await supabase.from("comunicado_regras").select("*").eq("condominio_id", condominio_id);
+    if (error || !data) return res.json([]);
+    res.json(data);
+  } catch { res.json([]); }
 });
 
 // POST /api/condominios — criar ou actualizar condomínio (wizard step 1)

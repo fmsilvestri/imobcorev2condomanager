@@ -1,0 +1,496 @@
+# PROMPT — Módulo Comunicados v2 · WhatsApp + Telegram + Di IA
+# Cole no Replit Agent (aba "Agent")
+
+---
+
+## CONTEXTO
+
+Projeto: ImobCore v2 — React + TypeScript + Supabase
+Módulo atual: campo simples de texto + "Gerar via IA" + histórico básico (ver screenshot)
+Objetivo: transformar em central de comunicados multicanal com WhatsApp, Telegram, templates, Di IA e agendamento
+
+---
+
+## 1. BANCO DE DADOS — Supabase
+
+### Alterar tabela `comunicados` (adicionar colunas):
+
+```sql
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS canais TEXT[] DEFAULT ARRAY['app'];
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'aviso_geral';
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS publico_alvo TEXT DEFAULT 'todos';
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS prioridade TEXT DEFAULT 'normal';
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS agendado_para TIMESTAMPTZ;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS enviado_em TIMESTAMPTZ;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'rascunho';
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS total_destinatarios INTEGER DEFAULT 0;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS total_entregues INTEGER DEFAULT 0;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS total_lidos INTEGER DEFAULT 0;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS di_gerado BOOLEAN DEFAULT false;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS template_key TEXT;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS wa_message_id TEXT;
+ALTER TABLE comunicados ADD COLUMN IF NOT EXISTS tg_message_id TEXT;
+```
+
+### Nova tabela `comunicado_regras` (automação):
+
+```sql
+CREATE TABLE IF NOT EXISTS comunicado_regras (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES condominios(id),
+  nome TEXT NOT NULL,
+  gatilho TEXT NOT NULL,
+  canais TEXT[] DEFAULT ARRAY['whatsapp'],
+  template_key TEXT,
+  ativo BOOLEAN DEFAULT true,
+  delay_minutos INTEGER DEFAULT 5,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+INSERT INTO comunicado_regras (condominio_id, nome, gatilho, canais, template_key, ativo, delay_minutos)
+SELECT id, 'OS urgente → aviso moradores', 'os_urgente_aberta', ARRAY['whatsapp','telegram'], 'manutencao_urgente', true, 5
+FROM condominios LIMIT 1;
+
+INSERT INTO comunicado_regras (condominio_id, nome, gatilho, canais, template_key, ativo, delay_minutos)
+SELECT id, 'Boleto mensal → lembrete dia 5', 'boleto_mensal', ARRAY['whatsapp','app'], 'boleto_lembrete', true, 0
+FROM condominios LIMIT 1;
+```
+
+### Nova tabela `canal_config`:
+
+```sql
+CREATE TABLE IF NOT EXISTS canal_config (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES condominios(id) UNIQUE,
+  wa_token TEXT,
+  wa_numero TEXT,
+  wa_provider TEXT DEFAULT 'zapi',
+  tg_bot_token TEXT,
+  tg_chat_id TEXT,
+  email_from TEXT,
+  email_smtp TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+---
+
+## 2. COMPONENTES REACT
+
+### `src/components/Comunicados/ComunicadosModule.tsx` — Container
+
+```typescript
+// 5 abas: Novo comunicado | Templates | Histórico | Agendados | Métricas
+// State: comunicados[], regras[], canalConfig, activeTab
+// Props: condominioId, view: 'desktop' | 'mobile'
+```
+
+### `src/components/Comunicados/CanalSelector.tsx` — Pills de canal
+
+```typescript
+// 4 canais: WhatsApp (verde), Telegram (azul), App ImobCore (roxo), E-mail (âmbar)
+// Estado: array de canais selecionados (múltipla seleção)
+// Indicador de status do canal: online/configurado vs não configurado
+// Props: selected: string[], onChange, canalConfig: CanalConfig
+```
+
+### `src/components/Comunicados/Composer.tsx` — Editor principal
+
+```typescript
+// Layout: Di insight strip (topo) + formulário + preview side-by-side
+// Campos:
+//   - categoria (select): manutencao | financeiro | seguranca | assembleia | aviso_geral | emergencia
+//   - publico_alvo: todos | conselho | torre_a | torre_b
+//   - titulo (input)
+//   - corpo (textarea + contador de chars)
+//   - prioridade: normal | alta | urgente
+//   - agendar_para (datetime-local, opcional)
+// Preview lado a lado: formato WhatsApp (verde) e Telegram (azul)
+// Botões: Salvar rascunho | Di gera ↗ | Enviar WA | Enviar TG | Enviar todos
+```
+
+### `src/components/Comunicados/DiInsightStrip.tsx` — Sugestão da Di
+
+```typescript
+// Analisa contexto atual (OSs abertas, alertas MISP, próximas manutenções)
+// Sugere tópico de comunicado relevante
+// Botão "Di gera texto" → chama Claude API com contexto real
+// Mostra: "Di sugere: baseado nas OSs abertas (elevador + piscina), enviar aviso de manutenção hoje"
+
+async function gerarTextoDi(contexto: DiContexto): Promise<string> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 600,
+      system: `Você é Di, síndica virtual do ${condominioNome} em Florianópolis.
+               Escreva um comunicado profissional e amigável para os moradores.
+               Máx 200 palavras. Tom: cordial, claro, sem jargão técnico.
+               NÃO use markdown, asteriscos ou formatação especial.
+               Termine sempre com: Atenciosamente, ${sindicoNome} - Síndico / Di - Síndica Virtual ImobCore`,
+      messages: [{
+        role: 'user',
+        content: `Categoria: ${categoria}
+Contexto: ${JSON.stringify(contexto)}
+OSs abertas relevantes: ${JSON.stringify(ossAbertas)}
+Escreva o comunicado completo.`
+      }]
+    })
+  })
+  const data = await res.json()
+  return data.content[0].text
+}
+```
+
+### `src/components/Comunicados/TemplateGallery.tsx` — Galeria de templates
+
+```typescript
+// Grid 3 colunas com os templates abaixo
+// Clicar → preenche o Composer automaticamente
+// Botão "Criar com Di" → gera novo template personalizado via Claude API
+
+export const TEMPLATES: Record<string, ComunicadoTemplate> = {
+  manutencao_programada: {
+    titulo: 'Manutenção preventiva programada',
+    categoria: 'manutencao',
+    corpo: `Prezados moradores do {CONDO_NOME},
+
+Informamos que será realizada manutenção preventiva em {EQUIPAMENTO} no dia {DATA}.
+
+{IMPACTO}
+
+Atenciosamente,
+{SINDICO_NOME} - Síndico
+Di - Síndica Virtual ImobCore`,
+    icon: '🔧', tags: ['manutencao', 'preventiva']
+  },
+  interrupcao_agua: {
+    titulo: 'Interrupção no fornecimento de água',
+    categoria: 'manutencao',
+    corpo: `Prezados moradores,
+
+Informamos que haverá interrupção no fornecimento de água das {HORA_INICIO} às {HORA_FIM} do dia {DATA} para manutenção na rede hidráulica.
+
+Orientamos armazenar água com antecedência.
+
+Atenciosamente,
+{SINDICO_NOME} - Síndico`,
+    icon: '💧', tags: ['urgente', 'infra']
+  },
+  convocacao_assembleia: {
+    titulo: 'Convocação de Assembleia Geral',
+    categoria: 'assembleia',
+    corpo: `CONVOCAÇÃO DE ASSEMBLEIA GERAL ORDINÁRIA
+
+Convocamos todos os condôminos para a Assembleia que será realizada:
+
+📅 Data: {DATA}
+📍 Local: Salão de Festas - Torre A
+⏰ Hora: {HORA}
+
+Pauta:
+{PAUTA}
+
+{SINDICO_NOME} - Síndico`,
+    icon: '🗳', tags: ['assembleia', 'formal']
+  },
+  boleto_lembrete: {
+    titulo: 'Lembrete — boleto condominial',
+    categoria: 'financeiro',
+    corpo: `Prezado(a) morador(a),
+
+Lembramos que o boleto do condomínio referente a {MES_ANO} vence no dia {DATA_VENC}.
+
+💰 Valor: R$ {VALOR}
+🔗 2ª via: acesse o app ImobCore
+
+Evite multas e juros!
+
+Administração {CONDO_NOME}`,
+    icon: '💰', tags: ['financeiro', 'mensal']
+  },
+  elevador_manutencao: {
+    titulo: 'Elevador temporariamente fora de serviço',
+    categoria: 'manutencao',
+    corpo: `Prezados moradores,
+
+Informamos que o Elevador {ELEVADOR} está temporariamente fora de serviço para manutenção.
+
+⏰ Previsão de retorno: {DATA_RETORNO}
+↕️ Utilize o Elevador {ALT} durante este período.
+
+Pedimos desculpas pelo transtorno.
+{SINDICO_NOME} - Síndico`,
+    icon: '🛗', tags: ['manutencao', 'atencao']
+  },
+  regras_convivencia: {
+    titulo: 'Lembrete de regras de convivência',
+    categoria: 'aviso_geral',
+    corpo: `Prezados moradores,
+
+Lembramos algumas regras importantes de convivência:
+
+🔇 Silêncio após 22h nos finais de semana
+🗑️ Descarte correto do lixo nas lixeiras
+🐾 Pets sempre com coleira nas áreas comuns
+🚗 Vagas somente para veículos cadastrados
+
+Contamos com a colaboração de todos!
+{SINDICO_NOME} - Síndico`,
+    icon: '📋', tags: ['convivencia', 'periodico']
+  },
+  simulacao_incendio: {
+    titulo: 'Simulação de incêndio — AVISO',
+    categoria: 'seguranca',
+    corpo: `SIMULAÇÃO DE INCÊNDIO — AVISO IMPORTANTE
+
+Informamos que será realizado exercício de abandono de emergência no dia {DATA} às {HORA}.
+
+⚠️ A sirene soará por aproximadamente 5 minutos.
+Não se alarme — é um exercício obrigatório.
+
+Siga as instruções dos brigadistas.
+{SINDICO_NOME} - Síndico`,
+    icon: '🔥', tags: ['seguranca', 'obrigatorio']
+  },
+  piscina_fechamento: {
+    titulo: 'Fechamento temporário da piscina',
+    categoria: 'manutencao',
+    corpo: `Prezados moradores,
+
+A piscina estará fechada temporariamente nos dias {DATAS} para tratamento químico e manutenção preventiva.
+
+🏊 Previsão de reabertura: {DATA_RETORNO}
+
+Agradecemos a compreensão.
+{SINDICO_NOME} - Síndico`,
+    icon: '🏊', tags: ['manutencao', 'lazer']
+  },
+}
+```
+
+### `src/components/Comunicados/HistoricoList.tsx`
+
+```typescript
+// Lista de comunicados enviados com:
+// - Título, data/hora, badges de canais usados, badge "Di IA" se gerado pela Di
+// - Métricas inline: X entregues · Y lidos · Z% abertura
+// - Botão "Reenviar" → pré-preenche Composer com o mesmo texto
+// - Botão "Reenviar falhas" → envia apenas para destinatários com falha
+// - Filtros: todos | whatsapp | telegram | di_gerado
+// - Busca por texto
+```
+
+### `src/components/Comunicados/AgendadosList.tsx`
+
+```typescript
+// Lista de envios agendados e regras automáticas ativas
+// Regras automáticas:
+//   - 'os_urgente_aberta' → Di gera texto + envia em 5min
+//   - 'boleto_mensal' → envio todo dia 5
+//   - 'plano_manutencao_7d' → aviso 7 dias antes de execução
+//   - 'sensor_alerta_critico' → notifica síndico imediatamente
+// Botões: Editar agendamento | Cancelar | Editar texto
+```
+
+### `src/components/Comunicados/MetricasPanel.tsx`
+
+```typescript
+// KPIs: total enviados | taxa entrega | taxa leitura | gerados por Di
+// Gráfico de barras por canal (WA, TG, App, Email)
+// Gráfico de pizza por categoria
+// Botão "Di gera relatório de engajamento" → Claude API
+```
+
+---
+
+## 3. SERVIÇO DE ENVIO — `src/services/comunicadoService.ts`
+
+```typescript
+// ── WhatsApp via Z-API ──────────────────────────────────────────
+async function enviarWhatsApp(config: CanalConfig, mensagem: string, destinatarios: string[]): Promise<WASendResult> {
+  // Z-API endpoint: https://api.z-api.io/instances/{instanceId}/token/{token}/send-text
+  // Formatar mensagem com emojis e quebras de linha
+  // Enviar para lista de números cadastrados dos moradores
+  // Retry automático para falhas
+  
+  for(const numero of destinatarios) {
+    const res = await fetch(`https://api.z-api.io/instances/${config.wa_instance}/token/${config.wa_token}/send-text`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({phone: numero, message: mensagem})
+    })
+    // Registrar resultado por número
+  }
+}
+
+// ── Telegram via Bot API ────────────────────────────────────────
+async function enviarTelegram(config: CanalConfig, mensagem: string): Promise<TGSendResult> {
+  // Telegram Bot API: https://api.telegram.org/bot{token}/sendMessage
+  // Formatar com Markdown (negrito *texto*, itálico _texto_)
+  // Enviar para chat_id do grupo do condomínio
+  
+  const res = await fetch(`https://api.telegram.org/bot${config.tg_bot_token}/sendMessage`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      chat_id: config.tg_chat_id,
+      text: formatarMarkdownTelegram(mensagem),
+      parse_mode: 'Markdown'
+    })
+  })
+  return res.json()
+}
+
+// ── Formatar para WhatsApp ──────────────────────────────────────
+function formatarWhatsApp(titulo: string, corpo: string, condoNome: string): string {
+  return `📢 *${condoNome}*\n\n*${titulo}*\n\n${corpo}\n\n_via ImobCore · Síndica Virtual Di_`
+}
+
+// ── Formatar para Telegram ──────────────────────────────────────
+function formatarMarkdownTelegram(titulo: string, corpo: string): string {
+  return `🏢 *Comunicado — Copacabana Beach Residence*\n\n*${titulo}*\n\n${corpo}\n\n_ImobCore v2 · @imobcore\_cb\_bot_`
+}
+
+// ── Envio multicanal ────────────────────────────────────────────
+async function enviarMulticanal(comunicado: Comunicado, canais: string[], config: CanalConfig) {
+  const resultados: Record<string, boolean> = {}
+  
+  if(canais.includes('whatsapp')) {
+    const moradores = await supabase.from('moradores').select('telefone').eq('condominio_id', comunicado.condominio_id)
+    const numeros = moradores.data?.map(m => m.telefone).filter(Boolean) || []
+    const wa = await enviarWhatsApp(config, formatarWhatsApp(comunicado.titulo, comunicado.corpo, condoNome), numeros)
+    resultados.whatsapp = wa.success
+  }
+  
+  if(canais.includes('telegram')) {
+    const tg = await enviarTelegram(config, formatarMarkdownTelegram(comunicado.titulo, comunicado.corpo))
+    resultados.telegram = tg.ok
+  }
+  
+  // Registrar resultado
+  await supabase.from('comunicados').update({
+    status: 'enviado',
+    enviado_em: new Date().toISOString(),
+    total_entregues: resultados.whatsapp ? numeros.length : 0
+  }).eq('id', comunicado.id)
+  
+  return resultados
+}
+```
+
+---
+
+## 4. CLOUDFLARE WORKER — Automação por gatilho
+
+Criar `workers/comunicado-trigger.ts`:
+
+```typescript
+// Recebe webhook do Supabase (realtime ou Postgres trigger)
+// Avalia regras ativas em comunicado_regras
+// Se gatilho === 'os_urgente_aberta' → gera texto com Di → envia WA + TG
+
+export default {
+  async fetch(req: Request, env: Env) {
+    const body = await req.json()
+    
+    if(body.type === 'INSERT' && body.table === 'ordens_servico') {
+      const os = body.record
+      if(os.prioridade === 'urgente') {
+        const config = await getCanaisConfig(os.condominio_id, env)
+        const texto = await gerarTextoDiWorker(os, env.ANTHROPIC_KEY)
+        await enviarTelegraBotWorker(config, texto)
+        await enviarZAPIWorker(config, texto)
+      }
+    }
+    
+    return new Response('OK')
+  }
+}
+
+async function gerarTextoDiWorker(os: any, apiKey: string) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01'},
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 300,
+      system: 'Você é Di, síndica virtual. Escreva um aviso conciso (máx 100 palavras) para moradores sobre manutenção urgente. Tom tranquilizador. Sem markdown.',
+      messages: [{role: 'user', content: `OS urgente aberta: ${os.titulo}. Local: ${os.categoria}. Prestador: ${os.responsavel || 'a designar'}. Escreva o aviso.`}]
+    })
+  })
+  const data = await res.json()
+  return data.content[0].text
+}
+```
+
+---
+
+## 5. INTEGRAÇÃO NA INTERFACE EXISTENTE
+
+No módulo de Comunicados atual (tela com "Gerar Comunicado via IA"):
+
+Substituir todo o conteúdo pela tag:
+```tsx
+<ComunicadosModule condominioId={condominioId} view="desktop" />
+```
+
+Manter o histórico existente — migrar o comunicado de boas-vindas já salvo.
+
+---
+
+## 6. CONFIGURAÇÃO DE CANAIS — Tela de settings
+
+Em Settings do condomínio, adicionar seção:
+
+```tsx
+// Formulário para salvar em canal_config:
+// WA: Provider (Z-API / Twilio), Token, Número Business
+// TG: Bot Token (@BotFather), Chat ID do grupo
+// Email: SMTP host, from, senha
+// Botão "Testar conexão" → envia mensagem de teste para o próprio síndico
+```
+
+---
+
+## 7. REGRAS DE VALIDAÇÃO
+
+```typescript
+// Mensagem WA: máx 1000 caracteres (WhatsApp Business limit)
+// Mensagem TG: máx 4096 caracteres
+// Sem envio se canal não configurado → exibir alerta "Configure WhatsApp primeiro"
+// Agendamento mínimo: 5 minutos no futuro
+// Emergência: ignora agendamento, envia imediatamente
+// Log obrigatório: toda mensagem enviada registrada em 'comunicados' com status e destinatários
+```
+
+---
+
+## 8. PRIORIDADE DE IMPLEMENTAÇÃO
+
+1. SQL schema (5 min)
+2. `TemplateGallery` com os 8 templates (30 min)
+3. `Composer` com preview WA/TG side-by-side + Di gera texto (1h)
+4. `CanalSelector` + salvar `canal_config` (30 min)
+5. `comunicadoService.enviarMulticanal` com Z-API + Telegram Bot API (1h30)
+6. `HistoricoList` com métricas e reenvio (45 min)
+7. `AgendadosList` + regras automáticas (45 min)
+8. Cloudflare Worker trigger por OS urgente (1h)
+
+---
+
+## 9. TESTE APÓS IMPLEMENTAR
+
+- [ ] Template de manutenção preenche Composer automaticamente
+- [ ] Di gera texto contextualizado com OSs abertas reais
+- [ ] Preview WhatsApp e Telegram aparecem lado a lado
+- [ ] Envio WA via Z-API chega no número de teste
+- [ ] Envio Telegram via Bot API chega no grupo
+- [ ] Histórico registra entregues/lidos corretamente
+- [ ] Regra automática: abrir OS urgente → comunicado gerado em 5min
+- [ ] Agendamento funciona com data futura
+
+---
+
+*Gerado por Di — Síndica Virtual IA · ImobCore v2 · claude-sonnet-4 · 21/03/2026*

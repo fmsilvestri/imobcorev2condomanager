@@ -4,6 +4,7 @@ import RelatorioExecutivo from "./components/sindico/RelatorioExecutivo";
 import AguaModule from "./modules/agua/AguaModule";
 import OSModule from "./components/OS/OSModule";
 import PlanosModule from "./components/Planos/PlanosModule";
+import ComunicadosModule from "./components/Comunicados/ComunicadosModule";
 import QRCode from "qrcode";
 import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis } from "recharts";
 
@@ -6005,35 +6006,22 @@ export default function App() {
             </button>
           </div>
 
-          {/* PANEL: COMUNICADOS */}
-          <div className={`panel ${panel === "sv-comunicados" ? "active" : ""} card`}>
-            <div className="card-title">📢 Gerar Comunicado via IA</div>
-            <div className="form-group">
-              <label className="form-label">Tema</label>
-              <input className="form-control" value={comTema} onChange={e => setComTema(e.target.value)} placeholder="Ex: Manutenção do elevador na próxima segunda-feira..." />
-            </div>
-            <button className="btn btn-primary" onClick={gerarComunicado} disabled={comLoading} style={{ marginBottom: 14 }}>
-              ✨ {comLoading ? "Gerando..." : "Gerar via IA"}
-            </button>
-            {comPreview && (
-              <div className="com-preview" style={{ borderColor: "rgba(99,102,241,.3)", background: "rgba(99,102,241,.06)" }}>
-                <div className="com-titulo" style={{ color: "#A5B4FC" }}>{comPreview.titulo}</div>
-                <div className="com-corpo" style={{ overflow: "visible", WebkitLineClamp: "unset" }}>{comPreview.corpo}</div>
-              </div>
-            )}
-            <div style={{ borderTop: "1px solid var(--card-border)", paddingTop: 12, marginTop: 4 }}>
-              <div className="card-title">📋 Histórico</div>
-              {(dash?.comunicados || []).slice(0, 5).map(c => (
-                <div key={c.id} className="com-preview">
-                  <div className="com-titulo">{c.titulo}</div>
-                  <div className="com-corpo">{c.corpo}</div>
-                  <div className="com-meta">
-                    {c.gerado_por_ia && <span style={{ color: "var(--purple)" }}>✨ IA</span>}
-                    <span>{fmtDate(c.created_at)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* PANEL: COMUNICADOS v2 */}
+          <div className={`panel ${panel === "sv-comunicados" ? "active" : ""} card`} style={{ padding: 24 }}>
+            {panel === "sv-comunicados" && (() => {
+              const condNome = dash?.condominios?.find(c => c.id === condId)?.nome ?? "Condomínio";
+              const sindicoNome = dash?.condominios?.find(c => c.id === condId)?.sindico_nome ?? "Síndico";
+              const ossAbertas = (dash?.ordens_servico || []).filter(o => o.status !== "fechada");
+              return (
+                <ComunicadosModule
+                  condId={condId}
+                  condNome={condNome}
+                  sindicoNome={sindicoNome}
+                  ossAbertas={ossAbertas}
+                  showToast={showToast}
+                />
+              );
+            })()}
           </div>
 
           {/* PANEL: NOTIFICAÇÕES MULTICANAL */}
