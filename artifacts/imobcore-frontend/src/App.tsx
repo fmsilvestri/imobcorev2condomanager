@@ -5,6 +5,7 @@ import AguaModule from "./modules/agua/AguaModule";
 import OSModule from "./components/OS/OSModule";
 import PlanosModule from "./components/Planos/PlanosModule";
 import ComunicadosModule from "./components/Comunicados/ComunicadosModule";
+import { CondoMap } from "./components/CondoMap";
 import QRCode from "qrcode";
 import { PieChart, Pie, Cell, LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis } from "recharts";
 
@@ -5662,6 +5663,10 @@ export default function App() {
             <span className="sb-icon">🏢</span> Fornecedores
             {fornecList.length > 0 && <span className="sb-badge" style={{ background:"rgba(16,185,129,.2)", color:"#34D399" }}>{fornecList.length}</span>}
           </div>
+          <div className={`sb-item ${panel === "condo3dmap" ? "active" : ""}`} onClick={() => setPanel("condo3dmap")} style={{ borderLeft: panel === "condo3dmap" ? "3px solid #7C5CFC" : undefined }}>
+            <span className="sb-icon">🗺️</span> Mapa 3D
+            <span className="sb-badge" style={{ background: "rgba(124,92,252,.2)", color:"#A78BFA", fontSize:9 }}>3D</span>
+          </div>
           <div className="sb-label">Acesso</div>
           <div className={`sb-item ${panel === "usuarios" ? "active" : ""}`} onClick={() => { setPanel("usuarios"); if (!usuariosLoaded) loadUsuarios(); }}>
             <span className="sb-icon">👥</span> Usuários
@@ -6021,6 +6026,14 @@ export default function App() {
                   showToast={showToast}
                 />
               );
+            })()}
+          </div>
+
+          {/* PANEL: MAPA 3D DO CONDOMÍNIO */}
+          <div className={`panel ${panel === "condo3dmap" ? "active" : ""}`} style={{ padding: 0, height: "100%", background: "#070812" }}>
+            {panel === "condo3dmap" && (() => {
+              const condNome = dash?.condominios?.find(c => c.id === condId)?.nome ?? "Condomínio";
+              return <CondoMap condoNome={condNome} className="w-full h-full rounded-none" />;
             })()}
           </div>
 

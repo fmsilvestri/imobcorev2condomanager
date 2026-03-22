@@ -25,7 +25,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 ### `artifacts/imobcore-frontend` (port 21216, path `/`)
 React + Vite frontend with 4 views:
-- **Painel Gestor**: Full dashboard with sidebar, KPI cards, AI chat, OS CRUD, financials, IoT water sensors (AguaModule), MISP alerts, Maintenance module, Encomendas module, SSE log
+- **Painel Gestor**: Full dashboard with sidebar, KPI cards, AI chat, OS CRUD, financials, IoT water sensors (AguaModule), MISP alerts, Maintenance module, Encomendas module, SSE log, 3D Condo Map
 - **App Síndico**: SindicoHome component (`src/components/sindico/SindicoHome.tsx`) — dark/light theme (localStorage-persisted), condo photo card with upload, quick stats strip, IA banner, module grid, bottom nav with FAB
 - **App Morador**: Phone mockup for residents showing communicados, services, status
 - **Onboarding Wizard** (8 steps, all implemented):
