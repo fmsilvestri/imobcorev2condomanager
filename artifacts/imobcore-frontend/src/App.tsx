@@ -597,7 +597,7 @@ const MANUT_SCHEDULE: { mes: string; items: { equip: string; tipo: "preventiva"|
 
 export default function App() {
   const [view, setView] = useState<"login" | "selector" | "gestor" | "sindico" | "morador" | "onboarding" | "admin">("login");
-  const [panel, setPanel] = useState("sv-chat");
+  const [panel, setPanel] = useState("sv-di");
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [condId, setCondId] = useState<string | null>(null);
   const condIdRef = useRef<string | null>(null);
@@ -831,6 +831,7 @@ export default function App() {
   const [diagAutoResult, setDiagAutoResult] = useState<DiagAutoResult | null>(null);
   const [diagAutoLoading, setDiagAutoLoading] = useState(false);
   const [diagHistorico, setDiagHistorico] = useState<DiagHistorico[]>([]);
+  const [chatPopupOpen, setChatPopupOpen] = useState(false);
   const [diagHistLoading, setDiagHistLoading] = useState(false);
 
   // Ao trocar condomínio: resetar resultado e carregar último salvo do Supabase
@@ -5696,272 +5697,185 @@ export default function App() {
             ))}
           </div>
 
-          {/* ══════════════════════════════════════════════════════════════
-              PANEL: DI — SÍNDICA VIRTUAL
-          ══════════════════════════════════════════════════════════════ */}
+          {/* ══ PANEL: DI — HOME ══ */}
           <div className={`panel ${panel === "sv-di" ? "active" : ""} card`} style={{ padding: 0, overflow: "hidden" }}>
-            {/* Header gradiente roxo */}
-            <div style={{ background: "linear-gradient(135deg, #3B0764 0%, #581C87 50%, #4C1D95 100%)", padding: "20px 24px 0", display: "flex", alignItems: "flex-start", gap: 20, position: "relative" }}>
-              {/* Avatar Di */}
-              <div style={{ position: "relative", flexShrink: 0 }}>
-                <img
-                  src="/di.png"
-                  alt="Di - Síndica Virtual"
-                  style={{
-                    width: 110, height: 110, borderRadius: "50%",
-                    objectFit: "cover", objectPosition: "top",
-                    border: "3px solid rgba(167,139,250,.6)",
-                    boxShadow: diFalando
-                      ? "0 0 0 6px rgba(167,139,250,.3), 0 0 30px rgba(139,92,246,.5)"
-                      : "0 4px 20px rgba(0,0,0,.4)",
-                    transition: "box-shadow .4s ease",
-                    transform: diFalando ? "scale(1.05)" : "scale(1)",
-                  }}
-                />
-                {/* Indicator pulse quando falando */}
-                {diFalando && (
-                  <div style={{ position: "absolute", bottom: 6, right: 6, width: 14, height: 14, borderRadius: "50%", background: "#A855F7", boxShadow: "0 0 8px #A855F7", animation: "pulse 1s infinite" }} />
-                )}
-              </div>
+            {panel === "sv-di" && (() => {
+              const condNome = dash?.condominios?.find((c: {id:string}) => c.id === condId)?.nome ?? "Condomínio";
+              const tipoConfig: Record<string, { bg: string; border: string; accent: string; label: string; labelBg: string }> = {
+                critico: { bg:"rgba(239,68,68,.1)",   border:"rgba(239,68,68,.35)",   accent:"#EF4444", label:"🚨 CRÍTICO",  labelBg:"rgba(239,68,68,.2)"   },
+                atencao: { bg:"rgba(234,179,8,.08)",  border:"rgba(234,179,8,.35)",   accent:"#EAB308", label:"⚠️ ATENÇÃO",  labelBg:"rgba(234,179,8,.2)"   },
+                info:    { bg:"rgba(16,185,129,.08)", border:"rgba(16,185,129,.3)",   accent:"#10B981", label:"📊 NORMAL",   labelBg:"rgba(16,185,129,.18)" },
+                insight: { bg:"rgba(168,85,247,.1)",  border:"rgba(168,85,247,.35)",  accent:"#A855F7", label:"🧠 INSIGHT",  labelBg:"rgba(168,85,247,.2)"  },
+              };
+              const mods = [
+                { id:"operacao",   icon:"🔧", label:"OS",          badge: t?.os_abertas || 0 },
+                { id:"financeiro", icon:"💰", label:"Financeiro",  badge: 0 },
+                { id:"iot",        icon:"💧", label:"Água",        badge: 0 },
+                { id:"misp",       icon:"🚨", label:"MISP",        badge: t?.alertas_ativos || 0 },
+                { id:"diagnostico",icon:"🫀", label:"Diagnóstico", badge: 0 },
+                { id:"crm",        icon:"👥", label:"CRM",         badge: 0 },
+                { id:"manutencao", icon:"🏗️", label:"Manutenção",  badge: equipList.filter((e: {status:string}) => e.status==="manutencao"||e.status==="atencao").length },
+                { id:"energia",    icon:"⚡", label:"Energia",     badge: 0 },
+                { id:"gas",        icon:"🔥", label:"Gás",         badge: 0 },
+                { id:"piscina",    icon:"🏊", label:"Piscina",     badge: piscinaList.filter((l: {status:string}) => l.status==="alerta").length },
+                { id:"encomendas", icon:"📦", label:"Encomendas",  badge: encList.filter((e: {status:string}) => e.status==="aguardando_retirada").length },
+                { id:"condo3dmap", icon:"🗺️", label:"Mapa 3D",    badge: 0 },
+              ];
+              return (
+                <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
 
-              {/* Nome e status */}
-              <div style={{ flex: 1, paddingTop: 8 }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#F3E8FF", letterSpacing: "-0.5px" }}>Di</div>
-                <div style={{ fontSize: 12, color: "#C4B5FD", marginBottom: 8 }}>Síndica Virtual — Powered by Claude IA</div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <span style={{ background: "rgba(167,139,250,.2)", border: "1px solid rgba(167,139,250,.4)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#C4B5FD" }}>
-                    ● {diFalando ? "Falando..." : "Online"}
-                  </span>
-                  {diData?.cards && (() => {
-                    const criticos = diData.cards.filter(c => c.tipo === "critico").length;
-                    const atencoes = diData.cards.filter(c => c.tipo === "atencao").length;
-                    return (
-                      <>
-                        {criticos > 0 && (
-                          <span style={{ background: "rgba(239,68,68,.25)", border: "1px solid rgba(239,68,68,.5)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#FCA5A5", fontWeight: 700 }}>
-                            🚨 {criticos} crítico{criticos > 1 ? "s" : ""}
-                          </span>
-                        )}
-                        {atencoes > 0 && (
-                          <span style={{ background: "rgba(234,179,8,.2)", border: "1px solid rgba(234,179,8,.4)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#FDE68A", fontWeight: 600 }}>
-                            ⚠️ {atencoes} atenção
-                          </span>
-                        )}
-                        {criticos === 0 && atencoes === 0 && (
-                          <span style={{ background: "rgba(16,185,129,.15)", border: "1px solid rgba(16,185,129,.35)", borderRadius: 20, padding: "2px 10px", fontSize: 10, color: "#6EE7B7", fontWeight: 600 }}>
-                            ✅ Tudo OK
-                          </span>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-
-            {/* Tabs Di */}
-            <div style={{ display:"flex", gap:0, borderBottom:"1px solid rgba(255,255,255,.07)", background:"#0A0818", flexShrink:0 }}>
-              {(["briefing","relatorio"] as const).map(v => (
-                <button key={v} onClick={() => setDiView(v)}
-                  style={{ flex:1, padding:"11px 8px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:12, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit" }}>
-                  {v==="briefing" ? "🟣 Briefing da Di" : "📊 Relatório Executivo"}
-                </button>
-              ))}
-            </div>
-
-            {/* Corpo Di — view condicional */}
-            {diView === "relatorio" ? (
-              <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
-                <RelatorioExecutivo
-                  condId={condId || ""}
-                  condNome={dash?.condominios?.find((c: {id:string}) => c.id === condId)?.nome || "Condomínio"}
-                  sindNome={dash?.condominios?.find((c: {id:string;sindico_nome?:string}) => c.id === condId)?.sindico_nome || "Síndico"}
-                  view="desktop"
-                />
-              </div>
-            ) : (
-            <div style={{ padding: "20px 24px", background: "#0F0A1E" }}>
-
-              {/* Balão de fala */}
-              {diData?.fala && (
-                <div style={{ background: "rgba(139,92,246,.1)", border: "1px solid rgba(139,92,246,.25)", borderRadius: 12, padding: "14px 16px", marginBottom: 16, position: "relative" }}>
-                  <div style={{ position: "absolute", top: -8, left: 20, width: 16, height: 8, overflow: "hidden" }}>
-                    <div style={{ width: 16, height: 16, background: "rgba(139,92,246,.25)", transform: "rotate(45deg)", transformOrigin: "bottom left", border: "1px solid rgba(139,92,246,.25)" }} />
-                  </div>
-                  <div style={{ fontSize: 13, color: "#E9D5FF", lineHeight: 1.6 }}>{diData.fala}</div>
-                </div>
-              )}
-
-              {!diData && !diLoading && (
-                <div style={{ textAlign: "center", padding: "20px 0", color: "#6D28D9", fontSize: 13 }}>
-                  Clique em <strong style={{ color: "#A78BFA" }}>"Briefing da Di"</strong> para ela analisar o condomínio e falar com você.
-                </div>
-              )}
-
-              {diLoading && (
-                <div style={{ textAlign: "center", padding: "20px 0" }}>
-                  <div style={{ fontSize: 13, color: "#A78BFA" }}>⏳ Di está analisando o condomínio...</div>
-                </div>
-              )}
-
-              {/* Cards inteligentes — 4 tipos: critico | atencao | info | insight */}
-              {diData?.cards && diData.cards.length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
-                  {diData.cards.map((card, i) => {
-                    const tipoConfig: Record<string, { bg: string; border: string; accent: string; label: string; labelBg: string }> = {
-                      critico: {
-                        bg: "rgba(239,68,68,.1)",
-                        border: "rgba(239,68,68,.35)",
-                        accent: "#EF4444",
-                        label: "🚨 CRÍTICO",
-                        labelBg: "rgba(239,68,68,.2)",
-                      },
-                      atencao: {
-                        bg: "rgba(234,179,8,.08)",
-                        border: "rgba(234,179,8,.35)",
-                        accent: "#EAB308",
-                        label: "⚠️ ATENÇÃO",
-                        labelBg: "rgba(234,179,8,.2)",
-                      },
-                      info: {
-                        bg: "rgba(16,185,129,.08)",
-                        border: "rgba(16,185,129,.3)",
-                        accent: "#10B981",
-                        label: "📊 NORMAL",
-                        labelBg: "rgba(16,185,129,.18)",
-                      },
-                      insight: {
-                        bg: "rgba(168,85,247,.1)",
-                        border: "rgba(168,85,247,.35)",
-                        accent: "#A855F7",
-                        label: "🧠 INSIGHT IA",
-                        labelBg: "rgba(168,85,247,.2)",
-                      },
-                    };
-                    const cfg = tipoConfig[card.tipo] || tipoConfig.info;
-                    return (
-                      <div key={i} style={{
-                        background: cfg.bg,
-                        border: `1px solid ${cfg.border}`,
-                        borderRadius: 14,
-                        padding: "14px 16px",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 8,
-                        boxShadow: card.tipo === "critico" ? `0 0 16px rgba(239,68,68,.15)` : "none",
-                      }}>
-                        {/* Tipo badge + badge personalizado */}
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-                          <span style={{
-                            background: cfg.labelBg,
-                            color: cfg.accent,
-                            borderRadius: 6,
-                            padding: "2px 8px",
-                            fontSize: 9,
-                            fontWeight: 800,
-                            letterSpacing: ".5px",
-                          }}>{cfg.label}</span>
-                          {card.badge && (
-                            <span style={{
-                              background: "rgba(255,255,255,.06)",
-                              border: `1px solid ${cfg.border}`,
-                              color: cfg.accent,
-                              borderRadius: 20,
-                              padding: "1px 8px",
-                              fontSize: 9,
-                              fontWeight: 600,
-                            }}>{card.badge}</span>
-                          )}
+                  {/* ── Di header gradient ── */}
+                  <div style={{ background:"linear-gradient(135deg, #3B0764 0%, #581C87 50%, #4C1D95 100%)", padding:"20px 24px 0", flexShrink:0 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:18, paddingBottom:20 }}>
+                      <div style={{ position:"relative", flexShrink:0 }}>
+                        <div style={{ width:72, height:72, borderRadius:"50%", background:"linear-gradient(135deg,#7C3AED,#A855F7)", display:"flex", alignItems:"center", justifyContent:"center", border:"3px solid rgba(167,139,250,.6)", boxShadow: diFalando ? "0 0 0 6px rgba(167,139,250,.3),0 0 30px rgba(139,92,246,.5)" : "0 4px 20px rgba(0,0,0,.4)", overflow:"hidden", transition:"box-shadow .4s" }}>
+                          <img src="/di.png" alt="Di" style={{ width:"100%", height:"100%", objectFit:"cover", objectPosition:"top" }} />
                         </div>
-                        {/* Título */}
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#F1F5F9", lineHeight: 1.3 }}>{card.titulo}</div>
-                        {/* Mensagem */}
-                        <div style={{ fontSize: 12, color: "#94A3B8", lineHeight: 1.5 }}>{card.mensagem}</div>
-                        {/* Ação */}
-                        <div style={{
-                          marginTop: 2,
-                          background: "rgba(255,255,255,.04)",
-                          borderTop: `1px solid ${cfg.border}`,
-                          paddingTop: 8,
-                          fontSize: 11,
-                          color: cfg.accent,
-                          fontWeight: 600,
-                          display: "flex",
-                          alignItems: "flex-start",
-                          gap: 5,
-                        }}>
-                          <span style={{ flexShrink: 0, marginTop: 1 }}>👉</span>
-                          <span>{card.acao}</span>
-                        </div>
+                        {diFalando && <div style={{ position:"absolute", bottom:4, right:4, width:12, height:12, borderRadius:"50%", background:"#10B981", boxShadow:"0 0 8px #10B981", animation:"pulse 1s infinite" }} />}
                       </div>
-                    );
-                  })}
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:22, fontWeight:900, color:"#F3E8FF", letterSpacing:"-0.5px" }}>Di</div>
+                        <div style={{ fontSize:12, color:"#C4B5FD", marginBottom:10 }}>Síndica Virtual — Powered by Claude IA</div>
+                        <span style={{ background:"rgba(16,185,129,.18)", border:"1px solid rgba(16,185,129,.4)", borderRadius:20, padding:"3px 12px", fontSize:11, color:"#34D399", display:"inline-flex", alignItems:"center", gap:5, fontWeight:600 }}>
+                          <span style={{ width:6, height:6, borderRadius:"50%", background:"#10B981", display:"inline-block", boxShadow:"0 0 4px #10B981" }} />
+                          {diFalando ? "Falando..." : "Online"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Tabs ── */}
+                  <div style={{ display:"flex", background:"#0A0818", borderBottom:"1px solid rgba(255,255,255,.07)", flexShrink:0 }}>
+                    {(["briefing","relatorio"] as const).map(v => (
+                      <button key={v} onClick={() => setDiView(v)}
+                        style={{ flex:1, padding:"12px 8px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:12.5, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all .2s" }}>
+                        {v==="briefing" ? "📊 Briefing da Di" : "📋 Relatório Executivo"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* ── Body ── */}
+                  {diView === "relatorio" ? (
+                    <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+                      <RelatorioExecutivo condId={condId||""} condNome={condNome} sindNome={dash?.condominios?.find((c: {id:string;sindico_nome?:string}) => c.id===condId)?.sindico_nome||"Síndico"} view="desktop" />
+                    </div>
+                  ) : (
+                    <div style={{ flex:1, overflow:"auto", padding:"20px 24px" }}>
+                      {/* Novo briefing button */}
+                      <button disabled={diLoading}
+                        onClick={async () => {
+                          setDiLoading(true); speechSynthesis.cancel(); setDiFalando(false);
+                          try {
+                            const r = await fetch("/api/di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId }) });
+                            const json = await r.json();
+                            if (json.fala) {
+                              setDiData({ fala:json.fala, cards:json.cards||[] });
+                              const u = new SpeechSynthesisUtterance(json.fala); u.lang="pt-BR"; u.rate=0.9; u.pitch=1.1;
+                              u.onstart=()=>setDiFalando(true); u.onend=()=>setDiFalando(false); u.onerror=()=>setDiFalando(false);
+                              speechSynthesis.speak(u);
+                            }
+                          } catch { showToast("Erro ao chamar a Di","error"); }
+                          setDiLoading(false);
+                        }}
+                        style={{ background: diLoading?"rgba(124,58,237,.4)":"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", color:"#fff", borderRadius:10, padding:"10px 20px", fontSize:13, fontWeight:700, cursor:diLoading?"not-allowed":"pointer", display:"inline-flex", alignItems:"center", gap:8, marginBottom:20, boxShadow:"0 4px 16px rgba(124,58,237,.35)", transition:"all .2s" }}>
+                        🟣 {diLoading ? "Analisando..." : "Novo briefing"}
+                      </button>
+
+                      {/* Empty state */}
+                      {!diData && !diLoading && (
+                        <div style={{ textAlign:"center", padding:"32px 0" }}>
+                          <div style={{ fontSize:48, marginBottom:12 }}>🤖</div>
+                          <div style={{ fontSize:14, color:"#6D28D9", fontWeight:500 }}>Clique em <strong style={{ color:"#A78BFA" }}>"Novo briefing"</strong> para Di analisar o {condNome}</div>
+                        </div>
+                      )}
+
+                      {/* Loading */}
+                      {diLoading && (
+                        <div style={{ padding:"24px 0", display:"flex", alignItems:"center", gap:10, justifyContent:"center" }}>
+                          <div style={{ width:8, height:8, borderRadius:"50%", background:"#A855F7", animation:"pulse 1s infinite" }} />
+                          <div style={{ fontSize:13, color:"#A78BFA" }}>Di está analisando o condomínio...</div>
+                        </div>
+                      )}
+
+                      {/* Briefing card */}
+                      {diData?.fala && (
+                        <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.08)", borderRadius:16, padding:"18px 20px", marginBottom:16 }}>
+                          <div style={{ fontSize:13.5, fontWeight:600, color:"#F3E8FF", marginBottom:12 }}>
+                            Bom dia! Analisei o {condNome} agora há pouco:
+                          </div>
+                          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                            {diData.fala.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => (
+                              <div key={i} style={{ display:"flex", gap:10, fontSize:13, color:"#CBD5E1", lineHeight:1.55 }}>
+                                <span style={{ color:"#A855F7", flexShrink:0, marginTop:2 }}>•</span>
+                                <span>{line.replace(/^[•\-*]\s*/,'')}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Di cards */}
+                      {diData?.cards && diData.cards.length > 0 && (
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+                          {diData.cards.map((card: { tipo:string; badge?:string; titulo:string; mensagem:string; acao:string }, i: number) => {
+                            const cfg = tipoConfig[card.tipo] || tipoConfig.info;
+                            return (
+                              <div key={i} style={{ background:cfg.bg, border:`1px solid ${cfg.border}`, borderRadius:14, padding:"14px 16px", display:"flex", flexDirection:"column", gap:8, boxShadow:card.tipo==="critico"?"0 0 16px rgba(239,68,68,.15)":"none" }}>
+                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:6 }}>
+                                  <span style={{ background:cfg.labelBg, color:cfg.accent, borderRadius:6, padding:"2px 8px", fontSize:9, fontWeight:800, letterSpacing:".5px" }}>{cfg.label}</span>
+                                  {card.badge && <span style={{ background:"rgba(255,255,255,.06)", border:`1px solid ${cfg.border}`, color:cfg.accent, borderRadius:20, padding:"1px 8px", fontSize:9, fontWeight:600 }}>{card.badge}</span>}
+                                </div>
+                                <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9", lineHeight:1.3 }}>{card.titulo}</div>
+                                <div style={{ fontSize:12, color:"#94A3B8", lineHeight:1.5 }}>{card.mensagem}</div>
+                                <div style={{ marginTop:2, background:"rgba(255,255,255,.04)", borderTop:`1px solid ${cfg.border}`, paddingTop:8, fontSize:11, color:cfg.accent, fontWeight:600, display:"flex", alignItems:"flex-start", gap:5 }}>
+                                  <span style={{ flexShrink:0, marginTop:1 }}>👉</span><span>{card.acao}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Voice + chat */}
+                      {diData?.fala && (
+                        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                          <button onClick={() => { if(diFalando){speechSynthesis.cancel();setDiFalando(false);}else{const u=new SpeechSynthesisUtterance(diData.fala);u.lang="pt-BR";u.rate=0.9;u.pitch=1.1;u.onstart=()=>setDiFalando(true);u.onend=()=>setDiFalando(false);speechSynthesis.speak(u);} }}
+                            style={{ background:diFalando?"rgba(239,68,68,.15)":"rgba(167,139,250,.15)", border:`1px solid ${diFalando?"rgba(239,68,68,.4)":"rgba(167,139,250,.4)"}`, color:diFalando?"#EF4444":"#A78BFA", borderRadius:10, padding:"9px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                            {diFalando ? "⏹ Parar" : "🔊 Ouvir"}
+                          </button>
+                          <button onClick={() => { sendChat(`Com base no briefing "${diData.fala.slice(0,80)}..." quero detalhes. O que devo priorizar agora?`, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setChatPopupOpen(true); }}
+                            style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.35)", color:"#818CF8", borderRadius:10, padding:"9px 16px", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                            💬 Perguntar à Di
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── MÓDULOS DA PLATAFORMA ── */}
+                  <div style={{ borderTop:"1px solid rgba(255,255,255,.07)", padding:"14px 24px 18px", flexShrink:0, background:"#080C18" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                      <span style={{ fontSize:11, fontWeight:700, color:"#475569", letterSpacing:"0.1em" }}>MÓDULOS DA PLATAFORMA</span>
+                      <button onClick={() => setPanel("operacao")} style={{ background:"none", border:"none", color:"#6366F1", fontSize:12, cursor:"pointer", fontWeight:600, padding:0 }}>Ver todos →</button>
+                    </div>
+                    <div style={{ display:"flex", gap:10, overflowX:"auto", paddingBottom:4 }}>
+                      {mods.map(m => (
+                        <button key={m.id} onClick={() => setPanel(m.id)}
+                          style={{ flexShrink:0, width:70, height:76, background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:14, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:5, position:"relative", padding:0 }}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background="rgba(124,58,237,.12)";(e.currentTarget as HTMLElement).style.borderColor="rgba(124,58,237,.3)";}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background="rgba(255,255,255,.04)";(e.currentTarget as HTMLElement).style.borderColor="rgba(255,255,255,.08)";}}>
+                          <span style={{ fontSize:24 }}>{m.icon}</span>
+                          <span style={{ fontSize:9, color:"#64748B", fontWeight:600, textAlign:"center", lineHeight:1.2 }}>{m.label}</span>
+                          {m.badge > 0 && (
+                            <span style={{ position:"absolute", top:5, right:5, background:"#EF4444", color:"#fff", borderRadius:"50%", minWidth:15, height:15, fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{m.badge}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              )}
-
-              {/* Botões de ação */}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button
-                  onClick={async () => {
-                    setDiLoading(true);
-                    // Cancela voz anterior
-                    speechSynthesis.cancel();
-                    setDiFalando(false);
-                    try {
-                      const r = await fetch("/api/di", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ condominio_id: condId }) });
-                      const json = await r.json();
-                      if (json.fala) {
-                        setDiData({ fala: json.fala, cards: json.cards || [] });
-                        // Síntese de voz
-                        const u = new SpeechSynthesisUtterance(json.fala);
-                        u.lang = "pt-BR";
-                        u.rate = 0.9;
-                        u.pitch = 1.1;
-                        u.onstart = () => setDiFalando(true);
-                        u.onend   = () => setDiFalando(false);
-                        u.onerror = () => setDiFalando(false);
-                        speechSynthesis.speak(u);
-                      }
-                    } catch { showToast("Erro ao chamar a Di", "error"); }
-                    setDiLoading(false);
-                  }}
-                  disabled={diLoading}
-                  style={{ background: "linear-gradient(135deg, #7C3AED, #A855F7)", border: "none", color: "#fff", borderRadius: 10, padding: "10px 18px", fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: diLoading ? 0.6 : 1 }}
-                >
-                  {diLoading ? "⏳ Analisando..." : "🟣 Briefing da Di"}
-                </button>
-
-                {diData?.fala && (
-                  <button
-                    onClick={() => {
-                      if (diFalando) {
-                        speechSynthesis.cancel();
-                        setDiFalando(false);
-                      } else {
-                        const u = new SpeechSynthesisUtterance(diData.fala);
-                        u.lang = "pt-BR"; u.rate = 0.9; u.pitch = 1.1;
-                        u.onstart = () => setDiFalando(true);
-                        u.onend   = () => setDiFalando(false);
-                        speechSynthesis.speak(u);
-                      }
-                    }}
-                    style={{ background: diFalando ? "rgba(239,68,68,.15)" : "rgba(167,139,250,.15)", border: `1px solid ${diFalando ? "rgba(239,68,68,.4)" : "rgba(167,139,250,.4)"}`, color: diFalando ? "#EF4444" : "#A78BFA", borderRadius: 10, padding: "10px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-                  >
-                    {diFalando ? "⏹ Parar" : "🔊 Ouvir novamente"}
-                  </button>
-                )}
-
-                {diData && (
-                  <button
-                    onClick={() => { sendChat(`Com base no briefing "${diData.fala.slice(0, 80)}..." quero detalhes. O que devo priorizar agora?`, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setPanel("sv-chat"); }}
-                    style={{ background: "rgba(99,102,241,.15)", border: "1px solid rgba(99,102,241,.35)", color: "#818CF8", borderRadius: 10, padding: "10px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-                  >
-                    💬 Perguntar ao Chat IA
-                  </button>
-                )}
-              </div>
-            </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* PANEL: SV CHAT */}
@@ -11489,6 +11403,58 @@ Content-Type: application/json
             </div>
           </div>
         </div>
+
+        {/* ══ FLOATING CHAT — Di popup ══ */}
+        {view === "gestor" && (
+          <>
+            {/* Chat popup */}
+            {chatPopupOpen && (
+              <div style={{ position:"fixed", bottom:88, right:24, width:380, height:560, zIndex:2000, background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:20, boxShadow:"0 20px 60px rgba(0,0,0,.7)", display:"flex", flexDirection:"column", overflow:"hidden" }}>
+                {/* Header */}
+                <div style={{ background:"linear-gradient(135deg,#3B0764,#581C87)", padding:"12px 16px", display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:36, height:36, borderRadius:"50%", overflow:"hidden", border:"2px solid rgba(167,139,250,.5)", flexShrink:0 }}>
+                    <img src="/di.png" style={{ width:"100%", height:"100%", objectFit:"cover", objectPosition:"top" }} alt="Di" />
+                  </div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:"#F3E8FF" }}>Di — Síndica Virtual</div>
+                    <div style={{ fontSize:10, color:"#C4B5FD" }}>Powered by Claude IA</div>
+                  </div>
+                  <button onClick={() => setChatPopupOpen(false)} style={{ background:"rgba(255,255,255,.1)", border:"none", color:"#C4B5FD", borderRadius:"50%", width:28, height:28, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, flexShrink:0 }}>✕</button>
+                </div>
+                {/* Quick chips */}
+                <div style={{ display:"flex", gap:5, padding:"8px 12px", overflowX:"auto", flexShrink:0, borderBottom:"1px solid rgba(255,255,255,.06)", background:"#0D1424" }}>
+                  {[["📊 Resumo","Faça um resumo executivo do condomínio"],["🔴 Urgentes","Quais OSs urgentes pendentes?"],["💰 Financeiro","Análise financeira completa"],["⭐ Score","Como melhorar o score do condomínio?"]].map(([l,m]) => (
+                    <button key={l} className="chip" onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); }} style={{ flexShrink:0, fontSize:10, padding:"4px 10px" }}>{l}</button>
+                  ))}
+                </div>
+                {/* Messages */}
+                <div className="chat-area" style={{ flex:1, overflow:"auto", padding:"10px 14px" }} ref={el => { if(el) el.scrollTop=el.scrollHeight; }}>
+                  {deskMsgs.map((m, i) => (
+                    <div key={i} className={`msg ${m.role}`}>
+                      <div className="msg-bubble">{m.content}</div>
+                      <div className="msg-time">{m.time}</div>
+                    </div>
+                  ))}
+                  {deskTyping && <TypingIndicator />}
+                </div>
+                {/* Input */}
+                <div className="chat-input-row" style={{ padding:"8px 12px", borderTop:"1px solid rgba(255,255,255,.07)" }}>
+                  <textarea className="chat-input" value={deskInput} onChange={e => setDeskInput(e.target.value)} placeholder="Pergunte à Di..." rows={2}
+                    onKeyDown={e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendChat(deskInput,deskHistory,setDeskMsgs,setDeskTyping,setDeskHistory);setDeskInput("");} }} />
+                  <button className="btn-send" disabled={deskTyping} onClick={() => { sendChat(deskInput,deskHistory,setDeskMsgs,setDeskTyping,setDeskHistory); setDeskInput(""); }}>Enviar</button>
+                </div>
+              </div>
+            )}
+            {/* FAB */}
+            <button onClick={() => setChatPopupOpen(p => !p)}
+              style={{ position:"fixed", bottom:24, right:24, width:56, height:56, borderRadius:"50%", background: chatPopupOpen ? "rgba(20,10,40,.9)" : "linear-gradient(135deg,#7C3AED,#A855F7)", border: chatPopupOpen ? "2px solid rgba(124,58,237,.6)" : "none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 4px 24px rgba(124,58,237,.55)", zIndex:2001, transition:"all .3s", overflow:"hidden" }}>
+              {chatPopupOpen
+                ? <span style={{ fontSize:20, color:"#A78BFA", fontWeight:700 }}>✕</span>
+                : <img src="/di.png" style={{ width:40, height:40, objectFit:"cover", objectPosition:"top", borderRadius:"50%" }} alt="Di" />
+              }
+            </button>
+          </>
+        )}
       </div>
 
       {/* ══ VIEW 2: APP SÍNDICO ════════════════════════════════════════════════ */}
