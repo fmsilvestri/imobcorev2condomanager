@@ -11376,8 +11376,8 @@ Content-Type: application/json
           </div>
         </div>
 
-        {/* RIGHT AI PANEL — oculto na tela inicial da Di */}
-        <div className="ai-panel" style={{ display: panel === "sv-di" ? "none" : "flex" }}>
+        {/* RIGHT AI PANEL — oculto em todos os módulos */}
+        <div className="ai-panel" style={{ display: "none" }}>
           <div className="ai-panel-header">
             <div style={{ fontSize: 13, fontWeight: 600 }}>🤖 Síndico Virtual</div>
             <span className={`status-badge ${sseOnline ? "badge-online" : "badge-offline"}`}>● {sseOnline ? "online" : "offline"}</span>
