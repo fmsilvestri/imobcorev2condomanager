@@ -5853,21 +5853,20 @@ export default function App() {
                   )}
 
                   {/* ── MÓDULOS DA PLATAFORMA ── */}
-                  <div style={{ borderTop:"1px solid rgba(255,255,255,.07)", padding:"14px 24px 18px", flexShrink:0, background:"#080C18" }}>
-                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                  <div style={{ borderTop:"1px solid rgba(255,255,255,.07)", padding:"16px 24px 20px", flexShrink:0, background:"#080C18" }}>
+                    <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
                       <span style={{ fontSize:11, fontWeight:700, color:"#475569", letterSpacing:"0.1em" }}>MÓDULOS DA PLATAFORMA</span>
-                      <button onClick={() => setPanel("operacao")} style={{ background:"none", border:"none", color:"#6366F1", fontSize:12, cursor:"pointer", fontWeight:600, padding:0 }}>Ver todos →</button>
                     </div>
-                    <div style={{ display:"flex", gap:10, overflowX:"auto", paddingBottom:4 }}>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(5, 1fr)", gap:10 }}>
                       {mods.map(m => (
                         <button key={m.id} onClick={() => setPanel(m.id)}
-                          style={{ flexShrink:0, width:70, height:76, background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:14, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:5, position:"relative", padding:0 }}
-                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background="rgba(124,58,237,.12)";(e.currentTarget as HTMLElement).style.borderColor="rgba(124,58,237,.3)";}}
+                          style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:16, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8, position:"relative", padding:"16px 8px 12px" }}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLElement).style.background="rgba(124,58,237,.14)";(e.currentTarget as HTMLElement).style.borderColor="rgba(124,58,237,.35)";}}
                           onMouseLeave={e=>{(e.currentTarget as HTMLElement).style.background="rgba(255,255,255,.04)";(e.currentTarget as HTMLElement).style.borderColor="rgba(255,255,255,.08)";}}>
-                          <span style={{ fontSize:24 }}>{m.icon}</span>
-                          <span style={{ fontSize:9, color:"#64748B", fontWeight:600, textAlign:"center", lineHeight:1.2 }}>{m.label}</span>
+                          <span style={{ fontSize:30 }}>{m.icon}</span>
+                          <span style={{ fontSize:10, color:"#94A3B8", fontWeight:600, textAlign:"center", lineHeight:1.2 }}>{m.label}</span>
                           {m.badge > 0 && (
-                            <span style={{ position:"absolute", top:5, right:5, background:"#EF4444", color:"#fff", borderRadius:"50%", minWidth:15, height:15, fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px" }}>{m.badge}</span>
+                            <span style={{ position:"absolute", top:6, right:7, background:"#EF4444", color:"#fff", borderRadius:20, minWidth:17, height:17, fontSize:9, fontWeight:800, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px" }}>{m.badge}</span>
                           )}
                         </button>
                       ))}
@@ -11377,8 +11376,8 @@ Content-Type: application/json
           </div>
         </div>
 
-        {/* RIGHT AI PANEL */}
-        <div className="ai-panel">
+        {/* RIGHT AI PANEL — oculto na tela inicial da Di */}
+        <div className="ai-panel" style={{ display: panel === "sv-di" ? "none" : "flex" }}>
           <div className="ai-panel-header">
             <div style={{ fontSize: 13, fontWeight: 600 }}>🤖 Síndico Virtual</div>
             <span className={`status-badge ${sseOnline ? "badge-online" : "badge-offline"}`}>● {sseOnline ? "online" : "offline"}</span>
