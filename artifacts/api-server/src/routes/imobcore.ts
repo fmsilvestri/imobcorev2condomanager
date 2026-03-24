@@ -2362,81 +2362,104 @@ router.delete("/reservatorios/:id", async (req: Request, res: Response) => {
 
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
 
+// Normaliza row do banco para o formato esperado pelo frontend
+// Colunas reais: id, email, nome, senha_hash, perfil, condominio_id, unidade_id, ativo, ultimo_login, created_at, updated_at
+function normUsuario(row: Record<string, unknown>) {
+  return {
+    id:                    row.id,
+    condominio_id:         row.condominio_id,
+    nome:                  row.nome,
+    email:                 row.email,
+    perfil:                row.perfil,
+    unidade:               row.unidade_id || null,   // frontend usa "unidade"
+    status:                row.ativo === false ? "inativo" : "ativo",
+    telefone:              row.telefone || null,
+    ultimo_acesso:         row.ultimo_login || null,
+    permissoes_customizadas: row.permissoes_customizadas || null,
+    created_at:            row.created_at,
+  };
+}
+
 // GET /api/usuarios?condominio_id=X&perfil=X&status=X
 router.get("/usuarios", async (req: Request, res: Response) => {
   try {
     const { condominio_id, perfil, status } = req.query as Record<string, string | undefined>;
-    let q = supabase.from("usuarios").select("id,condominio_id,nome,email,telefone,perfil,unidade,status,permissoes_customizadas,ultimo_acesso,created_at").order("nome", { ascending: true });
+    let q = supabase
+      .from("usuarios")
+      .select("id,condominio_id,nome,email,perfil,unidade_id,ativo,ultimo_login,created_at")
+      .order("nome", { ascending: true });
     if (condominio_id) q = q.eq("condominio_id", condominio_id);
     if (perfil && perfil !== "todos") q = q.eq("perfil", perfil);
-    if (status && status !== "todos") q = q.eq("status", status);
+    if (status === "ativo")   q = q.eq("ativo", true);
+    if (status === "inativo") q = q.eq("ativo", false);
     const { data, error } = await q;
     if (error) throw error;
-    res.json(data || []);
+    res.json((data || []).map(r => normUsuario(r as Record<string, unknown>)));
   } catch (err) {
     console.error("GET /usuarios error:", err);
     res.status(500).json({ error: "Erro ao buscar usuários" });
   }
 });
 
-// POST /api/usuarios
+// POST /api/usuarios — cria novo usuário vinculado ao condomínio
 router.post("/usuarios", async (req: Request, res: Response) => {
   try {
-    const { condominio_id, nome, email, telefone, perfil, unidade, status, permissoes_customizadas } = req.body as {
-      condominio_id: string; nome: string; email: string; telefone?: string;
+    const { condominio_id, nome, email, perfil, unidade, status } = req.body as {
+      condominio_id: string; nome: string; email: string;
       perfil: "gestor" | "sindico" | "morador" | "zelador";
-      unidade?: string; status?: string; permissoes_customizadas?: Record<string, unknown>;
+      unidade?: string; status?: string;
     };
-    if (!condominio_id || !nome || !email || !perfil) {
+    if (!condominio_id || !nome?.trim() || !email?.trim() || !perfil) {
       res.status(400).json({ error: "condominio_id, nome, email e perfil são obrigatórios" });
       return;
     }
     const { data, error } = await supabase.from("usuarios").insert({
-      condominio_id, nome, email, telefone: telefone || null,
-      perfil, unidade: unidade || null,
-      status: status || "ativo",
-      permissoes_customizadas: permissoes_customizadas || null,
+      condominio_id,
+      nome:       nome.trim(),
+      email:      email.trim().toLowerCase(),
+      perfil,
+      unidade_id: unidade || null,
+      ativo:      status !== "inativo",
       senha_hash: null,
     }).select().single();
     if (error) throw error;
-    res.status(201).json(data);
+    res.status(201).json(normUsuario(data as Record<string, unknown>));
   } catch (err) {
     console.error("POST /usuarios error:", err);
     res.status(500).json({ error: "Erro ao criar usuário" });
   }
 });
 
-// PUT /api/usuarios/:id
+// PUT /api/usuarios/:id — atualiza campos do usuário
 router.put("/usuarios/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { nome, email, telefone, perfil, unidade, status, permissoes_customizadas } = req.body as {
-      nome?: string; email?: string; telefone?: string;
+    const { nome, email, perfil, unidade, status } = req.body as {
+      nome?: string; email?: string;
       perfil?: "gestor" | "sindico" | "morador" | "zelador";
-      unidade?: string; status?: string; permissoes_customizadas?: Record<string, unknown>;
+      unidade?: string; status?: string;
     };
     const updates: Record<string, unknown> = {};
-    if (nome !== undefined) updates.nome = nome;
-    if (email !== undefined) updates.email = email;
-    if (telefone !== undefined) updates.telefone = telefone;
-    if (perfil !== undefined) updates.perfil = perfil;
-    if (unidade !== undefined) updates.unidade = unidade;
-    if (status !== undefined) updates.status = status;
-    if (permissoes_customizadas !== undefined) updates.permissoes_customizadas = permissoes_customizadas;
+    if (nome    !== undefined) updates.nome       = nome.trim();
+    if (email   !== undefined) updates.email      = email.trim().toLowerCase();
+    if (perfil  !== undefined) updates.perfil     = perfil;
+    if (unidade !== undefined) updates.unidade_id = unidade || null;
+    if (status  !== undefined) updates.ativo      = status !== "inativo";
+    if (!Object.keys(updates).length) return res.status(400).json({ error: "Nenhum campo enviado" });
     const { data, error } = await supabase.from("usuarios").update(updates).eq("id", id).select().single();
     if (error) throw error;
-    res.json(data);
+    res.json(normUsuario(data as Record<string, unknown>));
   } catch (err) {
     console.error("PUT /usuarios/:id error:", err);
     res.status(500).json({ error: "Erro ao atualizar usuário" });
   }
 });
 
-// DELETE /api/usuarios/:id — soft delete (status = inativo)
+// DELETE /api/usuarios/:id — soft delete (ativo = false)
 router.delete("/usuarios/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { error } = await supabase.from("usuarios").update({ status: "inativo" }).eq("id", id);
+    const { error } = await supabase.from("usuarios").update({ ativo: false }).eq("id", id);
     if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
