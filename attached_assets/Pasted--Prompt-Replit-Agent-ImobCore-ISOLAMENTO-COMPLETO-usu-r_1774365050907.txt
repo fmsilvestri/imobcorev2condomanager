@@ -1,0 +1,301 @@
+# Prompt — Replit Agent · ImobCore
+# ISOLAMENTO COMPLETO: usuário só acessa dados do próprio condomínio
+#
+# GAPS ATUAIS:
+# 1. requireSameUnidade(req,res,next) mas morador.ts chama requireSameUnidade("campo") → bug de assinatura
+# 2. requireSameCondominio pula verificação se condoId não está em params/body (query ignorado)
+# 3. Login não verifica usuarios.ativo → usuário inativo (imagem 2: João Morador "Inativo") ainda loga
+# 4. Login não valida se condominio_id existe → JWT pode ser gerado com condo inválido
+# 5. Rota /auth/me expõe condominio_id mas não re-valida token
+#
+# Cole no chat do Replit AI
+
+---
+
+## ARQUIVO 1 — Reescrever `src/middleware/rls.ts`
+
+```typescript
+/**
+ * rls.ts — Row Level Security no Express
+ * Garante que cada usuário só vê dados do próprio condomínio.
+ * Fonte de verdade: req.user.condominio_id (vem do JWT assinado no login)
+ */
+import { Request, Response, NextFunction } from "express";
+
+// ── Verifica que o condo acessado é o do usuário ──────────────────────────────
+export function requireSameCondominio(req: Request, res: Response, next: NextFunction) {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: "Não autenticado" });
+  if (user.role === "master") return next(); // master vê tudo
+
+  // Extrai condominio_id de QUALQUER fonte da request
+  const condoRequisitado =
+    req.params.condoId      ||    // /api/gestor/condo/:condoId/...
+    req.params.condominio_id ||   // /api/modulos/:condominio_id/...
+    req.body?.condominio_id  ||   // body JSON
+    req.query?.condominio_id as string; // query string ?condominio_id=X
+
+  // Se veio explicitamente um condo diferente do do usuário → bloqueia
+  if (condoRequisitado && condoRequisitado !== user.condominio_id) {
+    return res.status(403).json({
+      error: "Acesso negado: este condomínio não pertence ao seu perfil",
+    });
+  }
+  next();
+}
+
+// ── Factory: verifica que a unidade acessada é a do morador ───────────────────
+// Uso: r.get("/rota", requireSameUnidade("unidade_id"), handler)
+export function requireSameUnidade(campoQuery: string = "unidade_id") {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const user = req.user;
+    if (!user) return res.status(401).json({ error: "Não autenticado" });
+    if (["master", "gestor", "sindico"].includes(user.role)) return next();
+
+    const unidadeRequisitada =
+      req.params[campoQuery]   ||
+      req.body?.[campoQuery]    ||
+      req.query?.[campoQuery] as string;
+
+    if (unidadeRequisitada && unidadeRequisitada !== user.unidade_id) {
+      return res.status(403).json({
+        error: "Acesso negado: esta unidade não pertence ao seu perfil",
+      });
+    }
+    next();
+  };
+}
+
+// ── Verifica que o usuário está ativo ─────────────────────────────────────────
+// Usado em rotas críticas para bloquear usuários desativados pelo master
+export function requireAtivo(req: Request, res: Response, next: NextFunction) {
+  const user = req.user;
+  if (!user) return res.status(401).json({ error: "Não autenticado" });
+  // O campo ativo é injetado no JWT durante o login
+  if ((user as any).ativo === false) {
+    return res.status(403).json({ error: "Usuário inativo. Contate o administrador." });
+  }
+  next();
+}
+
+// ── Injeta condominio_id do JWT em todas as queries (helper) ──────────────────
+// Uso: const condoId = getCondoId(req) — nunca aceitar condoId do cliente
+export function getCondoId(req: Request): string {
+  if (!req.user) throw new Error("Usuário não autenticado");
+  return req.user.condominio_id;
+}
+```
+
+---
+
+## ARQUIVO 2 — Atualizar `src/types.ts`
+
+Adicionar campo `ativo` ao AuthUser:
+
+```typescript
+export interface AuthUser {
+  id:            string;
+  role:          string;
+  condominio_id: string;
+  unidade_id?:   string;
+  nome:          string;
+  email:         string;
+  ativo?:        boolean;  // ← ADICIONAR
+}
+```
+
+---
+
+## ARQUIVO 3 — Atualizar `src/routes/auth.ts`
+
+### No POST /login — adicionar verificações de ativo e condomínio válido:
+
+```typescript
+// Após buscar o perfil no banco:
+const { data: perfil } = await db.from("usuarios")
+  .select("id,role,condominio_id,unidade_id,nome,email,ativo")  // ← incluir ativo
+  .eq("email", email).single();
+
+if (!perfil) return res.status(403).json({ error: "Usuário não encontrado no sistema" });
+
+// ← NOVO: bloquear usuário inativo
+if (perfil.ativo === false) {
+  return res.status(403).json({
+    error: "Usuário inativo. Contate o administrador do condomínio.",
+    code:  "USER_INACTIVE",
+  });
+}
+
+if (perfil.role === "master") return res.status(403).json({ error: "Use o painel master" });
+
+// ← NOVO: validar que o condomínio existe e está ativo
+if (perfil.condominio_id) {
+  const { data: condo } = await db.from("condominios")
+    .select("id, ativo").eq("id", perfil.condominio_id).single();
+  if (!condo || condo.ativo === false) {
+    return res.status(403).json({
+      error: "Condomínio inativo ou não encontrado.",
+      code:  "CONDO_INACTIVE",
+    });
+  }
+}
+
+// ← Incluir ativo no token (para verificação rápida sem query ao banco)
+const token = signToken({
+  id:            perfil.id,
+  role:          perfil.role,
+  condominio_id: perfil.condominio_id,
+  unidade_id:    perfil.unidade_id,
+  nome:          perfil.nome,
+  email:         perfil.email,
+  ativo:         perfil.ativo ?? true,
+});
+```
+
+### No GET /me — re-validar ativo em tempo real:
+
+```typescript
+r.get("/me", async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ error: "Não autenticado" });
+  const { id, role, nome, email, condominio_id } = req.user;
+
+  // Re-valida ativo no banco (master desativou o usuário após login)
+  if (role !== "master") {
+    try {
+      const { data } = await getDB().from("usuarios")
+        .select("ativo").eq("id", id).single();
+      if (data?.ativo === false) {
+        return res.status(403).json({ error: "Usuário inativo", code: "USER_INACTIVE" });
+      }
+    } catch { /* ok em demo */ }
+  }
+
+  res.json({ id, role, nome, email, condominio_id });
+});
+```
+
+---
+
+## ARQUIVO 4 — Adicionar `requireAtivo` nas rotas críticas
+
+### `src/routes/gestor.ts` — importar e aplicar:
+
+```typescript
+import { requireAuth }          from "../middleware/auth.js";
+import { requireSameCondominio, requireAtivo } from "../middleware/rls.js";
+
+r.use(requireAuth(["gestor", "master"]));
+r.use(requireAtivo);            // ← NOVO: bloqueia gestor inativo
+r.use(requireSameCondominio);
+```
+
+### `src/routes/sindico.ts`:
+
+```typescript
+r.use(requireAuth(["sindico", "gestor", "master"]));
+r.use(requireAtivo);            // ← NOVO
+r.use(requireSameCondominio);
+```
+
+### `src/routes/morador.ts`:
+
+```typescript
+r.use(requireAuth(["morador", "zelador", "sindico", "gestor", "master"]));
+r.use(requireAtivo);            // ← NOVO
+r.use(requireSameCondominio);
+```
+
+---
+
+## ARQUIVO 5 — SQL Supabase: RLS nas tabelas
+
+```sql
+-- ── Habilitar RLS em todas as tabelas de dados ─────────────────────────────────
+-- (as políticas são aplicadas quando a app usa service_role; 
+--  para anon/authenticated, o JWT da app Express já filtra via req.user)
+
+-- Garantir coluna ativo em usuarios (já existe, verificar)
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ativo BOOLEAN DEFAULT true;
+
+-- Índice para busca por condomínio (performance)
+CREATE INDEX IF NOT EXISTS idx_os_condo       ON ordens_servico(condominio_id);
+CREATE INDEX IF NOT EXISTS idx_fin_condo      ON financeiro_mensal(condominio_id);
+CREATE INDEX IF NOT EXISTS idx_reserv_condo   ON reservatorios(condominio_id);
+CREATE INDEX IF NOT EXISTS idx_misp_condo     ON alertas_misp(condominio_id);
+CREATE INDEX IF NOT EXISTS idx_enc_condo      ON encomendas(condominio_id);
+CREATE INDEX IF NOT EXISTS idx_portal_condo   ON visitantes_portaria(condominio_id);
+CREATE INDEX IF NOT EXISTS idx_boletos_condo  ON boletos(condominio_id, unidade_id);
+CREATE INDEX IF NOT EXISTS idx_reservas_condo ON reservas(condominio_id, unidade_id);
+CREATE INDEX IF NOT EXISTS idx_usuarios_condo ON usuarios(condominio_id, role, ativo);
+
+-- Verificar usuários por status
+SELECT nome, email, role, condominio_id,
+       ativo,
+       c.nome AS condominio
+FROM usuarios u
+LEFT JOIN condominios c ON c.id = u.condominio_id
+ORDER BY u.condominio_id, u.role;
+
+-- Desativar usuário (master faz isso pelo painel)
+-- UPDATE usuarios SET ativo = false WHERE id = 'uuid-do-usuario';
+
+-- Reativar usuário
+-- UPDATE usuarios SET ativo = true WHERE id = 'uuid-do-usuario';
+```
+
+---
+
+## ARQUIVO 6 — Endpoint Master para gerenciar status de usuário
+
+Adicionar em `src/routes/master.ts`:
+
+```typescript
+// Ativar / desativar usuário (botões ✓ e ✕ da imagem 2)
+r.patch("/usuarios/:id/status", async (req, res) => {
+  const { ativo } = req.body;
+  if (typeof ativo !== "boolean") return res.status(400).json({ error: "ativo deve ser boolean" });
+  try {
+    await getDB().from("usuarios")
+      .update({ ativo, updated_at: new Date().toISOString() })
+      .eq("id", req.params.id);
+    const acao = ativo ? "ativado" : "desativado";
+    log.info(`Master ${acao} usuário ${req.params.id}`);
+    res.json({ ok: true, ativo, message: `Usuário ${acao} com sucesso` });
+  } catch { res.json({ ok: true, demo: true }); }
+});
+```
+
+---
+
+## VERIFICAÇÃO
+
+```bash
+npm run dev
+
+# 1. Login com usuário inativo (João Morador "Inativo" da imagem 2)
+curl -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"joao@jardim.com","password":"123456"}'
+# Esperado: 403 { error: "Usuário inativo. Contate o administrador do condomínio." }
+
+# 2. Gestor tenta acessar dados de outro condo
+# (JWT tem condominio_id = condo_A, tenta acessar dados do condo_B)
+curl http://localhost:3000/api/gestor/resumo?condominio_id=UUID_CONDO_B \
+  -b "token=JWT_DO_CONDO_A"
+# Esperado: 403 { error: "Acesso negado: este condomínio não pertence ao seu perfil" }
+
+# 3. Morador tenta ver boletos de outra unidade
+curl http://localhost:3000/api/morador/boletos?unidade_id=999 \
+  -b "token=JWT_DO_MORADOR_802"
+# Esperado: 403 { error: "Acesso negado: esta unidade não pertence ao seu perfil" }
+
+# 4. Master desativa usuário
+curl -X PATCH http://localhost:3000/api/master/usuarios/UUID \
+  -H "x-master-token: master-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '{"ativo": false}'
+# Esperado: { ok: true, ativo: false, message: "Usuário desativado com sucesso" }
+
+# 5. Usuário desativado tenta chamar qualquer endpoint
+# Esperado: 403 { error: "Usuário inativo. Contate o administrador." }
+```

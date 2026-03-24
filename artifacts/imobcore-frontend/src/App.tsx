@@ -921,6 +921,9 @@ export default function App() {
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [showLoginPass, setShowLoginPass] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
+  type LoggedUser = { id:string; nome:string; email:string; perfil:string; condominio_id:string; unidade_id:string|null };
+  const [loggedUser, setLoggedUser] = useState<LoggedUser | null>(null);
   // ── Manutenção state ────────────────────────────────────────────────────
   const [mantTab, setMantTab] = useState<"equip"|"mapa"|"plano"|"os"|"qr"|"ia">("equip");
   const [mantSearch, setMantSearch] = useState("");
@@ -5426,6 +5429,7 @@ export default function App() {
     const handleLogin = async () => {
       if (!loginEmail.trim()) { showToast("Informe o e-mail", "warn"); return; }
       if (!loginPass.trim())  { showToast("Informe a senha", "warn"); return; }
+
       // Admin global login
       if (loginEmail.trim().toLowerCase() === "admin@imobcore.com") {
         try {
@@ -5437,11 +5441,36 @@ export default function App() {
           setAdminSection("dashboard");
           await loadAdminDashboard(res.token);
           setView("admin");
-          showToast("🛡️ Acesso Admin Global liberado!", "success");
+          showToast("🛡️ Acesso Admin Global liberado!", "ok");
         } catch { showToast("Erro de autenticação", "error"); }
         return;
       }
-      setView("selector");
+
+      // Login de usuário comum (gestor / síndico / morador / zelador)
+      setLoginLoading(true);
+      try {
+        const r = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: loginEmail.trim(), perfil: loginMode }),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          showToast(data.error || "Credenciais inválidas", "error");
+          return;
+        }
+        // Armazena usuário logado e trava o condomínio pelo BD
+        setLoggedUser(data);
+        if (data.condominio_id) {
+          await loadDashboard(data.condominio_id);
+        }
+        setView("selector");
+        showToast(`Bem-vindo, ${data.nome}!`, "ok");
+      } catch {
+        showToast("Erro de conexão. Tente novamente.", "error");
+      } finally {
+        setLoginLoading(false);
+      }
     };
 
     return (
@@ -5516,8 +5545,8 @@ export default function App() {
             </form>
 
             {/* Login button */}
-            <button className="login-btn" onClick={handleLogin}>
-              {modeInfo.btnLabel}
+            <button className="login-btn" onClick={handleLogin} disabled={loginLoading} style={{ opacity: loginLoading ? 0.7 : 1, cursor: loginLoading ? "wait" : "pointer" }}>
+              {loginLoading ? "Verificando..." : modeInfo.btnLabel}
             </button>
 
             {/* Divider */}
@@ -5580,11 +5609,13 @@ export default function App() {
 
   // ── SELECTOR SCREEN ────────────────────────────────────────────────────────
   if (view === "selector") {
-    const emailName = loginEmail.split("@")[0] || "Usuário";
-    const displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
+    // Usa dados do usuário autenticado se disponível, senão cai no fallback de demo
+    const displayName = loggedUser?.nome || loginEmail.split("@")[0].replace(/^./, c => c.toUpperCase()) || "Usuário";
     const avatarLetter = displayName.charAt(0).toUpperCase();
-    const roleLabel = { morador: "MORADOR", sindico: "SÍNDICO", gestor: "GESTOR" }[loginMode];
-    const condoName = dash?.condominios?.[0]?.nome || "Residencial Parque das Flores";
+    const roleLabel = ({ morador:"MORADOR", sindico:"SÍNDICO", gestor:"GESTOR", zelador:"ZELADOR" } as Record<string,string>)[loggedUser?.perfil || loginMode] || "USUÁRIO";
+    const condoName = dash?.condominios?.find(c => c.id === loggedUser?.condominio_id)?.nome
+                   || dash?.condominios?.[0]?.nome
+                   || "Condomínio";
 
     const options = [
       {
@@ -5686,7 +5717,7 @@ export default function App() {
             ))}
 
             {/* Sign out */}
-            <button className="sel-signout" onClick={() => { setLoginEmail(""); setLoginPass(""); setView("login"); }}>
+            <button className="sel-signout" onClick={() => { setLoginEmail(""); setLoginPass(""); setLoggedUser(null); setCondId(null); setView("login"); }}>
               Sair da conta
             </button>
 

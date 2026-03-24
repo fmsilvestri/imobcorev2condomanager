@@ -3852,6 +3852,85 @@ router.delete("/placa-solar/:id", async (req: Request, res: Response) => {
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  ADMIN GLOBAL
+// ── LOGIN DE USUÁRIOS ─────────────────────────────────────────────────────────
+
+// POST /api/login — autentica gestor / síndico / morador / zelador
+// Verifica: usuário existe, está ativo, condomínio ativo
+router.post("/login", async (req: Request, res: Response) => {
+  try {
+    const { email, perfil } = req.body as { email?: string; perfil?: string };
+    if (!email?.trim()) {
+      return res.status(400).json({ error: "E-mail obrigatório" });
+    }
+
+    let q = supabase
+      .from("usuarios")
+      .select("id, nome, email, perfil, condominio_id, unidade_id, ativo")
+      .eq("email", email.trim().toLowerCase());
+    if (perfil) q = q.eq("perfil", perfil);
+
+    const { data: users, error } = await q;
+    if (error) throw error;
+
+    if (!users || users.length === 0) {
+      return res.status(403).json({
+        error: "Usuário não encontrado. Verifique o e-mail informado.",
+        code: "USER_NOT_FOUND",
+      });
+    }
+
+    const user = users[0] as Record<string, unknown>;
+
+    // Bloqueia usuário inativo
+    if (user.ativo === false) {
+      return res.status(403).json({
+        error: "Usuário inativo. Contate o administrador do condomínio.",
+        code: "USER_INACTIVE",
+      });
+    }
+
+    // Valida condomínio
+    if (user.condominio_id) {
+      const { data: condo } = await supabase
+        .from("condominios")
+        .select("id, ativo, nome")
+        .eq("id", user.condominio_id as string)
+        .single();
+      if (!condo) {
+        return res.status(403).json({
+          error: "Condomínio não encontrado.",
+          code: "CONDO_NOT_FOUND",
+        });
+      }
+      if ((condo as Record<string, unknown>).ativo === false) {
+        return res.status(403).json({
+          error: "Condomínio inativo. Contate o administrador.",
+          code: "CONDO_INACTIVE",
+        });
+      }
+    }
+
+    // Atualiza último login
+    await supabase
+      .from("usuarios")
+      .update({ ultimo_login: new Date().toISOString() })
+      .eq("id", user.id as string);
+
+    res.json({
+      ok: true,
+      id:            user.id,
+      nome:          user.nome,
+      email:         user.email,
+      perfil:        user.perfil,
+      condominio_id: user.condominio_id,
+      unidade_id:    user.unidade_id || null,
+    });
+  } catch (err) {
+    console.error("POST /login error:", err);
+    res.status(500).json({ error: "Erro ao autenticar. Tente novamente." });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "imobcore-admin-2026";
@@ -4069,6 +4148,27 @@ router.delete("/admin/usuarios/:id", checkAdminGlobal, async (req: Request, res:
   } catch (err) {
     console.error("DELETE /admin/usuarios/:id error:", err);
     res.status(500).json({ error: "Erro ao desativar usuário" });
+  }
+});
+
+// PATCH /api/admin/usuarios/:id/status — ativar ou desativar usuário
+router.patch("/admin/usuarios/:id/status", checkAdminGlobal, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { ativo } = req.body as { ativo: boolean };
+    if (typeof ativo !== "boolean") {
+      return res.status(400).json({ error: "ativo deve ser boolean" });
+    }
+    const { error } = await supabase
+      .from("usuarios")
+      .update({ ativo, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (error) throw error;
+    const acao = ativo ? "ativado" : "desativado";
+    res.json({ ok: true, ativo, message: `Usuário ${acao} com sucesso` });
+  } catch (err) {
+    console.error("PATCH /admin/usuarios/:id/status error:", err);
+    res.status(500).json({ error: "Erro ao atualizar status do usuário" });
   }
 });
 
