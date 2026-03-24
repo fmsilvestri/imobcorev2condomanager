@@ -144,7 +144,7 @@ export default function SindicoHome({
     >{emoji}</button>
   );
 
-  type DarkModule  = { bg: string; text: string; hasDot: boolean; icon: string; img?: string; title: string; screen: string; sub: string };
+  type DarkModule  = { bg: string; text: string; hasDot: boolean; icon: string; title: string; screen: string; sub: string };
   type LightModule = DarkModule & { border: string };
 
   const modsDark: DarkModule[] = [
@@ -153,7 +153,7 @@ export default function SindicoHome({
     { icon:"👤", title:"Usuários",     screen:"planejamento",  sub:`${osAbertasCount} pendentes`,                                            hasDot:osAbertasCount>0,   bg:"linear-gradient(135deg,#1e1b4b,#2e2660)", text:"#a5b4fc" },
     { icon:"🔧", title:"Manutenção",   screen:"manutencao",    sub:`${equipCount} itens`,                                                    hasDot:false,              bg:"linear-gradient(135deg,#431407,#7c2d12)", text:"#fdba74" },
     { icon:"👥", title:"CRM",          screen:"crm",           sub:`${crmCount} moradores`,                                                  hasDot:false,              bg:"linear-gradient(135deg,#1e3a5f,#1e40af)", text:"#93c5fd" },
-    { icon:"📢", img:"/mod-comunicados.png", title:"Comunicados",  screen:"comunicados",   sub:`${comunicadosCount} enviados`,                hasDot:false,              bg:"linear-gradient(135deg,#2d1b69,#4c1d95)", text:"#c4b5fd" },
+    { icon:"📢", title:"Comunicados",  screen:"comunicados",   sub:`${comunicadosCount} enviados`,                                           hasDot:false,              bg:"linear-gradient(135deg,#2d1b69,#4c1d95)", text:"#c4b5fd" },
     { icon:"✨", title:"Insights IA",  screen:"insights",      sub:"Tempo real",                                                             hasDot:false,              bg:"linear-gradient(135deg,#1c1917,#44403c)", text:"#fde68a" },
     { icon:"🏪", title:"Fornecedores", screen:"fornecedores",  sub:`${fornecCount} cadastros`,                                               hasDot:false,              bg:"linear-gradient(135deg,#0c1a12,#14532d)", text:"#86efac" },
     { icon:"💧", title:"Água",         screen:"agua",          sub:`${nivelMedio}% nível`,                                                   hasDot:false,              bg:"linear-gradient(135deg,#0c1a2e,#0f3460)", text:"#7dd3fc" },
@@ -168,7 +168,7 @@ export default function SindicoHome({
     { icon:"👤", title:"Usuários",     screen:"planejamento",  sub:`${osAbertasCount} pendentes`,                                            hasDot:osAbertasCount>0,   bg:"#eef2ff", border:"#c7d2fe", text:"#3730a3" },
     { icon:"🔧", title:"Manutenção",   screen:"manutencao",    sub:`${equipCount} itens`,                                                    hasDot:false,              bg:"#fff7ed", border:"#fed7aa", text:"#9a3412" },
     { icon:"👥", title:"CRM",          screen:"crm",           sub:`${crmCount} moradores`,                                                  hasDot:false,              bg:"#eff6ff", border:"#bfdbfe", text:"#1e40af" },
-    { icon:"📢", img:"/mod-comunicados.png", title:"Comunicados",  screen:"comunicados",   sub:`${comunicadosCount} enviados`,                hasDot:false,              bg:"#f5f3ff", border:"#ddd6fe", text:"#5b21b6" },
+    { icon:"📢", title:"Comunicados",  screen:"comunicados",   sub:`${comunicadosCount} enviados`,                                           hasDot:false,              bg:"#f5f3ff", border:"#ddd6fe", text:"#5b21b6" },
     { icon:"✨", title:"Insights IA",  screen:"insights",      sub:"Tempo real",                                                             hasDot:false,              bg:"#fffbeb", border:"#fde68a", text:"#92400e" },
     { icon:"🏪", title:"Fornecedores", screen:"fornecedores",  sub:`${fornecCount} cadastros`,                                               hasDot:false,              bg:"#f0fdf4", border:"#bbf7d0", text:"#14532d" },
     { icon:"💧", title:"Água",         screen:"agua",          sub:`${nivelMedio}% nível`,                                                   hasDot:false,              bg:"#f0f9ff", border:"#bae6fd", text:"#0c4a6e" },
@@ -395,10 +395,7 @@ export default function SindicoHome({
                 {m.hasDot && (
                   <div className="sind-pulse-dot" style={{ position:"absolute", top:12, right:12, width:9, height:9, borderRadius:"50%", background:"#EF4444" }} />
                 )}
-                {m.img
-                  ? <img src={m.img} alt={m.title} style={{ width:44, height:44, objectFit:"contain", marginBottom:4, mixBlendMode: isDark ? "screen" : "multiply" }} />
-                  : <div style={{ fontSize:28, marginBottom:8 }}>{m.icon}</div>
-                }
+                <div style={{ fontSize:28, marginBottom:8 }}>{m.icon}</div>
                 <div style={{ fontSize:14, fontWeight:800, color:m.text, marginBottom:6, lineHeight:1.2 }}>{m.title}</div>
                 <div style={{ display:"inline-block", fontSize:11, fontWeight:700, color:m.text, background:"rgba(255,255,255,0.18)", borderRadius:20, padding:"3px 10px" }}>{m.sub}</div>
               </div>
