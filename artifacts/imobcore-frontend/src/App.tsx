@@ -1656,6 +1656,8 @@ export default function App() {
       const body: Record<string, unknown> = {
         tipo: "financeiro",
         condominio_id: cid,
+        perfil: loggedUser?.perfil || loginMode || "gestor",
+        nome_usuario: loggedUser?.nome || "Usuário",
       };
       if (pergunta) body.message = pergunta;
       const r = await fetch("/api/sindico/chat", {
@@ -2507,7 +2509,7 @@ export default function App() {
     try {
       const r = await fetch("/api/sindico/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, history: nh.slice(-10), condominio_id: condId }),
+        body: JSON.stringify({ message: msg, history: nh.slice(-10), condominio_id: condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }),
       });
       const res = await r.json();
       setMsgs(prev => [...prev, { role: "ai", content: res.reply, time: fmtTime() }]);
@@ -4304,7 +4306,7 @@ export default function App() {
                 speechSynthesis.cancel();
                 setDiFalando(false);
                 try {
-                  const r = await fetch("/api/di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id: condId }) });
+                  const r = await fetch("/api/di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id: condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }) });
                   const json = await r.json();
                   if (json.fala) {
                     setDiData({ fala: json.fala, cards: json.cards || [] });
@@ -6037,7 +6039,7 @@ export default function App() {
                         onClick={async () => {
                           setDiLoading(true); speechSynthesis.cancel(); setDiFalando(false);
                           try {
-                            const r = await fetch("/api/di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId }) });
+                            const r = await fetch("/api/di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }) });
                             const json = await r.json();
                             if (json.fala) {
                               setDiData({ fala:json.fala, cards:json.cards||[] });
@@ -6186,7 +6188,7 @@ export default function App() {
             <button className="btn btn-primary" onClick={async () => {
               setInsightsLoading(true); setInsights("");
               try {
-                const r = await fetch("/api/sindico/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Gere uma análise executiva completa com insights sobre financeiro, OSs, água, alertas e recomendações. Use emojis.", history: [], condominio_id: condId }) });
+                const r = await fetch("/api/sindico/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Gere uma análise executiva completa com insights sobre financeiro, OSs, água, alertas e recomendações. Use emojis.", history: [], condominio_id: condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }) });
                 const res = await r.json(); setInsights(res.reply);
               } catch { setInsights("Erro ao gerar insights."); }
               setInsightsLoading(false);
@@ -9340,12 +9342,12 @@ Content-Type: application/json
                           onClick={async () => {
                             setMantAiLoading(true);
                             setMantAiResult("");
-                            const resumo = `Condomínio: Residencial Parque das Flores. Equipamentos: ${equipList.length} total, ${nOp} operacionais, ${nAt} em atenção, ${nMt} em manutenção, ${nIn} inativos. Score de saúde: ${scoreEquip}/100. Equipamentos críticos: ${equipList.filter(e=>e.status!=="operacional").map(e=>e.nome+" ("+e.status+": "+e.descricao+")").join("; ")}. Custo de manutenção anual estimado: R$ ${equipList.reduce((s,e)=>s+e.custoManutencao*2,0).toLocaleString("pt-BR")}. MTTR: 4.2 dias. MTBF: 38 dias. Disponibilidade: 89%.`;
+                            const resumo = `Condomínio: ${dash?.condominios?.find(c=>c.id===condId)?.nome || "Condomínio"}. Equipamentos: ${equipList.length} total, ${nOp} operacionais, ${nAt} em atenção, ${nMt} em manutenção, ${nIn} inativos. Score de saúde: ${scoreEquip}/100. Equipamentos críticos: ${equipList.filter(e=>e.status!=="operacional").map(e=>e.nome+" ("+e.status+": "+e.descricao+")").join("; ")}. Custo de manutenção anual estimado: R$ ${equipList.reduce((s,e)=>s+e.custoManutencao*2,0).toLocaleString("pt-BR")}. MTTR: 4.2 dias. MTBF: 38 dias. Disponibilidade: 89%.`;
                             try {
                               const r = await fetch("/api/sindico/chat", {
                                 method:"POST",
                                 headers:{"Content-Type":"application/json"},
-                                body:JSON.stringify({ message:`Analise o estado dos equipamentos e manutenção do condomínio. ${resumo} Forneça: 1) diagnóstico dos equipamentos críticos 2) recomendações prioritárias 3) score de saúde explicado 4) previsão de riscos. Seja específico e técnico.`, history:[] })
+                                body:JSON.stringify({ message:`Analise o estado dos equipamentos e manutenção do condomínio. ${resumo} Forneça: 1) diagnóstico dos equipamentos críticos 2) recomendações prioritárias 3) score de saúde explicado 4) previsão de riscos. Seja específico e técnico.`, history:[], condominio_id: condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" })
                               });
                               const d = await r.json();
                               setMantAiResult(d.response || d.error || "Sem resposta");

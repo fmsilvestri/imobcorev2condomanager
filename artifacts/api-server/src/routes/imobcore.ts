@@ -147,6 +147,8 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       saldo: saldoCtx,
       score: scoreCtx,
       inadimplencia: inadCtx,
+      perfil: perfilCtx,
+      nome_usuario: nomeUsuarioCtx,
     } = req.body as {
       message?: string;
       history?: { role: string; content: string }[];
@@ -155,6 +157,8 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       saldo?: number;
       score?: number;
       inadimplencia?: number;
+      perfil?: string;
+      nome_usuario?: string;
     };
 
     const condIdCtx = condominio_id || "";
@@ -362,7 +366,8 @@ ${planosProximos.length > 0 ? `\n⚡ PLANOS PARA EXECUTAR NOS PRÓXIMOS 30 DIAS:
           osUrgentes: osUrgentes.length,
           saldo,
         },
-        "gestor"
+        (perfilCtx as import("../di-engine/modulos.js").Perfil) || "gestor",
+        nomeUsuarioCtx || "Usuário"
       );
       diIdentidade = diCtx.systemPrompt + "\n\n";
       diNome = diCtx.nomeDi;
@@ -3363,7 +3368,11 @@ function gerarResumoExecutivo(cards: DiSmartCard[], condNome: string): string {
 
 router.post("/di", async (req: Request, res: Response) => {
   try {
-    const { condominio_id } = req.body as { condominio_id?: string };
+    const {
+      condominio_id,
+      perfil: perfilBriefing,
+      nome_usuario: nomeUsuarioBriefing,
+    } = req.body as { condominio_id?: string; perfil?: string; nome_usuario?: string };
 
     // ── Coletar dados reais do condomínio ──────────────────────────────────
     const [
@@ -3442,19 +3451,22 @@ router.post("/di", async (req: Request, res: Response) => {
     let fala = gerarResumoExecutivo(cardsBase, condNome);
     let cards: DiSmartCard[] = cardsBase;
 
+    // Declaradas fora do try para ficarem disponíveis no return final
+    let diNomeBriefing = "Di";
+    let diSystemBriefing = "Você é Di, a Síndica Virtual do ImobCore. Personalidade: direta e empática, próxima sem ser informal. Português brasileiro com emojis moderados.";
+    let diAtivaBriefing = true;
+
     try {
       const criticos  = cardsBase.filter(c => c.tipo === "critico").length;
       const atencoes  = cardsBase.filter(c => c.tipo === "atencao").length;
 
       // Carregar nome, tom e status da Di configurados pelo Master
-      let diNomeBriefing = "Di";
-      let diSystemBriefing = "Você é Di, a Síndica Virtual do ImobCore. Personalidade: direta e empática, próxima sem ser informal. Português brasileiro com emojis moderados.";
-      let diAtivaBriefing = true;
       try {
         const diCtxBriefing = await carregarContextoDi(
           condominio_id || cond?.id || "",
           { condNome, saldo, inadPct: txInad, osAbertas: (osAbertas||[]).length, osUrgentes: osUrgentes.length, nivelAgua: nivelMedioAgua },
-          "gestor"
+          (perfilBriefing as import("../di-engine/modulos.js").Perfil) || "gestor",
+          nomeUsuarioBriefing || "Usuário"
         );
         diNomeBriefing = diCtxBriefing.nomeDi;
         diSystemBriefing = diCtxBriefing.systemPrompt;
