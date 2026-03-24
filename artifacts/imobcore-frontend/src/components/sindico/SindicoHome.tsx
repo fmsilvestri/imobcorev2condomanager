@@ -162,27 +162,38 @@ export default function SindicoHome({
     { icon:"🏊", title:"Piscina",      screen:"piscina",      sub:piscinaLastPh!=null?`pH ${piscinaLastPh}`:"Sem leitura",               hasDot:piscinaAlerta,   bg: piscinaAlerta?"linear-gradient(145deg,#be123c,#f43f5e,#fb7185)":"linear-gradient(145deg,#0c4a6e,#0284c7,#38bdf8)", glow:piscinaAlerta?"rgba(244,63,94,0.45)":"rgba(2,132,199,0.45)", text:"#f0f9ff", badge:"rgba(255,255,255,0.22)" },
   ];
 
-  const navColors: Record<string, string> = {
-    "Início":  "#6366f1",
-    "Alertas": "#f59e0b",
-    "Usuário": "#10b981",
-    "CRM":     "#ec4899",
+  const navMeta: Record<string, { clr: string; glow: string; grad: string }> = {
+    "Início":  { clr:"#818cf8", glow:"rgba(99,102,241,0.55)",  grad:"linear-gradient(145deg,#4338ca,#6366f1,#a5b4fc)" },
+    "Alertas": { clr:"#fbbf24", glow:"rgba(245,158,11,0.55)",  grad:"linear-gradient(145deg,#b45309,#f59e0b,#fde68a)" },
+    "Usuário": { clr:"#34d399", glow:"rgba(16,185,129,0.55)",  grad:"linear-gradient(145deg,#065f46,#10b981,#6ee7b7)" },
+    "CRM":     { clr:"#f472b6", glow:"rgba(236,72,153,0.55)",  grad:"linear-gradient(145deg,#9d174d,#ec4899,#fbcfe8)" },
   };
   const navItem = (imgSrc: string, label: string, screen: string | null, onClick: () => void) => {
     const active = sindicoScreen === screen || (screen === null && !sindicoScreen);
-    const clr = navColors[label] ?? v.activeClr;
+    const meta = navMeta[label] ?? { clr:"#818cf8", glow:"rgba(99,102,241,0.5)", grad:"linear-gradient(145deg,#4338ca,#6366f1,#a5b4fc)" };
     return (
-      <button onClick={onClick} style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 8px", display:"flex", flexDirection:"column", alignItems:"center", gap:3, transition:"transform .15s", transform: active ? "scale(1.12)" : "scale(1)" }}>
+      <button onClick={onClick} style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 6px", display:"flex", flexDirection:"column", alignItems:"center", gap:4, transition:"transform .15s", transform: active ? "scale(1.14)" : "scale(1)" }}>
         <div style={{
-          width:40, height:40, borderRadius:12,
-          background: active ? (isDark ? "rgba(255,255,255,0.10)" : "rgba(99,60,230,0.10)") : "transparent",
+          width:44, height:44, borderRadius:16, overflow:"hidden",
+          background: active ? meta.grad : (isDark ? "rgba(255,255,255,0.08)" : "rgba(100,80,200,0.10)"),
           display:"flex", alignItems:"center", justifyContent:"center",
-          transition:"background .15s",
-          boxShadow: active ? `0 0 0 1.5px ${clr}44` : "none",
+          transition:"all .2s",
+          boxShadow: active ? `0 4px 14px ${meta.glow}, 0 1px 4px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.25)` : "0 1px 4px rgba(0,0,0,0.15)",
+          position:"relative",
         }}>
-          <img src={imgSrc} alt={label} style={{ width:30, height:30, objectFit:"contain", mixBlendMode: isDark ? "screen" : "multiply", filter: active ? "none" : "brightness(0.88)" }} />
+          {/* Gloss shine */}
+          {active && <div style={{ position:"absolute", top:0, left:0, right:0, height:20, background:"linear-gradient(180deg,rgba(255,255,255,0.28) 0%,rgba(255,255,255,0) 100%)", pointerEvents:"none" }} />}
+          <img
+            src={imgSrc}
+            alt={label}
+            style={{
+              width:28, height:28, objectFit:"contain",
+              mixBlendMode: active ? "normal" : (isDark ? "screen" : "multiply"),
+              filter: active ? "drop-shadow(1px 2px 4px rgba(0,0,0,0.4))" : (isDark ? "brightness(0.75)" : "brightness(0.8)"),
+            }}
+          />
         </div>
-        <span style={{ fontSize:10, fontWeight:900, color: active ? clr : (isDark ? "rgba(200,190,255,0.70)" : "rgba(80,60,180,0.65)"), lineHeight:1, letterSpacing:"0.02em" }}>{label}</span>
+        <span style={{ fontSize:10, fontWeight:900, color: active ? meta.clr : (isDark ? "rgba(180,170,255,0.60)" : "rgba(80,60,180,0.55)"), lineHeight:1, letterSpacing:"0.02em", textShadow: active ? `0 0 8px ${meta.glow}` : "none" }}>{label}</span>
       </button>
     );
   };
