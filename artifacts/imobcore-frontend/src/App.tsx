@@ -320,10 +320,11 @@ select.form-control option{background:var(--c-bg2)}
 /* ── Subscreen ──────────────────────────────────────────────────────── */
 .ph-subscreen{position:absolute;top:0;left:0;right:0;bottom:68px;background:var(--neu-bg);z-index:200;display:flex;flex-direction:column;overflow:hidden;animation:slideLeft .2s ease}
 .ph-subscreen.hidden{display:none}
-.ph-sub-header{padding:16px 16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #d4d6e0;flex-shrink:0;background:var(--neu-bg)}
-.back-btn{width:34px;height:34px;border-radius:11px;background:var(--neu-bg);border:none;color:var(--neu-text);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:var(--neu-out-sm);transition:box-shadow .15s}
-.back-btn:hover{box-shadow:var(--neu-in-sm)}
-.ph-sub-title{font-size:15px;font-weight:800;flex:1;color:var(--neu-text)}
+.ph-sub-header{padding:20px 18px 18px;display:flex;align-items:center;gap:14px;border-bottom:2px solid rgba(99,102,241,.22);flex-shrink:0;background:linear-gradient(to bottom,rgba(99,102,241,.10),var(--neu-bg))}
+.back-btn{height:40px;padding:0 18px;border-radius:20px;background:linear-gradient(135deg,#4338CA,#6366F1,#818CF8);border:none;color:#fff;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;flex-shrink:0;box-shadow:0 4px 16px rgba(99,102,241,.55);transition:all .18s;font-weight:800;letter-spacing:.02em;white-space:nowrap}
+.back-btn:hover{box-shadow:0 6px 22px rgba(99,102,241,.75);transform:translateY(-1px)}
+.back-btn:active{transform:translateY(0);box-shadow:0 2px 10px rgba(99,102,241,.5)}
+.ph-sub-title{font-size:17px;font-weight:900;flex:1;color:var(--neu-text)}
 .ph-sub-body{flex:1;overflow-y:auto;padding:14px;background:var(--neu-bg)}
 .ph-sub-footer{padding:10px 12px;border-top:1px solid #d4d6e0;flex-shrink:0;background:var(--neu-bg)}
 /* ── List items ─────────────────────────────────────────────────────── */
@@ -4463,7 +4464,7 @@ export default function App() {
       <div className="ph-subscreen">
         <div style={{ height: 30, flexShrink: 0 }} />
         <div className="ph-sub-header">
-          <button className="back-btn" onClick={() => setSindicoScreen(null)}>←</button>
+          <button className="back-btn" onClick={() => setSindicoScreen(null)}>← Voltar</button>
           <div className="ph-sub-title">{screenTitle[sindicoScreen]}</div>
           {sseOnline && <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#10B981" }} />}
         </div>
@@ -4597,9 +4598,9 @@ export default function App() {
         {/* ORDENS DE SERVIÇO */}
         {sindicoScreen === "os" && (
           <div style={{ position:"absolute", inset:0, zIndex:50, display:"flex", flexDirection:"column", background:"var(--neu-bg,#1E1B35)", fontFamily:"'Nunito',sans-serif", overflowY:"hidden" }}>
-            <div style={{ background:"rgba(99,102,241,.15)", borderBottom:"1px solid rgba(99,102,241,.15)", padding:"12px 14px", flexShrink:0, display:"flex", alignItems:"center", gap:10 }}>
-              <button onClick={() => setSindicoScreen(null)} style={{ background:"rgba(255,255,255,.08)", border:"none", borderRadius:20, padding:"5px 12px", fontSize:12, color:"#A5B4FC", cursor:"pointer", fontWeight:700 }}>← Voltar</button>
-              <div style={{ fontWeight:800, fontSize:14, color:"var(--neu-text,#F1F5F9)" }}>⚙️ Ordens de Serviço</div>
+            <div style={{ background:"linear-gradient(to bottom,rgba(99,102,241,.12),var(--neu-bg,#1E1B35))", borderBottom:"2px solid rgba(99,102,241,.22)", padding:"20px 18px 18px", flexShrink:0, display:"flex", alignItems:"center", gap:14 }}>
+              <button onClick={() => setSindicoScreen(null)} style={{ height:40, padding:"0 18px", borderRadius:20, background:"linear-gradient(135deg,#4338CA,#6366F1,#818CF8)", border:"none", color:"#fff", fontSize:17, cursor:"pointer", fontWeight:800, display:"flex", alignItems:"center", gap:6, boxShadow:"0 4px 16px rgba(99,102,241,.55)", flexShrink:0, whiteSpace:"nowrap" as const }}>← Voltar</button>
+              <div style={{ fontWeight:900, fontSize:17, color:"var(--neu-text,#F1F5F9)", flex:1 }}>⚙️ Ordens de Serviço</div>
             </div>
             <div style={{ flex:1, overflowY:"auto", position:"relative" }}>
               {condId
