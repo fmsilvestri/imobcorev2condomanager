@@ -639,6 +639,12 @@ export default function App() {
   const [adminUserFilterCondo, setAdminUserFilterCondo] = useState("todos");
   const [adminUserFilterPerf,  setAdminUserFilterPerf]  = useState("todos");
   const [adminUserFilterStat,  setAdminUserFilterStat]  = useState("todos");
+  const [adminUserSenhaModal,  setAdminUserSenhaModal]  = useState(false);
+  const [adminUserSenhaData,   setAdminUserSenhaData]   = useState<{ id:string; nome:string; email:string } | null>(null);
+  const [adminUserSenhaInput,  setAdminUserSenhaInput]  = useState("");
+  const [adminUserSenhaResult, setAdminUserSenhaResult] = useState<{ senha:string; gerada:boolean; message:string } | null>(null);
+  const [adminUserSenhaSaving, setAdminUserSenhaSaving] = useState(false);
+  const [adminUserSenhaCopied, setAdminUserSenhaCopied] = useState(false);
   const [adminUserForm, setAdminUserForm] = useState<{
     condominio_id: string; nome: string; email: string;
     perfil: string; unidade: string; status: string;
@@ -794,6 +800,26 @@ export default function App() {
       if (r.ok) { showToast("Usuário reativado", "ok"); await loadAdminDashboard(); }
       else showToast("Erro ao reativar", "error");
     } catch { showToast("Erro ao reativar", "error"); }
+  };
+
+  const saveAdminSenha = async (gerar: boolean) => {
+    if (!adminUserSenhaData) return;
+    setAdminUserSenhaSaving(true);
+    setAdminUserSenhaResult(null);
+    try {
+      const body: Record<string, string> = {};
+      if (!gerar && adminUserSenhaInput.trim()) body.senha = adminUserSenhaInput.trim();
+      const r = await adminFetch(`/admin/usuarios/${adminUserSenhaData.id}/senha`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (!r.ok) { showToast(d.error || "Erro ao definir senha", "error"); return; }
+      setAdminUserSenhaResult({ senha: d.senha, gerada: d.gerada, message: d.message });
+      setAdminUserSenhaInput("");
+      setAdminUserSenhaCopied(false);
+    } catch { showToast("Erro ao definir senha", "error"); }
+    setAdminUserSenhaSaving(false);
   };
 
   const loadAdminSistema = async () => {
@@ -5452,7 +5478,7 @@ export default function App() {
         const r = await fetch("/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: loginEmail.trim(), perfil: loginMode }),
+          body: JSON.stringify({ email: loginEmail.trim(), senha: loginPass.trim() || undefined, perfil: loginMode }),
         });
         const data = await r.json();
         if (!r.ok) {
@@ -12480,6 +12506,13 @@ Content-Type: application/json
                                       setAdminUserForm({ condominio_id: u.condominio_id||"", nome: u.nome||"", email: u.email||"", perfil: u.perfil||"morador", unidade: u.unidade||"", status: u.status||"ativo" });
                                       setAdminUserModal(true);
                                     }} style={{ background:"rgba(99,102,241,.12)", border:"1px solid rgba(99,102,241,.25)", borderRadius:6, padding:"5px 9px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>✏️</button>
+                                    <button title="Definir / Gerar Senha" onClick={() => {
+                                      setAdminUserSenhaData({ id: u.id, nome: u.nome||"", email: u.email||"" });
+                                      setAdminUserSenhaInput("");
+                                      setAdminUserSenhaResult(null);
+                                      setAdminUserSenhaCopied(false);
+                                      setAdminUserSenhaModal(true);
+                                    }} style={{ background:"rgba(245,158,11,.1)", border:"1px solid rgba(245,158,11,.25)", borderRadius:6, padding:"5px 9px", color:"#FCD34D", fontSize:11, cursor:"pointer" }}>🔑</button>
                                     {isAtivo
                                       ? <button title="Desativar" onClick={() => setAdminUserDelConfirm(u.id)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.25)", borderRadius:6, padding:"5px 9px", color:"#FCA5A5", fontSize:11, cursor:"pointer" }}>🚫</button>
                                       : <button title="Reativar" onClick={() => reativarAdminUsuario(u.id)} style={{ background:"rgba(16,185,129,.1)", border:"1px solid rgba(16,185,129,.25)", borderRadius:6, padding:"5px 9px", color:"#6EE7B7", fontSize:11, cursor:"pointer" }}>✓</button>
@@ -12557,6 +12590,82 @@ Content-Type: application/json
                             <button onClick={saveAdminUsuario} disabled={adminUserSaving} style={{ padding:"9px 24px", borderRadius:8, background: adminUserSaving ? "rgba(99,102,241,.4)" : "rgba(99,102,241,.85)", border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor: adminUserSaving ? "wait" : "pointer" }}>
                               {adminUserSaving ? "Salvando..." : adminUserEditId ? "Salvar Alterações" : "Criar Usuário"}
                             </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── Modal: Definir / Gerar Senha ── */}
+                    {adminUserSenhaModal && adminUserSenhaData && (
+                      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:9200, display:"flex", alignItems:"center", justifyContent:"center" }}
+                           onClick={e=>{ if(e.target===e.currentTarget){ setAdminUserSenhaModal(false); setAdminUserSenhaResult(null); } }}>
+                        <div style={{ background:"#131B2E", border:"1px solid rgba(245,158,11,.25)", borderRadius:18, padding:28, width:420, boxShadow:"0 24px 80px rgba(0,0,0,.7)", position:"relative" }}>
+
+                          {/* Header */}
+                          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20 }}>
+                            <div style={{ width:36, height:36, borderRadius:10, background:"rgba(245,158,11,.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>🔑</div>
+                            <div>
+                              <div style={{ fontSize:14, fontWeight:700, color:"#E2E8F0" }}>Senha de Acesso</div>
+                              <div style={{ fontSize:11, color:"#64748B" }}>{adminUserSenhaData.nome} · {adminUserSenhaData.email}</div>
+                            </div>
+                          </div>
+
+                          {/* Resultado — senha exibida após operação */}
+                          {adminUserSenhaResult ? (
+                            <div style={{ background:"rgba(16,185,129,.08)", border:"1px solid rgba(16,185,129,.25)", borderRadius:12, padding:16, marginBottom:18 }}>
+                              <div style={{ fontSize:11, color:"#6EE7B7", marginBottom:8, fontWeight:600 }}>
+                                {adminUserSenhaResult.gerada ? "✨ Senha gerada automaticamente" : "✅ Senha definida com sucesso"}
+                              </div>
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                <code style={{ flex:1, background:"rgba(0,0,0,.35)", borderRadius:8, padding:"10px 14px", fontSize:18, fontWeight:700, color:"#F1F5F9", letterSpacing:2, fontFamily:"monospace" }}>
+                                  {adminUserSenhaResult.senha}
+                                </code>
+                                <button onClick={async () => {
+                                  await navigator.clipboard.writeText(adminUserSenhaResult!.senha);
+                                  setAdminUserSenhaCopied(true);
+                                  setTimeout(()=>setAdminUserSenhaCopied(false), 2000);
+                                }} style={{ padding:"10px 14px", borderRadius:8, background: adminUserSenhaCopied ? "rgba(16,185,129,.25)" : "rgba(245,158,11,.15)", border:`1px solid ${adminUserSenhaCopied ? "rgba(16,185,129,.4)" : "rgba(245,158,11,.3)"}`, color: adminUserSenhaCopied ? "#6EE7B7" : "#FCD34D", fontSize:12, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                  {adminUserSenhaCopied ? "✓ Copiado" : "Copiar"}
+                                </button>
+                              </div>
+                              <div style={{ fontSize:11, color:"#64748B", marginTop:8 }}>⚠️ Esta senha não será exibida novamente. Repasse ao usuário agora.</div>
+                            </div>
+                          ) : (
+                            <>
+                              {/* Gerar senha automática */}
+                              <button onClick={()=>saveAdminSenha(true)} disabled={adminUserSenhaSaving} style={{ width:"100%", padding:"13px 16px", borderRadius:10, background:"rgba(245,158,11,.12)", border:"1px solid rgba(245,158,11,.25)", color:"#FCD34D", fontSize:13, fontWeight:600, cursor: adminUserSenhaSaving ? "wait" : "pointer", marginBottom:14, display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                                {adminUserSenhaSaving ? "Gerando..." : "⚡ Gerar Senha Automática"}
+                              </button>
+
+                              {/* Divisor */}
+                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+                                <div style={{ flex:1, height:1, background:"rgba(255,255,255,.08)" }}/>
+                                <span style={{ fontSize:11, color:"#475569" }}>ou defina uma senha</span>
+                                <div style={{ flex:1, height:1, background:"rgba(255,255,255,.08)" }}/>
+                              </div>
+
+                              {/* Senha manual */}
+                              <input
+                                type="text"
+                                placeholder="Digite a senha (mín. 6 caracteres)"
+                                value={adminUserSenhaInput}
+                                onChange={e=>setAdminUserSenhaInput(e.target.value)}
+                                onKeyDown={e=>{ if(e.key==="Enter" && adminUserSenhaInput.trim().length>=6) saveAdminSenha(false); }}
+                                style={{ width:"100%", boxSizing:"border-box", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"10px 14px", color:"#E2E8F0", fontSize:13, outline:"none", marginBottom:10 }}
+                              />
+                              <button onClick={()=>saveAdminSenha(false)} disabled={adminUserSenhaSaving || adminUserSenhaInput.trim().length < 6} style={{ width:"100%", padding:"11px 16px", borderRadius:9, background: adminUserSenhaInput.trim().length >= 6 ? "rgba(99,102,241,.85)" : "rgba(99,102,241,.25)", border:"none", color:"#fff", fontSize:13, fontWeight:600, cursor: adminUserSenhaInput.trim().length < 6 ? "not-allowed" : "pointer", opacity: adminUserSenhaSaving ? 0.6 : 1 }}>
+                                {adminUserSenhaSaving ? "Salvando..." : "Definir Senha"}
+                              </button>
+                            </>
+                          )}
+
+                          {/* Footer */}
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:18 }}>
+                            {adminUserSenhaResult
+                              ? <button onClick={()=>{ setAdminUserSenhaResult(null); }} style={{ padding:"8px 14px", borderRadius:8, background:"rgba(245,158,11,.1)", border:"1px solid rgba(245,158,11,.2)", color:"#FCD34D", fontSize:11, cursor:"pointer" }}>🔄 Nova Senha</button>
+                              : <div/>
+                            }
+                            <button onClick={()=>{ setAdminUserSenhaModal(false); setAdminUserSenhaResult(null); }} style={{ padding:"8px 18px", borderRadius:8, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Fechar</button>
                           </div>
                         </div>
                       </div>

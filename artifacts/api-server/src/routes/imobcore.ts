@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import multer from "multer";
+import bcrypt from "bcryptjs";
 import {
   type Lancamento,
   calcularIndicadores,
@@ -3855,17 +3856,17 @@ router.delete("/placa-solar/:id", async (req: Request, res: Response) => {
 // ── LOGIN DE USUÁRIOS ─────────────────────────────────────────────────────────
 
 // POST /api/login — autentica gestor / síndico / morador / zelador
-// Verifica: usuário existe, está ativo, condomínio ativo
+// Verifica: usuário existe, está ativo, condomínio ativo, senha (quando definida)
 router.post("/login", async (req: Request, res: Response) => {
   try {
-    const { email, perfil } = req.body as { email?: string; perfil?: string };
+    const { email, senha, perfil } = req.body as { email?: string; senha?: string; perfil?: string };
     if (!email?.trim()) {
       return res.status(400).json({ error: "E-mail obrigatório" });
     }
 
     let q = supabase
       .from("usuarios")
-      .select("id, nome, email, perfil, condominio_id, unidade_id, ativo")
+      .select("id, nome, email, perfil, condominio_id, unidade_id, ativo, senha_hash")
       .eq("email", email.trim().toLowerCase());
     if (perfil) q = q.eq("perfil", perfil);
 
@@ -3887,6 +3888,23 @@ router.post("/login", async (req: Request, res: Response) => {
         error: "Usuário inativo. Contate o administrador do condomínio.",
         code: "USER_INACTIVE",
       });
+    }
+
+    // Verifica senha quando estiver definida
+    if (user.senha_hash) {
+      if (!senha?.trim()) {
+        return res.status(401).json({
+          error: "Senha obrigatória para este usuário.",
+          code: "PASSWORD_REQUIRED",
+        });
+      }
+      const senhaOk = await bcrypt.compare(senha.trim(), user.senha_hash as string);
+      if (!senhaOk) {
+        return res.status(401).json({
+          error: "Senha incorreta. Tente novamente.",
+          code: "WRONG_PASSWORD",
+        });
+      }
     }
 
     // Valida condomínio
@@ -3917,13 +3935,14 @@ router.post("/login", async (req: Request, res: Response) => {
       .eq("id", user.id as string);
 
     res.json({
-      ok: true,
+      ok:            true,
       id:            user.id,
       nome:          user.nome,
       email:         user.email,
       perfil:        user.perfil,
       condominio_id: user.condominio_id,
       unidade_id:    user.unidade_id || null,
+      tem_senha:     !!user.senha_hash,
     });
   } catch (err) {
     console.error("POST /login error:", err);
@@ -4169,6 +4188,66 @@ router.patch("/admin/usuarios/:id/status", checkAdminGlobal, async (req: Request
   } catch (err) {
     console.error("PATCH /admin/usuarios/:id/status error:", err);
     res.status(500).json({ error: "Erro ao atualizar status do usuário" });
+  }
+});
+
+// PATCH /api/admin/usuarios/:id/senha — define ou gera senha de acesso
+// Body: { senha?: string }  → se omitido, gera senha aleatória
+// Retorna a senha em plain-text UMA ÚNICA VEZ para o admin repassar ao usuário
+function gerarSenhaAleatoria(): string {
+  const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789@#$!";
+  let senha = "";
+  // Garante ao menos 1 maiúscula, 1 número, 1 símbolo
+  senha += chars[Math.floor(Math.random() * 24) + 24]; // maiúscula
+  senha += chars[Math.floor(Math.random() * 8) + 48];  // número
+  senha += chars[Math.floor(Math.random() * 4) + 56];  // símbolo
+  for (let i = 0; i < 5; i++) senha += chars[Math.floor(Math.random() * 56)];
+  // Embaralha
+  return senha.split("").sort(() => Math.random() - 0.5).join("");
+}
+
+router.patch("/admin/usuarios/:id/senha", checkAdminGlobal, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { senha: senhaRaw } = req.body as { senha?: string };
+
+    // Valida que usuário existe
+    const { data: existente, error: findErr } = await supabase
+      .from("usuarios")
+      .select("id, nome, email")
+      .eq("id", id)
+      .single();
+    if (findErr || !existente) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+
+    const senhaPlain = senhaRaw?.trim() || gerarSenhaAleatoria();
+
+    if (senhaPlain.length < 6) {
+      return res.status(400).json({ error: "Senha deve ter ao menos 6 caracteres" });
+    }
+
+    const hash = await bcrypt.hash(senhaPlain, 10);
+
+    const { error: updErr } = await supabase
+      .from("usuarios")
+      .update({ senha_hash: hash, updated_at: new Date().toISOString() })
+      .eq("id", id);
+    if (updErr) throw updErr;
+
+    res.json({
+      ok:     true,
+      senha:  senhaPlain,
+      gerada: !senhaRaw?.trim(),
+      nome:   (existente as Record<string, unknown>).nome,
+      email:  (existente as Record<string, unknown>).email,
+      message: !senhaRaw?.trim()
+        ? "Senha gerada automaticamente. Repasse ao usuário com segurança."
+        : "Senha definida com sucesso.",
+    });
+  } catch (err) {
+    console.error("PATCH /admin/usuarios/:id/senha error:", err);
+    res.status(500).json({ error: "Erro ao definir senha" });
   }
 });
 
