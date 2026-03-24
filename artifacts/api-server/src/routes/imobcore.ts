@@ -584,7 +584,7 @@ Nunca invente dados, valores ou informações não fornecidos acima.`;
           properties: {
             titulo:          { type: "string", description: "Título claro e objetivo do comunicado (máx 100 chars)" },
             corpo:           { type: "string", description: "Conteúdo completo do comunicado em formato profissional, incluindo detalhes, datas e orientações pertinentes" },
-            tipo_comunicado: { type: "string", enum: ["geral","manutencao","financeiro","seguranca","reuniao","obras","emergencia"], description: "Tipo do comunicado conforme conteúdo" },
+            tipo_comunicado: { type: "string", enum: ["geral","manutencao","financeiro","urgente"], description: "Tipo: 'urgente' para emergências/segurança, 'manutencao' para obras/reparos, 'financeiro' para cobranças/taxas, 'geral' para avisos gerais" },
           },
           required: ["titulo", "corpo", "tipo_comunicado"],
         },
@@ -658,11 +658,13 @@ Nunca invente dados, valores ou informações não fornecidos acima.`;
         const comInput = toolUseBlock.input as {
           titulo: string; corpo: string; tipo_comunicado: string;
         };
+        const TIPOS_VALIDOS = ["geral", "manutencao", "financeiro", "urgente"];
+        const tipoSafe = TIPOS_VALIDOS.includes(comInput.tipo_comunicado) ? comInput.tipo_comunicado : "geral";
         const { data: comData, error: comErr } = await supabase.from("comunicados").insert({
           condominio_id: condIdCtx || cond?.id,
           titulo: comInput.titulo,
           corpo: comInput.corpo,
-          tipo_comunicado: comInput.tipo_comunicado,
+          tipo_comunicado: tipoSafe,
           criado_por: nomeUsuarioCtx || "Di – Síndica Virtual",
           criado_por_perfil: perfilCtx || "ia",
           status: "enviado",
