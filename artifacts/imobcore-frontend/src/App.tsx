@@ -2095,6 +2095,11 @@ export default function App() {
   // Comunicado
   const [comTema, setComTema] = useState("");
   const [comLoading, setComLoading] = useState(false);
+  const [comEditando, setComEditando] = useState<Comunicado | null>(null);
+  const [comEditTitulo, setComEditTitulo] = useState("");
+  const [comEditCorpo, setComEditCorpo] = useState("");
+  const [comSaving, setComSaving] = useState(false);
+  const [comDeleting, setComDeleting] = useState<string | null>(null);
   const [comPreview, setComPreview] = useState<{ titulo: string; corpo: string } | null>(null);
   // ── Encomendas module ─────────────────────────────────────────────────────
   const [encList, setEncList] = useState<Encomenda[]>(ENC_DEMO);
@@ -5137,13 +5142,92 @@ export default function App() {
             {(dash?.comunicados || []).length === 0 && <div style={{ textAlign: "center", padding: 24, color: "#334155", fontSize: 12 }}>Nenhum comunicado ainda</div>}
             {(dash?.comunicados || []).map(c => (
               <div key={c.id} className="ph-os-item" style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{c.titulo}</div>
-                <div style={{ fontSize: 11, color: "#64748B", lineHeight: 1.5, marginBottom: 6 }}>
-                  {c.corpo?.substring(0, 120)}{(c.corpo?.length ?? 0) > 120 ? "..." : ""}
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: "#E2E8F0", lineHeight: 1.3 }}>{c.titulo}</div>
+                  {c.gerado_por_ia && <span style={{ fontSize: 9, background: "rgba(139,92,246,.2)", border: "1px solid rgba(139,92,246,.35)", color: "#A78BFA", borderRadius: 6, padding: "2px 6px", fontWeight: 700, flexShrink: 0, marginTop: 1 }}>IA</span>}
                 </div>
-                <div style={{ fontSize: 10, color: "#334155" }}>{fmtDate(c.created_at)}</div>
+                <div style={{ fontSize: 11, color: "#94A3B8", lineHeight: 1.55, marginBottom: 8 }}>
+                  {c.corpo?.substring(0, 140)}{(c.corpo?.length ?? 0) > 140 ? "..." : ""}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ fontSize: 10, color: "#475569" }}>{fmtDate(c.created_at)}</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => { setComEditando(c); setComEditTitulo(c.titulo); setComEditCorpo(c.corpo || ""); }}
+                      style={{ padding: "4px 10px", borderRadius: 8, background: "rgba(99,102,241,.12)", border: "1px solid rgba(99,102,241,.3)", color: "#A5B4FC", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
+                      ✏️ Editar
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("Excluir este comunicado permanentemente?")) return;
+                        setComDeleting(c.id);
+                        try {
+                          const r = await fetch(`/api/comunicados/${c.id}`, { method: "DELETE" });
+                          if (r.ok) {
+                            showToast("Comunicado excluído", "success");
+                            loadDashboard();
+                          } else { showToast("Erro ao excluir", "error"); }
+                        } catch { showToast("Erro ao excluir", "error"); }
+                        setComDeleting(null);
+                      }}
+                      disabled={comDeleting === c.id}
+                      style={{ padding: "4px 10px", borderRadius: 8, background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.3)", color: "#F87171", fontSize: 10, fontWeight: 700, cursor: comDeleting === c.id ? "not-allowed" : "pointer", opacity: comDeleting === c.id ? .6 : 1 }}>
+                      {comDeleting === c.id ? "..." : "🗑 Excluir"}
+                    </button>
+                  </div>
+                </div>
               </div>
             ))}
+
+            {/* Modal edição de comunicado */}
+            {comEditando && (
+              <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(0,0,0,.75)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+                onClick={e => { if (e.target === e.currentTarget) setComEditando(null); }}>
+                <div style={{ width: "100%", maxWidth: 480, background: "#1E1B2E", borderRadius: "20px 20px 0 0", padding: "20px 18px 32px", maxHeight: "85vh", overflowY: "auto" }}>
+                  <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+                    <div style={{ flex: 1, fontSize: 15, fontWeight: 800, color: "#E9D5FF" }}>✏️ Editar Comunicado</div>
+                    <button onClick={() => setComEditando(null)} style={{ background: "none", border: "none", color: "#64748B", fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#94A3B8", marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: ".05em" }}>Título</label>
+                    <input value={comEditTitulo} onChange={e => setComEditTitulo(e.target.value)}
+                      style={{ width: "100%", padding: "10px 12px", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, color: "#E2E8F0", fontSize: 13, fontFamily: "Inter, sans-serif", boxSizing: "border-box" as const }} />
+                  </div>
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#94A3B8", marginBottom: 6, textTransform: "uppercase" as const, letterSpacing: ".05em" }}>Conteúdo</label>
+                    <textarea value={comEditCorpo} onChange={e => setComEditCorpo(e.target.value)} rows={7}
+                      style={{ width: "100%", padding: "10px 12px", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, color: "#E2E8F0", fontSize: 13, fontFamily: "Inter, sans-serif", resize: "vertical" as const, boxSizing: "border-box" as const }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={() => setComEditando(null)}
+                      style={{ flex: 1, padding: "11px", borderRadius: 10, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)", color: "#94A3B8", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                      Cancelar
+                    </button>
+                    <button
+                      disabled={comSaving || !comEditTitulo.trim() || !comEditCorpo.trim()}
+                      onClick={async () => {
+                        setComSaving(true);
+                        try {
+                          const r = await fetch(`/api/comunicados/${comEditando.id}`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ titulo: comEditTitulo, corpo: comEditCorpo }),
+                          });
+                          if (r.ok) {
+                            showToast("Comunicado salvo!", "success");
+                            setComEditando(null);
+                            loadDashboard();
+                          } else { showToast("Erro ao salvar", "error"); }
+                        } catch { showToast("Erro ao salvar", "error"); }
+                        setComSaving(false);
+                      }}
+                      style={{ flex: 2, padding: "11px", borderRadius: 10, background: "linear-gradient(135deg,#6366F1,#8B5CF6)", border: "none", color: "#fff", fontSize: 13, fontWeight: 800, cursor: comSaving ? "not-allowed" : "pointer", opacity: comSaving ? .7 : 1 }}>
+                      {comSaving ? "Salvando..." : "✅ Salvar"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

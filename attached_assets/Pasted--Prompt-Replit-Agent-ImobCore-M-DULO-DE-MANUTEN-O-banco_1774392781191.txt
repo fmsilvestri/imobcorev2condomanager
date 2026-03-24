@@ -1,0 +1,688 @@
+# Prompt — Replit Agent · ImobCore
+# MÓDULO DE MANUTENÇÃO: banco + backend + integração Di
+# A tela (imagem) já existe no frontend. Este prompt cria toda a camada de dados
+# e conecta a Di para análise, alertas automáticos e sugestões.
+# Cole no chat do Replit AI
+
+---
+
+## PASSO 1 — SQL Supabase (executar no SQL Editor)
+
+```sql
+-- ── Equipamentos e estruturas do condomínio ───────────────────────────────────
+CREATE TABLE IF NOT EXISTS equipamentos (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id     UUID REFERENCES condominios(id) ON DELETE CASCADE,
+  nome              TEXT NOT NULL,
+  categoria         TEXT NOT NULL, -- elevador|bomba|gerador|cftv|portao|climatizacao|piscina|estrutura|outro
+  local             TEXT,          -- Bloco A, Subsolo, Cobertura...
+  fabricante        TEXT,
+  modelo            TEXT,
+  numero_serie      TEXT,
+  data_instalacao   DATE,
+  vida_util_anos    INTEGER DEFAULT 10,
+  status            TEXT DEFAULT 'operacional', -- operacional|atencao|critico|inativo|em_manutencao
+  custo_manutencao  NUMERIC DEFAULT 0,          -- custo acumulado
+  proxima_manutencao DATE,
+  intervalo_manutencao_dias INTEGER DEFAULT 90,
+  qr_code           TEXT UNIQUE,                -- identificador único para QR
+  foto_url          TEXT,
+  observacoes       TEXT,
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS eq_condo     ON equipamentos(condominio_id, status);
+CREATE INDEX IF NOT EXISTS eq_prox_manu ON equipamentos(proxima_manutencao, condominio_id);
+CREATE INDEX IF NOT EXISTS eq_qrcode    ON equipamentos(qr_code);
+
+-- ── Histórico de manutenções ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS manutencoes (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id   UUID REFERENCES condominios(id) ON DELETE CASCADE,
+  equipamento_id  UUID REFERENCES equipamentos(id) ON DELETE CASCADE,
+  tipo            TEXT NOT NULL, -- preventiva|corretiva|emergencial|inspecao
+  titulo          TEXT NOT NULL,
+  descricao       TEXT,
+  status          TEXT DEFAULT 'agendada', -- agendada|em_andamento|concluida|cancelada
+  prioridade      TEXT DEFAULT 'normal',   -- urgente|alta|normal|baixa
+  tecnico_nome    TEXT,
+  tecnico_contato TEXT,
+  custo_estimado  NUMERIC,
+  custo_real      NUMERIC,
+  os_vinculada_id UUID REFERENCES ordens_servico(id),  -- link com OS existente
+  agendada_para   TIMESTAMPTZ,
+  concluida_em    TIMESTAMPTZ,
+  proxima_em      TIMESTAMPTZ,             -- Di calcula automaticamente
+  criada_por_di   BOOLEAN DEFAULT false,   -- true = Di criou automaticamente
+  notas_di        TEXT,                    -- observações da Di sobre esta manutenção
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS man_equip  ON manutencoes(equipamento_id, status);
+CREATE INDEX IF NOT EXISTS man_condo  ON manutencoes(condominio_id, status, agendada_para);
+CREATE INDEX IF NOT EXISTS man_agenda ON manutencoes(agendada_para) WHERE status='agendada';
+
+-- ── Plano de manutenção (recorrências configuradas) ───────────────────────────
+CREATE TABLE IF NOT EXISTS plano_manutencao (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id     UUID REFERENCES condominios(id) ON DELETE CASCADE,
+  equipamento_id    UUID REFERENCES equipamentos(id) ON DELETE CASCADE,
+  tipo_servico      TEXT NOT NULL,   -- Troca de óleo, Limpeza filtros...
+  intervalo_dias    INTEGER NOT NULL, -- 30, 90, 180, 365
+  ultimo_realizado  DATE,
+  proximo_previsto  DATE,
+  responsavel       TEXT,
+  custo_estimado    NUMERIC,
+  ativo             BOOLEAN DEFAULT true,
+  created_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ── Alertas de manutenção gerados pela Di ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS alertas_manutencao (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id   UUID REFERENCES condominios(id) ON DELETE CASCADE,
+  equipamento_id  UUID REFERENCES equipamentos(id),
+  manutencao_id   UUID REFERENCES manutencoes(id),
+  tipo            TEXT NOT NULL, -- vencimento|status_critico|custo_alto|preventiva_atraso
+  mensagem        TEXT NOT NULL,
+  severidade      TEXT DEFAULT 'normal', -- urgente|alta|normal
+  resolvido       BOOLEAN DEFAULT false,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ── RLS ───────────────────────────────────────────────────────────────────────
+ALTER TABLE equipamentos       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE manutencoes        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE plano_manutencao   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alertas_manutencao ENABLE ROW LEVEL SECURITY;
+
+-- Políticas básicas (gestor e síndico do mesmo condo)
+CREATE POLICY "eq_gestor" ON equipamentos FOR ALL
+  USING (condominio_id IN (
+    SELECT condominio_id FROM usuarios WHERE id = auth.uid()
+  ));
+
+-- ── View: equipamentos com status calculado ───────────────────────────────────
+CREATE OR REPLACE VIEW v_equipamentos_status AS
+SELECT
+  e.*,
+  (SELECT COUNT(*) FROM manutencoes m
+   WHERE m.equipamento_id = e.id AND m.status IN ('agendada','em_andamento')) AS manutencoes_ativas,
+  (SELECT MAX(m.concluida_em) FROM manutencoes m
+   WHERE m.equipamento_id = e.id AND m.status = 'concluida') AS ultima_manutencao,
+  CASE
+    WHEN e.proxima_manutencao < CURRENT_DATE THEN 'vencida'
+    WHEN e.proxima_manutencao < CURRENT_DATE + 7 THEN 'proxima'
+    ELSE 'ok'
+  END AS status_manutencao
+FROM equipamentos e;
+
+-- ── Função: score de manutenção melhorado (substituir o atual) ────────────────
+-- O scoring.ts atual usa apenas ordens_servico.
+-- Com equipamentos, o score fica muito mais preciso:
+-- SELECT * FROM fn_score_manutencao('condominio_uuid');
+CREATE OR REPLACE FUNCTION fn_score_manutencao(p_condo UUID)
+RETURNS TABLE(score INTEGER, equipamentos_criticos INTEGER, manutencoes_vencidas INTEGER,
+              proximas_7d INTEGER, custo_mes NUMERIC) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    GREATEST(0, 100
+      - (SELECT COUNT(*) FROM equipamentos WHERE condominio_id=p_condo AND status='critico')::int * 20
+      - (SELECT COUNT(*) FROM equipamentos WHERE condominio_id=p_condo AND status='atencao')::int * 8
+      - (SELECT COUNT(*) FROM equipamentos WHERE condominio_id=p_condo AND proxima_manutencao < CURRENT_DATE)::int * 12
+      - (SELECT COUNT(*) FROM manutencoes WHERE condominio_id=p_condo AND status='agendada' AND agendada_para < NOW())::int * 5
+    )::integer AS score,
+    (SELECT COUNT(*) FROM equipamentos WHERE condominio_id=p_condo AND status='critico')::integer,
+    (SELECT COUNT(*) FROM equipamentos WHERE condominio_id=p_condo AND proxima_manutencao < CURRENT_DATE)::integer,
+    (SELECT COUNT(*) FROM equipamentos WHERE condominio_id=p_condo AND proxima_manutencao BETWEEN CURRENT_DATE AND CURRENT_DATE + 7)::integer,
+    (SELECT COALESCE(SUM(custo_real),0) FROM manutencoes WHERE condominio_id=p_condo AND concluida_em >= date_trunc('month', NOW()))::numeric;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ── Seed de exemplo para desenvolvimento ─────────────────────────────────────
+-- Copiar e ajustar o condominio_id conforme o seu banco
+/*
+INSERT INTO equipamentos (condominio_id, nome, categoria, local, fabricante,
+  vida_util_anos, status, proxima_manutencao, intervalo_manutencao_dias, qr_code)
+SELECT
+  id,
+  unnest(ARRAY['Elevador 1','Elevador 2','Bomba d''água principal','Gerador',
+               'Portão garagem','CFTV - DVR Central','Piscina - Filtro']) AS nome,
+  unnest(ARRAY['elevador','elevador','bomba','gerador',
+               'portao','cftv','piscina']) AS categoria,
+  unnest(ARRAY['Bloco A','Bloco B','Subsolo','Subsolo',
+               'Garagem','Sala técnica','Area lazer']) AS local,
+  unnest(ARRAY['Schindler','Otis','WEG','Cummins',
+               'Garen','Intelbras','Jacuzzi']) AS fabricante,
+  unnest(ARRAY[20,20,10,15,8,5,8]::int[]) AS vida_util,
+  unnest(ARRAY['operacional','atencao','operacional','operacional',
+               'operacional','atencao','operacional']) AS status,
+  unnest(ARRAY[
+    CURRENT_DATE + 15, CURRENT_DATE - 5, CURRENT_DATE + 30, CURRENT_DATE + 60,
+    CURRENT_DATE + 45, CURRENT_DATE - 2, CURRENT_DATE + 20
+  ]) AS proxima_manutencao,
+  unnest(ARRAY[90,90,180,365,90,30,30]::int[]) AS intervalo,
+  unnest(ARRAY['EQ-001','EQ-002','EQ-003','EQ-004','EQ-005','EQ-006','EQ-007']) AS qr
+FROM condominios LIMIT 1;
+*/
+```
+
+---
+
+## PASSO 2 — Criar `src/routes/manutencao.ts`
+
+```typescript
+/**
+ * routes/manutencao.ts
+ * Módulo de Manutenção com integração Da Di
+ * Equipamentos, histórico, plano, QR codes, alertas automáticos
+ */
+import { Router, Request, Response } from "express";
+import { requireAuth }           from "../middleware/auth.js";
+import { requireSameCondominio } from "../middleware/rls.js";
+import { getDB }                 from "../db.js";
+import { gerarSnapshot }         from "../services/snapshot.js";
+import { criarOS }               from "../action-engine/os.js";
+import Anthropic from "@anthropic-ai/sdk";
+import { CONFIG } from "../config.js";
+
+const r = Router();
+r.use(requireAuth(["gestor","sindico","zelador","master"]));
+r.use(requireSameCondominio);
+
+let _cl: Anthropic | null = null;
+const cl = () => _cl ??= new Anthropic({ apiKey: CONFIG.anthropic.apiKey });
+
+// ── EQUIPAMENTOS ─────────────────────────────────────────────────────────────
+
+// Listar todos
+r.get("/equipamentos", async (req: Request, res: Response) => {
+  const condoId  = req.user!.condominio_id;
+  const { status, categoria } = req.query;
+  try {
+    let q = getDB().from("equipamentos")
+      .select("*")
+      .eq("condominio_id", condoId)
+      .order("proxima_manutencao", { ascending: true, nullsFirst: false });
+    if (status)    q = q.eq("status", status as string);
+    if (categoria) q = q.eq("categoria", categoria as string);
+    const { data } = await q;
+    res.json(data ?? []);
+  } catch { res.json([]); }
+});
+
+// Criar equipamento (gestor/master)
+r.post("/equipamentos", async (req: Request, res: Response) => {
+  if (!["gestor","master"].includes(req.user!.role))
+    return res.status(403).json({ error: "Apenas gestor pode criar equipamentos" });
+  const condoId = req.user!.condominio_id;
+  const { nome, categoria, local, fabricante, modelo, numero_serie,
+          data_instalacao, vida_util_anos, intervalo_manutencao_dias,
+          proxima_manutencao, custo_manutencao, observacoes } = req.body;
+  if (!nome || !categoria) return res.status(400).json({ error: "nome e categoria obrigatórios" });
+
+  // Gera QR code único
+  const qr_code = `EQ-${condoId.slice(0,8).toUpperCase()}-${Date.now()}`;
+
+  try {
+    const { data, error } = await getDB().from("equipamentos").insert([{
+      condominio_id: condoId, nome, categoria, local, fabricante, modelo,
+      numero_serie, data_instalacao, vida_util_anos: vida_util_anos ?? 10,
+      intervalo_manutencao_dias: intervalo_manutencao_dias ?? 90,
+      proxima_manutencao, custo_manutencao: custo_manutencao ?? 0,
+      observacoes, qr_code, status: "operacional",
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }]).select().single();
+    res.json({ ok: !error, data, qr_code });
+  } catch (e) { res.json({ ok: false, error: (e as Error).message }); }
+});
+
+// Buscar por QR code (zelador escaneia)
+r.get("/equipamentos/qr/:qrCode", async (req: Request, res: Response) => {
+  const condoId = req.user!.condominio_id;
+  try {
+    const { data } = await getDB().from("equipamentos")
+      .select("*").eq("qr_code", req.params.qrCode)
+      .eq("condominio_id", condoId).single();
+    if (!data) return res.status(404).json({ error: "Equipamento não encontrado" });
+    // Busca histórico de manutenções
+    const { data: hist } = await getDB().from("manutencoes")
+      .select("*").eq("equipamento_id", data.id)
+      .order("created_at", { ascending: false }).limit(5);
+    res.json({ equipamento: data, historico: hist ?? [] });
+  } catch { res.status(404).json({ error: "QR code inválido" }); }
+});
+
+// Atualizar status
+r.patch("/equipamentos/:id/status", async (req: Request, res: Response) => {
+  const { status, observacoes } = req.body;
+  try {
+    const { data } = await getDB().from("equipamentos")
+      .update({ status, observacoes, updated_at: new Date().toISOString() })
+      .eq("id", req.params.id).select().single();
+    // Se status virou critico → Di cria OS automaticamente
+    if (status === "critico") {
+      await criarOS(req.user!.condominio_id, {
+        titulo:     `Equipamento em estado crítico: ${(data as any)?.nome}`,
+        prioridade: "urgente",
+        area:       (data as any)?.local ?? "Geral",
+        sla_horas:  4,
+      });
+    }
+    res.json({ ok: true, data });
+  } catch (e) { res.json({ ok: false, error: (e as Error).message }); }
+});
+
+// ── MANUTENÇÕES ───────────────────────────────────────────────────────────────
+
+// Listar manutenções do condo
+r.get("/historico", async (req: Request, res: Response) => {
+  const condoId = req.user!.condominio_id;
+  const { equipamento_id, status, tipo } = req.query;
+  try {
+    let q = getDB().from("manutencoes")
+      .select("*, equipamentos(nome,categoria,local)")
+      .eq("condominio_id", condoId)
+      .order("agendada_para", { ascending: false }).limit(50);
+    if (equipamento_id) q = q.eq("equipamento_id", equipamento_id as string);
+    if (status)         q = q.eq("status", status as string);
+    if (tipo)           q = q.eq("tipo", tipo as string);
+    const { data } = await q;
+    res.json(data ?? []);
+  } catch { res.json([]); }
+});
+
+// Registrar manutenção
+r.post("/historico", async (req: Request, res: Response) => {
+  const condoId = req.user!.condominio_id;
+  const { equipamento_id, tipo, titulo, descricao, status, prioridade,
+          tecnico_nome, tecnico_contato, custo_estimado, agendada_para } = req.body;
+  if (!equipamento_id || !titulo)
+    return res.status(400).json({ error: "equipamento_id e titulo obrigatórios" });
+  try {
+    const { data, error } = await getDB().from("manutencoes").insert([{
+      condominio_id: condoId, equipamento_id, tipo: tipo ?? "preventiva",
+      titulo, descricao, status: status ?? "agendada",
+      prioridade: prioridade ?? "normal",
+      tecnico_nome, tecnico_contato,
+      custo_estimado, agendada_para,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }]).select().single();
+    res.json({ ok: !error, data });
+  } catch (e) { res.json({ ok: false, error: (e as Error).message }); }
+});
+
+// Concluir manutenção
+r.patch("/historico/:id/concluir", async (req: Request, res: Response) => {
+  const { custo_real, notas, proxima_em } = req.body;
+  try {
+    const { data } = await getDB().from("manutencoes").update({
+      status: "concluida",
+      custo_real, notas_di: notas,
+      concluida_em: new Date().toISOString(),
+      proxima_em,
+      updated_at: new Date().toISOString(),
+    }).eq("id", req.params.id).select().single();
+
+    // Atualizar proxima_manutencao no equipamento
+    if ((data as any)?.equipamento_id && proxima_em) {
+      await getDB().from("equipamentos").update({
+        proxima_manutencao: proxima_em,
+        updated_at: new Date().toISOString(),
+      }).eq("id", (data as any).equipamento_id);
+    }
+    res.json({ ok: true, data });
+  } catch (e) { res.json({ ok: false, error: (e as Error).message }); }
+});
+
+// ── PLANO DE MANUTENÇÃO ───────────────────────────────────────────────────────
+
+r.get("/plano", async (req: Request, res: Response) => {
+  const condoId = req.user!.condominio_id;
+  try {
+    const { data } = await getDB().from("plano_manutencao")
+      .select("*, equipamentos(nome,categoria,local,status)")
+      .eq("condominio_id", condoId).eq("ativo", true)
+      .order("proximo_previsto", { ascending: true });
+    res.json(data ?? []);
+  } catch { res.json([]); }
+});
+
+// ── DASHBOARD DA Di ───────────────────────────────────────────────────────────
+
+r.get("/dashboard", async (req: Request, res: Response) => {
+  const condoId = req.user!.condominio_id;
+  try {
+    const [equipamentos, manutencoes, plano] = await Promise.allSettled([
+      getDB().from("equipamentos").select("id,nome,categoria,status,proxima_manutencao,custo_manutencao")
+        .eq("condominio_id", condoId),
+      getDB().from("manutencoes").select("tipo,status,custo_real,concluida_em,criada_por_di")
+        .eq("condominio_id", condoId)
+        .gte("created_at", new Date(Date.now()-30*86400000).toISOString()),
+      getDB().from("plano_manutencao").select("*")
+        .eq("condominio_id", condoId).eq("ativo", true)
+        .lt("proximo_previsto", new Date(Date.now()+7*86400000).toISOString().split("T")[0]),
+    ]);
+
+    const eq  = equipamentos.status==="fulfilled" ? equipamentos.value.data??[] : [];
+    const man = manutencoes.status==="fulfilled"  ? manutencoes.value.data??[]  : [];
+    const pl  = plano.status==="fulfilled"         ? plano.value.data??[]        : [];
+
+    const stats = {
+      total_equipamentos:  eq.length,
+      operacionais:        eq.filter((e:any)=>e.status==="operacional").length,
+      atencao:             eq.filter((e:any)=>e.status==="atencao").length,
+      criticos:            eq.filter((e:any)=>e.status==="critico").length,
+      inativos:            eq.filter((e:any)=>e.status==="inativo").length,
+      manutencoes_vencidas:eq.filter((e:any)=>e.proxima_manutencao && new Date(e.proxima_manutencao) < new Date()).length,
+      proximas_7d:         eq.filter((e:any)=>{
+        if(!e.proxima_manutencao) return false;
+        const d = new Date(e.proxima_manutencao);
+        return d >= new Date() && d <= new Date(Date.now()+7*86400000);
+      }).length,
+      custo_mes:           man.reduce((s:number,m:any)=>s+(m.custo_real??0),0),
+      plano_urgente:       pl.length,
+      score: Math.max(0, 100
+        - eq.filter((e:any)=>e.status==="critico").length * 20
+        - eq.filter((e:any)=>e.status==="atencao").length * 8
+        - eq.filter((e:any)=>e.proxima_manutencao && new Date(e.proxima_manutencao)<new Date()).length * 12
+      ),
+    };
+    res.json({ stats, equipamentos: eq, plano_urgente: pl });
+  } catch { res.json({ stats: { total_equipamentos:0, operacionais:0, atencao:0, criticos:0, score:100 }, equipamentos:[], plano_urgente:[] }); }
+});
+
+// ── Di ANALISA MANUTENÇÃO ─────────────────────────────────────────────────────
+// Endpoint principal de integração Di ↔ módulo manutenção
+
+r.post("/di/analisar", async (req: Request, res: Response) => {
+  const condoId = req.user!.condominio_id;
+  const { contexto } = req.body ?? {};  // "dashboard"|"equipamento"|"plano"|"qrcode"
+
+  try {
+    // Coleta dados completos
+    const [eqRes, manRes] = await Promise.allSettled([
+      getDB().from("equipamentos")
+        .select("nome,categoria,local,status,proxima_manutencao,custo_manutencao,vida_util_anos,data_instalacao")
+        .eq("condominio_id", condoId),
+      getDB().from("manutencoes")
+        .select("tipo,status,titulo,custo_real,concluida_em,criada_por_di")
+        .eq("condominio_id", condoId)
+        .order("created_at",{ascending:false}).limit(10),
+    ]);
+
+    const equipamentos = eqRes.status==="fulfilled" ? eqRes.value.data??[] : DEMO_EQUIPAMENTOS;
+    const manutencoes  = manRes.status==="fulfilled" ? manRes.value.data??[] : [];
+
+    const criticos  = equipamentos.filter((e:any)=>e.status==="critico");
+    const atencao   = equipamentos.filter((e:any)=>e.status==="atencao");
+    const vencidas  = equipamentos.filter((e:any)=>e.proxima_manutencao && new Date(e.proxima_manutencao)<new Date());
+    const proximas  = equipamentos.filter((e:any)=>{
+      if(!e.proxima_manutencao) return false;
+      const d=new Date(e.proxima_manutencao);
+      return d>=new Date() && d<=new Date(Date.now()+7*86400000);
+    });
+    const custoMes  = manutencoes.reduce((s:number,m:any)=>s+(m.custo_real??0),0);
+
+    const systemPrompt = `Você é Di, Síndica Virtual especialista em gestão condominial.
+Analise o módulo de MANUTENÇÃO do condomínio.
+NUNCA sugira gastos sem aprovação do gestor acima do limite configurado.
+Responda em português, de forma direta e objetiva.
+Máximo 3 parágrafos + lista de ações.`;
+
+    const userPrompt = `MÓDULO DE MANUTENÇÃO — ANÁLISE COMPLETA
+
+Total de equipamentos: ${equipamentos.length}
+• Operacionais: ${equipamentos.filter((e:any)=>e.status==="operacional").length}
+• Em atenção: ${atencao.length} ${atencao.length>0?'('+atencao.map((e:any)=>e.nome).join(', ')+')'  :''}
+• Críticos: ${criticos.length} ${criticos.length>0?'('+criticos.map((e:any)=>e.nome).join(', ')+')':''}
+
+Manutenções:
+• Preventivas vencidas: ${vencidas.length} ${vencidas.map((e:any)=>e.nome).join(', ')}
+• Próximas 7 dias: ${proximas.length} ${proximas.map((e:any)=>e.nome+' ('+e.proxima_manutencao+')').join(', ')}
+• Custo acumulado este mês: R$ ${custoMes.toLocaleString('pt-BR')}
+
+Últimas 5 manutenções: ${JSON.stringify(manutencoes.slice(0,5))}
+
+Contexto solicitado: ${contexto ?? "dashboard_geral"}
+
+Forneça:
+1. Status geral em 1 parágrafo
+2. Riscos identificados
+3. Exatamente 4 ações priorizadas (formato: [PRIORIDADE] Ação — justificativa curta)`;
+
+    const msg = await cl().messages.create({
+      model: CONFIG.anthropic.model, max_tokens: 600,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const analise = (msg.content.find(b=>b.type==="text") as Anthropic.TextBlock)?.text ?? "";
+
+    // Di cria alertas automáticos para críticos e vencidas
+    const alertasCriados: string[] = [];
+    if (criticos.length > 0 || vencidas.length > 0) {
+      for (const eq of [...criticos, ...vencidas.slice(0,2)]) {
+        await getDB().from("alertas_manutencao").insert({
+          condominio_id: condoId,
+          tipo:       criticos.includes(eq) ? "status_critico" : "vencimento",
+          mensagem:   criticos.includes(eq)
+            ? `Equipamento crítico: ${(eq as any).nome} em ${(eq as any).local}`
+            : `Manutenção vencida: ${(eq as any).nome} (prevista ${(eq as any).proxima_manutencao})`,
+          severidade: criticos.includes(eq) ? "urgente" : "alta",
+        }).then(()=>alertasCriados.push((eq as any).nome)).catch(()=>{});
+      }
+    }
+
+    res.json({
+      analise,
+      resumo: {
+        total:     equipamentos.length,
+        criticos:  criticos.length,
+        atencao:   atencao.length,
+        vencidas:  vencidas.length,
+        proximas:  proximas.length,
+        custo_mes: custoMes,
+      },
+      alertas_criados: alertasCriados,
+      tokens: msg.usage.input_tokens + msg.usage.output_tokens,
+    });
+  } catch (err) {
+    res.json({
+      analise: `Análise offline: verifique equipamentos críticos e manutenções vencidas. Acione o técnico responsável para os itens urgentes.`,
+      resumo: { total: 0, criticos: 0, atencao: 0, vencidas: 0, proximas: 0, custo_mes: 0 },
+      offline: true,
+    });
+  }
+});
+
+// ── Di SUGERE PLANO PREVENTIVO ────────────────────────────────────────────────
+// Gera plano automático baseado nos equipamentos cadastrados
+
+r.post("/di/plano-preventivo", async (req: Request, res: Response) => {
+  const condoId = req.user!.condominio_id;
+  try {
+    const { data: equipamentos } = await getDB().from("equipamentos")
+      .select("id,nome,categoria,vida_util_anos,intervalo_manutencao_dias,proxima_manutencao,data_instalacao")
+      .eq("condominio_id", condoId).neq("status","inativo");
+
+    const eq = equipamentos ?? DEMO_EQUIPAMENTOS;
+
+    const msg = await cl().messages.create({
+      model: CONFIG.anthropic.model, max_tokens: 800,
+      system: `Você é Di, Síndica Virtual. Crie um plano de manutenção preventiva realista para um condomínio.
+Responda APENAS em JSON válido, sem markdown.`,
+      messages: [{
+        role: "user",
+        content: `Equipamentos cadastrados: ${JSON.stringify(eq)}
+Hoje: ${new Date().toISOString().split("T")[0]}
+
+Gere um plano preventivo em JSON:
+{
+  "plano": [
+    {
+      "equipamento_id": "uuid",
+      "equipamento_nome": "string",
+      "proximos_servicos": [
+        {
+          "tipo_servico": "string",
+          "previsto_para": "YYYY-MM-DD",
+          "intervalo_dias": number,
+          "custo_estimado": number,
+          "prioridade": "urgente|alta|normal"
+        }
+      ]
+    }
+  ],
+  "resumo": "string — resumo do plano em 1 frase",
+  "custo_estimado_trimestre": number
+}`
+      }],
+    });
+
+    const txt = (msg.content.find(b=>b.type==="text") as Anthropic.TextBlock)?.text ?? "{}";
+    try {
+      const plano = JSON.parse(txt.replace(/```json|```/g,"").trim());
+      res.json({ ok: true, plano, tokens: msg.usage.input_tokens + msg.usage.output_tokens });
+    } catch {
+      res.json({ ok: false, error: "Formato de resposta inválido", raw: txt });
+    }
+  } catch { res.json({ ok: false, error: "Serviço indisponível", offline: true }); }
+});
+
+// ── CRON: Di verifica vencimentos diariamente ─────────────────────────────────
+// Esta função é chamada pelo cron de services/crons.ts
+
+export async function verificarManutencaoAutomatica(condoId: string) {
+  try {
+    const { data: vencidos } = await getDB().from("equipamentos")
+      .select("id,nome,categoria,local,proxima_manutencao,status")
+      .eq("condominio_id", condoId)
+      .lt("proxima_manutencao", new Date().toISOString().split("T")[0])
+      .neq("status","inativo");
+
+    if (!vencidos?.length) return;
+
+    for (const eq of vencidos) {
+      // Cria OS automática para manutenções vencidas há mais de 3 dias
+      const diasAtraso = Math.floor(
+        (Date.now() - new Date((eq as any).proxima_manutencao).getTime()) / 86400000
+      );
+      if (diasAtraso >= 3) {
+        await criarOS(condoId, {
+          titulo:     `Manutenção preventiva vencida: ${(eq as any).nome}`,
+          prioridade: diasAtraso >= 7 ? "urgente" : "alta",
+          area:       (eq as any).local ?? "Geral",
+          sla_horas:  diasAtraso >= 7 ? 24 : 72,
+        });
+
+        // Atualiza status do equipamento
+        await getDB().from("equipamentos").update({
+          status: diasAtraso >= 7 ? "atencao" : "atencao",
+          updated_at: new Date().toISOString(),
+        }).eq("id", (eq as any).id);
+      }
+    }
+  } catch {}
+}
+
+// Demo data para fallback
+const DEMO_EQUIPAMENTOS = [
+  {id:"eq-1",nome:"Elevador 1",categoria:"elevador",local:"Bloco A",status:"operacional",proxima_manutencao:new Date(Date.now()+15*86400000).toISOString().split("T")[0],custo_manutencao:2400,vida_util_anos:20},
+  {id:"eq-2",nome:"Elevador 2",categoria:"elevador",local:"Bloco B",status:"atencao",proxima_manutencao:new Date(Date.now()-5*86400000).toISOString().split("T")[0],custo_manutencao:3200,vida_util_anos:20},
+  {id:"eq-3",nome:"Bomba d'água",categoria:"bomba",local:"Subsolo",status:"operacional",proxima_manutencao:new Date(Date.now()+30*86400000).toISOString().split("T")[0],custo_manutencao:800,vida_util_anos:10},
+  {id:"eq-4",nome:"CFTV - DVR",categoria:"cftv",local:"Sala técnica",status:"critico",proxima_manutencao:new Date(Date.now()-2*86400000).toISOString().split("T")[0],custo_manutencao:600,vida_util_anos:5},
+];
+
+export default r;
+```
+
+---
+
+## PASSO 3 — Registrar rota em `src/index.ts`
+
+```typescript
+import manutencaoRouter from "./routes/manutencao.js";
+app.use("/api/manutencao", manutencaoRouter);
+```
+
+---
+
+## PASSO 4 — Integrar cron em `src/services/crons.ts`
+
+```typescript
+import { verificarManutencaoAutomatica } from "../routes/manutencao.js";
+
+// Adicionar no cron de 8h (verificação diária)
+cron.schedule("0 8 * * *", async () => {
+  const condos = await getCondosAtivos();
+  for (const condoId of condos) {
+    await verificarManutencaoAutomatica(condoId);
+  }
+});
+```
+
+---
+
+## PASSO 5 — Integrar no scoring.ts (melhorar pilar manutenção)
+
+```typescript
+// Substituir a função scoreManutencao em src/services/scoring.ts:
+async function scoreManutencaoComEquipamentos(condoId: string, snap: Snapshot): Promise<PilarScore> {
+  let score = 100;
+  // Score base por OS (existente)
+  const os = snap.os_abertas ?? [];
+  score -= os.filter(o=>o.prioridade==="urgente").length * 10;
+  score -= os.filter(o=>{
+    const h=(Date.now()-new Date(o.created_at).getTime())/3600000;
+    return h>(o.sla_horas??72);
+  }).length * 7;
+
+  // Score melhorado com equipamentos
+  try {
+    const { data: eq } = await supabase.from("equipamentos")
+      .select("status,proxima_manutencao")
+      .eq("condominio_id", condoId).neq("status","inativo");
+    const equipamentos = eq ?? [];
+    score -= equipamentos.filter(e=>e.status==="critico").length * 20;
+    score -= equipamentos.filter(e=>e.status==="atencao").length * 8;
+    score -= equipamentos.filter(e=>e.proxima_manutencao&&new Date(e.proxima_manutencao)<new Date()).length * 12;
+  } catch {}
+
+  return { pilar:"manutencao", score:Math.max(0,score), detalhes:{} };
+}
+```
+
+---
+
+## VERIFICAÇÃO
+
+```bash
+npm run dev
+
+# 1. Dashboard da Di
+curl http://localhost:3000/api/manutencao/dashboard -b "token=gestor_token"
+# Esperado: { stats: { total:7, operacionais:5, atencao:1, criticos:1, score:72 }, ... }
+
+# 2. Di analisa módulo de manutenção
+curl -X POST http://localhost:3000/api/manutencao/di/analisar \
+  -b "token=gestor_token" -H "Content-Type: application/json" \
+  -d '{"contexto":"dashboard_geral"}'
+# Esperado: { analise: "Há 1 equipamento crítico (CFTV)...", resumo: {...} }
+
+# 3. Di gera plano preventivo
+curl -X POST http://localhost:3000/api/manutencao/di/plano-preventivo \
+  -b "token=gestor_token"
+# Esperado: { ok:true, plano:{ plano:[...], custo_estimado_trimestre:8400 } }
+
+# 4. QR code do zelador
+curl http://localhost:3000/api/manutencao/equipamentos/qr/EQ-001 -b "token=zelador_token"
+# Esperado: { equipamento:{...}, historico:[...] }
+
+# 5. Cron automático (testar manualmente)
+curl -X POST http://localhost:3000/api/manutencao/di/analisar \
+  -b "token=gestor_token" -d '{"contexto":"verificacao_automatica"}'
+```
