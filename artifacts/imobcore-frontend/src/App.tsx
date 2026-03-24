@@ -12513,7 +12513,7 @@ Content-Type: application/json
                 const TOM_OPTIONS = [
                   { val:"direto_empatico", label:"Direto e Empático", desc:"Natural e próximo, sem ser informal" },
                   { val:"formal",          label:"Formal",            desc:"Profissional e institucional" },
-                  { val:"suave",           label:"Suave",             desc:"Gentil, acolhedor e paciente" },
+                  { val:"amigavel",        label:"Amigável",          desc:"Acolhedor, próximo e descontraído" },
                 ];
                 return (
                   <div>

@@ -62,6 +62,23 @@ router.post("/modulos/:id/di-analise", async (req: Request, res: Response) => {
 
     const diCtx = await carregarContextoDi(condoId, snapshot, perfil, nomeUsuario, unidadeId);
 
+    // Verificar se Di está ativa para este condomínio
+    if (!diCtx.diAtiva) {
+      return res.json({
+        ok: true,
+        modulo: id,
+        analise: {
+          status: "info",
+          emoji: "⏸️",
+          pontos: [`${diCtx.nomeDi} está desativada para este condomínio pelo administrador.`],
+          recomendacao: "Ative a Di nas configurações do Master para habilitar a análise.",
+        },
+        dados,
+        nome_di: diCtx.nomeDi,
+        di_ativa: false,
+      });
+    }
+
     const analisePrompt = `Você está analisando o módulo "${modulo.nome}" (${modulo.icone}) do condomínio.
 
 DADOS ATUAIS DO MÓDULO:
@@ -90,7 +107,7 @@ Responda em JSON: { "status": "ok|atencao|critico", "emoji": "🟢|🟡|🔴", "
       } catch { /* usa fallback */ }
     }
 
-    res.json({ ok: true, modulo: id, analise, dados });
+    res.json({ ok: true, modulo: id, analise, dados, nome_di: diCtx.nomeDi, di_ativa: true });
   } catch (err) {
     console.error(`[modulos/${req.params.id}/di-analise]`, err);
     res.status(500).json({ ok: false, error: String(err) });
@@ -133,6 +150,18 @@ router.post("/modulos/:id/di-chat", async (req: Request, res: Response) => {
 
     const diCtx = await carregarContextoDi(condoId, snapshot, perfil, nomeUsuario, unidadeId);
 
+    // Verificar se Di está ativa para este condomínio
+    if (!diCtx.diAtiva) {
+      return res.json({
+        ok: true,
+        reply: `${diCtx.nomeDi} está desativada para este condomínio pelo administrador. Ative-a nas configurações do Master.`,
+        nome_di: diCtx.nomeDi,
+        di_ativa: false,
+        tokens: { input: 0, output: 0 },
+        modulo: id,
+      });
+    }
+
     const moduloContexto = `\n\nVocê está operando no módulo "${modulo.nome}" (${modulo.icone}).
 DADOS ATUAIS: ${JSON.stringify(dados).slice(0, 800)}`;
 
@@ -174,7 +203,7 @@ DADOS ATUAIS: ${JSON.stringify(dados).slice(0, 800)}`;
       });
     } catch { /* silencia */ }
 
-    res.json({ ok: true, reply, tokens, modulo: id });
+    res.json({ ok: true, reply, nome_di: diCtx.nomeDi, di_ativa: true, tokens, modulo: id });
   } catch (err) {
     console.error(`[modulos/${req.params.id}/di-chat]`, err);
     res.status(500).json({ ok: false, error: String(err) });

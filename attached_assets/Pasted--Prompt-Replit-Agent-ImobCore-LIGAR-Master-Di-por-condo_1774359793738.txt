@@ -1,0 +1,306 @@
+# Prompt — Replit Agent · ImobCore
+# LIGAR Master → Di por condomínio: run.ts lê di_configuracoes + identidade
+# A UI (imagem) já salva os dados corretamente via PUT /api/master/di/settings/:condoId
+# O problema: run.ts ignora esses valores e usa constantes hardcoded
+# Esta correção fecha o ciclo: Master configura → banco → Di usa
+#
+# Cole no chat do Replit AI
+
+---
+
+## O QUE A UI DA IMAGEM JÁ SALVA (via PUT /api/master/di/settings/:condoId)
+
+Campos em di_configuracoes:
+  - nome_di          → "Dircelene" (ou qualquer nome)
+  - tom_comunicacao  → "direto_empatico" | "formal" | "amigavel"
+  - limite_financeiro → 1000 (ou qualquer valor)
+  - di_ativa         → true | false
+  - idioma           → "pt_BR"
+  - modulos_ativos   → ["os","financeiro","iot","comunicados",...]
+
+Bloco de identidade (via PUT /api/master/di/config/condo/:condoId/1_identidade):
+  - conteudo → "Receptiva e pronta para tirar dúvidas" (texto livre)
+
+## O QUE ESTÁ FALTANDO
+
+run.ts usa hardcoded:
+  - "{{tom_comunicacao}}" → "direto, empático, sem jargão técnico" (FIXO)
+  - limite → options.limite ?? 500 (ignora banco)
+  - nome Di → nunca lê nome_di do banco
+  - di_ativa → nunca verifica se Di está desativada para o condo
+  - modulos_ativos → nunca passa para o system prompt
+
+## CORREÇÃO — apenas `src/di-engine/run.ts`
+
+### Substituir a função carregarSystemPrompt INTEIRA por:
+
+```typescript
+async function carregarSystemPrompt(
+  condominioId: string,
+  snapshot:     Snapshot,
+  limite:       number
+): Promise<{ prompt: string; config: DiConfig }> {
+
+  // ── 1. Carregar configurações operacionais do condo ─────────────────────
+  const config: DiConfig = {
+    limite_financeiro: limite,
+    nome_di:          "Di",
+    tom_comunicacao:  "direto_empatico",
+    di_ativa:         true,
+    idioma:           "pt_BR",
+    modulos_ativos:   [],
+  };
+
+  try {
+    const { getDB } = await import("../db.js");
+    const { data: cfg } = await getDB()
+      .from("di_configuracoes")
+      .select("limite_financeiro, nome_di, tom_comunicacao, di_ativa, idioma, modulos_ativos")
+      .eq("condominio_id", condominioId)
+      .single();
+
+    if (cfg) {
+      config.limite_financeiro = cfg.limite_financeiro ?? limite;
+      config.nome_di           = cfg.nome_di           ?? "Di";
+      config.tom_comunicacao   = cfg.tom_comunicacao   ?? "direto_empatico";
+      config.di_ativa          = cfg.di_ativa          ?? true;
+      config.idioma            = cfg.idioma             ?? "pt_BR";
+      config.modulos_ativos    = Array.isArray(cfg.modulos_ativos)
+        ? cfg.modulos_ativos
+        : [];
+    }
+  } catch {}
+
+  // ── 2. Carregar blocos do system prompt (global + custom mesclados) ──────
+  let blocos: Array<{ bloco: string; conteudo: string }> = [];
+
+  try {
+    const { getDB } = await import("../db.js");
+    const db = getDB();
+
+    const [globalR, customR] = await Promise.all([
+      db.from("di_system_prompt")
+        .select("bloco, conteudo")
+        .is("condominio_id", null)
+        .order("bloco"),
+      db.from("di_system_prompt")
+        .select("bloco, conteudo")
+        .eq("condominio_id", condominioId)
+        .order("bloco"),
+    ]);
+
+    const globalMap = new Map(
+      (globalR.data ?? []).map((b: any) => [b.bloco, b.conteudo])
+    );
+    const customMap = new Map(
+      (customR.data ?? []).map((b: any) => [b.bloco, b.conteudo])
+    );
+
+    // custom sobrescreve global bloco a bloco
+    blocos = [...globalMap.keys()].map(k => ({
+      bloco:    k,
+      conteudo: customMap.get(k) ?? globalMap.get(k) ?? "",
+    }));
+  } catch {}
+
+  // ── 3. Montar variáveis de substituição ──────────────────────────────────
+  const condo = snapshot.condominio as Record<string, unknown> ?? {};
+  const fin   = snapshot.financeiro?.[0];
+  const osU   = (snapshot.os_abertas ?? [])
+    .filter(o => o.prioridade === "urgente").length;
+  const rv    = snapshot.reservatorios ?? [];
+
+  const TOM_LABEL: Record<string, string> = {
+    direto_empatico: "direto e empático, próximo sem ser informal",
+    formal:          "formal e profissional, linguagem institucional",
+    amigavel:        "suave, acolhedor e paciente",
+    tecnico:         "técnico e objetivo, sem rodeios",
+  };
+
+  const vars: Record<string, string> = {
+    "{{nome_condominio}}":   String(condo.nome ?? "Condomínio"),
+    "{{nome_di}}":           config.nome_di,
+    "{{nome_gestor}}":       "Gestor",
+    "{{nome_sindico}}":      "Síndico",
+    "{{total_unidades}}":    String(condo.total_unidades ?? 0),
+    "{{total_moradores}}":   String(condo.total_moradores ?? 0),
+    "{{timestamp}}":         new Date().toLocaleString("pt-BR"),
+    "{{os_abertas}}":        String((snapshot.os_abertas ?? []).length),
+    "{{os_urgentes}}":       String(osU),
+    "{{saldo}}":             fin ? Number(fin.saldo_atual).toLocaleString("pt-BR") : "N/D",
+    "{{inadimplencia_pct}}": fin ? String(fin.inadimplencia_percentual) : "N/D",
+    "{{score_geral}}":       String((snapshot.scores ?? [])[0]?.score ?? "N/D"),
+    "{{misp_ativos}}":       String((snapshot.alertas_misp ?? []).length),
+    "{{limite_financeiro}}": String(config.limite_financeiro),
+    "{{limite}}":            String(config.limite_financeiro),
+    "{{tom_comunicacao}}":   TOM_LABEL[config.tom_comunicacao] ?? config.tom_comunicacao,
+    "{{modulos_ativos}}":    config.modulos_ativos.join(", ") || "todos",
+    "{{reservatorios}}":     rv.map(r =>
+      `${r.nome}: ${r.ultimo_nivel_pct?.toFixed(0)}%`
+    ).join(", ") || "N/D",
+  };
+
+  const sub = (txt: string): string => {
+    let r = txt;
+    for (const [k, v] of Object.entries(vars)) r = r.replaceAll(k, v);
+    return r;
+  };
+
+  // ── 4. Montar system prompt final ────────────────────────────────────────
+  let promptFinal: string;
+
+  if (blocos.length > 0) {
+    promptFinal = blocos
+      .map(b => sub(b.conteudo))
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+  } else {
+    // Fallback quando banco não tem blocos configurados
+    promptFinal = `Você é ${config.nome_di}, a Síndica Virtual do condomínio ${vars["{{nome_condominio}}"]}.
+Seu papel: monitorar, analisar e recomendar decisões operacionais.
+Tom: ${vars["{{tom_comunicacao}}"]}.
+Nunca age em finanças > R$${config.limite_financeiro} sem aprovação.
+Prioridade: segurança > financeiro > operação > convívio.
+
+ESTADO ATUAL: OSs=${vars["{{os_abertas}}"]} urgentes=${vars["{{os_urgentes}}"]} | Saldo=R$${vars["{{saldo}}"]} | Inadimp=${vars["{{inadimplencia_pct}}"]}%
+Reservatórios: ${vars["{{reservatorios}}"]}
+
+Responda APENAS com JSON válido:
+{"tipo":"autonomo|recomendacao|briefing|alerta","prioridade":"urgente|alta|normal|info","resumo":"max 200 chars","acoes":[{"modulo":"string","acao":"string","autonomo":bool,"payload":{},"justificativa":"string"}],"mensagem_gestor":"string","score_impacto":1-10,"requer_aprovacao":bool,"salvar_historico":true}`;
+  }
+
+  return { prompt: promptFinal, config };
+}
+
+// Interface de configuração
+interface DiConfig {
+  limite_financeiro: number;
+  nome_di:          string;
+  tom_comunicacao:  string;
+  di_ativa:         boolean;
+  idioma:           string;
+  modulos_ativos:   string[];
+}
+```
+
+---
+
+### Atualizar a função runDI para usar o novo retorno e verificar di_ativa:
+
+Localizar a chamada `carregarSystemPrompt` em `runDI` e alterar:
+
+**Antes:**
+```typescript
+const limite     = options.limite ?? 500;
+// ...
+const systemPrompt = await carregarSystemPrompt(condominioId, snapshot, limite);
+```
+
+**Depois:**
+```typescript
+const limite         = options.limite ?? 500;
+// ...
+const { prompt: systemPrompt, config } = await carregarSystemPrompt(
+  condominioId, snapshot, limite
+);
+
+// Respeitar di_ativa: se desativada pelo Master, apenas briefing rápido
+if (!config.di_ativa && options.trigger !== "manual") {
+  log.info(`Di desativada para ${condominioId} — ciclo ignorado`);
+  return {
+    snapshot,
+    decisao: {
+      tipo: "briefing", prioridade: "info",
+      resumo: "Di desativada para este condomínio",
+      acoes: [], mensagem_gestor: "",
+      score_impacto: 1, requer_aprovacao: false, salvar_historico: false,
+    },
+    acoes_result: [],
+    duracao_ms:   Date.now() - t0,
+    modo_usado:   "desativado",
+  };
+}
+
+// Usar limite do banco (não hardcoded)
+const limiteReal = config.limite_financeiro;
+```
+
+---
+
+### Atualizar também em `runDI` onde passa o limite para o action-engine:
+
+Localizar onde `acoes_result` é montado e garantir que usa `limiteReal`.
+
+---
+
+## CORRIGIR `src/di-engine/context.ts` (se existir) ou gestor/sindico/morador
+
+Em cada `POST /di/chat` das rotas gestor, síndico e morador, após buscar as configs:
+
+```typescript
+// Adicionar ao montarContexto — usar nome_di do banco
+const nomeDi = ctx.nomeDi ?? "Di";  // vem de di_configuracoes.nome_di
+
+// Na resposta final incluir nome_di para o frontend exibir
+res.json({
+  resposta,
+  nome_di: nomeDi,   // frontend usa para exibir "Dircelene" em vez de "Di"
+  tokens: msg.usage.input_tokens + msg.usage.output_tokens,
+});
+```
+
+---
+
+## SQL — garantir colunas na di_configuracoes
+
+Executar no Supabase SQL Editor se necessário:
+
+```sql
+-- Adicionar colunas que a UI salva mas podem não existir ainda
+ALTER TABLE di_configuracoes
+  ADD COLUMN IF NOT EXISTS nome_di           TEXT    DEFAULT 'Di',
+  ADD COLUMN IF NOT EXISTS tom_comunicacao   TEXT    DEFAULT 'direto_empatico',
+  ADD COLUMN IF NOT EXISTS di_ativa          BOOLEAN DEFAULT true,
+  ADD COLUMN IF NOT EXISTS idioma            TEXT    DEFAULT 'pt_BR',
+  ADD COLUMN IF NOT EXISTS modulos_ativos    JSONB   DEFAULT '["os","financeiro","iot","misp","encomendas","portaria","reservas","comunicados","votacoes"]';
+
+-- Verificar se os condos têm registro em di_configuracoes
+-- Se não tiver, criar com defaults
+INSERT INTO di_configuracoes (condominio_id, nome_di, tom_comunicacao, limite_financeiro, di_ativa)
+SELECT id, 'Di', 'direto_empatico', 500, true
+FROM condominios
+WHERE id NOT IN (SELECT condominio_id FROM di_configuracoes WHERE condominio_id IS NOT NULL)
+ON CONFLICT DO NOTHING;
+
+-- Verificar
+SELECT c.nome, dc.nome_di, dc.tom_comunicacao, dc.limite_financeiro, dc.di_ativa, dc.modulos_ativos
+FROM condominios c
+LEFT JOIN di_configuracoes dc ON dc.condominio_id = c.id
+ORDER BY c.nome;
+```
+
+---
+
+## VERIFICAÇÃO
+
+```bash
+npm run dev
+
+# Teste 1: Master configura Copacabana com nome "Dircelene", limite R$1000, tom "suave"
+# PUT /api/master/di/settings/UUID_COPACABANA
+# { "nome_di": "Dircelene", "tom_comunicacao": "amigavel", "limite_financeiro": 1000 }
+
+# Teste 2: Executar ciclo Di
+# POST /api/master/di/ciclo/UUID_COPACABANA
+# Esperado: sistema prompt começa com "Você é Dircelene"
+# Esperado: {{limite_financeiro}} substituído por 1000
+# Esperado: {{tom_comunicacao}} substituído por "suave, acolhedor e paciente"
+
+# Teste 3: Di desativada
+# PUT /api/master/di/settings/UUID_VILLA_SERENA { "di_ativa": false }
+# Ciclo Di → retorna briefing vazio, não chama Claude
+
+# Teste 4: Módulos ativos no contexto
+# Di deve receber no system prompt: "Módulos ativos: os, financeiro, iot, comunicados"
+# Isso informa Di quais análises incluir no briefing
+```

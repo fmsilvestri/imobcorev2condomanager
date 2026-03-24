@@ -325,9 +325,10 @@ ${equipManutProxima.map(e=>`- ${e.nome} | ${e.prox_manutencao} | R$ ${Number(e.c
 ${planosList.slice(0, 8).map(p=>`- [${p.codigo||"—"}] ${p.nome} | Tipo: ${p.tipo} | ${p.periodicidade} | R$ ${Number(p.custo_total).toLocaleString("pt-BR",{minimumFractionDigits:2})} | Próxima: ${p.proxima_execucao||"não definida"} | ${p.equipamentos_itens?.length||0} equips vinculados`).join("\n") || "Nenhum plano cadastrado"}
 ${planosProximos.length > 0 ? `\n⚡ PLANOS PARA EXECUTAR NOS PRÓXIMOS 30 DIAS:\n${planosProximos.map(p=>`- ${p.nome} (${p.tipo}) em ${p.proxima_execucao} | ${p.tempo_estimado_min}min estimados`).join("\n")}` : ""}`;
 
-    // Tenta carregar identidade/personalidade da Di configurada pelo Master
-    let diIdentidade = `Você é Di, a Síndica Virtual Inteligente do ImobCore.\nPersonalidade: profissional, simpática, direta e eficiente. Fale em português brasileiro natural com emojis moderados.\n`;
+    // Carregar identidade/personalidade da Di configurada pelo Master
+    let diIdentidade = `Você é Di, a Síndica Virtual Inteligente do ImobCore.\nPersonalidade: direto e empático, próximo sem ser informal. Fale em português brasileiro natural com emojis moderados.\n`;
     let diNome = "Di";
+    let diAtiva = true;
     try {
       const diCtx = await carregarContextoDi(
         condIdCtx || cond?.id || "",
@@ -344,7 +345,18 @@ ${planosProximos.length > 0 ? `\n⚡ PLANOS PARA EXECUTAR NOS PRÓXIMOS 30 DIAS:
       );
       diIdentidade = diCtx.systemPrompt + "\n\n";
       diNome = diCtx.nomeDi;
+      diAtiva = diCtx.diAtiva;
     } catch { /* usa fallback */ }
+
+    // Verificar se Di está ativa para este condomínio
+    if (!diAtiva) {
+      return res.json({
+        reply: `${diNome} está temporariamente desativada para este condomínio pelo administrador. Por favor, entre em contato com o suporte.`,
+        nome_di: diNome,
+        tokens: { input: 0, output: 0 },
+        di_ativa: false,
+      });
+    }
 
     const systemPrompt = diIdentidade + `Condomínio: ${cond?.nome || "condomínio"}, localizado em ${cond?.cidade || "Florianópolis"}.
 Síndico responsável: ${cond?.sindico_nome || "Ricardo Gestor"}.
@@ -419,7 +431,7 @@ Responda de forma profissional, objetiva e útil. Use emojis moderadamente. Máx
 
     broadcast("sindico_chat", { message, reply, timestamp: new Date().toISOString() });
 
-    res.json({ reply, tokens });
+    res.json({ reply, nome_di: diNome, di_ativa: true, tokens });
   } catch (err) {
     console.error("sindico chat error:", err);
     res.status(500).json({ error: "Erro ao processar mensagem" });
@@ -3365,9 +3377,10 @@ router.post("/di", async (req: Request, res: Response) => {
       const criticos  = cardsBase.filter(c => c.tipo === "critico").length;
       const atencoes  = cardsBase.filter(c => c.tipo === "atencao").length;
 
-      // Tenta carregar nome e tom da Di configurados pelo Master
+      // Carregar nome, tom e status da Di configurados pelo Master
       let diNomeBriefing = "Di";
-      let diSystemBriefing = "Você é Di, a Síndica Virtual do ImobCore. Personalidade: profissional, simpática, direta, português brasileiro natural com emojis moderados.";
+      let diSystemBriefing = "Você é Di, a Síndica Virtual do ImobCore. Personalidade: direta e empática, próxima sem ser informal. Português brasileiro com emojis moderados.";
+      let diAtivaBriefing = true;
       try {
         const diCtxBriefing = await carregarContextoDi(
           condominio_id || cond?.id || "",
@@ -3376,7 +3389,19 @@ router.post("/di", async (req: Request, res: Response) => {
         );
         diNomeBriefing = diCtxBriefing.nomeDi;
         diSystemBriefing = diCtxBriefing.systemPrompt;
+        diAtivaBriefing = diCtxBriefing.diAtiva;
       } catch { /* usa fallback */ }
+
+      // Se Di estiver desativada pelo Master, retornar briefing vazio sem chamar Claude
+      if (!diAtivaBriefing) {
+        return res.json({
+          fala: `${diNomeBriefing} está desativada para este condomínio. Ative-a nas configurações do Master.`,
+          cards: cardsBase,
+          nome_di: diNomeBriefing,
+          di_ativa: false,
+          dados: { nivelMedioAgua, saldo, txInad, osTotal: (osAbertas || []).length, osUrgentes: osUrgentes.length },
+        });
+      }
 
       const completion = await anthropic.messages.create({
         model: "claude-sonnet-4-5",
@@ -3408,6 +3433,8 @@ Sem markdown, sem explicação.`,
     return res.json({
       fala,
       cards,
+      nome_di: diNomeBriefing,
+      di_ativa: true,
       dados: { nivelMedioAgua, saldo, txInad, osTotal: (osAbertas || []).length, osUrgentes: osUrgentes.length },
     });
 
