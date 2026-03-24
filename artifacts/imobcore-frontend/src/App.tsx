@@ -615,7 +615,7 @@ export default function App() {
 
   // ── Admin Global state ─────────────────────────────────────────────────────
   const [adminToken, setAdminToken]     = useState<string | null>(() => sessionStorage.getItem("adminToken"));
-  const [adminSection, setAdminSection] = useState<"dashboard" | "condominios" | "usuarios" | "planos" | "sistema" | "bi">("dashboard");
+  const [adminSection, setAdminSection] = useState<"dashboard" | "condominios" | "usuarios" | "planos" | "sistema" | "bi" | "di">("dashboard");
   type AdminCondo   = { id: string; nome: string; plano: string; status: string; created_at: string; total_unidades?: number; cidade?: string; estado?: string; sindico_nome?: string; sindico_email?: string };
   type AdminUser    = { id: string; nome: string; email: string; perfil: string; unidade?: string; status?: string; condominio_id?: string; telefone?: string };
   type AdminPlan    = { id: string; nome: string; color: string; preco: number; limites: Record<string, number>; features: string[] };
@@ -633,6 +633,98 @@ export default function App() {
 
   const adminFetch = (path: string, opts: RequestInit = {}) =>
     fetch(`/api${path}`, { ...opts, headers: { ...(opts.headers as Record<string,string> || {}), "X-Admin-Token": adminToken || "", "Content-Type": "application/json" } });
+
+  // ── Di Admin state ─────────────────────────────────────────────────────────
+  type DiAdminCondo = { id: string; nome: string; cidade?: string; di_config: null | {
+    nome_di?: string; tom_comunicacao?: string; modulos_ativos?: string[]; limite_financeiro?: number;
+    identidade_persona?: string; system_prompt?: string; regras_de_ouro?: string; di_ativa?: boolean;
+    modo_ciclo?: string; ciclo_minutos?: number; idioma?: string;
+  }};
+  type DiPromptBlock = { id?: string; bloco: string; titulo: string; conteudo: string; fixo: boolean };
+  const [diAdminCondos,   setDiAdminCondos]   = useState<DiAdminCondo[]>([]);
+  const [diAdminBlocks,   setDiAdminBlocks]   = useState<DiPromptBlock[]>([]);
+  const [diAdminSelCondo, setDiAdminSelCondo] = useState<string | null>(null);
+  const [diAdminLoading,  setDiAdminLoading]  = useState(false);
+  const [diAdminSaving,   setDiAdminSaving]   = useState(false);
+  const [diAdminBlockEdit, setDiAdminBlockEdit] = useState<Record<string, string>>({});
+  const [diAdminBlockSaving, setDiAdminBlockSaving] = useState<Record<string, boolean>>({});
+  const [diAdminExpanded, setDiAdminExpanded] = useState<Record<string, boolean>>({});
+  const [diAdminForm, setDiAdminForm] = useState<{
+    nome_di: string; tom_comunicacao: string; limite_financeiro: number; di_ativa: boolean;
+    identidade_persona: string; system_prompt: string; regras_de_ouro: string;
+    modulos_ativos: string[]; modo_ciclo: string; ciclo_minutos: number; idioma: string;
+  }>({ nome_di:"Di", tom_comunicacao:"direto_empatico", limite_financeiro:1000, di_ativa:true,
+       identidade_persona:"", system_prompt:"", regras_de_ouro:"", modulos_ativos:[],
+       modo_ciclo:"sequential", ciclo_minutos:15, idioma:"pt_BR" });
+
+  const loadDiAdmin = async () => {
+    if (!adminToken) return;
+    setDiAdminLoading(true);
+    try {
+      const [cRes, bRes] = await Promise.all([
+        adminFetch("/admin/di/configuracoes"),
+        adminFetch("/admin/di/system-prompt"),
+      ]);
+      const [cData, bData] = await Promise.all([cRes.json(), bRes.json()]);
+      if (cData.ok) setDiAdminCondos(cData.condos || []);
+      if (bData.ok) {
+        setDiAdminBlocks(bData.blocos || []);
+        const edits: Record<string,string> = {};
+        (bData.blocos || []).forEach((b: DiPromptBlock) => { edits[b.bloco] = b.conteudo; });
+        setDiAdminBlockEdit(edits);
+      }
+    } catch { /* silencia */ }
+    setDiAdminLoading(false);
+  };
+
+  const diAdminSelectCondo = (condo: DiAdminCondo) => {
+    setDiAdminSelCondo(condo.id);
+    const cfg = condo.di_config;
+    setDiAdminForm({
+      nome_di: cfg?.nome_di || "Di",
+      tom_comunicacao: cfg?.tom_comunicacao || "direto_empatico",
+      limite_financeiro: cfg?.limite_financeiro ?? 1000,
+      di_ativa: cfg?.di_ativa ?? true,
+      identidade_persona: cfg?.identidade_persona || "",
+      system_prompt: cfg?.system_prompt || "",
+      regras_de_ouro: cfg?.regras_de_ouro || "",
+      modulos_ativos: cfg?.modulos_ativos || [],
+      modo_ciclo: cfg?.modo_ciclo || "sequential",
+      ciclo_minutos: cfg?.ciclo_minutos ?? 15,
+      idioma: cfg?.idioma || "pt_BR",
+    });
+  };
+
+  const saveDiAdminForm = async () => {
+    if (!diAdminSelCondo) return;
+    setDiAdminSaving(true);
+    try {
+      const r = await adminFetch(`/admin/di/configuracoes/${diAdminSelCondo}`, {
+        method: "PATCH",
+        body: JSON.stringify(diAdminForm),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        setDiAdminCondos(prev => prev.map(c => c.id === diAdminSelCondo ? { ...c, di_config: { ...c.di_config, ...diAdminForm } } : c));
+        showToast("Configuração da Di salva!", "ok");
+      } else showToast("Erro: " + d.error, "error");
+    } catch { showToast("Erro ao salvar", "error"); }
+    setDiAdminSaving(false);
+  };
+
+  const saveDiBlock = async (bloco: string) => {
+    setDiAdminBlockSaving(s => ({ ...s, [bloco]: true }));
+    try {
+      const r = await adminFetch(`/admin/di/system-prompt/${bloco}`, {
+        method: "PATCH",
+        body: JSON.stringify({ conteudo: diAdminBlockEdit[bloco] }),
+      });
+      const d = await r.json();
+      if (d.ok) showToast("Bloco salvo!", "ok");
+      else showToast("Erro: " + d.error, "error");
+    } catch { showToast("Erro ao salvar bloco", "error"); }
+    setDiAdminBlockSaving(s => ({ ...s, [bloco]: false }));
+  };
 
   const loadAdminDashboard = async (tok?: string) => {
     const t = tok ?? adminToken;
@@ -11879,9 +11971,10 @@ Content-Type: application/json
                 { id:"condominios",  icon:"🏢", label:"Condomínios" },
                 { id:"usuarios",     icon:"👥", label:"Usuários" },
                 { id:"planos",       icon:"💎", label:"Planos SaaS" },
+                { id:"di",           icon:"🟣", label:"Di — Síndica IA" },
                 { id:"sistema",      icon:"⚙️", label:"Sistema" },
               ] as const).map(item => (
-                <button key={item.id} onClick={() => { setAdminSection(item.id); if(item.id === "sistema") loadAdminSistema(); if(item.id === "bi") loadBiData(); }}
+                <button key={item.id} onClick={() => { setAdminSection(item.id); if(item.id === "sistema") loadAdminSistema(); if(item.id === "bi") loadBiData(); if(item.id === "di") loadDiAdmin(); }}
                   style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", borderRadius:9, border:"none", cursor:"pointer", fontSize:13, fontWeight:600, textAlign:"left", transition:"all .15s", background: adminSection === item.id ? "rgba(99,102,241,.2)" : "transparent", color: adminSection === item.id ? "#A5B4FC" : "#64748B", borderLeft: adminSection === item.id ? "3px solid #6366F1" : "3px solid transparent" }}>
                   <span style={{ fontSize:15 }}>{item.icon}</span>{item.label}
                 </button>
@@ -11904,7 +11997,7 @@ Content-Type: application/json
             {/* Topbar */}
             <div style={{ height:56, borderBottom:"1px solid rgba(255,255,255,.06)", display:"flex", alignItems:"center", padding:"0 24px", gap:16, flexShrink:0, background:"rgba(13,17,23,.8)", backdropFilter:"blur(8px)" }}>
               <div style={{ fontSize:16, fontWeight:700, color:"#F1F5F9" }}>
-                {{ dashboard:"📊 Dashboard Global", bi:"📈 BI Executivo", condominios:"🏢 Condomínios", usuarios:"👥 Usuários", planos:"💎 Planos SaaS", sistema:"⚙️ Sistema" }[adminSection]}
+                {{ dashboard:"📊 Dashboard Global", bi:"📈 BI Executivo", condominios:"🏢 Condomínios", usuarios:"👥 Usuários", planos:"💎 Planos SaaS", di:"🟣 Di — Síndica IA", sistema:"⚙️ Sistema" }[adminSection]}
               </div>
               <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
                 {adminLoading && <div style={{ fontSize:12, color:"#6366F1" }}>⏳ Carregando...</div>}
@@ -12406,6 +12499,213 @@ Content-Type: application/json
                         <div style={{ fontSize:40, marginBottom:12 }}>📈</div>
                         <div style={{ fontSize:14, fontWeight:600, marginBottom:8 }}>BI Executivo</div>
                         <div style={{ fontSize:12 }}>Clique em "Atualizar BI" para carregar os dados</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ── DI SÍNDICA IA ──────────────────────────────── */}
+              {adminSection === "di" && (() => {
+                const ALL_MOD_KEYS = ["os","financeiro","iot","comunicados","crm","misp","manutencao","diagnostico","encomendas","reservas","energia","gas"];
+                const MOD_LABELS: Record<string,string> = { os:"Ordens de Serviço", financeiro:"Financeiro", iot:"Sensores IoT", comunicados:"Comunicados", crm:"Moradores/CRM", misp:"Alertas Públicos", manutencao:"Manutenção", diagnostico:"Diagnóstico", encomendas:"Encomendas", reservas:"Reservas", energia:"Energia", gas:"Gás" };
+                const selCondo = diAdminCondos.find(c => c.id === diAdminSelCondo);
+                const TOM_OPTIONS = [
+                  { val:"direto_empatico", label:"Direto e Empático", desc:"Natural e próximo, sem ser informal" },
+                  { val:"formal",          label:"Formal",            desc:"Profissional e institucional" },
+                  { val:"suave",           label:"Suave",             desc:"Gentil, acolhedor e paciente" },
+                ];
+                return (
+                  <div>
+                    {diAdminLoading ? (
+                      <div style={{ textAlign:"center", padding:60, color:"#6366F1", fontSize:14 }}>⏳ Carregando configurações da Di...</div>
+                    ) : (
+                      <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:20, alignItems:"start" }}>
+
+                        {/* ── Coluna esquerda: lista de condos ── */}
+                        <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, overflow:"hidden" }}>
+                          <div style={{ padding:"14px 16px", borderBottom:"1px solid rgba(255,255,255,.06)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                            <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9" }}>🏢 Condomínios</div>
+                            <div style={{ fontSize:11, color:"#475569" }}>{diAdminCondos.length} total</div>
+                          </div>
+                          <div style={{ maxHeight:520, overflowY:"auto" }}>
+                            {diAdminCondos.length === 0 ? (
+                              <div style={{ padding:24, textAlign:"center", color:"#334155", fontSize:12 }}>Nenhum condomínio encontrado</div>
+                            ) : diAdminCondos.map(condo => {
+                              const isActive = condo.di_config?.di_ativa ?? false;
+                              const isSel = diAdminSelCondo === condo.id;
+                              return (
+                                <div key={condo.id} onClick={() => diAdminSelectCondo(condo)}
+                                  style={{ padding:"12px 16px", cursor:"pointer", borderLeft: isSel ? "3px solid #7C3AED" : "3px solid transparent", background: isSel ? "rgba(124,58,237,.12)" : "transparent", transition:"all .15s", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
+                                    <div style={{ fontSize:13, fontWeight:600, color: isSel ? "#C4B5FD" : "#CBD5E1" }}>{condo.nome}</div>
+                                    <div style={{ width:8, height:8, borderRadius:"50%", background: isActive ? "#10B981" : "#EF4444", flexShrink:0 }} title={isActive ? "Di ativa" : "Di inativa"} />
+                                  </div>
+                                  <div style={{ fontSize:11, color:"#475569" }}>
+                                    {condo.di_config ? `${condo.di_config.nome_di || "Di"} · ${condo.di_config.tom_comunicacao || "—"}` : "Sem config"}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* ── Coluna direita: formulário de edição ── */}
+                        {selCondo ? (
+                          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+
+                            {/* Header do condo selecionado */}
+                            <div style={{ background:"linear-gradient(135deg,rgba(124,58,237,.15),rgba(99,102,241,.08))", border:"1px solid rgba(124,58,237,.25)", borderRadius:14, padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                              <div>
+                                <div style={{ fontSize:16, fontWeight:700, color:"#C4B5FD" }}>🟣 {selCondo.nome}</div>
+                                <div style={{ fontSize:12, color:"#6D28D9", marginTop:3 }}>{selCondo.cidade || "—"} · Configuração da Di</div>
+                              </div>
+                              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                <div style={{ fontSize:12, color:"#94A3B8" }}>Di {diAdminForm.di_ativa ? "🟢 Ativa" : "🔴 Inativa"}</div>
+                                <button onClick={saveDiAdminForm} disabled={diAdminSaving}
+                                  style={{ background:"linear-gradient(135deg,#7C3AED,#6366F1)", border:"none", borderRadius:9, padding:"9px 20px", color:"#fff", fontSize:13, fontWeight:700, cursor:diAdminSaving?"not-allowed":"pointer", opacity:diAdminSaving?.6:1 }}>
+                                  {diAdminSaving ? "⏳ Salvando..." : "💾 Salvar Configuração"}
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Form grid */}
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+
+                              {/* Nome da Di */}
+                              <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:16 }}>
+                                <div style={{ fontSize:11, color:"#7C3AED", fontWeight:700, textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Nome da Di</div>
+                                <input value={diAdminForm.nome_di} onChange={e => setDiAdminForm(f => ({ ...f, nome_di: e.target.value }))}
+                                  style={{ width:"100%", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"9px 12px", color:"#F1F5F9", fontSize:14, fontWeight:600, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }} />
+                              </div>
+
+                              {/* Limite financeiro */}
+                              <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:16 }}>
+                                <div style={{ fontSize:11, color:"#7C3AED", fontWeight:700, textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Limite Financeiro (R$)</div>
+                                <input type="number" value={diAdminForm.limite_financeiro} onChange={e => setDiAdminForm(f => ({ ...f, limite_financeiro: Number(e.target.value) }))}
+                                  style={{ width:"100%", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"9px 12px", color:"#F1F5F9", fontSize:14, fontWeight:600, fontFamily:"inherit", outline:"none", boxSizing:"border-box" }} />
+                                <div style={{ fontSize:10, color:"#475569", marginTop:4 }}>Aprovação necessária para gastos acima deste valor</div>
+                              </div>
+
+                              {/* Di Ativa toggle */}
+                              <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:16 }}>
+                                <div style={{ fontSize:11, color:"#7C3AED", fontWeight:700, textTransform:"uppercase", letterSpacing:.5, marginBottom:12 }}>Status da Di</div>
+                                <div style={{ display:"flex", gap:8 }}>
+                                  {[{val:true,label:"🟢 Ativa"},{val:false,label:"🔴 Inativa"}].map(opt => (
+                                    <button key={String(opt.val)} onClick={() => setDiAdminForm(f => ({ ...f, di_ativa: opt.val }))}
+                                      style={{ flex:1, padding:"9px", borderRadius:8, border: diAdminForm.di_ativa === opt.val ? "1.5px solid #7C3AED" : "1.5px solid rgba(255,255,255,.08)", background: diAdminForm.di_ativa === opt.val ? "rgba(124,58,237,.2)" : "transparent", color: diAdminForm.di_ativa === opt.val ? "#C4B5FD" : "#64748B", fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Idioma */}
+                              <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:16 }}>
+                                <div style={{ fontSize:11, color:"#7C3AED", fontWeight:700, textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Idioma</div>
+                                <select value={diAdminForm.idioma} onChange={e => setDiAdminForm(f => ({ ...f, idioma: e.target.value }))}
+                                  style={{ width:"100%", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"9px 12px", color:"#F1F5F9", fontSize:13, fontFamily:"inherit", outline:"none", cursor:"pointer", boxSizing:"border-box" }}>
+                                  <option value="pt_BR">🇧🇷 Português (Brasil)</option>
+                                  <option value="en_US">🇺🇸 English (US)</option>
+                                  <option value="es_ES">🇪🇸 Español</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* Tom de comunicação */}
+                            <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:16 }}>
+                              <div style={{ fontSize:11, color:"#7C3AED", fontWeight:700, textTransform:"uppercase", letterSpacing:.5, marginBottom:12 }}>Tom de Comunicação</div>
+                              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
+                                {TOM_OPTIONS.map(opt => (
+                                  <div key={opt.val} onClick={() => setDiAdminForm(f => ({ ...f, tom_comunicacao: opt.val }))}
+                                    style={{ padding:"12px 14px", borderRadius:10, border: diAdminForm.tom_comunicacao === opt.val ? "1.5px solid #7C3AED" : "1.5px solid rgba(255,255,255,.07)", background: diAdminForm.tom_comunicacao === opt.val ? "rgba(124,58,237,.15)" : "rgba(255,255,255,.02)", cursor:"pointer", transition:"all .15s" }}>
+                                    <div style={{ fontSize:13, fontWeight:700, color: diAdminForm.tom_comunicacao === opt.val ? "#C4B5FD" : "#CBD5E1", marginBottom:4 }}>{opt.label}</div>
+                                    <div style={{ fontSize:11, color:"#475569" }}>{opt.desc}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Módulos ativos */}
+                            <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:16 }}>
+                              <div style={{ fontSize:11, color:"#7C3AED", fontWeight:700, textTransform:"uppercase", letterSpacing:.5, marginBottom:12, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                                <span>Módulos Ativos</span>
+                                <div style={{ display:"flex", gap:8 }}>
+                                  <button onClick={() => setDiAdminForm(f => ({ ...f, modulos_ativos: ALL_MOD_KEYS }))} style={{ fontSize:10, padding:"3px 8px", borderRadius:5, background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", color:"#34D399", cursor:"pointer", fontFamily:"inherit" }}>Todos</button>
+                                  <button onClick={() => setDiAdminForm(f => ({ ...f, modulos_ativos: [] }))} style={{ fontSize:10, padding:"3px 8px", borderRadius:5, background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.25)", color:"#F87171", cursor:"pointer", fontFamily:"inherit" }}>Nenhum</button>
+                                </div>
+                              </div>
+                              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
+                                {ALL_MOD_KEYS.map(key => {
+                                  const isOn = diAdminForm.modulos_ativos.includes(key);
+                                  return (
+                                    <div key={key} onClick={() => setDiAdminForm(f => ({ ...f, modulos_ativos: isOn ? f.modulos_ativos.filter(m => m !== key) : [...f.modulos_ativos, key] }))}
+                                      style={{ display:"flex", alignItems:"center", gap:8, padding:"8px 10px", borderRadius:8, border: isOn ? "1px solid rgba(124,58,237,.4)" : "1px solid rgba(255,255,255,.06)", background: isOn ? "rgba(124,58,237,.1)" : "transparent", cursor:"pointer", transition:"all .15s" }}>
+                                      <div style={{ width:14, height:14, borderRadius:3, border:`1.5px solid ${isOn?"#7C3AED":"#334155"}`, background: isOn ? "#7C3AED" : "transparent", display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, color:"#fff", flexShrink:0 }}>{isOn?"✓":""}</div>
+                                      <div style={{ fontSize:11, color: isOn ? "#C4B5FD" : "#64748B", fontWeight: isOn ? 600 : 400 }}>{MOD_LABELS[key] || key}</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Textos avançados */}
+                            {[
+                              { key:"identidade_persona", label:"Identidade e Persona", placeholder:"Descreva a personalidade única da Di para este condomínio..." },
+                              { key:"regras_de_ouro",     label:"Regras de Ouro",       placeholder:"Regras específicas que a Di deve sempre seguir neste condomínio..." },
+                              { key:"system_prompt",      label:"System Prompt Override", placeholder:"Substituição completa do system prompt padrão (deixe em branco para usar o global)..." },
+                            ].map(field => (
+                              <div key={field.key} style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:16 }}>
+                                <div style={{ fontSize:11, color:"#7C3AED", fontWeight:700, textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>{field.label}</div>
+                                <textarea value={(diAdminForm as Record<string,string>)[field.key] || ""} onChange={e => setDiAdminForm(f => ({ ...f, [field.key]: e.target.value } as typeof f))}
+                                  placeholder={field.placeholder} rows={4}
+                                  style={{ width:"100%", background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"10px 12px", color:"#CBD5E1", fontSize:12, fontFamily:"monospace", resize:"vertical", outline:"none", boxSizing:"border-box" }} />
+                              </div>
+                            ))}
+
+                          </div>
+                        ) : (
+                          <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:60, textAlign:"center" }}>
+                            <div style={{ fontSize:40, marginBottom:16 }}>🟣</div>
+                            <div style={{ fontSize:15, fontWeight:600, color:"#C4B5FD", marginBottom:8 }}>Selecione um condomínio</div>
+                            <div style={{ fontSize:13, color:"#475569" }}>Clique em um condomínio à esquerda para configurar a Di Síndica</div>
+                          </div>
+                        )}
+
+                      </div>
+                    )}
+
+                    {/* ── Blocos globais do system prompt ── */}
+                    {!diAdminLoading && diAdminBlocks.length > 0 && (
+                      <div style={{ marginTop:24 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9", marginBottom:14 }}>📋 Blocos Globais do System Prompt</div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                          {diAdminBlocks.map(bloco => {
+                            const isExp = diAdminExpanded[bloco.bloco];
+                            return (
+                              <div key={bloco.bloco} style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:12 }}>
+                                <div onClick={() => setDiAdminExpanded(s => ({ ...s, [bloco.bloco]: !s[bloco.bloco] }))}
+                                  style={{ display:"flex", alignItems:"center", padding:"12px 16px", cursor:"pointer", gap:10 }}>
+                                  <div style={{ fontSize:11, fontFamily:"monospace", color:"#6366F1", background:"rgba(99,102,241,.1)", padding:"2px 7px", borderRadius:5 }}>{bloco.bloco}</div>
+                                  <div style={{ fontSize:13, fontWeight:600, color:"#CBD5E1", flex:1 }}>{bloco.titulo}</div>
+                                  <div style={{ fontSize:10, color:"#475569" }}>{bloco.fixo ? "🔒 Fixo" : "✏️ Editável"}</div>
+                                  <div style={{ fontSize:12, color:"#475569", marginLeft:8 }}>{isExp ? "▲" : "▼"}</div>
+                                </div>
+                                {isExp && (
+                                  <div style={{ padding:"0 16px 16px" }}>
+                                    <textarea value={diAdminBlockEdit[bloco.bloco] ?? bloco.conteudo}
+                                      onChange={e => setDiAdminBlockEdit(s => ({ ...s, [bloco.bloco]: e.target.value }))}
+                                      rows={6} style={{ width:"100%", background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"10px 12px", color:"#CBD5E1", fontSize:12, fontFamily:"monospace", resize:"vertical", outline:"none", boxSizing:"border-box", marginBottom:10 }} />
+                                    <button onClick={() => saveDiBlock(bloco.bloco)} disabled={diAdminBlockSaving[bloco.bloco]}
+                                      style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:8, padding:"7px 16px", color:"#818CF8", fontSize:12, fontWeight:600, cursor:diAdminBlockSaving[bloco.bloco]?"not-allowed":"pointer", opacity:diAdminBlockSaving[bloco.bloco]?.6:1, fontFamily:"inherit" }}>
+                                      {diAdminBlockSaving[bloco.bloco] ? "⏳ Salvando..." : "💾 Salvar bloco"}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>

@@ -182,6 +182,96 @@ DADOS ATUAIS: ${JSON.stringify(dados).slice(0, 800)}`;
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
+// ADMIN: Di Configurações — CRUD via painel admin (X-Admin-Token required)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const ADMIN_TOKEN = "imobcore-admin-2026";
+
+function checkAdminToken(req: Request, res: Response): boolean {
+  const tok = (req.headers["x-admin-token"] as string) || "";
+  if (tok !== ADMIN_TOKEN) {
+    res.status(401).json({ ok: false, error: "Não autorizado" });
+    return false;
+  }
+  return true;
+}
+
+// GET /api/admin/di/configuracoes — lista todas as di_configuracoes com nome do condo
+router.get("/admin/di/configuracoes", async (req: Request, res: Response) => {
+  if (!checkAdminToken(req, res)) return;
+  try {
+    const { data: condos, error: ce } = await supabase.from("condominios").select("id,nome,cidade");
+    if (ce) return res.status(500).json({ ok: false, error: ce.message });
+    const { data: configs, error: dce } = await supabase.from("di_configuracoes").select("*");
+    if (dce) return res.status(500).json({ ok: false, error: dce.message });
+    const merged = (condos || []).map((c: { id: string; nome: string; cidade: string }) => {
+      const cfg = (configs || []).find((x: { condominio_id: string }) => x.condominio_id === c.id) || null;
+      return { ...c, di_config: cfg };
+    });
+    res.json({ ok: true, condos: merged });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// PATCH /api/admin/di/configuracoes/:condoId — atualiza di_configuracoes de um condo
+router.patch("/admin/di/configuracoes/:condoId", async (req: Request, res: Response) => {
+  if (!checkAdminToken(req, res)) return;
+  try {
+    const { condoId } = req.params;
+    const allowed = ["nome_di","tom_comunicacao","modulos_ativos","limite_financeiro","identidade_persona","system_prompt","regras_de_ouro","di_ativa","modo_ciclo","ciclo_minutos","plano_limite_tokens","idioma"];
+    const patch: Record<string, unknown> = {};
+    for (const k of allowed) {
+      if (req.body[k] !== undefined) patch[k] = req.body[k];
+    }
+    const { error } = await supabase
+      .from("di_configuracoes")
+      .upsert({ condominio_id: condoId, ...patch }, { onConflict: "condominio_id" });
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, updated: condoId });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// GET /api/admin/di/system-prompt — lista todos os blocos di_system_prompt globais
+router.get("/admin/di/system-prompt", async (req: Request, res: Response) => {
+  if (!checkAdminToken(req, res)) return;
+  try {
+    const { data, error } = await supabase
+      .from("di_system_prompt")
+      .select("*")
+      .is("condominio_id", null)
+      .order("bloco", { ascending: true });
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, blocos: data || [] });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// PATCH /api/admin/di/system-prompt/:bloco — atualiza conteúdo de um bloco global
+router.patch("/admin/di/system-prompt/:bloco", async (req: Request, res: Response) => {
+  if (!checkAdminToken(req, res)) return;
+  try {
+    const { bloco } = req.params;
+    const { conteudo, titulo } = req.body as { conteudo?: string; titulo?: string };
+    const patch: Record<string, unknown> = {};
+    if (conteudo !== undefined) patch.conteudo = conteudo;
+    if (titulo !== undefined) patch.titulo = titulo;
+    const { error } = await supabase
+      .from("di_system_prompt")
+      .update(patch)
+      .eq("bloco", bloco)
+      .is("condominio_id", null);
+    if (error) return res.status(500).json({ ok: false, error: error.message });
+    res.json({ ok: true, bloco });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ADMIN: Seed tabelas Di (executar uma vez após criar as tabelas no Supabase)
 // POST /api/admin/migrate-di
 // ══════════════════════════════════════════════════════════════════════════════
