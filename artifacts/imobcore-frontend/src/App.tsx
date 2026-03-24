@@ -617,7 +617,7 @@ export default function App() {
   const [adminToken, setAdminToken]     = useState<string | null>(() => sessionStorage.getItem("adminToken"));
   const [adminSection, setAdminSection] = useState<"dashboard" | "condominios" | "usuarios" | "planos" | "sistema" | "bi" | "di">("dashboard");
   type AdminCondo   = { id: string; nome: string; plano: string; status: string; created_at: string; total_unidades?: number; cidade?: string; estado?: string; sindico_nome?: string; sindico_email?: string };
-  type AdminUser    = { id: string; nome: string; email: string; perfil: string; unidade?: string; status?: string; condominio_id?: string; telefone?: string };
+  type AdminUser    = { id: string; nome: string; email: string; perfil: string; unidade?: string; status?: string; condominio_id?: string; condominio_nome?: string; telefone?: string };
   type AdminPlan    = { id: string; nome: string; color: string; preco: number; limites: Record<string, number>; features: string[] };
   type AdminMetrics = { totalCondos: number; totalMoradores: number; osAbertas: number; osConcluidas: number; inadMedia: string; planoCounts: Record<string, number>; condosAtivos: number; condosSuspensos: number };
   type SistemData   = { status: string; supabase_latency_ms: number; api_uptime_s: number; node_version: string; memory_mb: number; sse_clients: number; timestamp: string };
@@ -630,6 +630,19 @@ export default function App() {
   const [adminCondoFilter, setAdminCondoFilter] = useState("");
   const [adminUserFilter,  setAdminUserFilter]  = useState("");
   const [adminPatchId,     setAdminPatchId]     = useState<string | null>(null);
+
+  // ── Admin Usuários CRUD state ────────────────────────────────────────────────
+  const [adminUserModal,       setAdminUserModal]       = useState(false);
+  const [adminUserEditId,      setAdminUserEditId]      = useState<string | null>(null);
+  const [adminUserSaving,      setAdminUserSaving]      = useState(false);
+  const [adminUserDelConfirm,  setAdminUserDelConfirm]  = useState<string | null>(null);
+  const [adminUserFilterCondo, setAdminUserFilterCondo] = useState("todos");
+  const [adminUserFilterPerf,  setAdminUserFilterPerf]  = useState("todos");
+  const [adminUserFilterStat,  setAdminUserFilterStat]  = useState("todos");
+  const [adminUserForm, setAdminUserForm] = useState<{
+    condominio_id: string; nome: string; email: string;
+    perfil: string; unidade: string; status: string;
+  }>({ condominio_id:"", nome:"", email:"", perfil:"morador", unidade:"", status:"ativo" });
 
   const adminFetch = (path: string, opts: RequestInit = {}) =>
     fetch(`/api${path}`, { ...opts, headers: { ...(opts.headers as Record<string,string> || {}), "X-Admin-Token": adminToken || "", "Content-Type": "application/json" } });
@@ -744,6 +757,43 @@ export default function App() {
       setAdminPlans(p.data || []);
     } catch { showToast("Erro ao carregar dados admin", "error"); }
     setAdminLoading(false);
+  };
+
+  const saveAdminUsuario = async () => {
+    if (!adminUserForm.condominio_id || !adminUserForm.nome.trim() || !adminUserForm.email.trim() || !adminUserForm.perfil) {
+      showToast("Preencha condomínio, nome, e-mail e perfil", "error"); return;
+    }
+    setAdminUserSaving(true);
+    try {
+      const method = adminUserEditId ? "PUT" : "POST";
+      const url = adminUserEditId ? `/admin/usuarios/${adminUserEditId}` : "/admin/usuarios";
+      const r = await adminFetch(url, { method, body: JSON.stringify(adminUserForm) });
+      const d = await r.json();
+      if (!r.ok) { showToast(d.error || "Erro ao salvar usuário", "error"); return; }
+      showToast(adminUserEditId ? "Usuário atualizado com sucesso" : "Usuário criado com sucesso", "ok");
+      setAdminUserModal(false);
+      setAdminUserEditId(null);
+      setAdminUserForm({ condominio_id:"", nome:"", email:"", perfil:"morador", unidade:"", status:"ativo" });
+      await loadAdminDashboard();
+    } catch { showToast("Erro ao salvar usuário", "error"); }
+    setAdminUserSaving(false);
+  };
+
+  const deleteAdminUsuario = async (id: string) => {
+    try {
+      const r = await adminFetch(`/admin/usuarios/${id}`, { method:"DELETE" });
+      if (r.ok) { showToast("Usuário desativado", "ok"); await loadAdminDashboard(); }
+      else showToast("Erro ao desativar usuário", "error");
+    } catch { showToast("Erro ao desativar usuário", "error"); }
+    setAdminUserDelConfirm(null);
+  };
+
+  const reativarAdminUsuario = async (id: string) => {
+    try {
+      const r = await adminFetch(`/admin/usuarios/${id}`, { method:"PUT", body: JSON.stringify({ status:"ativo" }) });
+      if (r.ok) { showToast("Usuário reativado", "ok"); await loadAdminDashboard(); }
+      else showToast("Erro ao reativar", "error");
+    } catch { showToast("Erro ao reativar", "error"); }
   };
 
   const loadAdminSistema = async () => {
@@ -12310,61 +12360,196 @@ Content-Type: application/json
               )}
 
               {/* ── USUÁRIOS ─────────────────────────────────────── */}
-              {adminSection === "usuarios" && (
-                <div>
-                  <div style={{ display:"flex", gap:12, marginBottom:18, alignItems:"center" }}>
-                    <input
-                      value={adminUserFilter} onChange={e=>setAdminUserFilter(e.target.value)}
-                      placeholder="🔍 Buscar por nome ou e-mail..."
-                      style={{ flex:1, background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 14px", color:"#E2E8F0", fontSize:13 }}
-                    />
-                    <div style={{ fontSize:12, color:"#475569" }}>{adminUsers.length} usuários</div>
-                  </div>
-                  <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, overflow:"hidden" }}>
-                    <table style={{ width:"100%", borderCollapse:"collapse" }}>
-                      <thead>
-                        <tr style={{ background:"rgba(255,255,255,.03)" }}>
-                          {["Usuário","E-mail","Perfil","Unidade","Status","Condomínio ID"].map(h => (
-                            <th key={h} style={{ padding:"12px 16px", textAlign:"left", fontSize:11, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:.5, borderBottom:"1px solid rgba(255,255,255,.06)" }}>{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {adminUsers
-                          .filter(u => !adminUserFilter || u.nome?.toLowerCase().includes(adminUserFilter.toLowerCase()) || u.email?.toLowerCase().includes(adminUserFilter.toLowerCase()))
-                          .map(u => (
-                          <tr key={u.id} style={{ borderBottom:"1px solid rgba(255,255,255,.04)" }}>
-                            <td style={{ padding:"12px 16px" }}>
-                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                                <div style={{ width:28, height:28, borderRadius:8, background:"rgba(99,102,241,.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"#818CF8" }}>
-                                  {(u.nome||u.email||"?")[0].toUpperCase()}
-                                </div>
-                                <div style={{ fontSize:13, fontWeight:600, color:"#E2E8F0" }}>{u.nome||"—"}</div>
-                              </div>
-                            </td>
-                            <td style={{ padding:"12px 16px", fontSize:12, color:"#64748B" }}>{u.email||"—"}</td>
-                            <td style={{ padding:"12px 16px" }}>
-                              <span style={{ fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700, background:{ morador:"rgba(16,185,129,.12)", sindico:"rgba(99,102,241,.12)", gestor:"rgba(245,158,11,.12)", zelador:"rgba(239,68,68,.12)" }[u.perfil]||"rgba(100,116,139,.12)", color:{ morador:"#10B981", sindico:"#818CF8", gestor:"#F59E0B", zelador:"#EF4444" }[u.perfil]||"#64748B" }}>
-                                {u.perfil||"morador"}
-                              </span>
-                            </td>
-                            <td style={{ padding:"12px 16px", fontSize:12, color:"#475569" }}>{u.unidade||"—"}</td>
-                            <td style={{ padding:"12px 16px" }}>
-                              <span style={{ fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700, background: u.status==="ativo" ? "rgba(16,185,129,.12)" : "rgba(239,68,68,.12)", color: u.status==="ativo" ? "#10B981" : "#EF4444" }}>
-                                {u.status||"ativo"}
-                              </span>
-                            </td>
-                            <td style={{ padding:"12px 16px", fontSize:11, color:"#334155", fontFamily:"monospace" }}>{u.condominio_id?.slice(0,12)||"—"}...</td>
+              {adminSection === "usuarios" && (() => {
+                const PERF_COLORS: Record<string,{bg:string;color:string;icon:string}> = {
+                  morador:  { bg:"rgba(16,185,129,.12)",  color:"#10B981", icon:"🏠" },
+                  sindico:  { bg:"rgba(99,102,241,.12)",  color:"#818CF8", icon:"🛡️" },
+                  gestor:   { bg:"rgba(245,158,11,.12)",  color:"#F59E0B", icon:"⚡" },
+                  zelador:  { bg:"rgba(239,68,68,.12)",   color:"#EF4444", icon:"🔧" },
+                };
+                const uFiltered = adminUsers.filter(u => {
+                  const q = adminUserFilter.toLowerCase();
+                  const matchQ = !q || (u.nome||"").toLowerCase().includes(q) || (u.email||"").toLowerCase().includes(q) || (u.condominio_nome||"").toLowerCase().includes(q);
+                  const matchC = adminUserFilterCondo === "todos" || u.condominio_id === adminUserFilterCondo;
+                  const matchP = adminUserFilterPerf  === "todos" || u.perfil === adminUserFilterPerf;
+                  const matchS = adminUserFilterStat  === "todos" || (u.status||"ativo") === adminUserFilterStat;
+                  return matchQ && matchC && matchP && matchS;
+                });
+                const selStyle: React.CSSProperties = { background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 10px", color:"#E2E8F0", fontSize:12, cursor:"pointer" };
+                return (
+                  <div>
+                    {/* ── toolbar ── */}
+                    <div style={{ display:"flex", gap:10, marginBottom:16, alignItems:"center", flexWrap:"wrap" }}>
+                      <input
+                        value={adminUserFilter} onChange={e=>setAdminUserFilter(e.target.value)}
+                        placeholder="🔍 Buscar nome, e-mail ou condomínio..."
+                        style={{ flex:1, minWidth:160, background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 14px", color:"#E2E8F0", fontSize:13 }}
+                      />
+                      <select value={adminUserFilterCondo} onChange={e=>setAdminUserFilterCondo(e.target.value)} style={selStyle}>
+                        <option value="todos">🏢 Todos os condomínios</option>
+                        {adminCondos.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                      </select>
+                      <select value={adminUserFilterPerf} onChange={e=>setAdminUserFilterPerf(e.target.value)} style={selStyle}>
+                        <option value="todos">👤 Todos os perfis</option>
+                        {(["gestor","sindico","morador","zelador"] as const).map(p => <option key={p} value={p}>{PERF_COLORS[p]?.icon} {p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                      </select>
+                      <select value={adminUserFilterStat} onChange={e=>setAdminUserFilterStat(e.target.value)} style={selStyle}>
+                        <option value="todos">Todos os status</option>
+                        <option value="ativo">🟢 Ativos</option>
+                        <option value="inativo">🔴 Inativos</option>
+                      </select>
+                      <div style={{ fontSize:12, color:"#475569", whiteSpace:"nowrap" }}>{uFiltered.length} de {adminUsers.length}</div>
+                      <button onClick={() => { setAdminUserEditId(null); setAdminUserForm({ condominio_id: adminUserFilterCondo !== "todos" ? adminUserFilterCondo : "", nome:"", email:"", perfil:"morador", unidade:"", status:"ativo" }); setAdminUserModal(true); }}
+                        style={{ background:"rgba(99,102,241,.85)", border:"none", borderRadius:9, padding:"9px 18px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                        + Novo Usuário
+                      </button>
+                    </div>
+
+                    {/* ── tabela ── */}
+                    <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, overflow:"hidden" }}>
+                      <table style={{ width:"100%", borderCollapse:"collapse" }}>
+                        <thead>
+                          <tr style={{ background:"rgba(255,255,255,.03)" }}>
+                            {["Usuário","E-mail","Perfil","Unidade","Status","Condomínio","Ações"].map(h => (
+                              <th key={h} style={{ padding:"11px 14px", textAlign:"left", fontSize:10, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:.5, borderBottom:"1px solid rgba(255,255,255,.06)" }}>{h}</th>
+                            ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {adminUsers.length === 0 && !adminLoading && (
-                      <div style={{ padding:40, textAlign:"center", color:"#334155", fontSize:13 }}>Nenhum usuário encontrado</div>
+                        </thead>
+                        <tbody>
+                          {uFiltered.map(u => {
+                            const pc = PERF_COLORS[u.perfil] || { bg:"rgba(100,116,139,.12)", color:"#64748B", icon:"👤" };
+                            const isAtivo = (u.status||"ativo") === "ativo";
+                            return (
+                              <tr key={u.id} style={{ borderBottom:"1px solid rgba(255,255,255,.04)", opacity: isAtivo ? 1 : .55 }}>
+                                <td style={{ padding:"11px 14px" }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                    <div style={{ width:30, height:30, borderRadius:8, background:"rgba(99,102,241,.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:700, color:"#818CF8", flexShrink:0 }}>
+                                      {(u.nome||u.email||"?")[0].toUpperCase()}
+                                    </div>
+                                    <div style={{ fontSize:13, fontWeight:600, color:"#E2E8F0" }}>{u.nome||"—"}</div>
+                                  </div>
+                                </td>
+                                <td style={{ padding:"11px 14px", fontSize:12, color:"#64748B" }}>{u.email||"—"}</td>
+                                <td style={{ padding:"11px 14px" }}>
+                                  <span style={{ fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700, background:pc.bg, color:pc.color }}>
+                                    {pc.icon} {u.perfil||"morador"}
+                                  </span>
+                                </td>
+                                <td style={{ padding:"11px 14px", fontSize:12, color:"#475569" }}>{u.unidade||"—"}</td>
+                                <td style={{ padding:"11px 14px" }}>
+                                  <span style={{ fontSize:10, padding:"3px 9px", borderRadius:20, fontWeight:700, background: isAtivo ? "rgba(16,185,129,.12)" : "rgba(239,68,68,.12)", color: isAtivo ? "#10B981" : "#EF4444" }}>
+                                    {isAtivo ? "🟢 Ativo" : "🔴 Inativo"}
+                                  </span>
+                                </td>
+                                <td style={{ padding:"11px 14px", fontSize:12, color:"#94A3B8" }}>{u.condominio_nome||"—"}</td>
+                                <td style={{ padding:"11px 14px" }}>
+                                  <div style={{ display:"flex", gap:6 }}>
+                                    <button title="Editar" onClick={() => {
+                                      setAdminUserEditId(u.id);
+                                      setAdminUserForm({ condominio_id: u.condominio_id||"", nome: u.nome||"", email: u.email||"", perfil: u.perfil||"morador", unidade: u.unidade||"", status: u.status||"ativo" });
+                                      setAdminUserModal(true);
+                                    }} style={{ background:"rgba(99,102,241,.12)", border:"1px solid rgba(99,102,241,.25)", borderRadius:6, padding:"5px 9px", color:"#A5B4FC", fontSize:11, cursor:"pointer" }}>✏️</button>
+                                    {isAtivo
+                                      ? <button title="Desativar" onClick={() => setAdminUserDelConfirm(u.id)} style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.25)", borderRadius:6, padding:"5px 9px", color:"#FCA5A5", fontSize:11, cursor:"pointer" }}>🚫</button>
+                                      : <button title="Reativar" onClick={() => reativarAdminUsuario(u.id)} style={{ background:"rgba(16,185,129,.1)", border:"1px solid rgba(16,185,129,.25)", borderRadius:6, padding:"5px 9px", color:"#6EE7B7", fontSize:11, cursor:"pointer" }}>✓</button>
+                                    }
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      {uFiltered.length === 0 && (
+                        <div style={{ padding:40, textAlign:"center", color:"#334155", fontSize:13 }}>
+                          {adminUsers.length === 0 ? "Nenhum usuário cadastrado" : "Nenhum usuário corresponde aos filtros"}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Modal criar/editar ── */}
+                    {adminUserModal && (
+                      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.65)", zIndex:9000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={e=>{ if(e.target===e.currentTarget){ setAdminUserModal(false); setAdminUserEditId(null); } }}>
+                        <div style={{ background:"#131B2E", border:"1px solid rgba(99,102,241,.3)", borderRadius:18, padding:28, width:460, maxWidth:"95vw", boxShadow:"0 24px 64px rgba(0,0,0,.6)" }}>
+                          <div style={{ fontSize:16, fontWeight:700, color:"#E2E8F0", marginBottom:20 }}>
+                            {adminUserEditId ? "✏️ Editar Usuário" : "➕ Novo Usuário"}
+                          </div>
+                          <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
+                            <div>
+                              <div style={{ fontSize:11, color:"#64748B", marginBottom:5, fontWeight:600 }}>CONDOMÍNIO *</div>
+                              <select value={adminUserForm.condominio_id} onChange={e=>setAdminUserForm(f=>({...f,condominio_id:e.target.value}))}
+                                style={{ width:"100%", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:9, padding:"9px 12px", color: adminUserForm.condominio_id ? "#E2E8F0" : "#475569", fontSize:13 }}>
+                                <option value="">Selecionar condomínio...</option>
+                                {adminCondos.filter(c=>c.status!=="suspenso").map(c=><option key={c.id} value={c.id}>{c.nome}{c.cidade ? ` — ${c.cidade}` : ""}</option>)}
+                              </select>
+                            </div>
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                              <div>
+                                <div style={{ fontSize:11, color:"#64748B", marginBottom:5, fontWeight:600 }}>NOME *</div>
+                                <input value={adminUserForm.nome} onChange={e=>setAdminUserForm(f=>({...f,nome:e.target.value}))} placeholder="Nome completo"
+                                  style={{ width:"100%", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }} />
+                              </div>
+                              <div>
+                                <div style={{ fontSize:11, color:"#64748B", marginBottom:5, fontWeight:600 }}>E-MAIL *</div>
+                                <input value={adminUserForm.email} onChange={e=>setAdminUserForm(f=>({...f,email:e.target.value}))} placeholder="email@exemplo.com" type="email"
+                                  style={{ width:"100%", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }} />
+                              </div>
+                            </div>
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+                              <div>
+                                <div style={{ fontSize:11, color:"#64748B", marginBottom:5, fontWeight:600 }}>PERFIL *</div>
+                                <select value={adminUserForm.perfil} onChange={e=>setAdminUserForm(f=>({...f,perfil:e.target.value}))}
+                                  style={{ width:"100%", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:9, padding:"9px 10px", color:"#E2E8F0", fontSize:13 }}>
+                                  <option value="morador">🏠 Morador</option>
+                                  <option value="sindico">🛡️ Síndico</option>
+                                  <option value="gestor">⚡ Gestor</option>
+                                  <option value="zelador">🔧 Zelador</option>
+                                </select>
+                              </div>
+                              <div>
+                                <div style={{ fontSize:11, color:"#64748B", marginBottom:5, fontWeight:600 }}>UNIDADE</div>
+                                <input value={adminUserForm.unidade} onChange={e=>setAdminUserForm(f=>({...f,unidade:e.target.value}))} placeholder="ex: 201"
+                                  style={{ width:"100%", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" }} />
+                              </div>
+                              <div>
+                                <div style={{ fontSize:11, color:"#64748B", marginBottom:5, fontWeight:600 }}>STATUS</div>
+                                <select value={adminUserForm.status} onChange={e=>setAdminUserForm(f=>({...f,status:e.target.value}))}
+                                  style={{ width:"100%", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:9, padding:"9px 10px", color:"#E2E8F0", fontSize:13 }}>
+                                  <option value="ativo">🟢 Ativo</option>
+                                  <option value="inativo">🔴 Inativo</option>
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ display:"flex", justifyContent:"flex-end", gap:10, marginTop:22 }}>
+                            <button onClick={()=>{ setAdminUserModal(false); setAdminUserEditId(null); }} style={{ padding:"9px 20px", borderRadius:8, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                            <button onClick={saveAdminUsuario} disabled={adminUserSaving} style={{ padding:"9px 24px", borderRadius:8, background: adminUserSaving ? "rgba(99,102,241,.4)" : "rgba(99,102,241,.85)", border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor: adminUserSaving ? "wait" : "pointer" }}>
+                              {adminUserSaving ? "Salvando..." : adminUserEditId ? "Salvar Alterações" : "Criar Usuário"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     )}
+
+                    {/* ── Confirmar desativação ── */}
+                    {adminUserDelConfirm && (() => {
+                      const u = adminUsers.find(x=>x.id===adminUserDelConfirm);
+                      return (
+                        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.65)", zIndex:9100, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                          <div style={{ background:"#131B2E", border:"1px solid rgba(239,68,68,.3)", borderRadius:16, padding:24, width:360, boxShadow:"0 20px 60px rgba(0,0,0,.6)" }}>
+                            <div style={{ fontSize:15, fontWeight:700, color:"#E2E8F0", marginBottom:8 }}>Desativar usuário?</div>
+                            <div style={{ fontSize:13, color:"#64748B", marginBottom:20 }}>O usuário <strong style={{color:"#E2E8F0"}}>{u?.nome}</strong> será desativado e não poderá mais acessar o sistema. Você pode reativá-lo depois.</div>
+                            <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+                              <button onClick={()=>setAdminUserDelConfirm(null)} style={{ padding:"8px 18px", borderRadius:8, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                              <button onClick={()=>deleteAdminUsuario(adminUserDelConfirm)} style={{ padding:"8px 18px", borderRadius:8, background:"rgba(239,68,68,.8)", border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>Desativar</button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* ── PLANOS ───────────────────────────────────────── */}
               {adminSection === "planos" && (

@@ -3973,14 +3973,103 @@ router.patch("/admin/condominio/:id", checkAdminGlobal, async (req: Request, res
   res.json({ ok: true, data });
 });
 
-// GET /api/admin/usuarios  — lista todos os moradores/usuários
-router.get("/admin/usuarios", checkAdminGlobal, async (_req: Request, res: Response) => {
-  const { data, error } = await supabase
-    .from("moradores")
-    .select("id, nome, email, perfil, unidade, status, condominio_id, telefone, created_at")
-    .order("created_at", { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ data });
+// GET /api/admin/usuarios?condominio_id=X&perfil=X&status=X
+// Lista usuários de todos (ou de um) condomínio(s), com nome do condomínio embutido
+router.get("/admin/usuarios", checkAdminGlobal, async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, perfil, status } = req.query as Record<string, string | undefined>;
+    let q = supabase
+      .from("usuarios")
+      .select("id, nome, email, perfil, unidade_id, ativo, ultimo_login, created_at, condominio_id, condominios(nome)")
+      .order("nome", { ascending: true });
+    if (condominio_id) q = q.eq("condominio_id", condominio_id);
+    if (perfil && perfil !== "todos") q = q.eq("perfil", perfil);
+    if (status === "ativo")   q = q.eq("ativo", true);
+    if (status === "inativo") q = q.eq("ativo", false);
+    const { data, error } = await q;
+    if (error) throw error;
+    const normalized = (data || []).map((r: Record<string, unknown>) => ({
+      id:               r.id,
+      condominio_id:    r.condominio_id,
+      condominio_nome:  (r.condominios as { nome?: string } | null)?.nome || "—",
+      nome:             r.nome,
+      email:            r.email,
+      perfil:           r.perfil,
+      unidade:          r.unidade_id || null,
+      status:           r.ativo === false ? "inativo" : "ativo",
+      ultimo_acesso:    r.ultimo_login || null,
+      created_at:       r.created_at,
+    }));
+    res.json({ data: normalized });
+  } catch (err) {
+    console.error("GET /admin/usuarios error:", err);
+    res.status(500).json({ error: "Erro ao listar usuários" });
+  }
+});
+
+// POST /api/admin/usuarios — cria usuário vinculado a um condomínio
+router.post("/admin/usuarios", checkAdminGlobal, async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, nome, email, perfil, unidade, status } = req.body as {
+      condominio_id: string; nome: string; email: string;
+      perfil: "gestor" | "sindico" | "morador" | "zelador";
+      unidade?: string; status?: string;
+    };
+    if (!condominio_id || !nome?.trim() || !email?.trim() || !perfil) {
+      return res.status(400).json({ error: "condominio_id, nome, email e perfil são obrigatórios" });
+    }
+    const { data, error } = await supabase.from("usuarios").insert({
+      condominio_id,
+      nome:       nome.trim(),
+      email:      email.trim().toLowerCase(),
+      perfil,
+      unidade_id: unidade || null,
+      ativo:      status !== "inativo",
+      senha_hash: null,
+    }).select("id, nome, email, perfil, unidade_id, ativo, condominio_id, created_at").single();
+    if (error) throw error;
+    res.status(201).json({ ok: true, data: normUsuario(data as Record<string, unknown>) });
+  } catch (err) {
+    console.error("POST /admin/usuarios error:", err);
+    res.status(500).json({ error: "Erro ao criar usuário" });
+  }
+});
+
+// PUT /api/admin/usuarios/:id — edita usuário
+router.put("/admin/usuarios/:id", checkAdminGlobal, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { nome, email, perfil, unidade, status, condominio_id } = req.body as {
+      nome?: string; email?: string; perfil?: string; unidade?: string; status?: string; condominio_id?: string;
+    };
+    const updates: Record<string, unknown> = {};
+    if (nome          !== undefined) updates.nome         = nome.trim();
+    if (email         !== undefined) updates.email        = email.trim().toLowerCase();
+    if (perfil        !== undefined) updates.perfil       = perfil;
+    if (unidade       !== undefined) updates.unidade_id   = unidade || null;
+    if (status        !== undefined) updates.ativo        = status !== "inativo";
+    if (condominio_id !== undefined) updates.condominio_id = condominio_id;
+    if (!Object.keys(updates).length) return res.status(400).json({ error: "Nenhum campo enviado" });
+    const { data, error } = await supabase.from("usuarios").update(updates).eq("id", id).select().single();
+    if (error) throw error;
+    res.json({ ok: true, data: normUsuario(data as Record<string, unknown>) });
+  } catch (err) {
+    console.error("PUT /admin/usuarios/:id error:", err);
+    res.status(500).json({ error: "Erro ao atualizar usuário" });
+  }
+});
+
+// DELETE /api/admin/usuarios/:id — soft delete (ativo = false)
+router.delete("/admin/usuarios/:id", checkAdminGlobal, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabase.from("usuarios").update({ ativo: false }).eq("id", id);
+    if (error) throw error;
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /admin/usuarios/:id error:", err);
+    res.status(500).json({ error: "Erro ao desativar usuário" });
+  }
 });
 
 // GET /api/admin/planos  — configuração de planos SaaS
