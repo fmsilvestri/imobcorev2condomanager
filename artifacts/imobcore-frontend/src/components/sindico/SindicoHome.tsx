@@ -179,12 +179,27 @@ export default function SindicoHome({
   ];
   const mods = isDark ? modsDark : modsLight;
 
+  const navColors: Record<string, string> = {
+    "Início":  "#6366f1",
+    "Alertas": "#f59e0b",
+    "Usuário": "#10b981",
+    "CRM":     "#ec4899",
+  };
   const navItem = (imgSrc: string, label: string, screen: string | null, onClick: () => void) => {
     const active = sindicoScreen === screen || (screen === null && !sindicoScreen);
+    const clr = navColors[label] ?? v.activeClr;
     return (
-      <button onClick={onClick} style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:2, opacity:active?1:0.45, transition:"opacity .15s, transform .15s", transform: active ? "scale(1.08)" : "scale(1)" }}>
-        <img src={imgSrc} alt={label} style={{ width:28, height:28, objectFit:"contain", filter: active ? "none" : "grayscale(30%)" }} />
-        <span style={{ fontSize:9, fontWeight:800, color:active?v.activeClr:v.muted, lineHeight:1 }}>{label}</span>
+      <button onClick={onClick} style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 8px", display:"flex", flexDirection:"column", alignItems:"center", gap:3, transition:"transform .15s", transform: active ? "scale(1.12)" : "scale(1)" }}>
+        <div style={{
+          width:40, height:40, borderRadius:12,
+          background: active ? (isDark ? "rgba(255,255,255,0.10)" : "rgba(99,60,230,0.10)") : "transparent",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          transition:"background .15s",
+          boxShadow: active ? `0 0 0 1.5px ${clr}44` : "none",
+        }}>
+          <img src={imgSrc} alt={label} style={{ width:30, height:30, objectFit:"contain", filter: active ? "none" : isDark ? "brightness(0.75)" : "brightness(0.85)" }} />
+        </div>
+        <span style={{ fontSize:10, fontWeight:900, color: active ? clr : (isDark ? "rgba(200,190,255,0.70)" : "rgba(80,60,180,0.65)"), lineHeight:1, letterSpacing:"0.02em" }}>{label}</span>
       </button>
     );
   };
