@@ -556,7 +556,7 @@ Nunca invente dados, valores ou informações não fornecidos acima.`;
 
     if (!message) return res.status(400).json({ error: "Campo 'message' obrigatório para o chat geral do Síndico" });
 
-    // ── Tool: criar_ordem_servico ─────────────────────────────────────────────
+    // ── Tools: criar_ordem_servico + criar_comunicado ─────────────────────────
     const diTools: Anthropic.Tool[] = [
       {
         name: "criar_ordem_servico",
@@ -574,6 +574,19 @@ Nunca invente dados, valores ou informações não fornecidos acima.`;
             observacao:     { type: "string", description: "Observações adicionais sobre a OS (local exato, moradores afetados, etc.)" },
           },
           required: ["titulo", "descricao", "area", "prioridade"],
+        },
+      },
+      {
+        name: "criar_comunicado",
+        description: "Cria e registra um comunicado oficial real no módulo de Comunicados do condomínio. Use SOMENTE quando o usuário pedir para enviar, publicar, criar ou registrar um comunicado/aviso para os moradores. Não use para exemplificar.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            titulo:          { type: "string", description: "Título claro e objetivo do comunicado (máx 100 chars)" },
+            corpo:           { type: "string", description: "Conteúdo completo do comunicado em formato profissional, incluindo detalhes, datas e orientações pertinentes" },
+            tipo_comunicado: { type: "string", enum: ["geral","manutencao","financeiro","seguranca","reuniao","obras","emergencia"], description: "Tipo do comunicado conforme conteúdo" },
+          },
+          required: ["titulo", "corpo", "tipo_comunicado"],
         },
       },
     ];
@@ -598,59 +611,77 @@ Nunca invente dados, valores ou informações não fornecidos acima.`;
 
     let reply = "";
     let osCriada: Record<string, unknown> | null = null;
+    let comunicadoCriado: Record<string, unknown> | null = null;
     const tokens = {
       input: firstResponse.usage.input_tokens,
       output: firstResponse.usage.output_tokens,
     };
 
-    // ── Verificar se Claude chamou o tool criar_ordem_servico ─────────────────
-    const toolUseBlock = firstResponse.content.find(b => b.type === "tool_use" && b.name === "criar_ordem_servico");
+    // ── Verificar se Claude chamou algum tool ─────────────────────────────────
+    const toolUseBlock = firstResponse.content.find(b => b.type === "tool_use") as (Anthropic.ToolUseBlock | undefined);
 
-    if (toolUseBlock && toolUseBlock.type === "tool_use" && firstResponse.stop_reason === "tool_use") {
-      // Extrair parâmetros da OS que Claude decidiu criar
-      const osInput = toolUseBlock.input as {
-        titulo: string; descricao: string; area: string; prioridade: string;
-        tecnico_nome?: string; tecnico_contato?: string; custo_estimado?: number; observacao?: string;
-      };
+    if (toolUseBlock && firstResponse.stop_reason === "tool_use") {
+      let toolResultContent = "";
 
-      const slaDefault: Record<string, number> = { urgente: 4, alta: 24, media: 48, baixa: 168 };
-      const slaFinal = slaDefault[osInput.prioridade] ?? 48;
+      // ── Tool: criar_ordem_servico ────────────────────────────────────────────
+      if (toolUseBlock.name === "criar_ordem_servico") {
+        const osInput = toolUseBlock.input as {
+          titulo: string; descricao: string; area: string; prioridade: string;
+          tecnico_nome?: string; tecnico_contato?: string; custo_estimado?: number; observacao?: string;
+        };
+        const slaDefault: Record<string, number> = { urgente: 4, alta: 24, media: 48, baixa: 168 };
+        const { data: osData, error: osErr } = await supabase.from("ordens_servico").insert({
+          condominio_id: condIdCtx || cond?.id,
+          titulo: osInput.titulo,
+          descricao: osInput.descricao,
+          area: osInput.area,
+          prioridade: osInput.prioridade,
+          tecnico_nome: osInput.tecnico_nome || "A definir",
+          tecnico_contato: osInput.tecnico_contato || null,
+          custo_estimado: Number(osInput.custo_estimado) || 0,
+          observacao: osInput.observacao || null,
+          sla_horas: slaDefault[osInput.prioridade] ?? 48,
+          status: "aberta",
+        }).select().single();
+        if (!osErr && osData) {
+          osCriada = osData as Record<string, unknown>;
+          broadcast("nova_os", osCriada);
+          console.log(`[Di] OS criada via chat: "${osInput.titulo}" id=${osCriada.id}`);
+          toolResultContent = JSON.stringify({ sucesso: true, id: osCriada.id, status: "aberta", mensagem: "OS registrada com sucesso no sistema." });
+        } else {
+          console.error("[Di] Erro ao criar OS via tool:", osErr?.message);
+          toolResultContent = JSON.stringify({ sucesso: false, erro: osErr?.message || "Erro ao criar OS" });
+        }
 
-      const osPayload: Record<string, unknown> = {
-        condominio_id: condIdCtx || cond?.id,
-        titulo: osInput.titulo,
-        descricao: osInput.descricao,
-        area: osInput.area,
-        prioridade: osInput.prioridade,
-        tecnico_nome: osInput.tecnico_nome || "A definir",
-        tecnico_contato: osInput.tecnico_contato || null,
-        custo_estimado: Number(osInput.custo_estimado) || 0,
-        observacao: osInput.observacao || null,
-        sla_horas: slaFinal,
-        status: "aberta",
-      };
-
-      const { data: osData, error: osErrRaw } = await supabase.from("ordens_servico").insert(osPayload).select().single();
-      if (!osErrRaw && osData) {
-        osCriada = osData as Record<string, unknown>;
-        broadcast("nova_os", osCriada);
-        console.log(`[Di] OS criada via chat: "${osInput.titulo}" id=${osCriada.id} condo=${condIdCtx}`);
-      } else {
-        console.error("[Di] Erro ao criar OS via tool:", osErrRaw?.message);
+      // ── Tool: criar_comunicado ───────────────────────────────────────────────
+      } else if (toolUseBlock.name === "criar_comunicado") {
+        const comInput = toolUseBlock.input as {
+          titulo: string; corpo: string; tipo_comunicado: string;
+        };
+        const { data: comData, error: comErr } = await supabase.from("comunicados").insert({
+          condominio_id: condIdCtx || cond?.id,
+          titulo: comInput.titulo,
+          corpo: comInput.corpo,
+          tipo_comunicado: comInput.tipo_comunicado,
+          criado_por: nomeUsuarioCtx || "Di – Síndica Virtual",
+          criado_por_perfil: perfilCtx || "ia",
+          status: "enviado",
+        }).select().single();
+        if (!comErr && comData) {
+          comunicadoCriado = comData as Record<string, unknown>;
+          broadcast("novo_comunicado", comunicadoCriado);
+          console.log(`[Di] Comunicado criado via chat: "${comInput.titulo}" id=${comunicadoCriado.id}`);
+          toolResultContent = JSON.stringify({ sucesso: true, id: comunicadoCriado.id, status: "enviado", mensagem: "Comunicado registrado e enviado com sucesso no módulo de Comunicados." });
+        } else {
+          console.error("[Di] Erro ao criar comunicado via tool:", comErr?.message);
+          toolResultContent = JSON.stringify({ sucesso: false, erro: comErr?.message || "Erro ao criar comunicado" });
+        }
       }
 
-      // ── Segunda chamada: Claude recebe resultado do tool e formula resposta ──
+      // ── Segunda chamada: Claude recebe resultado e formula resposta ──────────
       const toolResult: Anthropic.MessageParam = {
         role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: toolUseBlock.id,
-            content: osCriada
-              ? JSON.stringify({ sucesso: true, numero: osCriada.numero, id: osCriada.id, status: "aberta", mensagem: `OS #${osCriada.numero} registrada com sucesso no sistema.` })
-              : JSON.stringify({ sucesso: false, erro: osErr?.message || "Erro ao criar OS" }),
-          },
-        ],
+        content: [{ type: "tool_result", tool_use_id: toolUseBlock.id, content: toolResultContent }],
       };
 
       const secondResponse = await anthropic.messages.create({
@@ -682,7 +713,7 @@ Nunca invente dados, valores ou informações não fornecidos acima.`;
 
     broadcast("sindico_chat", { message, reply, timestamp: new Date().toISOString() });
 
-    res.json({ reply, nome_di: diNome, di_ativa: true, tokens, os_criada: osCriada });
+    res.json({ reply, nome_di: diNome, di_ativa: true, tokens, os_criada: osCriada, comunicado_criado: comunicadoCriado });
   } catch (err) {
     console.error("sindico chat error:", err);
     res.status(500).json({ error: "Erro ao processar mensagem" });
