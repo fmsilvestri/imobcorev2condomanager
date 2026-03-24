@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 
 type Theme = "dark" | "light";
 
@@ -51,9 +51,14 @@ const ANIM_STYLES = `
   0%,100%{background-position:0% 50%}
   50%{background-position:100% 50%}
 }
+@keyframes di-glow {
+  0%,100%{box-shadow:0 0 0 0 rgba(167,139,250,0)}
+  50%{box-shadow:0 0 0 6px rgba(167,139,250,0.18)}
+}
 .sind-pulse-dot{animation:sindico-pulse 1.5s ease-in-out infinite}
 .sind-card:active{transform:scale(0.97)!important}
 .sind-ia-banner{animation:sindico-shimmer 3s ease infinite;background-size:200% 200%}
+.di-avatar-ring{animation:di-glow 2.5s ease-in-out infinite}
 `;
 
 export default function SindicoHome({
@@ -70,20 +75,28 @@ export default function SindicoHome({
 }: SindicoHomeProps) {
   const isDark = sindicoTheme === "dark";
   const photoRef = useRef<HTMLInputElement>(null);
+  const [quickInput, setQuickInput] = useState("");
+  const [diGreet] = useState(() => {
+    const msgs = [
+      "Olá! Monitorando o condomínio agora. Consulte OSs, comunique moradores ou crie votações com minha ajuda.",
+      "Tudo sob controle! Pergunte sobre finanças, ordens de serviço ou envie comunicados rapidamente.",
+      "Sistema ativo. Posso analisar relatórios, criar OSs ou redigir comunicados por você.",
+    ];
+    return msgs[Math.floor(Math.random() * msgs.length)];
+  });
 
   useEffect(() => {
     localStorage.setItem("imobcore_sindico_theme", sindicoTheme);
   }, [sindicoTheme]);
 
   const h = new Date().getHours();
-  const greet = h < 12 ? "Bom dia," : h < 18 ? "Boa tarde," : "Boa noite,";
+  const greetWord = h < 12 ? "Bom dia" : h < 18 ? "Boa tarde" : "Boa noite";
+  const greetEmoji = h < 12 ? "🌤️" : h < 18 ? "☀️" : "🌙";
   const rawName = loginEmail.split("@")[0] || "Síndico";
   const fname = rawName.charAt(0).toUpperCase() + rawName.slice(1);
 
   const condoNome = condo?.nome ?? "Residencial";
   const condoCidade = condo?.cidade ?? "Florianópolis";
-  const condoUnidades = condo?.unidades ?? 0;
-  const condoPhoto = condo?.photo_url ?? null;
 
   const v = {
     bg:         isDark ? "#0f0f1a"                    : "#f0f0f8",
@@ -182,12 +195,19 @@ export default function SindicoHome({
       <input ref={photoRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handlePhotoChange} />
 
       {/* ── HEADER ─────────────────────────────────────── */}
-      <div style={{ padding:"16px 20px 10px", display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexShrink:0 }}>
+      <div style={{ padding:"18px 20px 12px", display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexShrink:0 }}>
         <div>
-          <div style={{ fontSize:12, color:v.muted, marginBottom:1, fontWeight:600 }}>{greet}</div>
-          <div style={{ fontSize:22, fontWeight:900, color:v.text, letterSpacing:"-0.5px", lineHeight:1.15 }}>{fname}</div>
-          <div style={{ marginTop:5 }}>
-            <span style={{ background:"linear-gradient(135deg,#6366f1,#a855f7)", color:"#fff", fontSize:9, fontWeight:800, letterSpacing:"0.07em", textTransform:"uppercase", padding:"3px 10px", borderRadius:20 }}>⬡ SÍNDICO</span>
+          <div style={{ fontSize:13, color:v.muted, marginBottom:1, fontWeight:600, display:"flex", alignItems:"center", gap:5 }}>
+            {greetWord} {greetEmoji}
+          </div>
+          <div style={{ fontSize:26, fontWeight:900, color:v.text, letterSpacing:"-0.5px", lineHeight:1.1 }}>Síndico</div>
+          <div style={{ marginTop:6 }}>
+            <button
+              onClick={() => photoRef.current?.click()}
+              style={{ background: isDark ? "rgba(255,255,255,0.08)" : "rgba(99,60,230,0.08)", border: `1px solid ${v.border}`, borderRadius:20, padding:"4px 12px", fontSize:11, color:v.muted, cursor:"pointer", fontWeight:700, display:"flex", alignItems:"center", gap:5, fontFamily:"inherit" }}
+            >
+              🏢 {condoNome.length > 18 ? condoNome.substring(0, 18) + "…" : condoNome}
+            </button>
           </div>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:7, marginTop:2 }}>
@@ -204,32 +224,124 @@ export default function SindicoHome({
       {/* ── SCROLLABLE BODY ─────────────────────────────── */}
       <div style={{ flex:1, overflowY:"auto", overflowX:"hidden", paddingBottom:80 }}>
 
-        {/* CONDO PHOTO CARD */}
-        <div style={{ margin:"0 14px 10px", borderRadius:18, height:140, position:"relative", overflow:"hidden", background: condoPhoto ? "transparent" : "linear-gradient(135deg,#1e1b4b,#1e3a5f)", flexShrink:0 }}>
-          {condoPhoto
-            ? <img src={condoPhoto} alt={condoNome} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
-            : <div style={{ position:"absolute", inset:0, display:"flex", alignItems:"center", justifyContent:"center", fontSize:48 }}>🏢</div>
-          }
-          {/* Gradient overlay */}
-          <div style={{ position:"absolute", inset:0, background: isDark ? "linear-gradient(to top,rgba(0,0,0,0.80) 0%,transparent 60%)" : "linear-gradient(to top,rgba(99,60,230,0.55) 0%,transparent 70%)" }} />
-          {/* Live badge */}
-          <div style={{ position:"absolute", top:12, right:12, background:"rgba(0,0,0,0.45)", backdropFilter:"blur(8px)", borderRadius:20, padding:"4px 10px", display:"flex", alignItems:"center", gap:5, fontSize:10, color:"#fff", fontWeight:700 }}>
-            <div className="sind-pulse-dot" style={{ width:7, height:7, borderRadius:"50%", background:"#10B981" }} />
-            Sistema ativo
+        {/* ── DI SÍNDICA VIRTUAL — CARD PRINCIPAL ─────── */}
+        <div style={{ margin:"0 14px 6px" }}>
+          {/* Card Di */}
+          <div
+            style={{
+              borderRadius:20,
+              background: isDark
+                ? "linear-gradient(135deg,#1a1060 0%,#2d1b6b 45%,#3b2299 100%)"
+                : "linear-gradient(135deg,#2d1b6b 0%,#4c1d95 50%,#6d28d9 100%)",
+              boxShadow: isDark
+                ? "0 8px 32px rgba(100,60,220,0.35)"
+                : "0 8px 28px rgba(109,40,217,0.40)",
+              display:"flex", overflow:"hidden", position:"relative", minHeight:130,
+            }}
+          >
+            {/* Decorative circles */}
+            <div style={{ position:"absolute", top:-30, left:-20, width:120, height:120, borderRadius:"50%", background:"rgba(255,255,255,0.04)", pointerEvents:"none" }} />
+            <div style={{ position:"absolute", bottom:-20, left:80, width:80, height:80, borderRadius:"50%", background:"rgba(255,255,255,0.04)", pointerEvents:"none" }} />
+
+            {/* Left: info */}
+            <div style={{ flex:1, padding:"18px 14px 18px 18px", display:"flex", flexDirection:"column", justifyContent:"space-between", zIndex:1 }}>
+              {/* Status badge */}
+              <div style={{ display:"inline-flex", alignItems:"center", gap:5, background:"rgba(255,255,255,0.13)", borderRadius:20, padding:"3px 10px", width:"fit-content" }}>
+                <div className="sind-pulse-dot" style={{ width:6, height:6, borderRadius:"50%", background:"#10B981", flexShrink:0 }} />
+                <span style={{ fontSize:9, fontWeight:800, color:"rgba(255,255,255,0.9)", letterSpacing:"0.06em" }}>ONLINE AGORA</span>
+              </div>
+              {/* Name */}
+              <div>
+                <div style={{ fontSize:32, fontWeight:900, color:"#fff", lineHeight:1, marginBottom:2 }}>Di</div>
+                <div style={{ fontSize:12, color:"rgba(255,255,255,0.75)", fontWeight:600, marginBottom:4 }}>Consultora Virtual IA</div>
+                <div style={{ fontSize:10, color:"rgba(200,180,255,0.65)", fontWeight:600 }}>✦ Claude AI · ImobCore</div>
+              </div>
+              {/* Action buttons */}
+              <div style={{ display:"flex", gap:6, marginTop:2 }}>
+                <button
+                  onClick={() => setSindicoScreen("di")}
+                  style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:20, padding:"5px 12px", fontSize:10, fontWeight:800, color:"#fff", cursor:"pointer", fontFamily:"inherit" }}
+                >
+                  📊 Briefing
+                </button>
+                <button
+                  onClick={() => setSindicoScreen("sindico")}
+                  style={{ background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:20, padding:"5px 12px", fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.8)", cursor:"pointer", fontFamily:"inherit" }}
+                >
+                  💬 Chat
+                </button>
+              </div>
+            </div>
+
+            {/* Right: avatar */}
+            <div style={{ width:130, position:"relative", flexShrink:0 }}>
+              <img
+                src="/di.png"
+                alt="Di"
+                style={{
+                  position:"absolute", bottom:0, right:0,
+                  height:"110%", width:"auto",
+                  objectFit:"cover", objectPosition:"top center",
+                  filter:"drop-shadow(-4px 0 16px rgba(60,20,120,0.5))",
+                }}
+              />
+            </div>
           </div>
-          {/* Photo button */}
-          <button onClick={() => photoRef.current?.click()} style={{ position:"absolute", top:12, left:12, background:"rgba(255,255,255,0.15)", backdropFilter:"blur(8px)", border:"1.5px dashed rgba(255,255,255,0.55)", borderRadius:20, padding:"4px 10px", fontSize:10, color:"#fff", fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
-            📷 Alterar foto
-          </button>
-          {/* Name / subtitle */}
-          <div style={{ position:"absolute", bottom:12, left:14, right:14 }}>
-            <div style={{ fontSize:16, fontWeight:900, color:"#fff", textShadow:"0 1px 6px rgba(0,0,0,0.5)" }}>{condoNome}</div>
-            <div style={{ fontSize:11, color:"rgba(255,255,255,0.8)", marginTop:2 }}>{condoCidade} · {condoUnidades} unidades</div>
+
+          {/* Di greeting message */}
+          <div style={{
+            marginTop:8,
+            padding:"10px 14px",
+            background: isDark ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.9)",
+            border: `1px solid ${v.border}`,
+            borderRadius:14,
+            fontSize:12,
+            color: isDark ? "rgba(200,190,255,0.75)" : "#4a4070",
+            lineHeight:1.5,
+            fontWeight:500,
+          }}>
+            {diGreet}
+          </div>
+
+          {/* Quick chat input */}
+          <div style={{ marginTop:8, display:"flex", gap:8, alignItems:"center" }}>
+            <input
+              value={quickInput}
+              onChange={e => setQuickInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && quickInput.trim()) {
+                  setSindicoScreen("sindico");
+                  setQuickInput("");
+                }
+              }}
+              placeholder="Consulte a Di..."
+              style={{
+                flex:1, padding:"10px 14px", borderRadius:24,
+                background: isDark ? "rgba(255,255,255,0.07)" : "#fff",
+                border: `1px solid ${v.border}`,
+                color:v.text, fontSize:13, fontFamily:"inherit",
+                outline:"none",
+              }}
+            />
+            <button
+              onClick={() => { if (quickInput.trim()) { setSindicoScreen("sindico"); setQuickInput(""); } else { setSindicoScreen("sindico"); } }}
+              style={{
+                width:40, height:40, borderRadius:"50%", flexShrink:0,
+                background:"linear-gradient(135deg,#7C3AED,#A855F7)",
+                border:"none", cursor:"pointer",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                boxShadow:"0 4px 14px rgba(168,85,247,0.45)",
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
           </div>
         </div>
 
         {/* QUICK STATS STRIP */}
-        <div style={{ display:"flex", gap:6, padding:"0 14px 10px", overflowX:"auto", scrollbarWidth:"none" }}>
+        <div style={{ display:"flex", gap:6, padding:"10px 14px 2px", overflowX:"auto", scrollbarWidth:"none" }}>
           {[
             { dot:"#10B981", label:"Saldo",       val: saldo>=1000 ? `R$${(saldo/1000).toFixed(0)}k` : `R$${Math.abs(saldo).toFixed(0)}` },
             { dot:"#EF4444", label:"Pendências",  val: String(osAbertasCount) },
@@ -244,48 +356,8 @@ export default function SindicoHome({
           ))}
         </div>
 
-        {/* IA BANNER — Di Síndica Virtual */}
-        <div style={{ margin:"0 14px 10px", display:"flex", gap:8 }}>
-          {/* Di card (primary) */}
-          <div
-            className="sind-ia-banner"
-            onClick={() => setSindicoScreen("di")}
-            style={{
-              flex:2, borderRadius:14, padding:"12px 14px",
-              background: isDark
-                ? "linear-gradient(135deg,#3B0764,#7C3AED,#A855F7)"
-                : "linear-gradient(135deg,#6d28d9,#a855f7)",
-              boxShadow: isDark ? "0 0 20px rgba(168,85,247,.25)" : "0 4px 16px rgba(124,58,237,0.35)",
-              cursor:"pointer", display:"flex", alignItems:"center", gap:10,
-              position:"relative", overflow:"hidden",
-            }}
-          >
-            <div style={{ position:"absolute", top:-14, right:-14, width:56, height:56, borderRadius:"50%", background:"rgba(255,255,255,0.08)" }} />
-            <img src="/di.png" alt="Di" style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover", objectPosition:"top", border:"2px solid rgba(255,255,255,0.3)", flexShrink:0 }} />
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:8, color:"rgba(255,255,255,0.65)", letterSpacing:"0.08em", textTransform:"uppercase" as const, marginBottom:1 }}>SÍNDICA VIRTUAL IA</div>
-              <div style={{ fontSize:14, fontWeight:900, color:"#fff", lineHeight:1.2 }}>Di — Briefing</div>
-              <div style={{ fontSize:9, color:"rgba(255,255,255,0.65)", marginTop:1 }}>Análise + cards inteligentes</div>
-            </div>
-            <span style={{ color:"rgba(255,255,255,0.8)", fontSize:22, fontWeight:300 }}>›</span>
-          </div>
-          {/* Chat IA (secondary) */}
-          <div
-            onClick={() => setSindicoScreen("sindico")}
-            style={{
-              flex:1, borderRadius:14, padding:"12px 10px",
-              background: isDark ? "rgba(99,102,241,.15)" : "rgba(99,102,241,.1)",
-              border:`1px solid ${isDark ? "rgba(99,102,241,.3)" : "rgba(99,102,241,.2)"}`,
-              cursor:"pointer", display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center", gap:4,
-            }}
-          >
-            <span style={{ fontSize:22 }}>💬</span>
-            <div style={{ fontSize:10, fontWeight:800, color: isDark ? "#A5B4FC" : "#4f46e5", textAlign:"center" as const, lineHeight:1.2 }}>Chat IA</div>
-          </div>
-        </div>
-
         {/* MODULE GRID */}
-        <div style={{ padding:"0 14px" }}>
+        <div style={{ padding:"10px 14px 0" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
             <span style={{ fontSize:10, fontWeight:800, color:v.muted, textTransform:"uppercase", letterSpacing:"0.8px" }}>OPERAÇÕES &amp; GESTÃO</span>
             <span style={{ fontSize:11, color:"#a78bfa", fontWeight:700, cursor:"pointer" }}>ver tudo</span>
