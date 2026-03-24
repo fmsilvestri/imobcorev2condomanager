@@ -2578,7 +2578,8 @@ export default function App() {
     history: { role: string; content: string }[],
     setMsgs: React.Dispatch<React.SetStateAction<ChatMsg[]>>,
     setTyping: (v: boolean) => void,
-    setHistory: React.Dispatch<React.SetStateAction<{ role: string; content: string }[]>>
+    setHistory: React.Dispatch<React.SetStateAction<{ role: string; content: string }[]>>,
+    moduloContexto?: string
   ) => {
     if (!msg.trim()) return;
     setMsgs(prev => [...prev, { role: "user", content: msg, time: fmtTime() }]);
@@ -2586,9 +2587,17 @@ export default function App() {
     setHistory(nh);
     setTyping(true);
     try {
+      const body: Record<string, unknown> = {
+        message: msg,
+        history: nh.slice(-10),
+        condominio_id: condId,
+        perfil: loggedUser?.perfil || loginMode || "gestor",
+        nome_usuario: loggedUser?.nome || "Usuário",
+      };
+      if (moduloContexto) body.modulo_contexto = moduloContexto;
       const r = await fetch("/api/sindico/chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, history: nh.slice(-10), condominio_id: condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }),
+        body: JSON.stringify(body),
       });
       const res = await r.json();
       setMsgs(prev => [...prev, { role: "ai", content: res.reply, time: fmtTime() }]);
@@ -4510,10 +4519,22 @@ export default function App() {
         {/* SÍNDICO IA: chat fullscreen */}
         {sindicoScreen === "sindico" && (
           <>
-            <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 12px", borderBottom: "1px solid #d4d6e0", flexShrink: 0, background: "var(--neu-bg)" }}>
-              {[["📊 Resumo", "Resumo rápido do condomínio"], ["🔴 Urgentes", "Quais OSs urgentes?"], ["💧 Água", "Status dos sensores"], ["🔧 Manutenção", "Análise dos equipamentos e planos de manutenção"], ["⚙️ Críticos", "Quais equipamentos precisam de atenção imediata?"]].map(([l, m]) => (
-                <button key={l} className="chip" style={{ whiteSpace: "nowrap", fontSize: 11 }}
-                  onClick={() => sendChat(m, mobileHistory, setMobileMsgs, setMobileTyping, setMobileHistory)}>{l}</button>
+            <div style={{ display: "flex", gap: 5, overflowX: "auto", padding: "6px 12px 4px", borderBottom: "1px solid rgba(255,255,255,0.08)", flexShrink: 0, background: "var(--neu-bg)", scrollbarWidth: "none" }}>
+              {([
+                ["📊 Resumo",       "Gere um resumo executivo completo do condomínio: financeiro, OS abertas, manutenção, moradores e utilidades.",                              undefined],
+                ["💰 Financeiro",   "Analise o financeiro do condomínio: saldo, inadimplência, receitas vs despesas, lançamentos atrasados. Gere relatório.",                   "Financeiro"],
+                ["💧 Água",        "Relatório do módulo de Água: medidores, leituras, consumo mensal, alertas e reservatórios.",                                               "Água"],
+                ["🔥 Gás",         "Relatório do módulo de Gás: medidores, consumo, nível atual, alertas.",                                                                   "Gás"],
+                ["⚡ Energia",      "Relatório do módulo de Energia Elétrica: consumo kWh, medidores, evolução mensal.",                                                       "Energia"],
+                ["🔧 Manutenção",   "Análise completa de manutenção (MISP): equipamentos, status, planos, próximas manutenções e riscos.",                                     "Manutenção / MISP"],
+                ["👥 CRM",          "Relatório de moradores (CRM): total cadastrado, ativos, inadimplentes, proprietários vs inquilinos, novos cadastros.",                     "CRM / Moradores"],
+                ["🏊 Piscina",      "Análise da piscina: pH atual, cloro, temperatura, histórico de leituras e recomendações de tratamento.",                                  "Piscina"],
+                ["📦 Encomendas",   "Status das encomendas: pendentes, aguardando retirada, há quanto tempo estão no sistema.",                                               "Encomendas"],
+                ["📢 Comunicados",  "Sugira comunicados relevantes para enviar aos moradores com base na situação atual do condomínio.",                                       "Comunicados"],
+                ["🚨 Urgentes",     "Quais são as OS urgentes, alertas MISP e situações críticas que exigem ação imediata?",                                                  undefined],
+              ] as [string, string, string | undefined][]).map(([label, msg, modulo]) => (
+                <button key={label} className="chip" style={{ whiteSpace: "nowrap", fontSize: 10, padding: "4px 10px", flexShrink: 0 }}
+                  onClick={() => sendChat(msg, mobileHistory, setMobileMsgs, setMobileTyping, setMobileHistory, modulo)}>{label}</button>
               ))}
             </div>
             <div className="ph-sub-body" style={{ padding: "8px", display: "flex", flexDirection: "column", gap: 8 }}
@@ -4528,7 +4549,7 @@ export default function App() {
             </div>
             <div className="ph-sub-footer">
               <div style={{ display: "flex", gap: 6 }}>
-                <textarea className="fc" value={mobileInput} onChange={e => setMobileInput(e.target.value)} placeholder="Pergunte ao Síndico IA..." rows={2}
+                <textarea className="fc" value={mobileInput} onChange={e => setMobileInput(e.target.value)} placeholder="Consulte a Di sobre qualquer módulo..." rows={2}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(mobileInput, mobileHistory, setMobileMsgs, setMobileTyping, setMobileHistory); setMobileInput(""); } }}
                   style={{ flex: 1, fontSize: 12 }} />
                 <button className="btn-send" style={{ padding: "8px 12px" }} disabled={mobileTyping}
@@ -9469,10 +9490,10 @@ Content-Type: application/json
                               const r = await fetch("/api/sindico/chat", {
                                 method:"POST",
                                 headers:{"Content-Type":"application/json"},
-                                body:JSON.stringify({ message:`Analise o estado dos equipamentos e manutenção do condomínio. ${resumo} Forneça: 1) diagnóstico dos equipamentos críticos 2) recomendações prioritárias 3) score de saúde explicado 4) previsão de riscos. Seja específico e técnico.`, history:[], condominio_id: condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" })
+                                body:JSON.stringify({ message:`Analise o estado dos equipamentos e manutenção do condomínio. ${resumo} Forneça: 1) diagnóstico dos equipamentos críticos 2) recomendações prioritárias 3) score de saúde explicado 4) previsão de riscos. Seja específico e técnico.`, history:[], condominio_id: condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário", modulo_contexto: "Manutenção / MISP" })
                               });
                               const d = await r.json();
-                              setMantAiResult(d.response || d.error || "Sem resposta");
+                              setMantAiResult(d.reply || d.response || d.error || "Sem resposta");
                             } catch { setMantAiResult("Erro ao conectar com IA."); }
                             setMantAiLoading(false);
                           }}

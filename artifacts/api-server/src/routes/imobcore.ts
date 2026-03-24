@@ -149,6 +149,7 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       inadimplencia: inadCtx,
       perfil: perfilCtx,
       nome_usuario: nomeUsuarioCtx,
+      modulo_contexto,
     } = req.body as {
       message?: string;
       history?: { role: string; content: string }[];
@@ -159,6 +160,7 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       inadimplencia?: number;
       perfil?: string;
       nome_usuario?: string;
+      modulo_contexto?: string;
     };
 
     const condIdCtx = condominio_id || "";
@@ -183,6 +185,9 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       { data: encomendasChat },
       { data: medidoresChat },
       { data: leiturasUtilidades },
+      { data: moradoresChat },
+      { data: piscinaLeiturasChat },
+      { data: lancamentosFinChat },
     ] = await Promise.all([
       condQuery,
       condIdCtx
@@ -208,18 +213,30 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
         ? supabase.from("reservoirs").select("name,iot_last_reading,capacity_liters,iot_status,iot_sensor_id").eq("condominio_id", condIdCtx).limit(20)
         : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
       condIdCtx
-        ? supabase.from("comunicados").select("titulo,categoria,corpo,created_at,gerado_por_ia").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(5)
+        ? supabase.from("comunicados").select("titulo,tipo_comunicado,corpo,created_at,gerado_por_ia").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(10)
         : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
       condIdCtx
-        ? supabase.from("encomendas").select("destinatario,status,descricao,created_at").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(10)
+        ? supabase.from("encomendas").select("destinatario,status,descricao,created_at,bloco,apartamento").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(20)
         : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
-      // Utilities: medidores e leituras (agua/gas/energia) — fallback seguro se tabelas não existirem
+      // Utilities: medidores e leituras (agua/gas/energia)
       condIdCtx
-        ? Promise.resolve(supabase.from("medidores").select("id,tipo,numero_serie,local,ativo,ultima_leitura,ultima_leitura_em,unidade_medida,alerta_consumo_alto").eq("condominio_id", condIdCtx).eq("ativo", true)).catch(() => ({ data: null, error: null }))
-        : Promise.resolve({ data: null, error: null }),
+        ? supabase.from("medidores").select("id,tipo,numero_serie,local,ativo,ultima_leitura,ultima_leitura_em,unidade_medida,alerta_consumo_alto").eq("condominio_id", condIdCtx).eq("ativo", true)
+        : Promise.resolve({ data: null as Record<string,unknown>[] | null, error: null }),
       condIdCtx
-        ? Promise.resolve(supabase.from("leituras_medidores").select("medidor_id,data_leitura,leitura_atual,leitura_anterior,consumo,custo").eq("condominio_id", condIdCtx).order("data_leitura", { ascending: false }).limit(36)).catch(() => ({ data: null, error: null }))
-        : Promise.resolve({ data: null, error: null }),
+        ? supabase.from("leituras_medidores").select("medidor_id,data_leitura,leitura_atual,leitura_anterior,consumo,custo").eq("condominio_id", condIdCtx).order("data_leitura", { ascending: false }).limit(60)
+        : Promise.resolve({ data: null as Record<string,unknown>[] | null, error: null }),
+      // CRM — moradores
+      condIdCtx
+        ? supabase.from("moradores").select("id,nome,unidade,bloco,status,email,telefone,tipo_morador,data_entrada,created_at").eq("condominio_id", condIdCtx).order("nome", { ascending: true }).limit(200)
+        : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
+      // Piscina
+      condIdCtx
+        ? supabase.from("piscina_leituras").select("ph,cloro,temperatura,alcalinidade,dureza_calcica,observacoes,status,created_at").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(10)
+        : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
+      // Lançamentos financeiros detalhados
+      condIdCtx
+        ? supabase.from("lancamentos_financeiros").select("tipo,categoria,descricao,valor,status,data_vencimento,data_pagamento,unidade_id").eq("condominio_id", condIdCtx).order("data_vencimento", { ascending: false }).limit(50)
+        : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
     ]);
 
     // Inadimplência via lancamentos_financeiros (se condIdCtx disponível)
@@ -537,6 +554,50 @@ ${lines.join("\n")}
       contextSections.push(buildUtilSection("energia", "Energia Elétrica", "⚡", "kWh"));
     }
 
+    // ── Módulo: CRM / Moradores ───────────────────────────────────────────────
+    type MoradorRow = { id: string; nome: string; unidade: string; bloco?: string; status?: string; email?: string; telefone?: string; tipo_morador?: string; data_entrada?: string };
+    const morList = (moradoresChat || []) as MoradorRow[];
+    if (morList.length > 0) {
+      const ativos = morList.filter(m => !m.status || m.status === "ativo");
+      const inativos = morList.filter(m => m.status === "inativo");
+      const proprietarios = morList.filter(m => m.tipo_morador === "proprietario");
+      const inquilinos = morList.filter(m => m.tipo_morador === "inquilino");
+      contextSections.push(`👥 CRM / MORADORES (${morList.length} cadastrados):
+• Ativos: ${ativos.length} | Inativos: ${inativos.length}
+• Proprietários: ${proprietarios.length} | Inquilinos: ${inquilinos.length}
+• Últimos cadastros:
+${morList.slice(0, 10).map(m => `  - ${m.nome || "Sem nome"} | Unidade: ${m.bloco ? `${m.bloco}/` : ""}${m.unidade || "—"} | ${m.tipo_morador || "morador"} | ${m.status || "ativo"}${m.telefone ? ` | Tel: ${m.telefone}` : ""}`).join("\n")}`);
+    }
+
+    // ── Módulo: Piscina ──────────────────────────────────────────────────────
+    type PiscinaRow = { ph: number; cloro: number; temperatura?: number; alcalinidade?: number; dureza_calcica?: number; observacoes?: string; status?: string; created_at: string };
+    const piscinaList = (piscinaLeiturasChat || []) as PiscinaRow[];
+    if (piscinaList.length > 0) {
+      const ultima = piscinaList[0];
+      const phOk = ultima.ph >= 7.2 && ultima.ph <= 7.6;
+      const cloroOk = ultima.cloro >= 1.0 && ultima.cloro <= 3.0;
+      const statusEmoji = phOk && cloroOk ? "✅ ADEQUADO" : "⚠️ FORA DO PADRÃO";
+      contextSections.push(`🏊 PISCINA — ÚLTIMA LEITURA (${new Date(ultima.created_at).toLocaleDateString("pt-BR")}):
+• pH: ${ultima.ph} ${phOk ? "✅" : "⚠️ (ideal: 7,2–7,6)"} | Cloro: ${ultima.cloro} mg/L ${cloroOk ? "✅" : "⚠️ (ideal: 1,0–3,0)"}
+${ultima.temperatura != null ? `• Temperatura: ${ultima.temperatura}°C` : ""}${ultima.alcalinidade != null ? ` | Alcalinidade: ${ultima.alcalinidade} mg/L` : ""}${ultima.dureza_calcica != null ? ` | Dureza cálcica: ${ultima.dureza_calcica} mg/L` : ""}
+• Status geral: ${statusEmoji}${ultima.observacoes ? `\n• Obs: ${ultima.observacoes}` : ""}
+• Histórico (últimas ${piscinaList.length} leituras):
+${piscinaList.slice(0, 5).map(p => `  - ${new Date(p.created_at).toLocaleDateString("pt-BR")}: pH ${p.ph} | Cl ${p.cloro} | ${p.status || (p.ph>=7.2&&p.ph<=7.6&&p.cloro>=1.0&&p.cloro<=3.0?"ok":"alerta")}`).join("\n")}`);
+    }
+
+    // ── Lançamentos Financeiros Detalhados ───────────────────────────────────
+    type LancFinRow = { tipo: string; categoria: string; descricao?: string; valor: number; status?: string; data_vencimento?: string; data_pagamento?: string; unidade_id?: string };
+    const lancsFin = (lancamentosFinChat || []) as LancFinRow[];
+    if (lancsFin.length > 0 && diModulos.includes("financeiro")) {
+      const atrasados = lancsFin.filter(l => l.status === "atrasado");
+      const pendentes = lancsFin.filter(l => l.status === "pendente");
+      const pagos = lancsFin.filter(l => l.status === "pago");
+      const totalAtrasado = atrasados.reduce((s, l) => s + Number(l.valor), 0);
+      contextSections.push(`💳 LANÇAMENTOS FINANCEIROS DETALHADOS (${lancsFin.length} mais recentes):
+• Pagos: ${pagos.length} | Pendentes: ${pendentes.length} | Atrasados: ${atrasados.length} (R$ ${totalAtrasado.toLocaleString("pt-BR", {minimumFractionDigits:2})})
+${atrasados.length > 0 ? `⚠️ INADIMPLENTES:\n${atrasados.slice(0,8).map(l => `  - ${l.descricao || l.categoria} | R$ ${Number(l.valor).toLocaleString("pt-BR",{minimumFractionDigits:2})} | Venc: ${l.data_vencimento ? new Date(l.data_vencimento).toLocaleDateString("pt-BR") : "—"}${l.unidade_id ? ` | Unidade: ${l.unidade_id}` : ""}`).join("\n")}` : "✅ Sem lançamentos atrasados"}`);
+    }
+
     // ── Alertas MISP públicos (sempre presente se módulo ativo) ─────────────
     if (diModulos.includes("misp") && (alertas || []).length > 0) {
       contextSections.push(`🚨 ALERTAS DE SEGURANÇA ATIVOS (${(alertas || []).length}):
@@ -545,14 +606,20 @@ ${(alertas || []).map((a: AlertaRow) =>
 ).join("\n")}`);
     }
 
-    const systemPrompt = diIdentidade + contextSections.join("\n\n") + `
+    // ── Foco no módulo ativo (quando chamado de dentro de um módulo) ─────────
+    const moduloFocoTxt = modulo_contexto
+      ? `\n⚡ MÓDULO ATIVO: O usuário está consultando Di a partir do módulo "${modulo_contexto}". Priorize dados e análises desse módulo ao responder.`
+      : "";
+
+    const systemPrompt = diIdentidade + contextSections.join("\n\n") + moduloFocoTxt + `
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 INSTRUÇÕES
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Responda com base exclusivamente nos dados acima. Seja profissional, objetivo e útil.
 Use emojis com moderação. Máximo 500 palavras por resposta.
-Nunca invente dados, valores ou informações não fornecidos acima.`;
+Nunca invente dados, valores ou informações não fornecidos acima.
+Quando solicitado, gere relatórios estruturados com seções claras (Resumo, Análise, Alertas, Recomendações).`;
 
     if (!message) return res.status(400).json({ error: "Campo 'message' obrigatório para o chat geral do Síndico" });
 
