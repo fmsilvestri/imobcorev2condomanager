@@ -144,40 +144,23 @@ export default function SindicoHome({
     >{emoji}</button>
   );
 
-  type DarkModule  = { bg: string; text: string; hasDot: boolean; icon: string; title: string; screen: string; sub: string };
-  type LightModule = DarkModule & { border: string };
+  type ModItem = { bg: string; glow: string; text: string; badge: string; hasDot: boolean; icon: string; title: string; screen: string; sub: string };
 
-  const modsDark: DarkModule[] = [
-    { icon:"💰", title:"Financeiro",   screen:"financeiro",    sub: saldo>=1000?`R$${(saldo/1000).toFixed(0)}k`:`R$${saldo.toFixed(0)}`,    hasDot:false,              bg:"linear-gradient(135deg,#064e3b,#065f46)", text:"#6ee7b7" },
-    { icon:"⚙️", title:"Ordens Serv.", screen:"os",            sub:`${osAbertasCount} abertas`,                                              hasDot:osAbertasCount>0,   bg:"linear-gradient(135deg,#1e1b4b,#3730a3)", text:"#a5b4fc" },
-    { icon:"👤", title:"Usuários",     screen:"planejamento",  sub:`${osAbertasCount} pendentes`,                                            hasDot:osAbertasCount>0,   bg:"linear-gradient(135deg,#1e1b4b,#2e2660)", text:"#a5b4fc" },
-    { icon:"🔧", title:"Manutenção",   screen:"manutencao",    sub:`${equipCount} itens`,                                                    hasDot:false,              bg:"linear-gradient(135deg,#431407,#7c2d12)", text:"#fdba74" },
-    { icon:"👥", title:"CRM",          screen:"crm",           sub:`${crmCount} moradores`,                                                  hasDot:false,              bg:"linear-gradient(135deg,#1e3a5f,#1e40af)", text:"#93c5fd" },
-    { icon:"📢", title:"Comunicados",  screen:"comunicados",   sub:`${comunicadosCount} enviados`,                                           hasDot:false,              bg:"linear-gradient(135deg,#2d1b69,#4c1d95)", text:"#c4b5fd" },
-    { icon:"✨", title:"Insights IA",  screen:"insights",      sub:"Tempo real",                                                             hasDot:false,              bg:"linear-gradient(135deg,#1c1917,#44403c)", text:"#fde68a" },
-    { icon:"🏪", title:"Fornecedores", screen:"fornecedores",  sub:`${fornecCount} cadastros`,                                               hasDot:false,              bg:"linear-gradient(135deg,#0c1a12,#14532d)", text:"#86efac" },
-    { icon:"💧", title:"Água",         screen:"agua",          sub:`${nivelMedio}% nível`,                                                   hasDot:false,              bg:"linear-gradient(135deg,#0c1a2e,#0f3460)", text:"#7dd3fc" },
-    { icon:"🔥", title:"Gás",          screen:"gas",           sub:`${gasNivel}% nível${gasNivel<20?" ⚠️":""}`,                              hasDot:gasNivel<20,        bg:"linear-gradient(135deg,#431407,#7c2d12)", text:"#fb923c" },
-    { icon:"⚡", title:"Energia",      screen:"energia",       sub:"Ver consumo",                                                            hasDot:false,              bg:"linear-gradient(135deg,#1c1a04,#3d3200)", text:"#fde047" },
-    { icon:"📦", title:"Encomendas",   screen:"encomendas",    sub:`${encPendentes} aguardando`,                                             hasDot:encPendentes>0,     bg:"linear-gradient(135deg,#1e1b4b,#312e81)", text:"#818cf8" },
-    { icon:"🏊", title:"Piscina",      screen:"piscina",       sub:piscinaLastPh!=null?`pH ${piscinaLastPh}`:"Sem leitura",                   hasDot:piscinaAlerta,      bg:"linear-gradient(135deg,#0c1a2e,#075985)", text: piscinaAlerta?"#fca5a5":"#38bdf8" },
+  const mods: ModItem[] = [
+    { icon:"💰", title:"Financeiro",   screen:"financeiro",   sub: saldo>=1000?`R$${(saldo/1000).toFixed(0)}k`:`R$${saldo.toFixed(0)}`,  hasDot:false,           bg:"linear-gradient(145deg,#059669,#10b981,#34d399)", glow:"rgba(16,185,129,0.45)",  text:"#ecfdf5", badge:"rgba(255,255,255,0.22)" },
+    { icon:"⚙️", title:"Ordens Serv.", screen:"os",           sub:`${osAbertasCount} abertas`,                                            hasDot:osAbertasCount>0,bg:"linear-gradient(145deg,#4338ca,#6366f1,#818cf8)", glow:"rgba(99,102,241,0.45)",  text:"#eef2ff", badge:"rgba(255,255,255,0.22)" },
+    { icon:"👤", title:"Usuários",     screen:"planejamento", sub:`${osAbertasCount} pendentes`,                                          hasDot:osAbertasCount>0,bg:"linear-gradient(145deg,#7c3aed,#8b5cf6,#a78bfa)", glow:"rgba(139,92,246,0.45)",  text:"#f5f3ff", badge:"rgba(255,255,255,0.22)" },
+    { icon:"🔧", title:"Manutenção",   screen:"manutencao",   sub:`${equipCount} itens`,                                                  hasDot:false,           bg:"linear-gradient(145deg,#c2410c,#ea580c,#fb923c)", glow:"rgba(234,88,12,0.45)",   text:"#fff7ed", badge:"rgba(255,255,255,0.22)" },
+    { icon:"👥", title:"CRM",          screen:"crm",          sub:`${crmCount} moradores`,                                                hasDot:false,           bg:"linear-gradient(145deg,#1d4ed8,#3b82f6,#60a5fa)", glow:"rgba(59,130,246,0.45)",  text:"#eff6ff", badge:"rgba(255,255,255,0.22)" },
+    { icon:"📢", title:"Comunicados",  screen:"comunicados",  sub:`${comunicadosCount} enviados`,                                         hasDot:false,           bg:"linear-gradient(145deg,#9333ea,#a855f7,#c084fc)", glow:"rgba(168,85,247,0.45)",  text:"#faf5ff", badge:"rgba(255,255,255,0.22)" },
+    { icon:"✨", title:"Insights IA",  screen:"insights",     sub:"Tempo real",                                                           hasDot:false,           bg:"linear-gradient(145deg,#d97706,#f59e0b,#fcd34d)", glow:"rgba(245,158,11,0.45)",  text:"#fffbeb", badge:"rgba(0,0,0,0.15)" },
+    { icon:"🏪", title:"Fornecedores", screen:"fornecedores", sub:`${fornecCount} cadastros`,                                             hasDot:false,           bg:"linear-gradient(145deg,#15803d,#22c55e,#4ade80)", glow:"rgba(34,197,94,0.45)",   text:"#f0fdf4", badge:"rgba(255,255,255,0.22)" },
+    { icon:"💧", title:"Água",         screen:"agua",         sub:`${nivelMedio}% nível`,                                                 hasDot:false,           bg:"linear-gradient(145deg,#0369a1,#0ea5e9,#38bdf8)", glow:"rgba(14,165,233,0.45)",  text:"#f0f9ff", badge:"rgba(255,255,255,0.22)" },
+    { icon:"🔥", title:"Gás",          screen:"gas",          sub:`${gasNivel}% nível${gasNivel<20?" ⚠️":""}`,                           hasDot:gasNivel<20,     bg:"linear-gradient(145deg,#b91c1c,#ef4444,#f87171)", glow:"rgba(239,68,68,0.45)",   text:"#fff1f2", badge:"rgba(255,255,255,0.22)" },
+    { icon:"⚡", title:"Energia",      screen:"energia",      sub:"Ver consumo",                                                          hasDot:false,           bg:"linear-gradient(145deg,#854d0e,#eab308,#fde047)", glow:"rgba(234,179,8,0.45)",   text:"#fefce8", badge:"rgba(0,0,0,0.15)" },
+    { icon:"📦", title:"Encomendas",   screen:"encomendas",   sub:`${encPendentes} aguardando`,                                           hasDot:encPendentes>0,  bg:"linear-gradient(145deg,#5b21b6,#7c3aed,#a78bfa)", glow:"rgba(124,58,237,0.45)",  text:"#f5f3ff", badge:"rgba(255,255,255,0.22)" },
+    { icon:"🏊", title:"Piscina",      screen:"piscina",      sub:piscinaLastPh!=null?`pH ${piscinaLastPh}`:"Sem leitura",               hasDot:piscinaAlerta,   bg: piscinaAlerta?"linear-gradient(145deg,#be123c,#f43f5e,#fb7185)":"linear-gradient(145deg,#0c4a6e,#0284c7,#38bdf8)", glow:piscinaAlerta?"rgba(244,63,94,0.45)":"rgba(2,132,199,0.45)", text:"#f0f9ff", badge:"rgba(255,255,255,0.22)" },
   ];
-  const modsLight: LightModule[] = [
-    { icon:"💰", title:"Financeiro",   screen:"financeiro",    sub: saldo>=1000?`R$${(saldo/1000).toFixed(0)}k`:`R$${saldo.toFixed(0)}`,    hasDot:false,              bg:"#f0fdf4", border:"#bbf7d0", text:"#065f46" },
-    { icon:"⚙️", title:"Ordens Serv.", screen:"os",            sub:`${osAbertasCount} abertas`,                                              hasDot:osAbertasCount>0,   bg:"#eef2ff", border:"#c7d2fe", text:"#3730a3" },
-    { icon:"👤", title:"Usuários",     screen:"planejamento",  sub:`${osAbertasCount} pendentes`,                                            hasDot:osAbertasCount>0,   bg:"#eef2ff", border:"#c7d2fe", text:"#3730a3" },
-    { icon:"🔧", title:"Manutenção",   screen:"manutencao",    sub:`${equipCount} itens`,                                                    hasDot:false,              bg:"#fff7ed", border:"#fed7aa", text:"#9a3412" },
-    { icon:"👥", title:"CRM",          screen:"crm",           sub:`${crmCount} moradores`,                                                  hasDot:false,              bg:"#eff6ff", border:"#bfdbfe", text:"#1e40af" },
-    { icon:"📢", title:"Comunicados",  screen:"comunicados",   sub:`${comunicadosCount} enviados`,                                           hasDot:false,              bg:"#f5f3ff", border:"#ddd6fe", text:"#5b21b6" },
-    { icon:"✨", title:"Insights IA",  screen:"insights",      sub:"Tempo real",                                                             hasDot:false,              bg:"#fffbeb", border:"#fde68a", text:"#92400e" },
-    { icon:"🏪", title:"Fornecedores", screen:"fornecedores",  sub:`${fornecCount} cadastros`,                                               hasDot:false,              bg:"#f0fdf4", border:"#bbf7d0", text:"#14532d" },
-    { icon:"💧", title:"Água",         screen:"agua",          sub:`${nivelMedio}% nível`,                                                   hasDot:false,              bg:"#f0f9ff", border:"#bae6fd", text:"#0c4a6e" },
-    { icon:"🔥", title:"Gás",          screen:"gas",           sub:`${gasNivel}% nível${gasNivel<20?" ⚠️":""}`,                              hasDot:gasNivel<20,        bg:"#fff7ed", border:"#fed7aa", text:"#c2410c" },
-    { icon:"⚡", title:"Energia",      screen:"energia",       sub:"Ver consumo",                                                            hasDot:false,              bg:"#fefce8", border:"#fef08a", text:"#854d0e" },
-    { icon:"📦", title:"Encomendas",   screen:"encomendas",    sub:`${encPendentes} aguardando`,                                             hasDot:encPendentes>0,     bg:"#eef2ff", border:"#c7d2fe", text:"#3730a3" },
-    { icon:"🏊", title:"Piscina",      screen:"piscina",       sub:piscinaLastPh!=null?`pH ${piscinaLastPh}`:"Sem leitura",                   hasDot:piscinaAlerta,      bg:"#f0f9ff", border:"#bae6fd", text: piscinaAlerta?"#b91c1c":"#0369a1" },
-  ];
-  const mods = isDark ? modsDark : modsLight;
 
   const navColors: Record<string, string> = {
     "Início":  "#6366f1",
@@ -377,27 +360,39 @@ export default function SindicoHome({
             <span style={{ fontSize:10, fontWeight:800, color:v.muted, textTransform:"uppercase", letterSpacing:"0.8px" }}>OPERAÇÕES &amp; GESTÃO</span>
             <span style={{ fontSize:11, color:"#a78bfa", fontWeight:700, cursor:"pointer" }}>ver tudo</span>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             {mods.map((m, i) => (
               <div
                 key={m.title}
                 className="sind-card"
                 onClick={() => setSindicoScreen(m.screen)}
                 style={{
-                  borderRadius:16, padding:"18px 16px", cursor:"pointer",
+                  borderRadius:20, padding:"16px 14px 14px", cursor:"pointer",
                   background: m.bg,
-                  border: isDark ? "none" : `1px solid ${(m as LightModule).border}`,
-                  position:"relative", transition:"transform 0.1s",
+                  position:"relative", overflow:"hidden",
+                  transition:"transform 0.15s, box-shadow 0.15s",
+                  boxShadow:`0 6px 20px ${m.glow}, 0 2px 6px rgba(0,0,0,0.25)`,
                   animation:"sindico-fade-up 0.4s ease both",
-                  animationDelay:`${i * 45}ms`,
+                  animationDelay:`${i * 40}ms`,
                 }}
               >
+                {/* Gloss shine bar */}
+                <div style={{ position:"absolute", top:0, left:0, right:0, height:42, background:"linear-gradient(180deg,rgba(255,255,255,0.22) 0%,rgba(255,255,255,0) 100%)", borderRadius:"20px 20px 0 0", pointerEvents:"none" }} />
+                {/* Alert dot */}
                 {m.hasDot && (
-                  <div className="sind-pulse-dot" style={{ position:"absolute", top:12, right:12, width:9, height:9, borderRadius:"50%", background:"#EF4444" }} />
+                  <div className="sind-pulse-dot" style={{ position:"absolute", top:11, right:11, width:10, height:10, borderRadius:"50%", background:"#fef08a", boxShadow:"0 0 6px #fef08a" }} />
                 )}
-                <div style={{ fontSize:28, marginBottom:8 }}>{m.icon}</div>
-                <div style={{ fontSize:14, fontWeight:800, color:m.text, marginBottom:6, lineHeight:1.2 }}>{m.title}</div>
-                <div style={{ display:"inline-block", fontSize:11, fontWeight:700, color:m.text, background:"rgba(255,255,255,0.18)", borderRadius:20, padding:"3px 10px" }}>{m.sub}</div>
+                {/* 3D Icon */}
+                <div style={{
+                  fontSize:42, lineHeight:1, marginBottom:10,
+                  filter:"drop-shadow(2px 4px 8px rgba(0,0,0,0.35)) drop-shadow(0 1px 2px rgba(0,0,0,0.5))",
+                  transform:"translateZ(0)",
+                  display:"inline-block",
+                }}>
+                  {m.icon}
+                </div>
+                <div style={{ fontSize:13, fontWeight:900, color:"#fff", marginBottom:7, lineHeight:1.2, textShadow:"0 1px 4px rgba(0,0,0,0.3)" }}>{m.title}</div>
+                <div style={{ display:"inline-block", fontSize:10, fontWeight:800, color:"#fff", background:m.badge, borderRadius:20, padding:"3px 10px", backdropFilter:"blur(4px)" }}>{m.sub}</div>
               </div>
             ))}
           </div>
