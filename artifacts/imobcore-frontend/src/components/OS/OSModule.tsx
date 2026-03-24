@@ -20,8 +20,11 @@ interface Props { condId: string; condNome?: string; view: "mobile" | "desktop";
 const CAT_ICON: Record<string,string> = { Hidráulico:"💧",Elétrico:"⚡",Estrutural:"🏗️",Equipamento:"⚙️",Segurança:"🔒",Limpeza:"🧹",Outro:"📋",hidraulica:"💧",eletrica:"⚡",estrutural:"🏗️",equipamento:"⚙️",seguranca:"🔒",limpeza:"🧹",outros:"📋" };
 const CAT_COLOR: Record<string,string> = { Hidráulico:"#3B82F6",Elétrico:"#EAB308",Estrutural:"#F97316",Equipamento:"#6366F1",Segurança:"#8B5CF6",Limpeza:"#14B8A6",Outro:"#64748B",hidraulica:"#3B82F6",eletrica:"#EAB308",estrutural:"#F97316",equipamento:"#6366F1",seguranca:"#8B5CF6",limpeza:"#14B8A6",outros:"#64748B" };
 const PRI_COLOR: Record<string,string> = { urgente:"#EF4444", alta:"#F97316", media:"#3B82F6", baixa:"#10B981" };
+const PRI_GRAD:  Record<string,string> = { urgente:"linear-gradient(135deg,#991B1B,#EF4444,#FCA5A5)", alta:"linear-gradient(135deg,#C2410C,#F97316,#FED7AA)", media:"linear-gradient(135deg,#1D4ED8,#3B82F6,#93C5FD)", baixa:"linear-gradient(135deg,#065F46,#10B981,#6EE7B7)" };
+const PRI_GLOW:  Record<string,string> = { urgente:"rgba(239,68,68,.45)", alta:"rgba(249,115,22,.40)", media:"rgba(59,130,246,.40)", baixa:"rgba(16,185,129,.40)" };
 const PRI_LABEL: Record<string,string> = { urgente:"🔴 URGENTE", alta:"🟡 Alta", media:"🔵 Média", baixa:"🟢 Baixa" };
 const STS_COLOR: Record<string,string> = { aberta:"#F59E0B", em_andamento:"#06B6D4", fechada:"#10B981", cancelada:"#EF4444" };
+const STS_GRAD:  Record<string,string> = { aberta:"linear-gradient(135deg,#92400E,#F59E0B)", em_andamento:"linear-gradient(135deg,#155E75,#06B6D4)", fechada:"linear-gradient(135deg,#065F46,#10B981)", cancelada:"linear-gradient(135deg,#991B1B,#EF4444)" };
 const STS_LABEL: Record<string,string> = { aberta:"Aberta", em_andamento:"Em andamento", fechada:"Concluída", cancelada:"Cancelada" };
 const CATS = ["Hidráulico","Elétrico","Estrutural","Equipamento","Segurança","Limpeza","Outro"];
 const SLA_OPTS = [{ v:4,l:"4h — Urgente" },{ v:24,l:"24h" },{ v:48,l:"48h (padrão)" },{ v:72,l:"72h" },{ v:168,l:"7 dias" }];
@@ -71,8 +74,13 @@ function SLABar({ created_at, sla_horas }: { created_at: string; sla_horas: numb
 
 // ── OSCard ───────────────────────────────────────────────────────────────────
 function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: ()=>void; onStatusChange: (id:string,status:string)=>void; compact?: boolean }) {
-  const pc = PRI_COLOR[os.prioridade] || "#64748B";
-  const sc = STS_COLOR[os.status] || "#64748B";
+  const pc   = PRI_COLOR[os.prioridade] || "#64748B";
+  const pg   = PRI_GRAD[os.prioridade]  || "linear-gradient(135deg,#475569,#94A3B8)";
+  const pglow= PRI_GLOW[os.prioridade]  || "rgba(100,116,139,.3)";
+  const sc   = STS_COLOR[os.status]     || "#64748B";
+  const sg   = STS_GRAD[os.status]      || "linear-gradient(135deg,#475569,#94A3B8)";
+  const cc   = CAT_COLOR[os.categoria]  || "#64748B";
+  const ci   = CAT_ICON[os.categoria]   || "📋";
   const prog = os.status==="fechada"?100:os.status==="em_andamento"?50:0;
   const isUrgente = os.prioridade === "urgente" && os.status !== "fechada";
 
@@ -80,64 +88,121 @@ function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: (
     <div
       onClick={onSelect}
       style={{
-        background:"rgba(255,255,255,.04)", border:`1.5px solid rgba(255,255,255,.10)`,
-        borderLeft:`5px solid ${pc}`, borderRadius:12, padding:compact?"14px 16px":"16px 18px",
-        marginBottom:10, cursor:"pointer", position:"relative",
-        boxShadow: isUrgente ? `0 0 18px ${pc}33` : "0 2px 8px rgba(0,0,0,.25)",
-        transition:"background .12s",
+        borderRadius:16, overflow:"hidden", cursor:"pointer", marginBottom:12,
+        border:`1px solid ${pc}30`,
+        background:`rgba(255,255,255,.03)`,
+        boxShadow: isUrgente
+          ? `0 4px 24px ${pglow}, 0 0 0 1px ${pc}40`
+          : `0 4px 16px ${pglow}`,
+        transition:"transform .12s, box-shadow .12s",
       }}
     >
-      {/* Urgent pulse */}
-      {isUrgente && (
-        <div style={{ position:"absolute",top:14,right:14,width:12,height:12,borderRadius:"50%",background:pc,boxShadow:`0 0 8px ${pc}`,animation:"pulse 1s infinite" }} />
-      )}
+      {/* ── Barra de prioridade colorida no topo ── */}
+      <div style={{ height:5, background:pg }} />
 
-      {/* Header row */}
-      <div style={{ display:"flex", alignItems:"flex-start", gap:12, marginBottom:10 }}>
-        <span style={{ fontFamily:"monospace", fontSize:20, color:"#A5B4FC", fontWeight:900, flexShrink:0, marginTop:2, letterSpacing:".03em" }}>{fmtNum(os.numero)}</span>
-        <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ fontSize:compact?22:24, fontWeight:800, color:"#FFFFFF", lineHeight:1.3, marginBottom:6 }}>{os.titulo}</div>
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
-            <span style={{ fontSize:18, fontWeight:800, color:pc, background:pc+"22", border:`1.5px solid ${pc}55`, borderRadius:6, padding:"3px 10px" }}>{PRI_LABEL[os.prioridade]||os.prioridade}</span>
-            <span style={{ fontSize:18, fontWeight:700, color:sc, background:sc+"18", border:`1px solid ${sc}44`, borderRadius:6, padding:"3px 10px" }}>{STS_LABEL[os.status]||os.status}</span>
-            <span style={{ fontSize:18, color:"#94A3B8", fontWeight:600 }}>{CAT_ICON[os.categoria]} <span style={{ color:"#CBD5E1" }}>{os.categoria}</span></span>
+      <div style={{ padding:compact?"12px 14px":"14px 16px" }}>
+        {/* ── Linha 1: Número + Título + Avatar ── */}
+        <div style={{ display:"flex", alignItems:"flex-start", gap:10, marginBottom:10 }}>
+          {/* Ícone categoria colorido */}
+          <div style={{ width:36, height:36, borderRadius:10, background:`${cc}22`, border:`1.5px solid ${cc}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
+            {ci}
           </div>
+
+          <div style={{ flex:1, minWidth:0 }}>
+            {/* Número da OS */}
+            <div style={{ fontSize:10, fontFamily:"monospace", color:"#A5B4FC", fontWeight:800, letterSpacing:".06em", marginBottom:2 }}>
+              {fmtNum(os.numero)} · {os.categoria}
+            </div>
+            {/* Título */}
+            <div style={{ fontSize:compact?13:14, fontWeight:800, color:"#F1F5F9", lineHeight:1.3 }}>
+              {os.titulo}
+            </div>
+          </div>
+
+          {/* Avatar responsável */}
+          {os.responsavel ? (
+            <div title={os.responsavel} style={{ width:36,height:36,borderRadius:"50%",background:avatarColor(os.responsavel),display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"#fff",flexShrink:0,boxShadow:`0 2px 8px ${avatarColor(os.responsavel)}66` }}>
+              {initials(os.responsavel)}
+            </div>
+          ) : isUrgente ? (
+            <div style={{ width:12,height:12,borderRadius:"50%",background:pc,boxShadow:`0 0 10px ${pc}`,animation:"pulse 1s infinite",marginTop:6,flexShrink:0 }} />
+          ) : null}
         </div>
-        {/* Avatar */}
-        {os.responsavel && (
-          <div title={os.responsavel} style={{ width:42,height:42,borderRadius:"50%",background:avatarColor(os.responsavel),display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:900,color:"#fff",flexShrink:0,boxShadow:"0 2px 6px rgba(0,0,0,.4)" }}>
-            {initials(os.responsavel)}
+
+        {/* ── Linha 2: Badges prioridade + status ── */}
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
+          {/* Badge prioridade — gradiente completo */}
+          <div style={{ background:pg, borderRadius:20, padding:"4px 12px", boxShadow:`0 2px 8px ${pglow}` }}>
+            <span style={{ fontSize:10, fontWeight:900, color:"#fff", letterSpacing:".04em" }}>{PRI_LABEL[os.prioridade]||os.prioridade}</span>
+          </div>
+          {/* Badge status */}
+          <div style={{ background:sg, borderRadius:20, padding:"4px 12px" }}>
+            <span style={{ fontSize:10, fontWeight:800, color:"#fff", letterSpacing:".04em" }}>{STS_LABEL[os.status]||os.status}</span>
+          </div>
+          {/* Aprovação pendente */}
+          {os.aprovacao_necessaria && (
+            <div style={{ background:"linear-gradient(135deg,#78350F,#D97706)", borderRadius:20, padding:"4px 10px" }}>
+              <span style={{ fontSize:10, fontWeight:800, color:"#fff" }}>⚠️ Aprovação</span>
+            </div>
+          )}
+        </div>
+
+        {/* ── SLA Bar ── */}
+        {os.status !== "fechada" && os.status !== "cancelada" && (
+          <SLABar created_at={os.created_at} sla_horas={os.sla_horas||48} />
+        )}
+
+        {/* ── Progresso (status concluída) ── */}
+        {!compact && os.status !== "cancelada" && (
+          <div style={{ marginTop:8 }}>
+            <div style={{ height:4, background:"rgba(255,255,255,.08)", borderRadius:3, overflow:"hidden" }}>
+              <div style={{ width:`${prog}%`,height:"100%",background:sg,borderRadius:3,transition:"width .5s",boxShadow:`0 0 6px ${sc}88` }} />
+            </div>
+          </div>
+        )}
+
+        {/* ── Meta: local / custo / data ── */}
+        {!compact && (os.local || (os.custo_estimado||0) > 0 || os.data_prevista) && (
+          <div style={{ display:"flex",gap:8,marginTop:10,flexWrap:"wrap" }}>
+            {os.local && (
+              <div style={{ display:"flex",alignItems:"center",gap:4,background:"rgba(125,211,252,.08)",border:"1px solid rgba(125,211,252,.18)",borderRadius:8,padding:"3px 10px" }}>
+                <span style={{ fontSize:12 }}>📍</span>
+                <span style={{ fontSize:11,fontWeight:700,color:"#BAE6FD" }}>{os.local}</span>
+              </div>
+            )}
+            {(os.custo_estimado||0) > 0 && (
+              <div style={{ display:"flex",alignItems:"center",gap:4,background:"rgba(134,239,172,.08)",border:"1px solid rgba(134,239,172,.18)",borderRadius:8,padding:"3px 10px" }}>
+                <span style={{ fontSize:12 }}>💰</span>
+                <span style={{ fontSize:11,fontWeight:700,color:"#86EFAC" }}>R$ {os.custo_estimado!.toLocaleString("pt-BR")}</span>
+              </div>
+            )}
+            {os.data_prevista && (
+              <div style={{ display:"flex",alignItems:"center",gap:4,background:"rgba(252,165,165,.08)",border:"1px solid rgba(252,165,165,.18)",borderRadius:8,padding:"3px 10px" }}>
+                <span style={{ fontSize:12 }}>📅</span>
+                <span style={{ fontSize:11,fontWeight:700,color:"#FCA5A5" }}>{fmtDate(os.data_prevista)}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Botões de ação ── */}
+        {!compact && (
+          <div style={{ marginTop:10,display:"flex",gap:8 }}>
+            {os.status==="aberta" && (
+              <button onClick={e=>{e.stopPropagation();onStatusChange(os.id,"em_andamento");}}
+                style={{ flex:1,background:"linear-gradient(135deg,#155E75,#06B6D4,#67E8F9)",border:"none",borderRadius:10,padding:"9px 0",color:"#fff",fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,boxShadow:"0 4px 12px rgba(6,182,212,.45)",letterSpacing:".02em" }}>
+                <span>▶</span> Iniciar OS
+              </button>
+            )}
+            {os.status==="em_andamento" && (
+              <button onClick={e=>{e.stopPropagation();onStatusChange(os.id,"fechada");}}
+                style={{ flex:1,background:"linear-gradient(135deg,#065F46,#10B981,#34D399)",border:"none",borderRadius:10,padding:"9px 0",color:"#fff",fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,boxShadow:"0 4px 12px rgba(16,185,129,.45)",letterSpacing:".02em" }}>
+                <span>✓</span> Concluir OS
+              </button>
+            )}
           </div>
         )}
       </div>
-
-      {/* SLA bar */}
-      {os.status !== "fechada" && os.status !== "cancelada" && (
-        <SLABar created_at={os.created_at} sla_horas={os.sla_horas||48} />
-      )}
-
-      {/* Progress bar */}
-      {!compact && (
-        <div style={{ marginTop:8 }}>
-          <div style={{ height:5, background:"rgba(255,255,255,.07)", borderRadius:3, overflow:"hidden" }}>
-            <div style={{ width:`${prog}%`,height:"100%",background:sc,borderRadius:3,transition:"width .5s",boxShadow:`0 0 6px ${sc}88` }} />
-          </div>
-        </div>
-      )}
-
-      {/* Meta row */}
-      {!compact && (
-        <div style={{ display:"flex",gap:12,marginTop:10,flexWrap:"wrap",alignItems:"center" }}>
-          {os.local && <span style={{ fontSize:20,color:"#7DD3FC",fontWeight:600 }}>📍 <span style={{ color:"#BAE6FD" }}>{os.local}</span></span>}
-          {os.custo_estimado! > 0 && <span style={{ fontSize:20,color:"#86EFAC",fontWeight:600 }}>💰 <span style={{ color:"#BBF7D0" }}>R$ {os.custo_estimado!.toLocaleString("pt-BR")}</span></span>}
-          {os.data_prevista && <span style={{ fontSize:20,color:"#FCA5A5",fontWeight:600 }}>📅 <span style={{ color:"#FECACA" }}>{fmtDate(os.data_prevista)}</span></span>}
-          {os.aprovacao_necessaria && <span style={{ fontSize:18,fontWeight:800,color:"#FDE68A",background:"rgba(234,179,8,.18)",border:"1px solid rgba(234,179,8,.35)",borderRadius:6,padding:"3px 10px" }}>⚠️ Aprovação</span>}
-          <div style={{ marginLeft:"auto",display:"flex",gap:6 }}>
-            {os.status==="aberta"&&<button onClick={e=>{e.stopPropagation();onStatusChange(os.id,"em_andamento");}} style={{ fontSize:18,padding:"5px 16px",background:"rgba(6,182,212,.18)",border:"1.5px solid rgba(6,182,212,.4)",borderRadius:8,color:"#67E8F9",cursor:"pointer",fontWeight:700 }}>▶ Iniciar</button>}
-            {os.status==="em_andamento"&&<button onClick={e=>{e.stopPropagation();onStatusChange(os.id,"fechada");}} style={{ fontSize:18,padding:"5px 16px",background:"rgba(16,185,129,.18)",border:"1.5px solid rgba(16,185,129,.4)",borderRadius:8,color:"#34D399",cursor:"pointer",fontWeight:700 }}>✓ Concluir</button>}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -146,32 +211,30 @@ function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: (
 function KpiStrip({ os, filter, onFilter }: { os: OS[]; filter: string; onFilter:(f:string)=>void }) {
   const urgentesCount = os.filter(o=>o.prioridade==="urgente"&&o.status!=="fechada").length;
   const stats = [
-    { k:"todos",     v:os.length,                                                  icon:"📊", label:"Total",      color:"#A5B4FC", bg:"rgba(165,180,252,.08)", glow:"rgba(165,180,252,.25)", filt:"todos"       },
-    { k:"aberta",    v:os.filter(o=>o.status==="aberta").length,                   icon:"📋", label:"Abertas",    color:"#FCD34D", bg:"rgba(252,211,77,.09)",  glow:"rgba(252,211,77,.28)",  filt:"aberta"      },
-    { k:"andamento", v:os.filter(o=>o.status==="em_andamento").length,             icon:"🔄", label:"Andamento",  color:"#22D3EE", bg:"rgba(34,211,238,.09)", glow:"rgba(34,211,238,.28)",  filt:"em_andamento" },
-    { k:"fechada",   v:os.filter(o=>o.status==="fechada").length,                  icon:"✅", label:"Concluídas", color:"#34D399", bg:"rgba(52,211,153,.09)", glow:"rgba(52,211,153,.28)",  filt:"fechada"     },
-    { k:"urgente",   v:urgentesCount,                                              icon:"🚨", label:"Urgentes",   color:"#F87171", bg:urgentesCount>0?"rgba(248,113,113,.14)":"rgba(248,113,113,.06)", glow:"rgba(248,113,113,.38)", filt:"urgente" },
+    { k:"todos",     v:os.length,                                    icon:"📊", label:"Total",      grad:"linear-gradient(135deg,#4338CA,#6366F1,#A5B4FC)", glow:"rgba(99,102,241,.50)", filt:"todos"       },
+    { k:"aberta",    v:os.filter(o=>o.status==="aberta").length,     icon:"📋", label:"Abertas",    grad:"linear-gradient(135deg,#92400E,#F59E0B,#FCD34D)", glow:"rgba(245,158,11,.50)", filt:"aberta"      },
+    { k:"andamento", v:os.filter(o=>o.status==="em_andamento").length,icon:"🔄",label:"Andamento",  grad:"linear-gradient(135deg,#155E75,#06B6D4,#67E8F9)", glow:"rgba(6,182,212,.50)",  filt:"em_andamento"},
+    { k:"urgente",   v:urgentesCount,                                icon:"🚨", label:"Urgentes",   grad:"linear-gradient(135deg,#991B1B,#EF4444,#FCA5A5)", glow:"rgba(239,68,68,.50)",  filt:"urgente"     },
   ];
   return (
-    <div style={{ display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",flex:1 }}>
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:16 }}>
       {stats.map(s => {
         const active = filter === s.filt;
-        const urgent = s.k === "urgente" && s.v > 0;
+        const isUrgent = s.k === "urgente" && s.v > 0;
         return (
           <div key={s.k} onClick={()=>onFilter(active?"todos":s.filt)}
             style={{
-              flex:"1 1 90px", minWidth:80,
-              background: active ? s.bg.replace(/\.\d+\)$/,".22)") : s.bg,
-              border:`2px solid ${active ? s.color : urgent ? s.color+"55" : "rgba(255,255,255,.07)"}`,
-              borderTop:`3px solid ${active || urgent ? s.color : "rgba(255,255,255,.07)"}`,
-              borderRadius:14, padding:"14px 10px 12px", textAlign:"center",
-              cursor:"pointer",
-              boxShadow: active ? `0 0 18px ${s.glow}` : urgent ? `0 0 10px ${s.glow}` : "none",
+              borderRadius:14,
+              background: active || isUrgent ? s.grad : "rgba(255,255,255,.04)",
+              border:`1.5px solid ${active || isUrgent ? "transparent" : "rgba(255,255,255,.08)"}`,
+              padding:"12px 6px 10px", textAlign:"center",
+              cursor:"pointer", position:"relative", overflow:"hidden",
+              boxShadow: active ? `0 4px 18px ${s.glow}` : isUrgent ? `0 4px 14px ${s.glow}` : "none",
               transition:"all .18s ease",
             }}>
-            <div style={{ fontSize:24,marginBottom:4,lineHeight:1 }}>{s.icon}</div>
-            <div style={{ fontSize:26,fontWeight:900,color:s.color,lineHeight:1,letterSpacing:"-1px" }}>{s.v}</div>
-            <div style={{ fontSize:11,color:s.color,opacity: active ? 1 : .75,marginTop:4,fontWeight:700,letterSpacing:".02em" }}>{s.label}</div>
+            <div style={{ position:"absolute", top:-6, right:-6, fontSize:28, opacity: (active||isUrgent) ? 0.25 : 0.12, lineHeight:1 }}>{s.icon}</div>
+            <div style={{ fontSize:24, fontWeight:900, color: active||isUrgent?"#fff":"rgba(255,255,255,.85)", lineHeight:1, letterSpacing:"-1px" }}>{s.v}</div>
+            <div style={{ fontSize:9, color: active||isUrgent?"rgba(255,255,255,.85)":"rgba(255,255,255,.45)", marginTop:4, fontWeight:800, letterSpacing:".04em", textTransform:"uppercase" }}>{s.label}</div>
           </div>
         );
       })}
