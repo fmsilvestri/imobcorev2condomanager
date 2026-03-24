@@ -159,6 +159,12 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
 
     const condIdCtx = condominio_id || "";
 
+    // Todas as queries filtradas pelo condomínio do usuário quando disponível
+    // Garante isolamento: cada usuário vê apenas os dados do seu condomínio
+    const condQuery = condIdCtx
+      ? supabase.from("condominios").select("*").eq("id", condIdCtx).limit(1).single()
+      : supabase.from("condominios").select("*").limit(1).single();
+
     const [
       { data: cond },
       { data: osAbertas },
@@ -169,12 +175,20 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       { data: equipamentos },
       { data: planos },
     ] = await Promise.all([
-      supabase.from("condominios").select("*").limit(1).single(),
-      supabase.from("ordens_servico").select("*").eq("status", "aberta").order("created_at", { ascending: false }),
-      supabase.from("sensores").select("*"),
+      condQuery,
+      condIdCtx
+        ? supabase.from("ordens_servico").select("*").eq("condominio_id", condIdCtx).eq("status", "aberta").order("created_at", { ascending: false })
+        : supabase.from("ordens_servico").select("*").eq("status", "aberta").order("created_at", { ascending: false }),
+      condIdCtx
+        ? supabase.from("sensores").select("*").eq("condominio_id", condIdCtx)
+        : supabase.from("sensores").select("*"),
       supabase.from("alertas_publicos").select("*").eq("ativo", true),
-      supabase.from("financeiro_receitas").select("*"),
-      supabase.from("financeiro_despesas").select("*"),
+      condIdCtx
+        ? supabase.from("financeiro_receitas").select("*").eq("condominio_id", condIdCtx)
+        : supabase.from("financeiro_receitas").select("*"),
+      condIdCtx
+        ? supabase.from("financeiro_despesas").select("*").eq("condominio_id", condIdCtx)
+        : supabase.from("financeiro_despesas").select("*"),
       condIdCtx
         ? supabase.from("equipamentos").select("*").eq("condominio_id", condIdCtx).order("created_at", { ascending: true })
         : supabase.from("equipamentos").select("*").order("created_at", { ascending: true }),
@@ -3362,8 +3376,12 @@ router.post("/di", async (req: Request, res: Response) => {
       condominio_id
         ? supabase.from("condominios").select("*").eq("id", condominio_id).single()
         : supabase.from("condominios").select("*").limit(1).single(),
-      supabase.from("reservoirs").select("iot_sensor_id,name,iot_last_reading,capacity_liters,iot_status").limit(20),
-      supabase.from("sensores").select("nome,local,nivel_atual,capacidade_litros,volume_litros").limit(20),
+      condominio_id
+        ? supabase.from("reservoirs").select("iot_sensor_id,name,iot_last_reading,capacity_liters,iot_status").eq("condominio_id", condominio_id).limit(20)
+        : supabase.from("reservoirs").select("iot_sensor_id,name,iot_last_reading,capacity_liters,iot_status").limit(20),
+      condominio_id
+        ? supabase.from("sensores").select("nome,local,nivel_atual,capacidade_litros,volume_litros").eq("condominio_id", condominio_id).limit(20)
+        : supabase.from("sensores").select("nome,local,nivel_atual,capacidade_litros,volume_litros").limit(20),
       condominio_id
         ? supabase.from("ordens_servico").select("titulo,prioridade,status").in("status", ["aberta","em_andamento"]).eq("condominio_id", condominio_id).limit(20)
         : supabase.from("ordens_servico").select("titulo,prioridade,status").in("status", ["aberta","em_andamento"]).limit(20),
