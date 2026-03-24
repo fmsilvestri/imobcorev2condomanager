@@ -1921,15 +1921,15 @@ export default function App() {
     setMedidoresLoading(true);
     try {
       const [rE, rG, rA, rL] = await Promise.all([
-        fetch(`${API}/medidores?condominio_id=${cid}&tipo=energia`).then(r=>r.json()).catch(()=>({data:[]})),
-        fetch(`${API}/medidores?condominio_id=${cid}&tipo=gas`).then(r=>r.json()).catch(()=>({data:[]})),
-        fetch(`${API}/medidores?condominio_id=${cid}&tipo=agua`).then(r=>r.json()).catch(()=>({data:[]})),
-        fetch(`${API}/leituras-medidores?condominio_id=${cid}`).then(r=>r.json()).catch(()=>({data:[]})),
+        fetch(`/api/medidores?condominio_id=${cid}&tipo=energia`).then(r=>r.json()).catch(()=>({data:[]})),
+        fetch(`/api/medidores?condominio_id=${cid}&tipo=gas`).then(r=>r.json()).catch(()=>({data:[]})),
+        fetch(`/api/medidores?condominio_id=${cid}&tipo=agua`).then(r=>r.json()).catch(()=>({data:[]})),
+        fetch(`/api/leituras-medidores?condominio_id=${cid}`).then(r=>r.json()).catch(()=>({data:[]})),
       ]);
-      setMedidoresEnergia(rE.data || []);
-      setMedidoresGas(rG.data || []);
-      setMedidoresAgua(rA.data || []);
-      setLeiturasUtil(rL.data || []);
+      setMedidoresEnergia(Array.isArray(rE.data) ? rE.data : []);
+      setMedidoresGas(Array.isArray(rG.data) ? rG.data : []);
+      setMedidoresAgua(Array.isArray(rA.data) ? rA.data : []);
+      setLeiturasUtil(Array.isArray(rL.data) ? rL.data : []);
     } catch {}
     setMedidoresLoading(false);
   };
@@ -1937,22 +1937,31 @@ export default function App() {
   const salvarMedidor = async () => {
     if (!condId || !novoMedidorModal || !novoMedidorForm.numero_serie || !novoMedidorForm.local) return;
     try {
-      const res = await fetch(`${API}/medidores`, {
+      const res = await fetch(`/api/medidores`, {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ condominio_id: condId, tipo: novoMedidorModal, ...novoMedidorForm, alerta_consumo_alto: novoMedidorForm.alerta_consumo_alto ? Number(novoMedidorForm.alerta_consumo_alto) : null }),
       });
-      if (res.ok) { setNovoMedidorModal(""); setNovoMedidorForm({ numero_serie:"", local:"", unidade_medida:"kWh", alerta_consumo_alto:"" }); loadMedidores(condId); }
+      if (res.ok) {
+        setNovoMedidorModal("");
+        setNovoMedidorForm({ numero_serie:"", local:"", unidade_medida:"kWh", alerta_consumo_alto:"" });
+        await loadMedidores(condId);
+      }
     } catch {}
   };
 
   const salvarLeitura = async () => {
     if (!condId || !novaLeituraModal || !novaLeituraForm.leitura_atual) return;
     try {
-      const res = await fetch(`${API}/leituras-medidores`, {
+      const res = await fetch(`/api/leituras-medidores`, {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ medidor_id: novaLeituraModal, condominio_id: condId, leitura_atual: Number(novaLeituraForm.leitura_atual), custo: novaLeituraForm.custo ? Number(novaLeituraForm.custo) : null, observacoes: novaLeituraForm.observacoes, data_leitura: novaLeituraForm.data_leitura }),
       });
-      if (res.ok) { setNovaLeituraModal(""); setNovaLeituraForm({ leitura_atual:"", custo:"", observacoes:"", data_leitura: new Date().toISOString().slice(0,10) }); loadMedidores(condId); }
+      if (res.ok) {
+        setNovaLeituraModal("");
+        setMedidorSelecionado(null);
+        setNovaLeituraForm({ leitura_atual:"", custo:"", observacoes:"", data_leitura: new Date().toISOString().slice(0,10) });
+        await loadMedidores(condId);
+      }
     } catch {}
   };
 
