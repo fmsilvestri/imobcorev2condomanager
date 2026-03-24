@@ -88,26 +88,67 @@ Demo data: 1 condomínio, 5 sensors, 5 OSs (2 urgentes), 2 MISP alertas, receita
 - `AI_INTEGRATIONS_ANTHROPIC_BASE_URL` — Replit AI proxy URL (auto-set)
 - `AI_INTEGRATIONS_ANTHROPIC_API_KEY` — Replit AI proxy key (auto-set)
 
+## Di Engine (Master → Di → Módulos)
+
+The Di AI engine is configured per condominium by the Master and acts contextually across all modules.
+
+### Tables (Supabase)
+- `di_system_prompt` — Blocks of Di's system prompt (columns: `bloco`, `titulo`, `conteudo`, `fixo`, `condominio_id`). Global blocks have `condominio_id = null`; per-condo overrides have the condo UUID.
+- `di_configuracoes` — Per-condo Di config (`nome_di`, `tom_comunicacao` [direto_empatico|formal|suave], `modulos_ativos` JSONB, `limite_financeiro`, `identidade_persona`, `system_prompt`, `regras_de_ouro`, `di_ativa`)
+- `di_historico` — All Di interactions saved (tipo, prioridade, resumo, mensagem_gestor, score_impacto, payload JSONB, modulo)
+
+### Engine Files
+- `src/di-engine/context.ts` — `carregarContextoDi(condoId, snapshot, perfil, nomeUsuario, unidadeId)` loads Di's configured identity + template variable substitution (`{{nome_condominio}}`, `{{saldo}}`, etc.)
+- `src/di-engine/modulos.ts` — `CATALOGO_MODULOS` (12 modules), `getModulosPorPerfil()`, `getAcoesPorPerfil()`
+- `src/lib/supabase.ts` — Shared Supabase client
+- `src/lib/anthropic.ts` — Shared Anthropic client (Replit proxy support)
+
+### New API Endpoints
+- `GET /api/modulos?perfil=gestor` — Lists modules available for a given profile
+- `GET /api/modulos/:id/dados?condominio_id=X` — Real data for a specific module
+- `POST /api/modulos/:id/di-analise` — Di analyzes a module and returns {status, emoji, pontos, recomendacao}
+- `POST /api/modulos/:id/di-chat` — Contextual chat with Di about a specific module
+- `POST /api/admin/migrate-di` — Seeds 6 prompt blocks + initializes di_configuracoes for all condos
+
+### Updated Endpoints
+- `POST /api/sindico/chat` — Now uses `carregarContextoDi` to load Di's identity/rules from DB before responding
+- `POST /api/di` — Briefing now uses Di's configured name and system prompt from DB
+
+### Supported Profiles (Perfil)
+`master`, `gestor`, `sindico`, `morador`, `zelador`
+
+### Migrations
+- `migrations/015_di_integration.sql` — DDL for di_system_prompt, di_memoria, and ALTER di_configuracoes
+
 ## Structure
 
 ```
 artifacts/
   api-server/          # Express backend
     src/
-      routes/imobcore.ts  # All ImobCore API routes
-      app.ts              # Express app setup
-      index.ts            # Server entry point
-    public/index.html    # Legacy static HTML (not used)
+      routes/
+        imobcore.ts    # All core ImobCore API routes (4141 lines)
+        modulos.ts     # Di module routes (GET/POST modulos/*, admin/migrate-di)
+        index.ts       # Router registry
+        health.ts      # Health check
+      di-engine/
+        context.ts     # carregarContextoDi() — loads Di context from Supabase
+        modulos.ts     # Module catalog and permissions
+      lib/
+        supabase.ts    # Shared Supabase client
+        anthropic.ts   # Shared Anthropic client (Replit proxy)
+        financeiro.service.ts  # Financial calculations
+      app.ts           # Express app setup
+      index.ts         # Server entry point
+    migrations/
+      015_di_integration.sql  # DDL for Di tables
   imobcore-frontend/   # React + Vite frontend
     src/
-      App.tsx            # Full ImobCore UI (all 3 views)
-      index.css          # Minimal CSS reset
-      main.tsx           # React entry
+      App.tsx          # Full ImobCore UI (all 3 views, ~500KB)
+      index.css        # Minimal CSS reset
+      main.tsx         # React entry
 lib/                   # Shared workspace packages
 scripts/               # Utility scripts
-  src/
-    setup-supabase.ts  # Supabase schema + seed
-    create-tables.ts   # Table creation
 ```
 
 ## TypeScript & Composite Projects

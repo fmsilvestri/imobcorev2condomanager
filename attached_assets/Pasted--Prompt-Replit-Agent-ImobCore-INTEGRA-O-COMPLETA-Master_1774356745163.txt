@@ -1,0 +1,876 @@
+# Prompt — Replit Agent · ImobCore
+# INTEGRAÇÃO COMPLETA: Master configura Di → Di atua por perfil em todos os módulos
+#
+# SITUAÇÃO ATUAL (da imagem):
+# ✅ public/master/index.html — UI completa (blocos B01-B06, settings, regras, módulos, usuários)
+# ✅ src/routes/master.ts — endpoints de leitura e escrita existem
+# ✅ src/di-engine/run.ts + cycle.ts — ciclo Di com Claude
+# ✅ src/action-engine, memory-engine, event-engine — funcionais
+#
+# O QUE FALTA (gap entre UI e backend):
+# ❌ di_system_prompt table não tem seed dos 6 blocos → API retorna vazio → UI usa BLOCOS_DEMO
+# ❌ /api/master/di/config/condo/:id retorna null → blocos não salvos por condo
+# ❌ di-engine/run.ts usa di_system_prompt mas não lê di_configuracoes (limite, nome, tom, módulos)
+# ❌ routes/gestor.ts, sindico.ts, morador.ts têm system prompt hardcoded
+# ❌ Não existe rota /api/modulos unificada por perfil
+# ❌ Não existe src/di-engine/context.ts (fonte única para montar system prompt)
+#
+# RESULTADO ESPERADO:
+# Master edita bloco B01 → salva → di_system_prompt → Di usa ao chamar Claude
+# Master configura limite R$300 → di_configuracoes → Di não aprova acima de R$300
+# Master desativa módulo CRM → di_configuracoes.modulos_ativos → Síndico não vê CRM
+# Gestor abre módulo IoT → /api/modulos/iot/di-analise → Di analisa com contexto do Master
+# Morador pergunta → Di responde sem revelar dados de outros moradores
+#
+# Cole este prompt no chat do Replit AI
+
+---
+
+## PASSO 1 — SQL Supabase (executar primeiro no SQL Editor)
+
+```sql
+-- ── Tabela di_system_prompt (blocos do system prompt por condo) ────────────────
+CREATE TABLE IF NOT EXISTS di_system_prompt (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  bloco         TEXT NOT NULL,
+  titulo        TEXT NOT NULL DEFAULT '',
+  conteudo      TEXT NOT NULL DEFAULT '',
+  fixo          BOOLEAN DEFAULT false,
+  condominio_id UUID REFERENCES condominios(id) ON DELETE CASCADE,
+  updated_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (bloco, condominio_id)
+);
+CREATE INDEX IF NOT EXISTS dsp_condo ON di_system_prompt(condominio_id, bloco);
+ALTER TABLE di_system_prompt ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "dsp_master" ON di_system_prompt;
+DROP POLICY IF EXISTS "dsp_read"   ON di_system_prompt;
+CREATE POLICY "dsp_master" ON di_system_prompt FOR ALL    USING (auth_role()='master');
+CREATE POLICY "dsp_read"   ON di_system_prompt FOR SELECT USING (auth_role() IN ('gestor','sindico','morador','zelador'));
+
+-- ── Seed dos 6 blocos globais (condominio_id IS NULL = vale para todos) ────────
+INSERT INTO di_system_prompt (bloco, titulo, conteudo, fixo, condominio_id) VALUES
+('1_identidade','Identidade e persona',
+'Você é Di, a Síndica Virtual do condomínio {{nome_condominio}}.
+Você monitora todos os módulos do ImobCore e apoia o gestor {{nome_gestor}}.
+Seu tom: {{tom_comunicacao}}.
+Você sempre sugere pelo menos uma solução viável e conhece seus limites.',
+true, NULL),
+
+('2_regras_ouro','Regras de ouro',
+'REGRAS INVIOLÁVEIS:
+1. NUNCA execute ações acima de R$ {{limite_financeiro}} sem aprovação explícita.
+2. NUNCA envie comunicados massivos sem confirmação humana.
+3. NUNCA compartilhe dados pessoais de moradores.
+4. NUNCA tome decisões sobre rescisão ou contratação.
+5. NUNCA ignore alerta MISP urgente.
+6. Em dúvida: escale para o gestor, não aja.',
+true, NULL),
+
+('3_prioridades','Hierarquia de prioridades',
+'P1 - SEGURANÇA → age imediatamente + alerta
+P2 - FINANCEIRO → apresenta opções, aguarda aprovação
+P3 - OPERAÇÃO → fora do padrão: age ou agenda
+P4 - CONVÍVIO → registra, notifica, inclui no briefing',
+true, NULL),
+
+('4_dados','Dados do condomínio',
+'Nome: {{nome_condominio}} | Unidades: {{total_unidades}} | Moradores: {{total_moradores}}
+Gestor: {{nome_gestor}} | Síndico: {{nome_sindico}}
+Estado: OSs={{os_abertas}} urgentes={{os_urgentes}} | Saldo=R${{saldo}} | Inadimp={{inadimplencia_pct}}%
+Score: {{score_geral}}/100 | MISP ativos: {{misp_ativos}}',
+false, NULL),
+
+('5_limites','Limites de autonomia',
+'PODE autonomamente:
+✓ Criar OS para manutenção rotineira
+✓ Enviar push para morador individual
+✓ Registrar encomenda e notificar
+✓ Fechar OS confirmada pelo zelador
+✓ Gerar relatório no storage
+
+PRECISA aprovação humana:
+✗ Qualquer gasto ou movimentação financeira
+✗ Comunicados para todos os moradores
+✗ Contratar ou cancelar fornecedor
+✗ Ações sobre inadimplentes
+✗ Decisão sobre área comum > R${{limite_financeiro}}',
+false, NULL),
+
+('6_formato','Formato de saída',
+'Responda APENAS em JSON válido:
+{"tipo":"autonomo|recomendacao|briefing|alerta","prioridade":"urgente|alta|normal|info","resumo":"max 200 chars","acoes":[{"modulo":"string","acao":"string","autonomo":bool,"payload":{},"justificativa":"string"}],"mensagem_gestor":"string","score_impacto":1-10,"requer_aprovacao":bool,"salvar_historico":true}',
+true, NULL)
+ON CONFLICT (bloco, condominio_id) DO UPDATE
+  SET conteudo=EXCLUDED.conteudo, updated_at=NOW()
+  WHERE di_system_prompt.condominio_id IS NULL;
+
+-- ── Garantir coluna modulos_ativos em di_configuracoes ─────────────────────────
+ALTER TABLE di_configuracoes
+  ADD COLUMN IF NOT EXISTS modulos_ativos JSONB
+  DEFAULT '["os","financeiro","iot","misp","encomendas","portaria","reservas","comunicados","votacoes"]';
+
+ALTER TABLE di_configuracoes
+  ADD COLUMN IF NOT EXISTS nome_di TEXT DEFAULT 'Di';
+
+ALTER TABLE di_configuracoes
+  ADD COLUMN IF NOT EXISTS tom_comunicacao TEXT DEFAULT 'direto_empatico';
+
+-- Atualizar registros existentes com default
+UPDATE di_configuracoes
+SET modulos_ativos = COALESCE(modulos_ativos,
+  '["os","financeiro","iot","misp","encomendas","portaria","reservas","comunicados","votacoes"]')
+WHERE modulos_ativos IS NULL;
+
+-- ── Tabela di_memoria (V3) ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS di_memoria (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID REFERENCES condominios(id) ON DELETE CASCADE,
+  tipo          TEXT NOT NULL,
+  conteudo      JSONB NOT NULL DEFAULT '{}',
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS dim_condo ON di_memoria(condominio_id, tipo, created_at DESC);
+ALTER TABLE di_memoria ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "dim_master" ON di_memoria;
+DROP POLICY IF EXISTS "dim_gestor" ON di_memoria;
+CREATE POLICY "dim_master" ON di_memoria FOR ALL    USING (auth_role()='master');
+CREATE POLICY "dim_gestor" ON di_memoria FOR SELECT USING (auth_role()='gestor' AND condominio_id=auth_condo());
+
+-- ── Verificar resultado ────────────────────────────────────────────────────────
+SELECT 'di_system_prompt' AS tabela, COUNT(*) AS total FROM di_system_prompt WHERE condominio_id IS NULL
+UNION ALL
+SELECT 'di_configuracoes', COUNT(*) FROM di_configuracoes
+UNION ALL
+SELECT 'di_memoria', COUNT(*) FROM di_memoria;
+```
+
+---
+
+## PASSO 2 — Criar `src/di-engine/context.ts`
+
+Este arquivo é a FONTE ÚNICA de verdade para o system prompt da Di.
+Todos os endpoints (gestor, síndico, morador, módulos) chamam esta função.
+
+```typescript
+/**
+ * di-engine/context.ts
+ * Carrega o system prompt completo da Di para qualquer perfil.
+ * Ordem: di_configuracoes (operacional) + di_system_prompt (blocos) + di_regras_condo
+ * Master edita → banco → esta função lê → Claude recebe
+ */
+import { getDB } from "../db.js";
+import type { Snapshot } from "../types.js";
+
+export type Perfil = "master"|"gestor"|"sindico"|"morador"|"zelador";
+
+export interface DiCtx {
+  systemPrompt:     string;
+  limiteFinanceiro: number;
+  nomeDi:           string;
+  tomComunicacao:   string;
+  modulosAtivos:    string[];
+}
+
+// Restrições que a Di aplica por perfil (injetadas no system prompt)
+const RESTRICOES_PERFIL: Record<string, string> = {
+  master:  "Acesso total. Pode discutir e exibir qualquer dado.",
+  gestor:  "Fala com o GESTOR. Pode discutir financeiro, OSs, aprovações Di, dados completos do condo.",
+  sindico: "Fala com o SÍNDICO. NUNCA revele: saldo bancário exato, lista de inadimplentes por unidade, dados pessoais de moradores.",
+  morador: "Fala com o MORADOR da unidade {{unidade_id}}. Responda APENAS sobre dados desta unidade. NUNCA mencione outros moradores, saldos do condo, detalhes de segurança.",
+  zelador: "Fala com o ZELADOR. Foque em OSs operacionais, portaria e tarefas físicas. Sem dados financeiros.",
+};
+
+export async function carregarContextoDi(
+  condoId:     string,
+  snapshot:    Snapshot,
+  perfil:      Perfil = "gestor",
+  nomeUsuario: string = "Usuário",
+  unidadeId?:  string
+): Promise<DiCtx> {
+  const db = getDB();
+
+  // ── 1. Configurações operacionais do condo ──────────────────────────────────
+  let limiteFinanceiro = 500;
+  let nomeDi           = "Di";
+  let tomComunicacao   = "direto_empatico";
+  let modulosAtivos    = ["os","financeiro","iot","misp","encomendas","portaria",
+                          "reservas","comunicados","votacoes"];
+  try {
+    const { data: cfg } = await db
+      .from("di_configuracoes")
+      .select("limite_financeiro, nome_di, tom_comunicacao, modulos_ativos")
+      .eq("condominio_id", condoId)
+      .single();
+    if (cfg) {
+      limiteFinanceiro = cfg.limite_financeiro ?? 500;
+      nomeDi           = cfg.nome_di           ?? "Di";
+      tomComunicacao   = cfg.tom_comunicacao   ?? "direto_empatico";
+      modulosAtivos    = Array.isArray(cfg.modulos_ativos)
+        ? cfg.modulos_ativos : modulosAtivos;
+    }
+  } catch {}
+
+  // ── 2. Blocos do system prompt: global + custom mesclados ───────────────────
+  let blocos: Array<{bloco:string; conteudo:string}> = [];
+  try {
+    const [g, c] = await Promise.all([
+      db.from("di_system_prompt").select("bloco,conteudo")
+        .is("condominio_id", null).order("bloco"),
+      db.from("di_system_prompt").select("bloco,conteudo")
+        .eq("condominio_id", condoId).order("bloco"),
+    ]);
+    const gMap = new Map((g.data??[]).map((b:any) => [b.bloco, b.conteudo]));
+    const cMap = new Map((c.data??[]).map((b:any) => [b.bloco, b.conteudo]));
+    // custom sobrescreve global bloco a bloco
+    blocos = [...gMap.keys()].map(k => ({
+      bloco: k, conteudo: cMap.get(k) ?? gMap.get(k) ?? "",
+    }));
+    for (const [k, v] of cMap.entries())
+      if (!gMap.has(k)) blocos.push({ bloco: k, conteudo: v });
+    blocos.sort((a, b) => a.bloco.localeCompare(b.bloco));
+  } catch {}
+
+  // ── 3. Regras personalizadas do condo ───────────────────────────────────────
+  let regrasExtra = "";
+  try {
+    const { data: rg } = await db.from("di_regras_condo")
+      .select("texto").eq("condominio_id", condoId)
+      .eq("ativo", true).order("ordem");
+    if ((rg ?? []).length > 0) {
+      regrasExtra = "\nREGRAS ADICIONAIS DESTE CONDOMÍNIO:\n" +
+        (rg ?? []).map((r:any, i:number) => `${i+1}. ${r.texto}`).join("\n");
+    }
+  } catch {}
+
+  // ── 4. Variáveis de template ─────────────────────────────────────────────────
+  const condo = snapshot.condominio as Record<string,unknown> ?? {};
+  const fin   = snapshot.financeiro?.[0];
+  const rv    = snapshot.reservatorios ?? [];
+  const osU   = (snapshot.os_abertas ?? []).filter(o => o.prioridade === "urgente").length;
+
+  const vars: Record<string, string> = {
+    "{{nome_condominio}}":   String(condo.nome ?? "Condomínio"),
+    "{{nome_gestor}}":       perfil === "gestor" ? nomeUsuario : "Gestor",
+    "{{nome_sindico}}":      perfil === "sindico" ? nomeUsuario : "Síndico",
+    "{{nome_usuario}}":      nomeUsuario,
+    "{{unidade_id}}":        unidadeId ?? "N/D",
+    "{{total_unidades}}":    String(condo.total_unidades ?? 0),
+    "{{total_moradores}}":   String(condo.total_moradores ?? 0),
+    "{{timestamp}}":         new Date().toLocaleString("pt-BR"),
+    "{{os_abertas}}":        String((snapshot.os_abertas ?? []).length),
+    "{{os_urgentes}}":       String(osU),
+    "{{saldo}}":             fin ? Number(fin.saldo_atual).toLocaleString("pt-BR") : "N/D",
+    "{{inadimplencia_pct}}": fin ? String(fin.inadimplencia_percentual) : "N/D",
+    "{{score_geral}}":       String((snapshot.scores ?? [])[0]?.score ?? "N/D"),
+    "{{misp_ativos}}":       String((snapshot.alertas_misp ?? []).length),
+    "{{limite_financeiro}}": String(limiteFinanceiro),
+    "{{limite}}":            String(limiteFinanceiro),
+    "{{tom_comunicacao}}":   tomComunicacao.replace(/_/g, " "),
+    "{{reservatorios}}":     rv.map(r => `${r.nome}:${r.ultimo_nivel_pct?.toFixed(0)}%`)
+                               .join(", ") || "N/D",
+    "{{aprovacoes}}":        String((snapshot.acoes_pendentes ?? []).length),
+  };
+
+  const sub = (txt: string): string => {
+    let r = txt;
+    for (const [k, v] of Object.entries(vars)) r = r.replaceAll(k, v);
+    return r;
+  };
+
+  // ── 5. Montar system prompt ──────────────────────────────────────────────────
+  let systemPrompt: string;
+
+  if (blocos.length > 0) {
+    // Para chat: exclui bloco 6_formato (que é JSON — chat usa linguagem natural)
+    const blocosChat = blocos.filter(b => b.bloco !== "6_formato");
+    systemPrompt = blocosChat
+      .map(b => sub(b.conteudo))
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+    if (regrasExtra) systemPrompt += "\n\n" + regrasExtra;
+  } else {
+    // Fallback se banco não tem blocos
+    systemPrompt = `Você é ${nomeDi}, Síndica Virtual do condomínio ${vars["{{nome_condominio}}"]}.
+Tom: ${vars["{{tom_comunicacao}}"]}.
+Limite financeiro autônomo: R$ ${limiteFinanceiro}.
+Nunca aja acima deste limite sem aprovação do gestor.`;
+  }
+
+  // ── 6. Estado em tempo real + restrição por perfil ──────────────────────────
+  const restricao = sub(
+    RESTRICOES_PERFIL[perfil] ?? RESTRICOES_PERFIL.morador
+  );
+
+  systemPrompt += `\n\n---\n\nESTADO ATUAL (${vars["{{timestamp}}"]}):
+- Condomínio: ${vars["{{nome_condominio}}"]} | ${vars["{{total_unidades}}"]} unidades
+- OSs: ${vars["{{os_abertas}}"]} abertas (${vars["{{os_urgentes}}"]} urgentes)
+- Financeiro: Saldo R$${vars["{{saldo}}"]} | Inadimp ${vars["{{inadimplencia_pct}}"]}%
+- Reservatórios: ${vars["{{reservatorios}}"]}
+- Score: ${vars["{{score_geral}}"]}/100 | MISP: ${vars["{{misp_ativos}}"]} | Aprovações pendentes: ${vars["{{aprovacoes}}"]}
+- Módulos ativos: ${modulosAtivos.join(", ")}
+
+PERFIL ATUAL: ${restricao}`;
+
+  return {
+    systemPrompt,
+    limiteFinanceiro,
+    nomeDi,
+    tomComunicacao,
+    modulosAtivos,
+  };
+}
+```
+
+---
+
+## PASSO 3 — Criar `src/di-engine/modulos.ts`
+
+```typescript
+/**
+ * di-engine/modulos.ts
+ * Catálogo de módulos com permissões por perfil.
+ * Master configura modulos_ativos em di_configuracoes → esta lista filtra o acesso.
+ */
+export type Perfil = "master"|"gestor"|"sindico"|"morador"|"zelador";
+
+export interface ModConfig {
+  id:          string;
+  nome:        string;
+  icone:       string;
+  tabela:      string;
+  campos:      Record<string, string>;   // SELECT por perfil
+  filtros?:    { status?: string[] };
+  limite:      number;
+  ver:         Perfil[];
+  editar:      Perfil[];
+  aprovar?:    Perfil[];
+  planos:      string[];
+  promptDi:    string;
+  tomPorPerfil: Partial<Record<Perfil, { contexto:string; restricoes:string; tom:string }>>;
+}
+
+export const MODULOS: Record<string, ModConfig> = {
+  os: {
+    id:"os", nome:"Ordens de Serviço", icone:"⚙️", tabela:"ordens_servico",
+    campos:{
+      master: "id,titulo,prioridade,status,area,sla_horas,tecnico_nome,custo_estimado,created_at",
+      gestor: "id,titulo,prioridade,status,area,sla_horas,tecnico_nome,custo_estimado,created_at",
+      sindico:"id,titulo,prioridade,status,area,sla_horas,tecnico_nome,created_at",
+      morador:"id,titulo,status,area,created_at",
+      zelador:"id,titulo,prioridade,status,area,sla_horas,tecnico_nome,created_at",
+    },
+    filtros:{status:["aberta","em_andamento"]},
+    limite:30, ver:["master","gestor","sindico","morador","zelador"],
+    editar:["master","gestor"], aprovar:["master","gestor"], planos:["starter","pro","enterprise"],
+    promptDi:"Analise OSs. Identifique SLA violado, urgentes sem técnico, custo acumulado.",
+    tomPorPerfil:{
+      gestor: {contexto:"OSs com custo e técnico",restricoes:"Nenhuma",tom:"executivo, direto"},
+      sindico:{contexto:"OSs sem custo",restricoes:"Não revele custo",tom:"colaborativo"},
+      morador:{contexto:"Impacto nas áreas comuns",restricoes:"Sem custo, técnico, outras unidades",tom:"simples"},
+      zelador:{contexto:"OSs da área operacional",restricoes:"Sem financeiro",tom:"prático"},
+    },
+  },
+  financeiro: {
+    id:"financeiro", nome:"Financeiro", icone:"💰", tabela:"financeiro_mensal",
+    campos:{
+      master: "id,saldo_atual,inadimplencia_percentual,resultado_mes,competencia,created_at",
+      gestor: "saldo_atual,inadimplencia_percentual,resultado_mes,competencia,created_at",
+      sindico:"inadimplencia_percentual,resultado_mes,competencia",
+      morador:"",
+      zelador:"",
+    },
+    limite:12, ver:["master","gestor","sindico"], editar:["master","gestor"], planos:["starter","pro","enterprise"],
+    promptDi:"Analise saúde financeira. Inadimplência: crítico >8%, alerta 4-8%, ok <4%.",
+    tomPorPerfil:{
+      gestor: {contexto:"Saldo, inadimplência, resultado",restricoes:"Nenhuma",tom:"executivo"},
+      sindico:{contexto:"% inadimplência e resultado mês",restricoes:"NUNCA revele saldo bancário nem inadimplentes por nome",tom:"informativo discreto"},
+    },
+  },
+  iot: {
+    id:"iot", nome:"Água & Reservatórios", icone:"💧", tabela:"reservatorios",
+    campos:{
+      master: "id,nome,device_id,ultimo_nivel_pct,bateria_mv_ultimo,ultima_leitura_em,capacidade_litros,ativo",
+      gestor: "id,nome,ultimo_nivel_pct,ultima_leitura_em,capacidade_litros,ativo",
+      sindico:"nome,ultimo_nivel_pct,ultima_leitura_em",
+      morador:"nome,ultimo_nivel_pct",
+      zelador:"id,nome,ultimo_nivel_pct,ultima_leitura_em,ativo",
+    },
+    limite:10, ver:["master","gestor","sindico","morador","zelador"],
+    editar:["master","gestor"], aprovar:["gestor"], planos:["pro","enterprise"],
+    promptDi:"Crítico <15% (calcule autonomia em horas). Alerta 15-30%. Recomende ação.",
+    tomPorPerfil:{
+      gestor: {contexto:"Nível, autonomia, aprovação",restricoes:"Nenhuma",tom:"urgente quando crítico"},
+      sindico:{contexto:"Nível atual",restricoes:"Sem device_id, não acione nada",tom:"informativo"},
+      morador:{contexto:"Status geral (normal/limitado)",restricoes:"Sem nível exato",tom:"tranquilizador"},
+      zelador:{contexto:"Nível e última leitura",restricoes:"Sem device técnico interno",tom:"operacional"},
+    },
+  },
+  misp: {
+    id:"misp", nome:"MISP · Segurança", icone:"🚨", tabela:"alertas_misp",
+    campos:{
+      master: "id,tipo,descricao,local,severidade,status,created_at",
+      gestor: "id,tipo,descricao,local,severidade,status,created_at",
+      sindico:"id,tipo,local,severidade,status,created_at",
+      morador:"tipo,local,created_at",
+      zelador:"id,tipo,local,severidade,status,created_at",
+    },
+    filtros:{status:["ativo"]},
+    limite:20, ver:["master","gestor","sindico","morador","zelador"],
+    editar:["master","gestor"], planos:["pro","enterprise"],
+    promptDi:"Câmeras offline, acessos irregulares, padrões suspeitos.",
+    tomPorPerfil:{
+      gestor: {contexto:"Alertas com detalhes",restricoes:"Nenhuma",tom:"urgente e técnico"},
+      sindico:{contexto:"Por local e severidade",restricoes:"Sem identificar moradores",tom:"discreto"},
+      morador:{contexto:"Apenas alertas de convívio geral",restricoes:"NUNCA câmeras, acessos de terceiros",tom:"tranquilizador"},
+    },
+  },
+  encomendas: {
+    id:"encomendas", nome:"Encomendas", icone:"📦", tabela:"encomendas",
+    campos:{
+      master: "id,remetente,tipo,status,destinatario_unidade,lembretes_enviados,created_at",
+      gestor: "id,remetente,tipo,status,destinatario_unidade,lembretes_enviados,created_at",
+      sindico:"id,remetente,tipo,status,created_at",
+      morador:"id,remetente,tipo,status,created_at",
+      zelador:"id,remetente,tipo,status,destinatario_unidade,created_at",
+    },
+    filtros:{status:["aguardando_retirada"]},
+    limite:30, ver:["master","gestor","sindico","morador","zelador"],
+    editar:["master","gestor"], planos:["starter","pro","enterprise"],
+    promptDi:"Perecíveis >1 dia: urgente. >5 dias: reforçar lembretes.",
+    tomPorPerfil:{
+      gestor: {contexto:"Com unidade e lembretes",restricoes:"Nenhuma",tom:"operacional"},
+      sindico:{contexto:"Quantidade e tipo, sem unidade",restricoes:"Sem unidade destinatária",tom:"informativo"},
+      morador:{contexto:"APENAS próprias encomendas",restricoes:"NUNCA revele encomendas de outros",tom:"prestativo"},
+    },
+  },
+  portaria: {
+    id:"portaria", nome:"Portaria", icone:"🚪", tabela:"visitantes_portaria",
+    campos:{
+      master: "id,nome,tipo_visita,status,destino_unidade,documento,horario_entrada,created_at",
+      gestor: "id,nome,tipo_visita,status,destino_unidade,horario_entrada,created_at",
+      sindico:"id,nome,tipo_visita,status,horario_entrada,created_at",
+      morador:"id,nome,tipo_visita,status,horario_entrada",
+      zelador:"id,nome,tipo_visita,status,destino_unidade,horario_entrada,created_at",
+    },
+    limite:50, ver:["master","gestor","sindico","morador","zelador"],
+    editar:["master","gestor","morador"], planos:["starter","pro","enterprise"],
+    promptDi:"Fluxo 24h. Padrões suspeitos, pico de acesso, aguardando autorização.",
+    tomPorPerfil:{
+      gestor: {contexto:"Todos visitantes",restricoes:"Nenhuma",tom:"seguro e operacional"},
+      sindico:{contexto:"Fluxo geral",restricoes:"Sem documentos",tom:"discreto"},
+      morador:{contexto:"APENAS visitantes da própria unidade",restricoes:"NUNCA outros moradores",tom:"amigável"},
+    },
+  },
+  reservas: {
+    id:"reservas", nome:"Reservas", icone:"🎉", tabela:"reservas",
+    campos:{
+      master: "id,espaco_id,unidade_id,data,hora_inicio,hora_fim,status,created_at",
+      gestor: "id,espaco_id,unidade_id,data,hora_inicio,hora_fim,status,created_at",
+      sindico:"id,espaco_id,data,hora_inicio,hora_fim,status",
+      morador:"id,espaco_id,data,hora_inicio,hora_fim,status",
+      zelador:"id,espaco_id,data,hora_inicio,hora_fim,status",
+    },
+    limite:30, ver:["master","gestor","sindico","morador","zelador"],
+    editar:["master","gestor","morador"], aprovar:["master","gestor"], planos:["starter","pro","enterprise"],
+    promptDi:"Conflitos, aprovações pendentes, espaços mais demandados.",
+    tomPorPerfil:{
+      gestor: {contexto:"Com unidade",restricoes:"Nenhuma",tom:"gerencial"},
+      sindico:{contexto:"Ocupação geral",restricoes:"Sem identificar unidade",tom:"imparcial"},
+      morador:{contexto:"APENAS próprias + disponibilidade",restricoes:"NUNCA outras unidades",tom:"prestativo"},
+    },
+  },
+  comunicados: {
+    id:"comunicados", nome:"Comunicados", icone:"📢", tabela:"comunicados",
+    campos:{
+      master: "id,titulo,corpo,tipo_comunicado,status,criado_por,created_at",
+      gestor: "id,titulo,corpo,tipo_comunicado,status,criado_por,created_at",
+      sindico:"id,titulo,corpo,tipo_comunicado,status,created_at",
+      morador:"id,titulo,corpo,tipo_comunicado,created_at",
+      zelador:"id,titulo,corpo,tipo_comunicado,created_at",
+    },
+    filtros:{status:["enviado"]},
+    limite:20, ver:["master","gestor","sindico","morador","zelador"],
+    editar:["master","gestor","sindico"], planos:["starter","pro","enterprise"],
+    promptDi:"Urgentes pendentes, necessidade de novo comunicado.",
+    tomPorPerfil:{
+      gestor: {contexto:"Todos com métricas",restricoes:"Confirme antes de enviar em massa",tom:"executivo"},
+      sindico:{contexto:"Pode criar comunicados operacionais",restricoes:"NUNCA financeiros sem gestor",tom:"colaborativo"},
+      morador:{contexto:"Comunicados gerais",restricoes:"Não crie comunicados",tom:"informativo"},
+    },
+  },
+  votacoes: {
+    id:"votacoes", nome:"Votações", icone:"🗳️", tabela:"votacoes_convivio",
+    campos:{
+      master: "id,titulo,opcoes,status,quorum_minimo,encerra_em,created_at",
+      gestor: "id,titulo,opcoes,status,quorum_minimo,encerra_em,created_at",
+      sindico:"id,titulo,opcoes,status,quorum_minimo,encerra_em,created_at",
+      morador:"id,titulo,opcoes,status,encerra_em",
+      zelador:"id,titulo,status,encerra_em",
+    },
+    limite:15, ver:["master","gestor","sindico","morador","zelador"],
+    editar:["master","gestor","sindico"], planos:["starter","pro","enterprise"],
+    promptDi:"Quórum atingido, prazos, participação.",
+    tomPorPerfil:{
+      gestor: {contexto:"Quórum e votos",restricoes:"Nenhuma",tom:"gerencial"},
+      sindico:{contexto:"Pode criar votações de convívio",restricoes:"Não encerre financeiras",tom:"democrático"},
+      morador:{contexto:"Pode votar nas abertas",restricoes:"Não revele voto alheio",tom:"encorajador"},
+    },
+  },
+  crm: {
+    id:"crm", nome:"CRM Inteligente", icone:"👥", tabela:"inadimplentes",
+    campos:{
+      master: "id,unidade_id,meses_atraso,valor_total,status,updated_at",
+      gestor: "id,unidade_id,meses_atraso,valor_total,status,updated_at",
+      sindico:"", morador:"", zelador:"",
+    },
+    limite:30, ver:["master","gestor"], editar:["master","gestor"], planos:["pro","enterprise"],
+    promptDi:"Casos crônicos >3 meses, estratégia de cobrança.",
+    tomPorPerfil:{
+      gestor:{contexto:"Inadimplentes com valor",restricoes:"Não exponha a síndico/morador",tom:"discreto"},
+    },
+  },
+  diagnostico: {
+    id:"diagnostico", nome:"Diagnóstico", icone:"📋", tabela:"score_condominio",
+    campos:{
+      master: "pilar,score,calculated_at",
+      gestor: "pilar,score,calculated_at",
+      sindico:"pilar,score,calculated_at",
+      morador:"pilar,score",
+      zelador:"pilar,score",
+    },
+    limite:12, ver:["master","gestor","sindico","morador","zelador"],
+    editar:["master"], planos:["pro","enterprise"],
+    promptDi:"Diagnóstico completo: pilares, 3 críticos, 3 forças, plano 30 dias.",
+    tomPorPerfil:{
+      gestor: {contexto:"Score completo + histórico",restricoes:"Nenhuma",tom:"estratégico"},
+      sindico:{contexto:"Score operação, manutenção, convívio",restricoes:"Sem score financeiro detalhado",tom:"colaborativo"},
+      morador:{contexto:"Score geral como qualidade de vida",restricoes:"Sem pilares que gerem conflito",tom:"positivo"},
+    },
+  },
+};
+
+export function getModulosVisíveis(idsAtivos: string[], perfil: Perfil) {
+  return idsAtivos
+    .filter(id => MODULOS[id] && MODULOS[id].ver.includes(perfil))
+    .map(id => MODULOS[id]);
+}
+
+export function getCampos(mod: ModConfig, perfil: Perfil): string {
+  return mod.campos[perfil] ?? mod.campos.morador ?? "";
+}
+```
+
+---
+
+## PASSO 4 — Criar `src/routes/modulos.ts`
+
+```typescript
+/**
+ * routes/modulos.ts — /api/modulos/*
+ * Rota unificada para todos os perfis.
+ * Permissões e comportamento Da Di definidos pelo Master via di_configuracoes + di_system_prompt.
+ */
+import { Router, Request, Response } from "express";
+import { requireAuth }           from "../middleware/auth.js";
+import { requireSameCondominio } from "../middleware/rls.js";
+import { getDB }                 from "../db.js";
+import { gerarSnapshot }         from "../services/snapshot.js";
+import { carregarContextoDi }    from "../di-engine/context.js";
+import { MODULOS, getModulosVisíveis, getCampos } from "../di-engine/modulos.js";
+import Anthropic from "@anthropic-ai/sdk";
+import { CONFIG } from "../config.js";
+import type { Perfil } from "../di-engine/modulos.js";
+
+const r = Router();
+r.use(requireAuth(["master","gestor","sindico","morador","zelador"]));
+r.use(requireSameCondominio);
+
+let _cl: Anthropic | null = null;
+const cl = () => _cl ??= new Anthropic({ apiKey: CONFIG.anthropic.apiKey });
+
+// ── Listar módulos visíveis para o perfil ─────────────────────────────────────
+r.get("/", async (req: Request, res: Response) => {
+  const condoId = req.user!.condominio_id;
+  const perfil  = (req.user!.role ?? "morador") as Perfil;
+  try {
+    const { data: cfg } = await getDB()
+      .from("di_configuracoes").select("modulos_ativos")
+      .eq("condominio_id", condoId).single();
+    const ids: string[] = cfg?.modulos_ativos ?? [
+      "os","financeiro","iot","encomendas","portaria","reservas","comunicados","votacoes",
+    ];
+    const mods = getModulosVisíveis(ids, perfil).map(m => ({
+      id: m.id, nome: m.nome, icone: m.icone,
+      pode_editar:  m.editar.includes(perfil),
+      pode_aprovar: (m.aprovar ?? []).includes(perfil),
+    }));
+    res.json({ modulos: mods, perfil, total: mods.length });
+  } catch { res.json({ modulos: [], perfil, total: 0 }); }
+});
+
+// ── Dados do módulo filtrados por perfil ──────────────────────────────────────
+r.get("/:id/dados", async (req: Request, res: Response) => {
+  const { id }   = req.params;
+  const condoId  = req.user!.condominio_id;
+  const perfil   = (req.user!.role ?? "morador") as Perfil;
+  const unidade  = req.user!.unidade_id;
+  const mod      = MODULOS[id];
+  if (!mod) return res.status(404).json({ error: "Módulo não encontrado" });
+  if (!mod.ver.includes(perfil)) return res.status(403).json({ error: "Sem permissão" });
+  const campos = getCampos(mod, perfil);
+  if (!campos) return res.json({ dados: [], modulo: id, perfil });
+  try {
+    const db = getDB();
+    let q = db.from(mod.tabela).select(campos).eq("condominio_id", condoId);
+    // Isolamento morador
+    if (perfil === "morador" && unidade) {
+      if (id === "encomendas") q = q.eq("destinatario_unidade", unidade);
+      if (id === "portaria")   q = q.eq("destino_unidade", unidade);
+      if (id === "reservas")   q = q.eq("unidade_id", unidade);
+    }
+    if (mod.filtros?.status) q = q.in("status", mod.filtros.status);
+    if (id === "iot")      q = q.eq("ativo", true);
+    if (id === "portaria") q = q.gte("created_at", new Date(Date.now() - 86400000).toISOString());
+    if (id === "reservas") q = q.gte("data", new Date().toISOString().split("T")[0]);
+    const { data } = await q.order("created_at", { ascending: false }).limit(mod.limite);
+    res.json({ dados: data ?? [], modulo: id, perfil, total: (data ?? []).length });
+  } catch (e) { res.json({ dados: [], modulo: id, perfil, error: (e as Error).message }); }
+});
+
+// ── Di analisa módulo ─────────────────────────────────────────────────────────
+r.post("/:id/di-analise", async (req: Request, res: Response) => {
+  const { id }   = req.params;
+  const condoId  = req.user!.condominio_id;
+  const perfil   = (req.user!.role ?? "morador") as Perfil;
+  const nome     = req.user!.nome ?? perfil;
+  const unidade  = req.user!.unidade_id;
+  const mod      = MODULOS[id];
+  if (!mod) return res.status(404).json({ error: "Módulo não encontrado" });
+  if (!mod.ver.includes(perfil)) return res.status(403).json({ error: "Sem permissão" });
+  try {
+    // Buscar dados filtrados
+    const campos = getCampos(mod, perfil);
+    let dados: Record<string, unknown>[] = [];
+    if (campos) {
+      const db = getDB();
+      let q = db.from(mod.tabela).select(campos).eq("condominio_id", condoId);
+      if (perfil === "morador" && unidade) {
+        if (id === "encomendas") q = q.eq("destinatario_unidade", unidade);
+        if (id === "portaria")   q = q.eq("destino_unidade", unidade);
+        if (id === "reservas")   q = q.eq("unidade_id", unidade);
+      }
+      if (mod.filtros?.status) q = q.in("status", mod.filtros.status);
+      if (id === "iot") q = q.eq("ativo", true);
+      if (id === "portaria") q = q.gte("created_at", new Date(Date.now()-86400000).toISOString());
+      const { data } = await q.order("created_at", { ascending: false }).limit(mod.limite);
+      dados = (data ?? []) as Record<string, unknown>[];
+    }
+
+    // System prompt personalizado do Master
+    const snapshot = await gerarSnapshot(condoId);
+    const ctx      = await carregarContextoDi(condoId, snapshot, perfil, nome, unidade);
+
+    // Injeta instrução específica do módulo + restrições por perfil
+    const pp = mod.tomPorPerfil[perfil];
+    const sysMod = `${ctx.systemPrompt}
+
+---
+
+MÓDULO ATIVO: ${mod.nome} (${mod.icone})
+${mod.promptDi}
+${pp ? `
+CONTEXTO PARA ${perfil.toUpperCase()}: ${pp.contexto}
+TOM: ${pp.tom}
+RESTRIÇÕES ABSOLUTAS PARA ESTE PERFIL: ${pp.restricoes}
+` : ""}
+
+Responda em linguagem natural (não JSON neste endpoint).
+Formato: 3 parágrafos. 1. Status. 2. Atenção. 3. Recomendação.`;
+
+    const msg = await cl().messages.create({
+      model: CONFIG.anthropic.model, max_tokens: 500,
+      system: sysMod,
+      messages: [{
+        role: "user",
+        content: `Dados de ${mod.nome}:\n${JSON.stringify(dados, null, 2).slice(0, 3000)}\n\nAnalise para ${perfil} ${nome}.`,
+      }],
+    });
+
+    const analise = (msg.content.find(b => b.type === "text") as Anthropic.TextBlock)?.text ?? "";
+    res.json({
+      modulo: id, nome: mod.nome, icone: mod.icone,
+      perfil, analise_di: analise, dados,
+      tokens: msg.usage.input_tokens + msg.usage.output_tokens,
+      timestamp: new Date().toISOString(),
+    });
+  } catch {
+    res.json({
+      modulo: id, perfil,
+      analise_di: `Di processando ${mod.nome}.`,
+      dados: [], offline: true,
+    });
+  }
+});
+
+// ── Chat Di contextualizado por módulo ────────────────────────────────────────
+r.post("/:id/di-chat", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { mensagem, historico = [] } = req.body ?? {};
+  if (!mensagem) return res.status(400).json({ error: "mensagem obrigatória" });
+  const condoId = req.user!.condominio_id;
+  const perfil  = (req.user!.role ?? "morador") as Perfil;
+  const nome    = req.user!.nome ?? perfil;
+  const mod     = MODULOS[id];
+  if (!mod) return res.status(404).json({ error: "Módulo não encontrado" });
+  try {
+    const snapshot = await gerarSnapshot(condoId);
+    const ctx      = await carregarContextoDi(condoId, snapshot, perfil, nome, req.user!.unidade_id);
+    const pp       = mod.tomPorPerfil[perfil];
+    const sys      = `${ctx.systemPrompt}\n\n---\n\nMÓDULO: ${mod.nome}\n${mod.promptDi}${pp ? `\nTOM: ${pp.tom}\nRESTRIÇÕES: ${pp.restricoes}` : ""}`;
+    const messages: Anthropic.MessageParam[] = [
+      ...historico.slice(-6).map((m: { role: string; content: string }) => ({
+        role: m.role as "user"|"assistant", content: m.content,
+      })),
+      { role: "user" as const, content: mensagem },
+    ];
+    const msg = await cl().messages.create({
+      model: CONFIG.anthropic.model, max_tokens: 400, system: sys, messages,
+    });
+    const resposta = (msg.content.find(b => b.type === "text") as Anthropic.TextBlock)?.text ?? "";
+    res.json({ resposta, perfil, modulo: id });
+  } catch {
+    res.json({ resposta: "Estou aqui para ajudar.", offline: true });
+  }
+});
+
+export default r;
+```
+
+---
+
+## PASSO 5 — Atualizar `src/index.ts`
+
+Adicionar o import após os outros imports de rotas:
+```typescript
+import modulosRouter from "./routes/modulos.js";
+```
+
+Adicionar após `app.use("/api/iot", iotRouter)`:
+```typescript
+app.use("/api/modulos", modulosRouter);
+```
+
+---
+
+## PASSO 6 — Corrigir chats hardcoded em gestor, síndico e morador
+
+### Em `src/routes/gestor.ts`
+
+Adicionar import no topo:
+```typescript
+import { carregarContextoDi } from "../di-engine/context.js";
+```
+
+Localizar `r.post("/di/chat"` e SUBSTITUIR o bloco `try` inteiro por:
+```typescript
+try {
+  const snapshot = await gerarSnapshot(condoId);
+  const ctx      = await carregarContextoDi(condoId, snapshot, "gestor",
+                     req.user!.nome ?? "Gestor");
+  const messages: Anthropic.MessageParam[] = [
+    ...historico.slice(-8).map((m: { role: string; content: string }) => ({
+      role: m.role as "user"|"assistant", content: m.content,
+    })),
+    { role: "user" as const, content: mensagem },
+  ];
+  const msg = await getClaude().messages.create({
+    model: CONFIG.anthropic.model, max_tokens: 600,
+    system: ctx.systemPrompt,
+    messages,
+  });
+  const resposta = (msg.content.find(b => b.type === "text") as Anthropic.TextBlock)?.text ?? "";
+  res.json({ resposta, tokens: msg.usage.input_tokens + msg.usage.output_tokens,
+    nome_di: ctx.nomeDi });
+} catch (err) {
+  res.json({ resposta: gerarRespostaOffline(mensagem, condoId), tokens: 0, offline: true });
+}
+```
+
+### Em `src/routes/sindico.ts`
+
+Adicionar import:
+```typescript
+import { carregarContextoDi } from "../di-engine/context.js";
+```
+
+No `POST /di/chat`, substituir o `system` hardcoded por:
+```typescript
+const snapshot = await gerarSnapshot(condoId);
+const ctx      = await carregarContextoDi(condoId, snapshot, "sindico",
+                   req.user!.nome ?? "Síndico");
+const system   = ctx.systemPrompt;
+```
+
+### Em `src/routes/morador.ts`
+
+Adicionar import:
+```typescript
+import { carregarContextoDi } from "../di-engine/context.js";
+```
+
+No `POST /di/chat`, substituir o `system` hardcoded por:
+```typescript
+const snapshot = await gerarSnapshot(condoId);
+const ctx      = await carregarContextoDi(condoId, snapshot, "morador",
+                   req.user!.nome ?? "Morador", unidadeId);
+const system   = ctx.systemPrompt +
+  `\n\nFoco exclusivo: unidade ${unidadeId}. Nunca discuta outras unidades.`;
+```
+
+---
+
+## PASSO 7 — Atualizar `src/di-engine/run.ts` (usar context.ts no ciclo automático)
+
+Localizar a função `carregarSystemPrompt` e substituir por:
+```typescript
+async function carregarSystemPrompt(condominioId: string, snapshot: Snapshot, limite: number): Promise<string> {
+  try {
+    const { carregarContextoDi } = await import("./context.js");
+    const ctx = await carregarContextoDi(condominioId, snapshot, "gestor", "Gestor");
+    // Para o ciclo Di, usa o bloco 6_formato (JSON) — re-adiciona
+    const db = await import("../db.js").then(m => m.getDB());
+    const { data: fmt } = await db.from("di_system_prompt")
+      .select("conteudo").eq("bloco", "6_formato").is("condominio_id", null).single();
+    return ctx.systemPrompt + (fmt?.conteudo ? "\n\n---\n\n" + fmt.conteudo : "");
+  } catch {
+    return `Você é Di, Síndica Virtual. Limite: R$ ${limite}. Responda em JSON.`;
+  }
+}
+```
+
+---
+
+## VERIFICAÇÃO FINAL
+
+```bash
+npm run dev
+
+# 1. Master salva bloco B01 personalizado para Copacabana
+# Esperado: PUT /api/master/di/config/condo/:id/1_identidade → 200 OK
+# Banco: di_system_prompt (condominio_id=X, bloco=1_identidade, CUSTOM)
+
+# 2. Gestor abre chat Di
+# Esperado: POST /api/gestor/di/chat → Di usa o bloco personalizado do Master
+
+# 3. Listar módulos como síndico
+# curl -b "token=..." GET /api/modulos
+# Esperado: { modulos: [...sem CRM...], perfil: "sindico" }
+
+# 4. Di analisa IoT como morador
+# POST /api/modulos/iot/di-analise (morador token)
+# Esperado: analise_di sem nível exato, sem device_id — "água disponível normalmente"
+
+# 5. Di analisa IoT como gestor
+# POST /api/modulos/iot/di-analise (gestor token)
+# Esperado: analise_di com nível, autonomia em horas, aprovação pendente AguaCerta
+```

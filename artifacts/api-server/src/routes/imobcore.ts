@@ -7,6 +7,7 @@ import {
   calcularIndicadores,
   calcularFluxoMensal,
 } from "../lib/financeiro.service.js";
+import { carregarContextoDi } from "../di-engine/context.js";
 
 const router = Router();
 
@@ -324,9 +325,31 @@ ${equipManutProxima.map(e=>`- ${e.nome} | ${e.prox_manutencao} | R$ ${Number(e.c
 ${planosList.slice(0, 8).map(p=>`- [${p.codigo||"—"}] ${p.nome} | Tipo: ${p.tipo} | ${p.periodicidade} | R$ ${Number(p.custo_total).toLocaleString("pt-BR",{minimumFractionDigits:2})} | Próxima: ${p.proxima_execucao||"não definida"} | ${p.equipamentos_itens?.length||0} equips vinculados`).join("\n") || "Nenhum plano cadastrado"}
 ${planosProximos.length > 0 ? `\n⚡ PLANOS PARA EXECUTAR NOS PRÓXIMOS 30 DIAS:\n${planosProximos.map(p=>`- ${p.nome} (${p.tipo}) em ${p.proxima_execucao} | ${p.tempo_estimado_min}min estimados`).join("\n")}` : ""}`;
 
-    const systemPrompt = `Você é o Síndico Virtual IA do ${cond?.nome || "condomínio"}, localizado em ${cond?.cidade || "Florianópolis"}.
+    // Tenta carregar identidade/personalidade da Di configurada pelo Master
+    let diIdentidade = `Você é Di, a Síndica Virtual Inteligente do ImobCore.\nPersonalidade: profissional, simpática, direta e eficiente. Fale em português brasileiro natural com emojis moderados.\n`;
+    let diNome = "Di";
+    try {
+      const diCtx = await carregarContextoDi(
+        condIdCtx || cond?.id || "",
+        {
+          condNome: cond?.nome,
+          condCidade: cond?.cidade,
+          sindico: cond?.sindico_nome,
+          totalUnidades: cond?.unidades,
+          osAbertas: (osAbertas || []).length,
+          osUrgentes: osUrgentes.length,
+          saldo,
+        },
+        "gestor"
+      );
+      diIdentidade = diCtx.systemPrompt + "\n\n";
+      diNome = diCtx.nomeDi;
+    } catch { /* usa fallback */ }
+
+    const systemPrompt = diIdentidade + `Condomínio: ${cond?.nome || "condomínio"}, localizado em ${cond?.cidade || "Florianópolis"}.
 Síndico responsável: ${cond?.sindico_nome || "Ricardo Gestor"}.
 Unidades: ${cond?.unidades || 84} | Moradores: ${cond?.moradores || 168}.
+Você — ${diNome} — tem acesso completo aos dados abaixo para responder com precisão.
 
 SITUAÇÃO ATUAL (${new Date().toLocaleString("pt-BR")}):
 
@@ -3341,20 +3364,33 @@ router.post("/di", async (req: Request, res: Response) => {
     try {
       const criticos  = cardsBase.filter(c => c.tipo === "critico").length;
       const atencoes  = cardsBase.filter(c => c.tipo === "atencao").length;
+
+      // Tenta carregar nome e tom da Di configurados pelo Master
+      let diNomeBriefing = "Di";
+      let diSystemBriefing = "Você é Di, a Síndica Virtual do ImobCore. Personalidade: profissional, simpática, direta, português brasileiro natural com emojis moderados.";
+      try {
+        const diCtxBriefing = await carregarContextoDi(
+          condominio_id || cond?.id || "",
+          { condNome, saldo, inadPct: txInad, osAbertas: (osAbertas||[]).length, osUrgentes: osUrgentes.length, nivelAgua: nivelMedioAgua },
+          "gestor"
+        );
+        diNomeBriefing = diCtxBriefing.nomeDi;
+        diSystemBriefing = diCtxBriefing.systemPrompt;
+      } catch { /* usa fallback */ }
+
       const completion = await anthropic.messages.create({
         model: "claude-sonnet-4-5",
         max_tokens: 700,
+        system: diSystemBriefing,
         messages: [{
           role: "user",
-          content: `Você é a Di, Síndica Virtual do ImobCore. Personalidade: profissional, simpática, direta, português brasileiro natural com emojis moderados.
-
-SITUAÇÃO ATUAL de "${condNome}":
+          content: `SITUAÇÃO ATUAL de "${condNome}":
 - Água: nível médio ${nivelMedioAgua != null ? nivelMedioAgua + "%" : "desconhecido"} | ${aguaSensores.length} sensor(es)
 - Financeiro: saldo R$ ${saldo.toFixed(2)} | inadimplência ${txInad}%
 - Manutenção: ${(osAbertas||[]).length} OSs abertas, ${osUrgentes.length} urgentes
 - Alertas: ${criticos} crítico(s), ${atencoes} atenção
 
-Gere SOMENTE a "fala" da Di (máximo 2 frases naturais, direto ao ponto, que ela vai falar em voz alta).
+Como ${diNomeBriefing}, gere SOMENTE a sua "fala" de briefing (máximo 2 frases naturais, direto ao ponto).
 Responda com JSON: { "fala": "..." }
 Sem markdown, sem explicação.`,
         }],
