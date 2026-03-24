@@ -556,7 +556,29 @@ Nunca invente dados, valores ou informações não fornecidos acima.`;
 
     if (!message) return res.status(400).json({ error: "Campo 'message' obrigatório para o chat geral do Síndico" });
 
-    const messages = [
+    // ── Tool: criar_ordem_servico ─────────────────────────────────────────────
+    const diTools: Anthropic.Tool[] = [
+      {
+        name: "criar_ordem_servico",
+        description: "Cria uma ordem de serviço (OS) real no sistema do condomínio. Use esta ferramenta SOMENTE quando o usuário pedir explicitamente para abrir, criar ou registrar uma OS/ordem de serviço. Não use para simular ou exemplificar.",
+        input_schema: {
+          type: "object" as const,
+          properties: {
+            titulo:         { type: "string", description: "Título conciso da OS (máx 80 chars)" },
+            descricao:      { type: "string", description: "Descrição detalhada do problema ou serviço a ser executado" },
+            area:           { type: "string", description: "Área/local do serviço (ex: Hidráulico, Elétrico, Elevador, Limpeza, Área da piscina, Bloco A)" },
+            prioridade:     { type: "string", enum: ["urgente","alta","media","baixa"], description: "Prioridade: urgente se risco à segurança ou dano imediato" },
+            tecnico_nome:   { type: "string", description: "Nome do técnico ou responsável pela execução ('A definir' se não especificado)" },
+            tecnico_contato:{ type: "string", description: "Contato do técnico (telefone ou email, opcional)" },
+            custo_estimado: { type: "number", description: "Custo estimado em reais (0 se desconhecido)" },
+            observacao:     { type: "string", description: "Observações adicionais sobre a OS (local exato, moradores afetados, etc.)" },
+          },
+          required: ["titulo", "descricao", "area", "prioridade"],
+        },
+      },
+    ];
+
+    const messages: Anthropic.MessageParam[] = [
       ...history.slice(-10).map((h) => ({
         role: h.role as "user" | "assistant",
         content: h.content,
@@ -564,20 +586,90 @@ Nunca invente dados, valores ou informações não fornecidos acima.`;
       { role: "user" as const, content: message },
     ];
 
-    const aiResponse = await anthropic.messages.create({
+    // ── Primeira chamada ao Claude (com tool disponível) ─────────────────────
+    const firstResponse = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1200,
       system: systemPrompt,
+      tools: diTools,
+      tool_choice: { type: "auto" },
       messages,
     });
 
-    const reply = aiResponse.content[0].type === "text" ? aiResponse.content[0].text : "";
+    let reply = "";
+    let osCriada: Record<string, unknown> | null = null;
     const tokens = {
-      input: aiResponse.usage.input_tokens,
-      output: aiResponse.usage.output_tokens,
+      input: firstResponse.usage.input_tokens,
+      output: firstResponse.usage.output_tokens,
     };
 
-    // Save to history
+    // ── Verificar se Claude chamou o tool criar_ordem_servico ─────────────────
+    const toolUseBlock = firstResponse.content.find(b => b.type === "tool_use" && b.name === "criar_ordem_servico");
+
+    if (toolUseBlock && toolUseBlock.type === "tool_use" && firstResponse.stop_reason === "tool_use") {
+      // Extrair parâmetros da OS que Claude decidiu criar
+      const osInput = toolUseBlock.input as {
+        titulo: string; descricao: string; area: string; prioridade: string;
+        tecnico_nome?: string; tecnico_contato?: string; custo_estimado?: number; observacao?: string;
+      };
+
+      const slaDefault: Record<string, number> = { urgente: 4, alta: 24, media: 48, baixa: 168 };
+      const slaFinal = slaDefault[osInput.prioridade] ?? 48;
+
+      const osPayload: Record<string, unknown> = {
+        condominio_id: condIdCtx || cond?.id,
+        titulo: osInput.titulo,
+        descricao: osInput.descricao,
+        area: osInput.area,
+        prioridade: osInput.prioridade,
+        tecnico_nome: osInput.tecnico_nome || "A definir",
+        tecnico_contato: osInput.tecnico_contato || null,
+        custo_estimado: Number(osInput.custo_estimado) || 0,
+        observacao: osInput.observacao || null,
+        sla_horas: slaFinal,
+        status: "aberta",
+      };
+
+      const { data: osData, error: osErrRaw } = await supabase.from("ordens_servico").insert(osPayload).select().single();
+      if (!osErrRaw && osData) {
+        osCriada = osData as Record<string, unknown>;
+        broadcast("nova_os", osCriada);
+        console.log(`[Di] OS criada via chat: "${osInput.titulo}" id=${osCriada.id} condo=${condIdCtx}`);
+      } else {
+        console.error("[Di] Erro ao criar OS via tool:", osErrRaw?.message);
+      }
+
+      // ── Segunda chamada: Claude recebe resultado do tool e formula resposta ──
+      const toolResult: Anthropic.MessageParam = {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: toolUseBlock.id,
+            content: osCriada
+              ? JSON.stringify({ sucesso: true, numero: osCriada.numero, id: osCriada.id, status: "aberta", mensagem: `OS #${osCriada.numero} registrada com sucesso no sistema.` })
+              : JSON.stringify({ sucesso: false, erro: osErr?.message || "Erro ao criar OS" }),
+          },
+        ],
+      };
+
+      const secondResponse = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1200,
+        system: systemPrompt,
+        tools: diTools,
+        messages: [...messages, { role: "assistant", content: firstResponse.content }, toolResult],
+      });
+
+      reply = secondResponse.content.find(b => b.type === "text")?.text ?? "";
+      tokens.input += secondResponse.usage.input_tokens;
+      tokens.output += secondResponse.usage.output_tokens;
+    } else {
+      // Resposta normal sem tool call
+      reply = firstResponse.content.find(b => b.type === "text")?.text ?? "";
+    }
+
+    // ── Salvar no histórico ───────────────────────────────────────────────────
     const sessaoId = `sess_${Date.now()}`;
     await supabase.from("sindico_historico").insert({
       condominio_id: condominio_id || cond?.id,
@@ -590,7 +682,7 @@ Nunca invente dados, valores ou informações não fornecidos acima.`;
 
     broadcast("sindico_chat", { message, reply, timestamp: new Date().toISOString() });
 
-    res.json({ reply, nome_di: diNome, di_ativa: true, tokens });
+    res.json({ reply, nome_di: diNome, di_ativa: true, tokens, os_criada: osCriada });
   } catch (err) {
     console.error("sindico chat error:", err);
     res.status(500).json({ error: "Erro ao processar mensagem" });
