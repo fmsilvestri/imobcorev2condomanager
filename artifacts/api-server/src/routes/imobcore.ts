@@ -70,8 +70,14 @@ router.get("/stream", (req: Request, res: Response) => {
 router.get("/dashboard", async (req: Request, res: Response) => {
   try {
     const { condominio_id } = req.query as { condominio_id?: string };
-    // Load all condominios for the selector
-    const { data: condominios } = await supabase.from("condominios").select("*").order("created_at", { ascending: true });
+
+    // Quando condominio_id é fornecido, retorna SOMENTE esse condomínio
+    // (garante isolamento: usuários vinculados não enxergam outros condos)
+    let condominiosQuery = supabase.from("condominios").select("*").order("created_at", { ascending: true });
+    if (condominio_id) {
+      condominiosQuery = condominiosQuery.eq("id", condominio_id) as typeof condominiosQuery;
+    }
+    const { data: condominios } = await condominiosQuery;
     // Use requested condo or fall back to first
     const primaryId = condominio_id || (condominios || [])[0]?.id;
 

@@ -950,6 +950,9 @@ export default function App() {
   const [loginLoading, setLoginLoading] = useState(false);
   type LoggedUser = { id:string; nome:string; email:string; perfil:string; condominio_id:string; unidade_id:string|null };
   const [loggedUser, setLoggedUser] = useState<LoggedUser | null>(null);
+  const loggedUserRef = useRef<LoggedUser | null>(null);
+  // Mantém ref sincronizado para uso dentro de callbacks/effects sem stale closure
+  useEffect(() => { loggedUserRef.current = loggedUser; }, [loggedUser]);
   // ── Manutenção state ────────────────────────────────────────────────────
   const [mantTab, setMantTab] = useState<"equip"|"mapa"|"plano"|"os"|"qr"|"ia">("equip");
   const [mantSearch, setMantSearch] = useState("");
@@ -2157,7 +2160,10 @@ export default function App() {
   // ── Dashboard ─────────────────────────────────────────────────────────────
   const loadDashboard = useCallback(async (forCondId?: string) => {
     try {
-      const cid = forCondId ?? condIdRef.current;
+      // Se o usuário logado está vinculado a um condo específico, SEMPRE usa esse ID
+      // Impede que gestores/síndicos/moradores acessem dados de outros condomínios
+      const lockedCondo = loggedUserRef.current?.condominio_id;
+      const cid = lockedCondo || forCondId || condIdRef.current;
       const url = cid ? `/api/dashboard?condominio_id=${cid}` : "/api/dashboard";
       const r = await fetch(url);
       if (!r.ok) { console.warn("dashboard fetch status:", r.status); return; }
@@ -5780,38 +5786,49 @@ export default function App() {
           const currentCondo = dash!.condominios.find(c => c.id === condId) ?? dash!.condominios[0];
           return (
             <div style={{ position:"relative" as const, marginLeft:4 }} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setCondDropOpen(false); }}>
-              <button
-                title="Trocar condomínio ativo"
-                onClick={() => setCondDropOpen(o => !o)}
-                style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 12px", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, cursor:"pointer", color:"var(--c-text)", fontSize:12, fontWeight:600, fontFamily:"inherit", minWidth:160 }}>
-                <span style={{ width:8, height:8, borderRadius:"50%", background: currentCondo?.cor_primaria || "#7C5CFC", flexShrink:0, boxShadow:`0 0 6px ${currentCondo?.cor_primaria || "#7C5CFC"}88` }} />
-                <span style={{ maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{currentCondo?.nome ?? "Condomínio"}</span>
-                <span style={{ fontSize:9, opacity:.6, marginLeft:"auto" }}>▾</span>
-              </button>
-              {condDropOpen && (
-                <div tabIndex={-1} style={{ position:"absolute" as const, top:"calc(100% + 8px)", left:0, width:260, background:"#0D1321", border:"1px solid rgba(255,255,255,.1)", borderRadius:12, padding:8, zIndex:9999, boxShadow:"0 20px 40px rgba(0,0,0,.6)" }}>
-                  <div style={{ fontSize:10, color:"#475569", fontWeight:700, padding:"4px 12px 8px", textTransform:"uppercase" as const, letterSpacing:1 }}>Condomínios</div>
-                  {dash!.condominios.map(c => {
-                    const active = c.id === (condId ?? dash!.condominios[0].id);
-                    const planBadge: Record<string,string> = { free:"#475569", starter:"#0D9488", pro:"#7C5CFC", admin_plus:"#D97706" };
-                    return (
-                      <div key={c.id} tabIndex={0} onClick={() => { setCondDropOpen(false); loadDashboard(c.id); }} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:8, cursor:"pointer", background: active ? "rgba(255,255,255,.07)" : "transparent", transition:"background .15s" }}>
-                        <span style={{ width:10, height:10, borderRadius:"50%", background: c.cor_primaria || "#7C5CFC", flexShrink:0 }} />
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:12, fontWeight:active?700:500, color: active ? "#fff" : "#94A3B8", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{c.nome}</div>
-                          <div style={{ fontSize:10, color:"#475569" }}>{c.cidade}{c.estado ? ` · ${c.estado}` : ""}</div>
-                        </div>
-                        <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:4, background: planBadge[c.plano||"free"]+"22", color: planBadge[c.plano||"free"], border:`1px solid ${planBadge[c.plano||"free"]}44`, textTransform:"uppercase" as const }}>{c.plano||"free"}</span>
-                        {active && <span style={{ fontSize:10, color:c.cor_primaria||"#7C5CFC" }}>✓</span>}
-                      </div>
-                    );
-                  })}
-                  <div style={{ borderTop:"1px solid rgba(255,255,255,.07)", marginTop:8, paddingTop:6 }}>
-                    <div tabIndex={0} onClick={() => { setPanel("condominios"); setView("gestor"); setCondDropOpen(false); }} style={{ padding:"8px 12px", fontSize:12, color:"#A5B4FC", cursor:"pointer", borderRadius:8, display:"flex", alignItems:"center", gap:6 }}>
-                      🏢 Gerenciar condomínios
-                    </div>
-                  </div>
+              {/* Usuário vinculado a um condo: exibe apenas o nome, sem troca */}
+              {loggedUser?.condominio_id ? (
+                <div title="Seu acesso está restrito a este condomínio" style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 12px", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, color:"var(--c-text)", fontSize:12, fontWeight:600, minWidth:160, userSelect:"none" as const, cursor:"default" }}>
+                  <span style={{ width:8, height:8, borderRadius:"50%", background: currentCondo?.cor_primaria || "#7C5CFC", flexShrink:0, boxShadow:`0 0 6px ${currentCondo?.cor_primaria || "#7C5CFC"}88` }} />
+                  <span style={{ maxWidth:140, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{currentCondo?.nome ?? "Condomínio"}</span>
+                  <span title="Acesso restrito" style={{ fontSize:10, opacity:.45, marginLeft:"auto" }}>🔒</span>
                 </div>
+              ) : (
+                <>
+                  <button
+                    title="Trocar condomínio ativo"
+                    onClick={() => setCondDropOpen(o => !o)}
+                    style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 12px", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, cursor:"pointer", color:"var(--c-text)", fontSize:12, fontWeight:600, fontFamily:"inherit", minWidth:160 }}>
+                    <span style={{ width:8, height:8, borderRadius:"50%", background: currentCondo?.cor_primaria || "#7C5CFC", flexShrink:0, boxShadow:`0 0 6px ${currentCondo?.cor_primaria || "#7C5CFC"}88` }} />
+                    <span style={{ maxWidth:120, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{currentCondo?.nome ?? "Condomínio"}</span>
+                    <span style={{ fontSize:9, opacity:.6, marginLeft:"auto" }}>▾</span>
+                  </button>
+                  {condDropOpen && (
+                    <div tabIndex={-1} style={{ position:"absolute" as const, top:"calc(100% + 8px)", left:0, width:260, background:"#0D1321", border:"1px solid rgba(255,255,255,.1)", borderRadius:12, padding:8, zIndex:9999, boxShadow:"0 20px 40px rgba(0,0,0,.6)" }}>
+                      <div style={{ fontSize:10, color:"#475569", fontWeight:700, padding:"4px 12px 8px", textTransform:"uppercase" as const, letterSpacing:1 }}>Condomínios</div>
+                      {dash!.condominios.map(c => {
+                        const active = c.id === (condId ?? dash!.condominios[0].id);
+                        const planBadge: Record<string,string> = { free:"#475569", starter:"#0D9488", pro:"#7C5CFC", admin_plus:"#D97706" };
+                        return (
+                          <div key={c.id} tabIndex={0} onClick={() => { setCondDropOpen(false); loadDashboard(c.id); }} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", borderRadius:8, cursor:"pointer", background: active ? "rgba(255,255,255,.07)" : "transparent", transition:"background .15s" }}>
+                            <span style={{ width:10, height:10, borderRadius:"50%", background: c.cor_primaria || "#7C5CFC", flexShrink:0 }} />
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:12, fontWeight:active?700:500, color: active ? "#fff" : "#94A3B8", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{c.nome}</div>
+                              <div style={{ fontSize:10, color:"#475569" }}>{c.cidade}{c.estado ? ` · ${c.estado}` : ""}</div>
+                            </div>
+                            <span style={{ fontSize:9, fontWeight:700, padding:"2px 6px", borderRadius:4, background: planBadge[c.plano||"free"]+"22", color: planBadge[c.plano||"free"], border:`1px solid ${planBadge[c.plano||"free"]}44`, textTransform:"uppercase" as const }}>{c.plano||"free"}</span>
+                            {active && <span style={{ fontSize:10, color:c.cor_primaria||"#7C5CFC" }}>✓</span>}
+                          </div>
+                        );
+                      })}
+                      <div style={{ borderTop:"1px solid rgba(255,255,255,.07)", marginTop:8, paddingTop:6 }}>
+                        <div tabIndex={0} onClick={() => { setPanel("condominios"); setView("gestor"); setCondDropOpen(false); }} style={{ padding:"8px 12px", fontSize:12, color:"#A5B4FC", cursor:"pointer", borderRadius:8, display:"flex", alignItems:"center", gap:6 }}>
+                          🏢 Gerenciar condomínios
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           );
