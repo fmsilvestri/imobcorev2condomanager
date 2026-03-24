@@ -178,6 +178,9 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       { data: despesas },
       { data: equipamentos },
       { data: planos },
+      { data: reservoirsChat },
+      { data: comunicadosChat },
+      { data: encomendasChat },
     ] = await Promise.all([
       condQuery,
       condIdCtx
@@ -199,7 +202,27 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       condIdCtx
         ? supabase.from("planos_manutencao").select("*").eq("condominio_id", condIdCtx).order("created_at", { ascending: true })
         : supabase.from("planos_manutencao").select("*").order("created_at", { ascending: true }),
+      condIdCtx
+        ? supabase.from("reservoirs").select("name,iot_last_reading,capacity_liters,iot_status,iot_sensor_id").eq("condominio_id", condIdCtx).limit(20)
+        : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
+      condIdCtx
+        ? supabase.from("comunicados").select("titulo,categoria,corpo,created_at,gerado_por_ia").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(5)
+        : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
+      condIdCtx
+        ? supabase.from("encomendas").select("destinatario,status,descricao,created_at").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(10)
+        : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
     ]);
+
+    // Inadimplência via lancamentos_financeiros (se condIdCtx disponível)
+    let txInadChat = 0;
+    let vlrInadChat = 0;
+    if (condIdCtx) {
+      try {
+        const indFin = await calcIndicadores(condIdCtx);
+        txInadChat = indFin.txInad;
+        vlrInadChat = indFin.vlrInad;
+      } catch { /* silencia */ }
+    }
 
     const totalReceitas = (receitas || []).reduce((s: number, r: { valor: number }) => s + Number(r.valor), 0);
     const totalDespesas = (despesas || []).reduce((s: number, d: { valor: number }) => s + Number(d.valor), 0);
@@ -354,8 +377,9 @@ ${planosProximos.length > 0 ? `\n⚡ PLANOS PARA EXECUTAR NOS PRÓXIMOS 30 DIAS:
     let diIdentidade = `Você é Di, a Síndica Virtual Inteligente do ImobCore.\nPersonalidade: direto e empático, próximo sem ser informal. Fale em português brasileiro natural com emojis moderados.\n`;
     let diNome = "Di";
     let diAtiva = true;
+    let diCtx: import("../di-engine/context.js").DiCtx | null = null;
     try {
-      const diCtx = await carregarContextoDi(
+      diCtx = await carregarContextoDi(
         condIdCtx || cond?.id || "",
         {
           condNome: cond?.nome,
@@ -384,42 +408,100 @@ ${planosProximos.length > 0 ? `\n⚡ PLANOS PARA EXECUTAR NOS PRÓXIMOS 30 DIAS:
       });
     }
 
-    const systemPrompt = diIdentidade + `Condomínio: ${cond?.nome || "condomínio"}, localizado em ${cond?.cidade || "Florianópolis"}.
-Síndico responsável: ${cond?.sindico_nome || "Ricardo Gestor"}.
-Unidades: ${cond?.unidades || 84} | Moradores: ${cond?.moradores || 168}.
-Você — ${diNome} — tem acesso completo aos dados abaixo para responder com precisão.
+    // Módulos ativos do condo — filtram quais seções incluir no contexto enviado ao Claude
+    const TODOS_MODULOS = ["os","financeiro","iot","misp","encomendas","portaria","reservas","comunicados"];
+    const diModulos: string[] = diCtx?.modulosAtivos ?? TODOS_MODULOS;
 
-SITUAÇÃO ATUAL (${new Date().toLocaleString("pt-BR")}):
+    type OsRow = { numero: number; titulo: string; prioridade: string; unidade?: string; categoria: string };
+    type SensorRow = { nome: string; local: string; nivel_atual: number; capacidade_litros: number; volume_litros: number };
+    type ReservoirRow = { name: string; iot_last_reading: number | null; capacity_liters: number; iot_status: string };
+    type AlertaRow = { titulo: string; nivel: string; cidade: string; bairro: string; tipo: string };
+    type ComunicadoRow = { titulo: string; categoria: string; corpo: string; created_at: string; gerado_por_ia?: boolean };
+    type EncomendaRow = { destinatario: string; status: string; descricao?: string; created_at: string };
 
-📋 ORDENS DE SERVIÇO ABERTAS (${(osAbertas || []).length} total, ${osUrgentes.length} urgentes):
-${(osAbertas || []).slice(0, 10).map((o: { numero: number; titulo: string; prioridade: string; unidade?: string; categoria: string }) =>
-  `- OS #${o.numero}: ${o.titulo} | Prioridade: ${o.prioridade} | Unidade: ${o.unidade || "Área comum"} | Categoria: ${o.categoria}`
-).join("\n") || "Nenhuma OS aberta"}
+    const contextSections: string[] = [];
 
-💧 SENSORES IoT:
-${(sensores || []).map((s: { nome: string; local: string; nivel_atual: number; capacidade_litros: number; volume_litros: number }) =>
-  `- ${s.nome} (${s.local}): ${s.nivel_atual}% | ${s.volume_litros?.toFixed(0)}L de ${s.capacidade_litros}L${s.nivel_atual < 30 ? " ⚠️ CRÍTICO" : s.nivel_atual < 60 ? " ⚠️ ATENÇÃO" : " ✅"}`
-).join("\n") || "Sem sensores"}
+    // ── Cabeçalho (sempre presente) ────────────────────────────────────────
+    contextSections.push(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DADOS REAIS DO CONDOMÍNIO (${new Date().toLocaleString("pt-BR")})
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Condomínio: ${cond?.nome || "Condomínio"}, ${cond?.cidade || ""}
+Síndico: ${cond?.sindico_nome || "—"} | Unidades: ${cond?.total_unidades ?? cond?.unidades ?? "—"} | Moradores: ${cond?.total_moradores ?? cond?.moradores ?? "—"}
+Usuário: ${nomeUsuarioCtx || "Usuário"} | Perfil: ${perfilCtx || "gestor"}`);
 
-🚨 ALERTAS MISP ATIVOS (${(alertas || []).length}):
-${(alertas || []).map((a: { titulo: string; nivel: string; cidade: string; bairro: string; tipo: string }) =>
-  `- ${a.titulo} | Nível: ${a.nivel} | ${a.cidade} - ${a.bairro} | Tipo: ${a.tipo}`
-).join("\n") || "Nenhum alerta ativo"}
+    // ── Módulo: OS (Ordens de Serviço) ──────────────────────────────────────
+    if (diModulos.includes("os")) {
+      const osList = (osAbertas || []) as OsRow[];
+      contextSections.push(`📋 ORDENS DE SERVIÇO ABERTAS (${osList.length} total, ${osUrgentes.length} urgentes):
+${osList.slice(0, 12).map(o =>
+  `- OS #${o.numero}: ${o.titulo} | ${o.prioridade?.toUpperCase()} | Unidade: ${o.unidade || "Área comum"} | Cat: ${o.categoria}`
+).join("\n") || "  Nenhuma OS aberta"}`);
+    }
 
-💰 FINANCEIRO:
-- Receitas: R$ ${totalReceitas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-- Despesas: R$ ${totalDespesas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+    // ── Módulo: IOT / Sensores ───────────────────────────────────────────────
+    if (diModulos.includes("iot")) {
+      const sensorLines = (sensores || [] as SensorRow[]).map((s: SensorRow) =>
+        `- ${s.nome} (${s.local}): ${s.nivel_atual}% | ${Number(s.volume_litros)?.toFixed(0)}L de ${s.capacidade_litros}L${s.nivel_atual < 30 ? " 🔴 CRÍTICO" : s.nivel_atual < 60 ? " 🟡 ATENÇÃO" : " ✅"}`
+      );
+      const reservoirLines = (reservoirsChat || [] as ReservoirRow[]).map((r: ReservoirRow) => {
+        const pct = r.capacity_liters > 0 ? Math.round((Number(r.iot_last_reading) / r.capacity_liters) * 100) : r.iot_last_reading ?? 0;
+        const emoji = (pct as number) < 25 ? "🔴" : (pct as number) < 60 ? "🟡" : "✅";
+        return `- ${r.name}: ${pct}% (${r.iot_status}) ${emoji}`;
+      });
+      const allIoT = [...sensorLines, ...reservoirLines];
+      contextSections.push(`📡 IOT / SENSORES DE ÁGUA (${allIoT.length} dispositivos):
+${allIoT.join("\n") || "  Nenhum sensor cadastrado"}`);
+    }
+
+    // ── Módulo: Financeiro ───────────────────────────────────────────────────
+    if (diModulos.includes("financeiro")) {
+      contextSections.push(`💰 FINANCEIRO:
+- Receitas totais: R$ ${totalReceitas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+- Despesas totais: R$ ${totalDespesas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
 - Saldo: R$ ${saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} ${saldo >= 0 ? "✅" : "⚠️ NEGATIVO"}
-${manutencaoSection}
+- Inadimplência: ${txInadChat}% (R$ ${vlrInadChat.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em aberto) ${txInadChat > 20 ? "🔴 CRÍTICO" : txInadChat > 10 ? "🟡 ATENÇÃO" : "✅"}`);
+    }
 
-Você tem acesso completo aos dados de manutenção acima. Use-os para:
-- Identificar equipamentos críticos e recomendar ações
-- Calcular impacto financeiro de manutenções pendentes
-- Sugerir otimização do cronograma de planos preventivos
-- Alertar sobre equipamentos com vida útil próxima ao fim
-- Estimar consumo energético e oportunidades de economia
+    // ── Módulo: MISP / Manutenção ────────────────────────────────────────────
+    if (diModulos.includes("misp")) {
+      contextSections.push(manutencaoSection);
+    }
 
-Responda de forma profissional, objetiva e útil. Use emojis moderadamente. Máximo 500 palavras por resposta.`;
+    // ── Módulo: Comunicados ──────────────────────────────────────────────────
+    if (diModulos.includes("comunicados")) {
+      const comList = (comunicadosChat || []) as ComunicadoRow[];
+      contextSections.push(`📢 ÚLTIMOS COMUNICADOS (${comList.length}):
+${comList.map(c =>
+  `- [${c.categoria}] ${c.titulo} | ${new Date(c.created_at).toLocaleDateString("pt-BR")}${c.gerado_por_ia ? " (Di)" : ""}`
+).join("\n") || "  Nenhum comunicado recente"}`);
+    }
+
+    // ── Módulo: Encomendas ────────────────────────────────────────────────────
+    if (diModulos.includes("encomendas")) {
+      const encList = (encomendasChat || []) as EncomendaRow[];
+      const encPendentes = encList.filter(e => e.status === "pendente" || e.status === "aguardando");
+      contextSections.push(`📦 ENCOMENDAS (${encList.length} recentes, ${encPendentes.length} aguardando retirada):
+${encPendentes.slice(0, 8).map(e =>
+  `- ${e.destinatario} | ${e.descricao || "sem descrição"} | Desde: ${new Date(e.created_at).toLocaleDateString("pt-BR")}`
+).join("\n") || "  Nenhuma encomenda pendente"}`);
+    }
+
+    // ── Alertas MISP públicos (sempre presente se módulo ativo) ─────────────
+    if (diModulos.includes("misp") && (alertas || []).length > 0) {
+      contextSections.push(`🚨 ALERTAS DE SEGURANÇA ATIVOS (${(alertas || []).length}):
+${(alertas || []).map((a: AlertaRow) =>
+  `- ${a.titulo} | ${a.nivel} | ${a.cidade} - ${a.bairro}`
+).join("\n")}`);
+    }
+
+    const systemPrompt = diIdentidade + contextSections.join("\n\n") + `
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INSTRUÇÕES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Responda com base exclusivamente nos dados acima. Seja profissional, objetivo e útil.
+Use emojis com moderação. Máximo 500 palavras por resposta.
+Nunca invente dados, valores ou informações não fornecidos acima.`;
 
     if (!message) return res.status(400).json({ error: "Campo 'message' obrigatório para o chat geral do Síndico" });
 
@@ -3209,6 +3291,9 @@ function gerarCardsInteligentes(d: {
   osUrgentes: number;
   osAbertas: { titulo: string; prioridade: string }[];
   condNome: string;
+  equipamentos?: { nome: string; status: string; local?: string }[];
+  encomendas?: number;
+  comunicados?: { titulo: string; categoria: string }[];
 }): DiSmartCard[] {
   const cards: DiSmartCard[] = [];
 
@@ -3321,6 +3406,35 @@ function gerarCardsInteligentes(d: {
     });
   }
 
+  // ── 🔩 EQUIPAMENTOS COM FALHA (MISP) ────────────────────────────────────────
+  if (d.equipamentos && d.equipamentos.length > 0) {
+    const equipFalha = d.equipamentos.filter(e =>
+      e.status === "avariado" || e.status === "em_manutencao" || e.status === "inativo"
+    );
+    if (equipFalha.length > 0) {
+      cards.push({
+        tipo: equipFalha.length >= 3 ? "critico" : "atencao",
+        titulo: "🔩 Equipamentos com Problema",
+        mensagem: `${equipFalha.length} equipamento${equipFalha.length > 1 ? "s" : ""} com status de falha: ${equipFalha.slice(0, 3).map(e => e.nome).join(", ")}.`,
+        acao: "Abrir OS de manutenção para os equipamentos afetados",
+        badge: `${equipFalha.length} com falha`,
+      });
+    }
+  }
+
+  // ── 📦 ENCOMENDAS PENDENTES ──────────────────────────────────────────────────
+  if (d.encomendas != null && d.encomendas > 0) {
+    cards.push({
+      tipo: d.encomendas >= 10 ? "atencao" : "info",
+      titulo: "📦 Encomendas Pendentes",
+      mensagem: `${d.encomendas} encomenda${d.encomendas > 1 ? "s aguardam" : " aguarda"} retirada na portaria.`,
+      acao: d.encomendas >= 10
+        ? "Notificar moradores com encomendas há mais de 5 dias"
+        : "Verificar lista de encomendas pendentes",
+      badge: `${d.encomendas} pendente${d.encomendas > 1 ? "s" : ""}`,
+    });
+  }
+
   // ── 🧠 INSIGHT DA DI (sempre presente) ────────────────────────────────────
   const totalProblemas = sensoresCriticos.length + (d.osUrgentes > 0 ? 1 : 0) + (d.txInad > 20 ? 1 : 0);
   if (totalProblemas >= 2) {
@@ -3374,13 +3488,16 @@ router.post("/di", async (req: Request, res: Response) => {
       nome_usuario: nomeUsuarioBriefing,
     } = req.body as { condominio_id?: string; perfil?: string; nome_usuario?: string };
 
-    // ── Coletar dados reais do condomínio ──────────────────────────────────
+    // ── Coletar dados reais do condomínio (todos os módulos) ──────────────
     const [
       { data: cond },
       { data: reservoirRows },
       { data: sensoreRows },
       { data: osAbertas },
       { data: lancamentos },
+      { data: equipamentosRows },
+      { data: comunicadosRows },
+      { data: encomendasRows },
     ] = await Promise.all([
       condominio_id
         ? supabase.from("condominios").select("*").eq("id", condominio_id).single()
@@ -3395,8 +3512,17 @@ router.post("/di", async (req: Request, res: Response) => {
         ? supabase.from("ordens_servico").select("titulo,prioridade,status").in("status", ["aberta","em_andamento"]).eq("condominio_id", condominio_id).limit(20)
         : supabase.from("ordens_servico").select("titulo,prioridade,status").in("status", ["aberta","em_andamento"]).limit(20),
       condominio_id
-        ? supabase.from("lancamentos").select("tipo,valor,status").eq("condominio_id", condominio_id)
-        : supabase.from("lancamentos").select("tipo,valor,status"),
+        ? supabase.from("lancamentos_financeiros").select("tipo,valor,status").eq("condominio_id", condominio_id)
+        : supabase.from("lancamentos_financeiros").select("tipo,valor,status"),
+      condominio_id
+        ? supabase.from("equipamentos").select("nome,status,local").eq("condominio_id", condominio_id).limit(30)
+        : supabase.from("equipamentos").select("nome,status,local").limit(30),
+      condominio_id
+        ? supabase.from("comunicados").select("titulo,categoria,created_at").eq("condominio_id", condominio_id).order("created_at", { ascending: false }).limit(5)
+        : supabase.from("comunicados").select("titulo,categoria,created_at").order("created_at", { ascending: false }).limit(5),
+      condominio_id
+        ? supabase.from("encomendas").select("id,status").eq("condominio_id", condominio_id).eq("status", "pendente").limit(50)
+        : supabase.from("encomendas").select("id,status").eq("status", "pendente").limit(50),
     ]);
 
     // ── Consolidar sensores de água ────────────────────────────────────────
@@ -3439,12 +3565,15 @@ router.post("/di", async (req: Request, res: Response) => {
 
     const condNome = cond?.nome || "ImobCore";
 
-    // ── Gerar cards inteligentes (determinístico) ─────────────────────────
+    // ── Gerar cards inteligentes (determinístico, todos os módulos) ──────
     const cardsBase = gerarCardsInteligentes({
       aguaSensores, nivelMedioAgua, saldo, txInad, totalRec, totalDesp,
       osTotal: (osAbertas || []).length, osUrgentes: osUrgentes.length,
       osAbertas: (osAbertas || []) as { titulo: string; prioridade: string }[],
       condNome,
+      equipamentos: (equipamentosRows || []) as { nome: string; status: string; local?: string }[],
+      encomendas: (encomendasRows || []).length,
+      comunicados: (comunicadosRows || []) as { titulo: string; categoria: string }[],
     });
 
     // ── Enriquecer com Claude (gera fala personalizada + pode adicionar cards extra) ──
@@ -3737,8 +3866,8 @@ router.post("/notificacoes/_gerar_cards", async (req: Request, res: Response) =>
         ? supabase.from("ordens_servico").select("titulo,prioridade").in("status", ["aberta","em_andamento"]).eq("condominio_id", condominio_id).limit(20)
         : supabase.from("ordens_servico").select("titulo,prioridade").in("status", ["aberta","em_andamento"]).limit(20),
       condominio_id
-        ? supabase.from("lancamentos").select("tipo,valor,status").eq("condominio_id", condominio_id)
-        : supabase.from("lancamentos").select("tipo,valor,status"),
+        ? supabase.from("lancamentos_financeiros").select("tipo,valor,status").eq("condominio_id", condominio_id)
+        : supabase.from("lancamentos_financeiros").select("tipo,valor,status"),
     ]);
 
     type SensorSummary = { nome: string; nivel: number | null; status: string };
@@ -4019,8 +4148,8 @@ router.get("/admin/dashboard", checkAdminGlobal, async (_req: Request, res: Resp
       { data: osRows, error: e3 },
       { data: moradores, error: e4 },
     ] = await Promise.all([
-      supabase.from("condominios").select("id, nome, plano, status, created_at, total_unidades, cidade, estado"),
-      supabase.from("lancamentos").select("tipo, valor, condominio_id"),
+      supabase.from("condominios").select("id, nome, plano, ativo, created_at, total_unidades, cidade"),
+      supabase.from("lancamentos_financeiros").select("tipo, valor, condominio_id"),
       supabase.from("ordens_servico").select("status, condominio_id"),
       supabase.from("moradores").select("id, condominio_id"),
     ]);
@@ -4054,8 +4183,8 @@ router.get("/admin/dashboard", checkAdminGlobal, async (_req: Request, res: Resp
     res.json({
       totalCondos, totalMoradores, osAbertas, osConcluidas,
       inadMedia, planoCounts,
-      condosAtivos:    condos?.filter(c => c.status !== "suspenso").length ?? 0,
-      condosSuspensos: condos?.filter(c => c.status === "suspenso").length ?? 0,
+      condosAtivos:    condos?.filter(c => c.ativo !== false).length ?? 0,
+      condosSuspensos: condos?.filter(c => c.ativo === false).length ?? 0,
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -4367,15 +4496,15 @@ router.get("/bi/overview", checkAdminGlobal, async (_req: Request, res: Response
       { data: lancamentos },
       { data: osRows },
     ] = await Promise.all([
-      supabase.from("condominios").select("id, plano, status, created_at"),
+      supabase.from("condominios").select("id, plano, ativo, created_at"),
       supabase.from("moradores").select("id"),
-      supabase.from("lancamentos").select("tipo, valor, data, condominio_id"),
+      supabase.from("lancamentos_financeiros").select("tipo, valor, data, condominio_id"),
       supabase.from("ordens_servico").select("status, prioridade, created_at"),
     ]);
 
     const totalCondos   = condos?.length ?? 0;
-    const condosAtivos  = condos?.filter(c => c.status !== "suspenso").length ?? 0;
-    const condosSusp    = condos?.filter(c => c.status === "suspenso").length ?? 0;
+    const condosAtivos  = condos?.filter(c => c.ativo !== false).length ?? 0;
+    const condosSusp    = condos?.filter(c => c.ativo === false).length ?? 0;
     const totalMoradores = moradores?.length ?? 0;
     const osAbertas     = osRows?.filter(o => o.status === "aberta" || o.status === "em_andamento").length ?? 0;
     const osUrgentes    = osRows?.filter(o => o.prioridade === "urgente").length ?? 0;
@@ -4414,7 +4543,7 @@ router.get("/bi/charts", checkAdminGlobal, async (_req: Request, res: Response) 
       { data: osRows },
       { data: condos },
     ] = await Promise.all([
-      supabase.from("lancamentos").select("tipo, valor, data, condominio_id, categoria").order("data"),
+      supabase.from("lancamentos_financeiros").select("tipo, valor, data, condominio_id, categoria").order("data"),
       supabase.from("ordens_servico").select("status, categoria, created_at").order("created_at"),
       supabase.from("condominios").select("id, plano, created_at").order("created_at"),
     ]);
@@ -4480,7 +4609,7 @@ router.get("/bi/charts", checkAdminGlobal, async (_req: Request, res: Response) 
 router.get("/bi/forecast", checkAdminGlobal, async (_req: Request, res: Response) => {
   try {
     const { data: lancamentos } = await supabase
-      .from("lancamentos")
+      .from("lancamentos_financeiros")
       .select("tipo, valor, data")
       .order("data");
 
