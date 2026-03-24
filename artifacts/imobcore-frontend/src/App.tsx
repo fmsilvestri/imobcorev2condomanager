@@ -6258,8 +6258,8 @@ export default function App() {
             </div>
             <div className="gestor-chat">
               <div className="chat-chips">
-                {[["📊 Resumo executivo", "Faça um resumo executivo do condomínio agora"], ["🔴 OSs urgentes", "Quais são as OSs urgentes pendentes?"], ["💧 Água + IoT", "Como está a situação da água e sensores IoT?"], ["💰 Financeiro", "Análise financeira completa"], ["🔧 Manutenção", "Análise completa do módulo de manutenção: equipamentos com problema, custos, planos agendados e recomendações"], ["⚙️ Equipamentos críticos", "Quais equipamentos precisam de atenção imediata? Liste por prioridade com impacto e custo estimado"], ["📅 Planos de manutenção", "Quais planos de manutenção vencem nos próximos 30 dias? Faça um cronograma de execução"], ["⭐ Score", "Como melhorar o score do condomínio?"]].map(([l, m]) => (
-                  <button key={l} className="chip" onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); setSideMsgs(p => [...p, { role: "user", content: m, time: fmtTime() }]); }}>{l}</button>
+                {[["📊 Resumo executivo", "Faça um resumo executivo do condomínio agora", ""], ["🔴 OSs urgentes", "Quais são as OSs urgentes pendentes?", "manutencao"], ["💧 Água + IoT", "Como está a situação da água e sensores IoT?", "agua"], ["💰 Financeiro", "Análise financeira completa", "financeiro"], ["🔧 Manutenção", "Análise completa do módulo de manutenção: equipamentos com problema, custos, planos agendados e recomendações", "manutencao"], ["⚙️ Equipamentos críticos", "Quais equipamentos precisam de atenção imediata? Liste por prioridade com impacto e custo estimado", "manutencao"], ["📅 Planos de manutenção", "Quais planos de manutenção vencem nos próximos 30 dias? Faça um cronograma de execução", "manutencao"], ["🏭 Fornecedores", "Liste todos os fornecedores cadastrados por categoria com nome, contato e serviço. Destaque os que podem atender manutenções urgentes.", "fornecedores"], ["⭐ Score", "Como melhorar o score do condomínio?", ""]].map(([l, m, ctx]) => (
+                  <button key={l} className="chip" onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory, ctx || undefined); setSideMsgs(p => [...p, { role: "user", content: m, time: fmtTime() }]); }}>{l}</button>
                 ))}
               </div>
               <div className="chat-area" ref={el => { if (el) el.scrollTop = el.scrollHeight; }}>
@@ -11957,8 +11957,8 @@ Content-Type: application/json
                 </div>
                 {/* Quick chips */}
                 <div style={{ display:"flex", gap:5, padding:"8px 12px", overflowX:"auto", flexShrink:0, borderBottom:"1px solid rgba(255,255,255,.06)", background:"#0D1424" }}>
-                  {[["📊 Resumo","Faça um resumo executivo do condomínio"],["🔴 Urgentes","Quais OSs urgentes pendentes?"],["💰 Financeiro","Análise financeira completa"],["⭐ Score","Como melhorar o score do condomínio?"]].map(([l,m]) => (
-                    <button key={l} className="chip" onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); }} style={{ flexShrink:0, fontSize:10, padding:"4px 10px" }}>{l}</button>
+                  {[["📊 Resumo","Faça um resumo executivo do condomínio",""],["🔴 Urgentes","Quais OSs urgentes pendentes?","manutencao"],["💰 Financeiro","Análise financeira completa","financeiro"],["🏭 Fornecedores","Liste todos os fornecedores cadastrados com contatos. Destaque os que atendem manutenções urgentes.","fornecedores"],["⭐ Score","Como melhorar o score do condomínio?",""]].map(([l,m,ctx]) => (
+                    <button key={l} className="chip" onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory, ctx||undefined); }} style={{ flexShrink:0, fontSize:10, padding:"4px 10px" }}>{l}</button>
                   ))}
                 </div>
                 {/* Messages */}

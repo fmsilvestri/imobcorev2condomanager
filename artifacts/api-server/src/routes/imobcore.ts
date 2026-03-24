@@ -188,6 +188,7 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       { data: moradoresChat },
       { data: piscinaLeiturasChat },
       { data: lancamentosFinChat },
+      { data: fornecedoresChat },
     ] = await Promise.all([
       condQuery,
       condIdCtx
@@ -236,6 +237,10 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       // Lançamentos financeiros detalhados
       condIdCtx
         ? supabase.from("lancamentos_financeiros").select("tipo,categoria,descricao,valor,status,data_vencimento,data_pagamento,unidade_id").eq("condominio_id", condIdCtx).order("data_vencimento", { ascending: false }).limit(50)
+        : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
+      // Fornecedores
+      condIdCtx
+        ? supabase.from("fornecedores").select("id,nome,categoria,icone,telefone,whatsapp,email,endereco,observacoes,status").eq("condominio_id", condIdCtx).order("nome", { ascending: true })
         : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
     ]);
 
@@ -596,6 +601,31 @@ ${piscinaList.slice(0, 5).map(p => `  - ${new Date(p.created_at).toLocaleDateStr
       contextSections.push(`💳 LANÇAMENTOS FINANCEIROS DETALHADOS (${lancsFin.length} mais recentes):
 • Pagos: ${pagos.length} | Pendentes: ${pendentes.length} | Atrasados: ${atrasados.length} (R$ ${totalAtrasado.toLocaleString("pt-BR", {minimumFractionDigits:2})})
 ${atrasados.length > 0 ? `⚠️ INADIMPLENTES:\n${atrasados.slice(0,8).map(l => `  - ${l.descricao || l.categoria} | R$ ${Number(l.valor).toLocaleString("pt-BR",{minimumFractionDigits:2})} | Venc: ${l.data_vencimento ? new Date(l.data_vencimento).toLocaleDateString("pt-BR") : "—"}${l.unidade_id ? ` | Unidade: ${l.unidade_id}` : ""}`).join("\n")}` : "✅ Sem lançamentos atrasados"}`);
+    }
+
+    // ── Fornecedores ─────────────────────────────────────────────────────────
+    type FornecedorRow = { id: string; nome: string; categoria?: string; icone?: string; telefone?: string; whatsapp?: string; email?: string; endereco?: string; observacoes?: string; status?: string };
+    const fornList = (fornecedoresChat || []) as FornecedorRow[];
+    if (fornList.length > 0) {
+      const ativos = fornList.filter(f => !f.status || f.status === "ativo");
+      const inativos = fornList.filter(f => f.status === "inativo");
+      const porCategoria: Record<string, FornecedorRow[]> = {};
+      for (const f of ativos) {
+        const cat = f.categoria || "Geral";
+        if (!porCategoria[cat]) porCategoria[cat] = [];
+        porCategoria[cat].push(f);
+      }
+      const catTxt = Object.entries(porCategoria)
+        .map(([cat, fns]) => `  ${cat} (${fns.length}): ${fns.map(f => f.nome).join(", ")}`)
+        .join("\n");
+      const listaTxt = ativos.slice(0, 30).map(f =>
+        `  - ${f.icone || "🏢"} ${f.nome} | ${f.categoria || "—"}${f.telefone ? ` | Tel: ${f.telefone}` : ""}${f.whatsapp ? ` | WhatsApp: ${f.whatsapp}` : ""}${f.email ? ` | E-mail: ${f.email}` : ""}${f.observacoes ? ` | Obs: ${f.observacoes}` : ""}`
+      ).join("\n");
+      contextSections.push(`🏭 FORNECEDORES (${fornList.length} cadastrados | ${ativos.length} ativos | ${inativos.length} inativos):
+POR CATEGORIA:
+${catTxt}
+LISTA DE FORNECEDORES ATIVOS:
+${listaTxt}`);
     }
 
     // ── Alertas MISP públicos (sempre presente se módulo ativo) ─────────────
