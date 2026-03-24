@@ -5101,80 +5101,129 @@ export default function App() {
         })()}
 
         {sindicoScreen === "encomendas" && (() => {
-          const ENC_STATUS_SIND: Record<Encomenda["status"], { label: string; color: string; bg: string }> = {
-            aguardando_retirada: { label:"AGUARDANDO",  color:"#F59E0B", bg:"rgba(245,158,11,.15)" },
-            notificado:          { label:"NOTIFICADO",  color:"#3B82F6", bg:"rgba(59,130,246,.15)" },
-            retirado:            { label:"RETIRADO",    color:"#10B981", bg:"rgba(16,185,129,.15)" },
-            devolvido:           { label:"DEVOLVIDO",   color:"#EF4444", bg:"rgba(239,68,68,.15)"  },
+          const ENC_CFG: Record<Encomenda["status"], { label:string; color:string; bg:string; border:string; grad:string; glow:string; icon:string; accentBar:string }> = {
+            aguardando_retirada: { label:"AGUARDANDO",  color:"#F59E0B", bg:"rgba(245,158,11,.10)", border:"rgba(245,158,11,.30)", grad:"linear-gradient(135deg,#D97706,#F59E0B,#FCD34D)", glow:"rgba(245,158,11,.35)", icon:"📦", accentBar:"#F59E0B" },
+            notificado:          { label:"NOTIFICADO",  color:"#60A5FA", bg:"rgba(96,165,250,.10)",  border:"rgba(96,165,250,.30)",  grad:"linear-gradient(135deg,#1D4ED8,#3B82F6,#93C5FD)", glow:"rgba(59,130,246,.35)",  icon:"🔔", accentBar:"#3B82F6" },
+            retirado:            { label:"RETIRADO",    color:"#34D399", bg:"rgba(52,211,153,.10)",  border:"rgba(52,211,153,.30)",  grad:"linear-gradient(135deg,#065F46,#10B981,#6EE7B7)", glow:"rgba(16,185,129,.35)",  icon:"✅", accentBar:"#10B981" },
+            devolvido:           { label:"DEVOLVIDO",   color:"#F87171", bg:"rgba(248,113,113,.10)", border:"rgba(248,113,113,.30)", grad:"linear-gradient(135deg,#991B1B,#EF4444,#FCA5A5)", glow:"rgba(239,68,68,.35)",   icon:"↩️", accentBar:"#EF4444" },
           };
-          const pendentes = encList.filter(e=>e.status==="aguardando_retirada");
-          const recentes = [...encList].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).slice(0,20);
+          const TIPO_ICON: Record<string,string> = { correio:"✉️", pacote:"📦", documento:"📄", encomenda:"🛍️", volume:"📫" };
+          const pendentes  = encList.filter(e=>e.status==="aguardando_retirada");
+          const notificados= encList.filter(e=>e.status==="notificado");
+          const retirados  = encList.filter(e=>e.status==="retirado");
+          const recentes   = [...encList].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).slice(0,30);
           const fmtD = (iso:string) => new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
+          const initials = (name:string) => name.trim().split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+          const avatarColors = ["#6366f1","#3B82F6","#10B981","#F59E0B","#EC4899","#8B5CF6","#06B6D4","#EF4444"];
+          const avatarColor  = (name:string) => avatarColors[name.charCodeAt(0) % avatarColors.length];
           return (
-            <div className="ph-sub-body" style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:10 }}>
-              {/* Resumo rápido */}
-              <div style={{ display:"flex", gap:8 }}>
-                {[
-                  { label:"Total",      val:encList.length,                                          color:"#6366f1" },
-                  { label:"Aguardando", val:encList.filter(e=>e.status==="aguardando_retirada").length, color:"#F59E0B" },
-                  { label:"Notificado", val:encList.filter(e=>e.status==="notificado").length,          color:"#3B82F6" },
-                  { label:"Retirado",   val:encList.filter(e=>e.status==="retirado").length,            color:"#10B981" },
-                ].map(s=>(
-                  <div key={s.label} style={{ flex:1, background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:10, padding:"10px 0", textAlign:"center" }}>
-                    <div style={{ fontSize:18, fontWeight:900, color:s.color }}>{s.val}</div>
-                    <div style={{ fontSize:9, color:"var(--neu-text-2)", fontWeight:700, marginTop:1 }}>{s.label.toUpperCase()}</div>
+            <div className="ph-sub-body" style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:12 }}>
+
+              {/* ── Resumo por status ── */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+                {([
+                  { key:"total",      label:"TOTAL",      val:encList.length,       grad:"linear-gradient(135deg,#4F46E5,#7C3AED)", glow:"rgba(99,102,241,.4)",  icon:"📬" },
+                  { key:"aguardando", label:"AGUARDANDO", val:pendentes.length,     grad:"linear-gradient(135deg,#D97706,#F59E0B)", glow:"rgba(245,158,11,.4)", icon:"📦" },
+                  { key:"notificado", label:"NOTIFICADO", val:notificados.length,   grad:"linear-gradient(135deg,#1D4ED8,#3B82F6)", glow:"rgba(59,130,246,.4)",  icon:"🔔" },
+                  { key:"retirado",   label:"RETIRADO",   val:retirados.length,     grad:"linear-gradient(135deg,#065F46,#10B981)", glow:"rgba(16,185,129,.4)", icon:"✅" },
+                ] as {key:string;label:string;val:number;grad:string;glow:string;icon:string}[]).map(s=>(
+                  <div key={s.key} style={{ borderRadius:14, background:s.grad, boxShadow:`0 4px 14px ${s.glow}`, padding:"12px 6px 10px", textAlign:"center", position:"relative", overflow:"hidden" }}>
+                    <div style={{ position:"absolute", top:-6, right:-6, fontSize:32, opacity:.18, lineHeight:1 }}>{s.icon}</div>
+                    <div style={{ fontSize:22, fontWeight:900, color:"#fff", lineHeight:1 }}>{s.val}</div>
+                    <div style={{ fontSize:8, fontWeight:800, color:"rgba(255,255,255,.75)", marginTop:3, letterSpacing:".05em" }}>{s.label}</div>
                   </div>
                 ))}
               </div>
 
-              {/* Alerta pendentes */}
+              {/* ── Alerta pendentes ── */}
               {pendentes.length>0 && (
-                <div style={{ background:"rgba(245,158,11,.12)", border:"1px solid rgba(245,158,11,.30)", borderRadius:12, padding:"10px 14px", display:"flex", alignItems:"center", gap:10 }}>
-                  <span style={{ fontSize:20 }}>📬</span>
-                  <div>
+                <div style={{ background:"linear-gradient(135deg,rgba(245,158,11,.18),rgba(217,119,6,.12))", border:"1px solid rgba(245,158,11,.40)", borderRadius:14, padding:"12px 16px", display:"flex", alignItems:"center", gap:12, boxShadow:"0 4px 16px rgba(245,158,11,.20)" }}>
+                  <div style={{ width:40, height:40, borderRadius:12, background:"linear-gradient(135deg,#D97706,#F59E0B)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0, boxShadow:"0 4px 12px rgba(245,158,11,.5)" }}>📬</div>
+                  <div style={{ flex:1 }}>
                     <div style={{ fontSize:13, fontWeight:800, color:"#F59E0B" }}>{pendentes.length} encomenda{pendentes.length>1?"s":""} aguardando retirada</div>
-                    <div style={{ fontSize:11, color:"var(--neu-text-2)" }}>Notifique os moradores</div>
+                    <div style={{ fontSize:11, color:"rgba(245,158,11,.70)", marginTop:2 }}>Notifique os moradores para retirada</div>
                   </div>
+                  <div style={{ fontSize:20, fontWeight:900, color:"#F59E0B" }}>→</div>
                 </div>
               )}
 
-              {/* Lista */}
-              <div style={{ fontSize:11, fontWeight:800, color:"var(--neu-text-2)", textTransform:"uppercase", letterSpacing:".06em", marginTop:4 }}>Recentes</div>
+              {/* ── Lista de encomendas ── */}
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div style={{ fontSize:11, fontWeight:800, color:"var(--neu-text-2)", textTransform:"uppercase", letterSpacing:".06em" }}>Recentes ({recentes.length})</div>
+              </div>
+
               {recentes.length===0 && (
-                <div style={{ textAlign:"center", padding:24, color:"var(--neu-text-2)", fontSize:13 }}>
-                  <div style={{ fontSize:32, marginBottom:8 }}>📦</div>Sem encomendas registradas.
+                <div style={{ textAlign:"center", padding:32, color:"var(--neu-text-2)", fontSize:13 }}>
+                  <div style={{ fontSize:48, marginBottom:10 }}>📭</div>
+                  <div style={{ fontWeight:700 }}>Nenhuma encomenda registrada</div>
                 </div>
               )}
+
               {recentes.map(enc=>{
-                const st = ENC_STATUS_SIND[enc.status];
+                const cfg = ENC_CFG[enc.status];
+                const ac  = avatarColor(enc.morador_nome);
                 return (
-                  <div key={enc.id} style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, padding:"12px 14px", display:"flex", flexDirection:"column", gap:6 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                      <div style={{ fontSize:13, fontWeight:700, color:"var(--neu-text)" }}>{enc.morador_nome}</div>
-                      <span style={{ background:st.bg, color:st.color, borderRadius:20, padding:"2px 8px", fontSize:9, fontWeight:800, letterSpacing:".04em" }}>{st.label}</span>
+                  <div key={enc.id} style={{ borderRadius:16, overflow:"hidden", boxShadow:`0 4px 20px ${cfg.glow}`, border:`1px solid ${cfg.border}`, background:cfg.bg }}>
+
+                    {/* Barra de status colorida no topo */}
+                    <div style={{ height:4, background:cfg.grad }} />
+
+                    <div style={{ padding:"14px 14px 12px" }}>
+                      {/* Linha 1: Avatar + Nome + Badge status */}
+                      <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:10 }}>
+                        {/* Avatar inicial */}
+                        <div style={{ width:40, height:40, borderRadius:12, background:`linear-gradient(135deg,${ac},${ac}99)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15, fontWeight:900, color:"#fff", flexShrink:0, boxShadow:`0 4px 10px ${ac}55` }}>
+                          {initials(enc.morador_nome)}
+                        </div>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:14, fontWeight:800, color:"var(--neu-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{enc.morador_nome}</div>
+                          <div style={{ fontSize:11, color:"var(--neu-text-2)", marginTop:1 }}>🏠 Bl.{enc.bloco} — Ap.{enc.unidade}</div>
+                        </div>
+                        {/* Badge status */}
+                        <div style={{ background:cfg.grad, borderRadius:20, padding:"4px 10px", flexShrink:0, boxShadow:`0 2px 8px ${cfg.glow}` }}>
+                          <span style={{ fontSize:9, fontWeight:900, color:"#fff", letterSpacing:".06em" }}>{cfg.icon} {cfg.label}</span>
+                        </div>
+                      </div>
+
+                      {/* Linha 2: Infos complementares */}
+                      <div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:8 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:4, background:"rgba(255,255,255,.06)", borderRadius:8, padding:"4px 10px" }}>
+                          <span style={{ fontSize:12 }}>📅</span>
+                          <span style={{ fontSize:11, fontWeight:700, color:"var(--neu-text-2)" }}>{fmtD(enc.received_at)}</span>
+                        </div>
+                        {enc.codigo_rastreio && (
+                          <div style={{ display:"flex", alignItems:"center", gap:4, background:"rgba(255,255,255,.06)", borderRadius:8, padding:"4px 10px" }}>
+                            <span style={{ fontSize:12 }}>🔍</span>
+                            <span style={{ fontSize:10, fontWeight:700, color:"var(--neu-text-2)", fontFamily:"monospace" }}>{enc.codigo_rastreio}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Linha 3: Tags de tipos */}
+                      {enc.tipos.length > 0 && (
+                        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:10 }}>
+                          {enc.tipos.map(t=>(
+                            <span key={t} style={{ background:cfg.bg, border:`1px solid ${cfg.border}`, color:cfg.color, borderRadius:20, padding:"3px 10px", fontSize:10, fontWeight:700 }}>
+                              {TIPO_ICON[t.toLowerCase()] || "📦"} {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Botões de ação */}
+                      {enc.status==="aguardando_retirada" && (
+                        <button onClick={()=>encUpdateStatus(enc.id,"notificado")}
+                          style={{ width:"100%", background:"linear-gradient(135deg,#1D4ED8,#3B82F6,#60A5FA)", border:"none", borderRadius:10, padding:"10px", color:"#fff", fontSize:12, fontWeight:800, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, boxShadow:"0 4px 14px rgba(59,130,246,.45)", letterSpacing:".02em" }}>
+                          <span style={{ fontSize:16 }}>🔔</span> Notificar Morador
+                        </button>
+                      )}
+                      {enc.status==="notificado" && (
+                        <button onClick={()=>encUpdateStatus(enc.id,"retirado")}
+                          style={{ width:"100%", background:"linear-gradient(135deg,#065F46,#10B981,#34D399)", border:"none", borderRadius:10, padding:"10px", color:"#fff", fontSize:12, fontWeight:800, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, boxShadow:"0 4px 14px rgba(16,185,129,.45)", letterSpacing:".02em" }}>
+                          <span style={{ fontSize:16 }}>✅</span> Confirmar Retirada
+                        </button>
+                      )}
                     </div>
-                    <div style={{ display:"flex", gap:12, fontSize:11, color:"var(--neu-text-2)" }}>
-                      <span>🏠 Bl.{enc.bloco} — Ap.{enc.unidade}</span>
-                      <span>📅 {fmtD(enc.received_at)}</span>
-                      {enc.codigo_rastreio && <span>🔍 {enc.codigo_rastreio}</span>}
-                    </div>
-                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                      {enc.tipos.map(t=>(
-                        <span key={t} style={{ background:"rgba(99,102,241,.12)", color:"#6366f1", borderRadius:20, padding:"2px 8px", fontSize:10, fontWeight:700 }}>{t}</span>
-                      ))}
-                    </div>
-                    {enc.status==="aguardando_retirada" && (
-                      <button onClick={()=>encUpdateStatus(enc.id,"notificado")}
-                        style={{ marginTop:4, background:"linear-gradient(135deg,#3B82F6,#2563EB)", border:"none", borderRadius:8, padding:"7px", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-                        🔔 Notificar Morador
-                      </button>
-                    )}
-                    {enc.status==="notificado" && (
-                      <button onClick={()=>encUpdateStatus(enc.id,"retirado")}
-                        style={{ marginTop:4, background:"linear-gradient(135deg,#10B981,#059669)", border:"none", borderRadius:8, padding:"7px", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>
-                        ✅ Confirmar Retirada
-                      </button>
-                    )}
                   </div>
                 );
               })}
