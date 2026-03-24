@@ -13,12 +13,16 @@ interface Props {
 
 const fmtK = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v);
 
-const shortId = (sensor_id: string, cap: number) => {
+const shortId = (sensor_id: string | undefined | null, cap: number) => {
+  if (!sensor_id) {
+    const capStr = cap >= 1000 ? `${Math.round(cap / 1000)}k` : String(cap);
+    return `reservatório (${capStr})`;
+  }
   const parts = sensor_id.split('_');
   const last = parts[parts.length - 1];
   const prefix = parts.slice(0, 2).join('_');
   const capStr = cap >= 1000 ? `${Math.round(cap / 1000)}k` : String(cap);
-  return `${prefix}_..._${last} (${capStr})`;
+  return parts.length > 2 ? `${prefix}_..._${last} (${capStr})` : `${sensor_id} (${capStr})`;
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {
