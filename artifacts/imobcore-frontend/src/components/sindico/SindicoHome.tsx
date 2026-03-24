@@ -396,7 +396,11 @@ export default function SindicoHome({
                   <div className="sind-pulse-dot" style={{ position:"absolute", top:12, right:12, width:9, height:9, borderRadius:"50%", background:"#EF4444" }} />
                 )}
                 {m.img
-                  ? <img src={m.img} alt={m.title} style={{ width:44, height:44, objectFit:"contain", marginBottom:4, mixBlendMode: isDark ? "screen" : "multiply" }} />
+                  ? isDark
+                    ? <img src={m.img} alt={m.title} style={{ width:48, height:48, objectFit:"contain", marginBottom:4, mixBlendMode:"screen" }} />
+                    : <div style={{ width:48, height:48, borderRadius:12, background:"#1e1b4b", display:"flex", alignItems:"center", justifyContent:"center", marginBottom:4 }}>
+                        <img src={m.img} alt={m.title} style={{ width:40, height:40, objectFit:"contain", mixBlendMode:"screen" }} />
+                      </div>
                   : <div style={{ fontSize:28, marginBottom:8 }}>{m.icon}</div>
                 }
                 <div style={{ fontSize:14, fontWeight:800, color:m.text, marginBottom:6, lineHeight:1.2 }}>{m.title}</div>
