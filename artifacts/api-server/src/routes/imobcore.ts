@@ -181,6 +181,8 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       { data: reservoirsChat },
       { data: comunicadosChat },
       { data: encomendasChat },
+      { data: medidoresChat },
+      { data: leiturasUtilidades },
     ] = await Promise.all([
       condQuery,
       condIdCtx
@@ -211,6 +213,13 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       condIdCtx
         ? supabase.from("encomendas").select("destinatario,status,descricao,created_at").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(10)
         : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
+      // Utilities: medidores e leituras (agua/gas/energia) — fallback seguro se tabelas não existirem
+      condIdCtx
+        ? Promise.resolve(supabase.from("medidores").select("id,tipo,numero_serie,local,ativo,ultima_leitura,ultima_leitura_em,unidade_medida,alerta_consumo_alto").eq("condominio_id", condIdCtx).eq("ativo", true)).catch(() => ({ data: null, error: null }))
+        : Promise.resolve({ data: null, error: null }),
+      condIdCtx
+        ? Promise.resolve(supabase.from("leituras_medidores").select("medidor_id,data_leitura,leitura_atual,leitura_anterior,consumo,custo").eq("condominio_id", condIdCtx).order("data_leitura", { ascending: false }).limit(36)).catch(() => ({ data: null, error: null }))
+        : Promise.resolve({ data: null, error: null }),
     ]);
 
     // Inadimplência via lancamentos_financeiros (se condIdCtx disponível)
@@ -409,7 +418,7 @@ ${planosProximos.length > 0 ? `\n⚡ PLANOS PARA EXECUTAR NOS PRÓXIMOS 30 DIAS:
     }
 
     // Módulos ativos do condo — filtram quais seções incluir no contexto enviado ao Claude
-    const TODOS_MODULOS = ["os","financeiro","iot","misp","encomendas","portaria","reservas","comunicados"];
+    const TODOS_MODULOS = ["os","financeiro","iot","misp","encomendas","portaria","reservas","comunicados","agua","gas","energia"];
     const diModulos: string[] = diCtx?.modulosAtivos ?? TODOS_MODULOS;
 
     type OsRow = { numero: number; titulo: string; prioridade: string; unidade?: string; categoria: string };
@@ -484,6 +493,48 @@ ${comList.map(c =>
 ${encPendentes.slice(0, 8).map(e =>
   `- ${e.destinatario} | ${e.descricao || "sem descrição"} | Desde: ${new Date(e.created_at).toLocaleDateString("pt-BR")}`
 ).join("\n") || "  Nenhuma encomenda pendente"}`);
+    }
+
+    // ── Módulo: Utilities (Água / Gás / Energia) ─────────────────────────────
+    type MedidorRow = { id: string; tipo: string; local: string; numero_serie: string; ativo: boolean; ultima_leitura: number | null; ultima_leitura_em: string | null; unidade_medida: string; alerta_consumo_alto: number | null };
+    type LeituraUtilRow = { medidor_id: string; data_leitura: string; leitura_atual: number; leitura_anterior: number | null; consumo: number | null; custo: number | null };
+    const medidoresAll = (medidoresChat || []) as MedidorRow[];
+    const leiturasAll  = (leiturasUtilidades || []) as LeituraUtilRow[];
+
+    const buildUtilSection = (tipo: string, label: string, emoji: string, unidade: string) => {
+      const meds = medidoresAll.filter(m => m.tipo === tipo);
+      if (meds.length === 0) return `${emoji} ${label.toUpperCase()}: Nenhum medidor cadastrado.`;
+      const lines = meds.map(m => {
+        const leituras = leiturasAll.filter(l => l.medidor_id === m.id);
+        const ultima = leituras[0];
+        const penultima = leituras[1];
+        const consumoMes = ultima?.consumo ?? (ultima && penultima ? Number(ultima.leitura_atual) - Number(penultima.leitura_atual) : null);
+        const mediaConsumo = leituras.length > 1
+          ? (leituras.slice(0, 6).reduce((s, l) => s + (Number(l.consumo) || 0), 0) / Math.min(leituras.length, 6)).toFixed(1)
+          : null;
+        const alerta = m.alerta_consumo_alto && consumoMes && consumoMes > m.alerta_consumo_alto ? " 🔴 ACIMA DO LIMITE" : "";
+        return `  - Medidor ${m.numero_serie || m.id.slice(0,8)} (${m.local || "sem local"}): última leitura ${m.ultima_leitura != null ? `${m.ultima_leitura} ${unidade}` : "—"} em ${m.ultima_leitura_em ? new Date(m.ultima_leitura_em).toLocaleDateString("pt-BR") : "—"} | Consumo esse mês: ${consumoMes != null ? `${consumoMes.toFixed(1)} ${unidade}` : "—"} | Média 6M: ${mediaConsumo ?? "—"} ${unidade}${alerta}`;
+      });
+      const totalConsumoMes = meds.reduce((s, m) => {
+        const leituras = leiturasAll.filter(l => l.medidor_id === m.id);
+        const ul = leituras[0]; const pl = leituras[1];
+        const c = ul?.consumo ?? (ul && pl ? Number(ul.leitura_atual) - Number(pl.leitura_atual) : 0);
+        return s + (c || 0);
+      }, 0);
+      const totalCusto = leiturasAll.filter(l => meds.some(m => m.id === l.medidor_id) && l.data_leitura >= new Date(Date.now() - 31*86400000).toISOString().slice(0,10)).reduce((s, l) => s + (Number(l.custo) || 0), 0);
+      return `${emoji} ${label.toUpperCase()} (${meds.length} medidor${meds.length > 1 ? "es" : ""}):
+${lines.join("\n")}
+  Consumo total este mês: ${totalConsumoMes.toFixed(1)} ${unidade} | Custo estimado: R$ ${totalCusto.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`;
+    };
+
+    if (diModulos.includes("agua")) {
+      contextSections.push(buildUtilSection("agua", "Água", "💧", "m³"));
+    }
+    if (diModulos.includes("gas")) {
+      contextSections.push(buildUtilSection("gas", "Gás", "🔥", "m³"));
+    }
+    if (diModulos.includes("energia")) {
+      contextSections.push(buildUtilSection("energia", "Energia Elétrica", "⚡", "kWh"));
     }
 
     // ── Alertas MISP públicos (sempre presente se módulo ativo) ─────────────
@@ -3294,6 +3345,8 @@ function gerarCardsInteligentes(d: {
   equipamentos?: { nome: string; status: string; local?: string }[];
   encomendas?: number;
   comunicados?: { titulo: string; categoria: string }[];
+  medidores?: { id: string; tipo: string; local?: string; ultima_leitura?: number | null; ultima_leitura_em?: string | null; unidade_medida?: string; alerta_consumo_alto?: number | null }[];
+  leiturasUtil?: { medidor_id: string; data_leitura: string; consumo?: number | null; custo?: number | null }[];
 }): DiSmartCard[] {
   const cards: DiSmartCard[] = [];
 
@@ -3406,6 +3459,51 @@ function gerarCardsInteligentes(d: {
     });
   }
 
+  // ── ⚡💧🔥 UTILITIES (ENERGIA / ÁGUA / GÁS) ────────────────────────────────
+  if (d.medidores && d.medidores.length > 0 && d.leiturasUtil) {
+    const tipos = [
+      { tipo: "energia", label: "Energia", emoji: "⚡", unidade: "kWh" },
+      { tipo: "agua",    label: "Água",    emoji: "💧", unidade: "m³" },
+      { tipo: "gas",     label: "Gás",     emoji: "🔥", unidade: "m³" },
+    ];
+    for (const { tipo, label, emoji, unidade } of tipos) {
+      const meds = d.medidores.filter(m => m.tipo === tipo);
+      if (meds.length === 0) continue;
+      const alertas = meds.filter(m => {
+        if (!m.alerta_consumo_alto) return false;
+        const leitMes = d.leiturasUtil!.filter(l => l.medidor_id === m.id)[0];
+        return leitMes?.consumo != null && Number(leitMes.consumo) > Number(m.alerta_consumo_alto);
+      });
+      // Medidores sem leitura há mais de 45 dias
+      const semLeitura = meds.filter(m => {
+        if (!m.ultima_leitura_em) return true;
+        const dias = (Date.now() - new Date(m.ultima_leitura_em).getTime()) / 86400000;
+        return dias > 45;
+      });
+      if (alertas.length > 0) {
+        const totalConsumo = alertas.reduce((s, m) => {
+          const l = d.leiturasUtil!.find(l => l.medidor_id === m.id);
+          return s + (Number(l?.consumo) || 0);
+        }, 0);
+        cards.push({
+          tipo: "critico",
+          titulo: `${emoji} Consumo Alto de ${label}`,
+          mensagem: `${alertas.length} medidor${alertas.length > 1 ? "es" : ""} acima do limite: consumo total ${totalConsumo.toFixed(1)} ${unidade}.`,
+          acao: `Investigar causa e verificar vazamentos / uso indevido de ${label.toLowerCase()}`,
+          badge: `${alertas.length} alerta${alertas.length > 1 ? "s" : ""}`,
+        });
+      } else if (semLeitura.length > 0) {
+        cards.push({
+          tipo: "atencao",
+          titulo: `${emoji} ${label} — Leitura Atrasada`,
+          mensagem: `${semLeitura.length} medidor${semLeitura.length > 1 ? "es" : ""} de ${label.toLowerCase()} sem registro de leitura há mais de 45 dias.`,
+          acao: "Registrar leitura mensal para manter histórico de consumo",
+          badge: "Leitura pendente",
+        });
+      }
+    }
+  }
+
   // ── 🔩 EQUIPAMENTOS COM FALHA (MISP) ────────────────────────────────────────
   if (d.equipamentos && d.equipamentos.length > 0) {
     const equipFalha = d.equipamentos.filter(e =>
@@ -3498,6 +3596,8 @@ router.post("/di", async (req: Request, res: Response) => {
       { data: equipamentosRows },
       { data: comunicadosRows },
       { data: encomendasRows },
+      { data: medidoresBriefing },
+      { data: leiturasBriefing },
     ] = await Promise.all([
       condominio_id
         ? supabase.from("condominios").select("*").eq("id", condominio_id).single()
@@ -3523,6 +3623,13 @@ router.post("/di", async (req: Request, res: Response) => {
       condominio_id
         ? supabase.from("encomendas").select("id,status").eq("condominio_id", condominio_id).eq("status", "pendente").limit(50)
         : supabase.from("encomendas").select("id,status").eq("status", "pendente").limit(50),
+      // Utilities: medidores e leituras recentes para cards de briefing
+      condominio_id
+        ? Promise.resolve(supabase.from("medidores").select("id,tipo,local,ultima_leitura,ultima_leitura_em,unidade_medida,alerta_consumo_alto").eq("condominio_id", condominio_id).eq("ativo", true)).catch(() => ({ data: null, error: null }))
+        : Promise.resolve({ data: null, error: null }),
+      condominio_id
+        ? Promise.resolve(supabase.from("leituras_medidores").select("medidor_id,data_leitura,consumo,custo").eq("condominio_id", condominio_id).order("data_leitura", { ascending: false }).limit(30)).catch(() => ({ data: null, error: null }))
+        : Promise.resolve({ data: null, error: null }),
     ]);
 
     // ── Consolidar sensores de água ────────────────────────────────────────
@@ -3574,6 +3681,8 @@ router.post("/di", async (req: Request, res: Response) => {
       equipamentos: (equipamentosRows || []) as { nome: string; status: string; local?: string }[],
       encomendas: (encomendasRows || []).length,
       comunicados: (comunicadosRows || []) as { titulo: string; categoria: string }[],
+      medidores: (medidoresBriefing || []) as { id: string; tipo: string; local?: string; ultima_leitura?: number | null; ultima_leitura_em?: string | null; unidade_medida?: string; alerta_consumo_alto?: number | null }[],
+      leiturasUtil: (leiturasBriefing || []) as { medidor_id: string; data_leitura: string; consumo?: number | null; custo?: number | null }[],
     });
 
     // ── Enriquecer com Claude (gera fala personalizada + pode adicionar cards extra) ──
@@ -4694,6 +4803,198 @@ Responda SOMENTE com JSON válido, sem markdown.`,
       ],
       resumo: "Plataforma operacional — monitore crescimento e conversão de planos.",
     });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// UTILITIES — Medidores de Água / Gás / Energia
+// ════════════════════════════════════════════════════════════════════════════
+
+// GET /api/medidores — lista medidores por condomínio e opcionalmente tipo
+router.get("/medidores", async (req: Request, res: Response) => {
+  const { condominio_id, tipo } = req.query as { condominio_id?: string; tipo?: string };
+  try {
+    let q = supabase.from("medidores").select("*").order("created_at", { ascending: true });
+    if (condominio_id) q = q.eq("condominio_id", condominio_id);
+    if (tipo) q = q.eq("tipo", tipo);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ data: data || [] });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: msg });
+  }
+});
+
+// POST /api/medidores — criar novo medidor
+router.post("/medidores", async (req: Request, res: Response) => {
+  const { condominio_id, unidade_id, tipo, numero_serie, local, unidade_medida, alerta_consumo_alto } =
+    req.body as { condominio_id: string; unidade_id?: string; tipo: string; numero_serie?: string; local?: string; unidade_medida?: string; alerta_consumo_alto?: number };
+  if (!condominio_id || !tipo) return res.status(400).json({ error: "condominio_id e tipo são obrigatórios" });
+  if (!["agua","gas","energia"].includes(tipo)) return res.status(400).json({ error: "tipo deve ser: agua, gas ou energia" });
+  try {
+    const { data, error } = await supabase.from("medidores").insert({
+      condominio_id, unidade_id: unidade_id || null, tipo, numero_serie: numero_serie || null,
+      local: local || null, unidade_medida: unidade_medida || (tipo === "energia" ? "kwh" : "m3"),
+      alerta_consumo_alto: alerta_consumo_alto || null, ativo: true,
+    }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ data });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// PATCH /api/medidores/:id — atualizar medidor
+router.patch("/medidores/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { numero_serie, local, ativo, alerta_consumo_alto, unidade_medida } = req.body as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  if (numero_serie !== undefined) fields.numero_serie = numero_serie;
+  if (local !== undefined) fields.local = local;
+  if (ativo !== undefined) fields.ativo = ativo;
+  if (alerta_consumo_alto !== undefined) fields.alerta_consumo_alto = alerta_consumo_alto;
+  if (unidade_medida !== undefined) fields.unidade_medida = unidade_medida;
+  try {
+    const { data, error } = await supabase.from("medidores").update(fields).eq("id", id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ data });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// DELETE /api/medidores/:id — remover medidor
+router.delete("/medidores/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const { error } = await supabase.from("medidores").delete().eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ success: true });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/leituras-medidores — leituras por medidor ou condomínio
+router.get("/leituras-medidores", async (req: Request, res: Response) => {
+  const { condominio_id, medidor_id, limit } = req.query as { condominio_id?: string; medidor_id?: string; limit?: string };
+  try {
+    let q = supabase.from("leituras_medidores").select("*").order("data_leitura", { ascending: false }).limit(Number(limit) || 24);
+    if (condominio_id) q = q.eq("condominio_id", condominio_id);
+    if (medidor_id) q = q.eq("medidor_id", medidor_id);
+    const { data, error } = await q;
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ data: data || [] });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// POST /api/leituras-medidores — registrar nova leitura
+router.post("/leituras-medidores", async (req: Request, res: Response) => {
+  const { medidor_id, condominio_id, data_leitura, leitura_atual, custo, observacoes } =
+    req.body as { medidor_id: string; condominio_id: string; data_leitura: string; leitura_atual: number; custo?: number; observacoes?: string };
+  if (!medidor_id || !condominio_id || !data_leitura || leitura_atual == null)
+    return res.status(400).json({ error: "medidor_id, condominio_id, data_leitura e leitura_atual são obrigatórios" });
+  try {
+    // Busca leitura anterior para calcular consumo automaticamente
+    const { data: anterior } = await supabase
+      .from("leituras_medidores").select("leitura_atual")
+      .eq("medidor_id", medidor_id)
+      .lt("data_leitura", data_leitura)
+      .order("data_leitura", { ascending: false }).limit(1).single();
+    const leituraAnterior = anterior?.leitura_atual ?? null;
+    const consumo = leituraAnterior != null ? Math.max(0, Number(leitura_atual) - Number(leituraAnterior)) : null;
+
+    const { data, error } = await supabase.from("leituras_medidores").insert({
+      medidor_id, condominio_id, data_leitura, leitura_atual: Number(leitura_atual),
+      leitura_anterior: leituraAnterior, consumo, custo: custo ?? null, observacoes: observacoes || null,
+    }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    // Atualiza ultima_leitura no medidor
+    await supabase.from("medidores").update({
+      ultima_leitura: Number(leitura_atual),
+      ultima_leitura_em: new Date(data_leitura).toISOString(),
+    }).eq("id", medidor_id);
+
+    return res.json({ data, consumo_calculado: consumo });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// PATCH /api/leituras-medidores/:id — editar leitura
+router.patch("/leituras-medidores/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { leitura_atual, custo, observacoes, data_leitura } = req.body as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  if (leitura_atual !== undefined) fields.leitura_atual = leitura_atual;
+  if (custo !== undefined) fields.custo = custo;
+  if (observacoes !== undefined) fields.observacoes = observacoes;
+  if (data_leitura !== undefined) fields.data_leitura = data_leitura;
+  try {
+    const { data, error } = await supabase.from("leituras_medidores").update(fields).eq("id", id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ data });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// DELETE /api/leituras-medidores/:id — remover leitura
+router.delete("/leituras-medidores/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  try {
+    const { error } = await supabase.from("leituras_medidores").delete().eq("id", id);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ success: true });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// GET /api/utilities/resumo — resumo consolidado de água, gás e energia por condomínio
+router.get("/utilities/resumo", async (req: Request, res: Response) => {
+  const { condominio_id } = req.query as { condominio_id?: string };
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id é obrigatório" });
+  try {
+    const [{ data: medidores }, { data: leituras }] = await Promise.all([
+      supabase.from("medidores").select("*").eq("condominio_id", condominio_id).eq("ativo", true),
+      supabase.from("leituras_medidores").select("*").eq("condominio_id", condominio_id).order("data_leitura", { ascending: false }).limit(72),
+    ]);
+
+    const buildResumoTipo = (tipo: string) => {
+      const meds = (medidores || []).filter(m => m.tipo === tipo);
+      const ids = new Set(meds.map(m => m.id));
+      const leitsTipo = (leituras || []).filter(l => ids.has(l.medidor_id));
+      const ultimoMes = leitsTipo.slice(0, meds.length);
+      const totalConsumo = ultimoMes.reduce((s, l) => s + (Number(l.consumo) || 0), 0);
+      const totalCusto = ultimoMes.reduce((s, l) => s + (Number(l.custo) || 0), 0);
+      const medidoresDetalhes = meds.map(m => {
+        const leits = leitsTipo.filter(l => l.medidor_id === m.id).slice(0, 12);
+        return {
+          id: m.id, numero_serie: m.numero_serie, local: m.local,
+          ultima_leitura: m.ultima_leitura, ultima_leitura_em: m.ultima_leitura_em,
+          unidade_medida: m.unidade_medida, alerta_consumo_alto: m.alerta_consumo_alto,
+          historico: leits.map(l => ({
+            data: l.data_leitura, leitura: l.leitura_atual,
+            consumo: l.consumo, custo: l.custo,
+          })),
+        };
+      });
+      return { totalMedidores: meds.length, totalConsumo, totalCusto, medidores: medidoresDetalhes };
+    };
+
+    return res.json({
+      agua: buildResumoTipo("agua"),
+      gas: buildResumoTipo("gas"),
+      energia: buildResumoTipo("energia"),
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return res.status(500).json({ error: msg });
   }
 });
 

@@ -1888,10 +1888,73 @@ export default function App() {
     { id:"h6", mes:"Dez/25", m3:150, custo:525, data:"31/12/2025" },
   ]);
   // ── Energia state ──────────────────────────────────────────────────────────
-  const [energiaTab, setEnergiaTab] = useState<"ocorrencias"|"consumo"|"equipamentos"|"solar"|"graficos"|"fornecedora"|"alertas">("ocorrencias");
+  const [energiaTab, setEnergiaTab] = useState<"ocorrencias"|"consumo"|"equipamentos"|"solar"|"graficos"|"fornecedora"|"alertas"|"medidores">("ocorrencias");
   const [energiaAno, setEnergiaAno] = useState(2026);
   const [energiaRegModal, setEnergiaRegModal] = useState(false);
   const [energiaRegForm, setEnergiaRegForm] = useState({ titulo:"", tipo:"queda", obs:"" });
+
+  // ── Medidores (Utilities) state ────────────────────────────────────────────
+  type Medidor = {
+    id: string; condominio_id: string; unidade_id?: string;
+    tipo: "agua"|"gas"|"energia"; numero_serie: string; local: string;
+    ativo: boolean; ultima_leitura?: number; ultima_leitura_em?: string;
+    unidade_medida: string; alerta_consumo_alto?: number;
+  };
+  type LeituraMedidor = {
+    id: string; medidor_id: string; condominio_id: string; data_leitura: string;
+    leitura_atual: number; leitura_anterior?: number; consumo?: number;
+    custo?: number; observacoes?: string; gerado_por_ia?: boolean;
+  };
+  const [medidoresEnergia, setMedidoresEnergia] = useState<Medidor[]>([]);
+  const [medidoresGas, setMedidoresGas] = useState<Medidor[]>([]);
+  const [medidoresAgua, setMedidoresAgua] = useState<Medidor[]>([]);
+  const [leiturasUtil, setLeiturasUtil] = useState<LeituraMedidor[]>([]);
+  const [medidoresLoading, setMedidoresLoading] = useState(false);
+  const [novoMedidorModal, setNovoMedidorModal] = useState<""|"agua"|"gas"|"energia">("");
+  const [novoMedidorForm, setNovoMedidorForm] = useState({ numero_serie:"", local:"", unidade_medida:"kWh", alerta_consumo_alto:"" });
+  const [novaLeituraModal, setNovaLeituraModal] = useState<string>("");
+  const [novaLeituraForm, setNovaLeituraForm] = useState({ leitura_atual:"", custo:"", observacoes:"", data_leitura: new Date().toISOString().slice(0,10) });
+  const [medidorSelecionado, setMedidorSelecionado] = useState<Medidor|null>(null);
+
+  const loadMedidores = async (cid: string) => {
+    if (!cid) return;
+    setMedidoresLoading(true);
+    try {
+      const [rE, rG, rA, rL] = await Promise.all([
+        fetch(`${API}/medidores?condominio_id=${cid}&tipo=energia`).then(r=>r.json()).catch(()=>({data:[]})),
+        fetch(`${API}/medidores?condominio_id=${cid}&tipo=gas`).then(r=>r.json()).catch(()=>({data:[]})),
+        fetch(`${API}/medidores?condominio_id=${cid}&tipo=agua`).then(r=>r.json()).catch(()=>({data:[]})),
+        fetch(`${API}/leituras-medidores?condominio_id=${cid}`).then(r=>r.json()).catch(()=>({data:[]})),
+      ]);
+      setMedidoresEnergia(rE.data || []);
+      setMedidoresGas(rG.data || []);
+      setMedidoresAgua(rA.data || []);
+      setLeiturasUtil(rL.data || []);
+    } catch {}
+    setMedidoresLoading(false);
+  };
+
+  const salvarMedidor = async () => {
+    if (!condId || !novoMedidorModal || !novoMedidorForm.numero_serie || !novoMedidorForm.local) return;
+    try {
+      const res = await fetch(`${API}/medidores`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ condominio_id: condId, tipo: novoMedidorModal, ...novoMedidorForm, alerta_consumo_alto: novoMedidorForm.alerta_consumo_alto ? Number(novoMedidorForm.alerta_consumo_alto) : null }),
+      });
+      if (res.ok) { setNovoMedidorModal(""); setNovoMedidorForm({ numero_serie:"", local:"", unidade_medida:"kWh", alerta_consumo_alto:"" }); loadMedidores(condId); }
+    } catch {}
+  };
+
+  const salvarLeitura = async () => {
+    if (!condId || !novaLeituraModal || !novaLeituraForm.leitura_atual) return;
+    try {
+      const res = await fetch(`${API}/leituras-medidores`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ medidor_id: novaLeituraModal, condominio_id: condId, leitura_atual: Number(novaLeituraForm.leitura_atual), custo: novaLeituraForm.custo ? Number(novaLeituraForm.custo) : null, observacoes: novaLeituraForm.observacoes, data_leitura: novaLeituraForm.data_leitura }),
+      });
+      if (res.ok) { setNovaLeituraModal(""); setNovaLeituraForm({ leitura_atual:"", custo:"", observacoes:"", data_leitura: new Date().toISOString().slice(0,10) }); loadMedidores(condId); }
+    } catch {}
+  };
 
   // ── Placa Solar CRUD state ─────────────────────────────────────────────────
   type PlacaSolarData = {
@@ -2365,6 +2428,13 @@ export default function App() {
   useEffect(() => {
     if (energiaTab === "solar" && condId) loadSolarData(condId);
   }, [energiaTab, condId, loadSolarData]);
+
+  // ── Carregar Medidores de Consumo quando painel muda ou condomínio muda ──
+  useEffect(() => {
+    if ((panel === "energia" || panel === "gas" || panel === "iot") && condId) {
+      loadMedidores(condId);
+    }
+  }, [panel, condId]);
 
   // ── Carregar reservatórios da API (isolado por condomínio) ────────────────
   useEffect(() => {
@@ -7477,6 +7547,49 @@ export default function App() {
                         </BarChart>
                       </ResponsiveContainer>
                     </div>
+
+                    {/* ── Medidores de Água (API) ── */}
+                    <div style={{ marginTop:20 }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#3B82F6" }}>💧 Medidores Digitais de Água</div>
+                        <button onClick={()=>{ setNovoMedidorForm({numero_serie:"",local:"",unidade_medida:"m³",alerta_consumo_alto:""}); setNovoMedidorModal("agua"); }}
+                          style={{ background:"rgba(59,130,246,.15)", border:"1px solid rgba(59,130,246,.3)", borderRadius:8, padding:"6px 14px", color:"#3B82F6", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                          + Novo Medidor
+                        </button>
+                      </div>
+                      <div style={{ fontSize:11, color:"#475569", marginBottom:12 }}>
+                        Registre leituras mensais para que a Di monitore o consumo e gere alertas automáticos.
+                      </div>
+                      {medidoresLoading && <div style={{ color:"#475569", fontSize:12 }}>Carregando...</div>}
+                      {!medidoresLoading && medidoresAgua.length === 0 && (
+                        <div style={{ background:"rgba(59,130,246,.05)", border:"1px solid rgba(59,130,246,.15)", borderRadius:10, padding:16, textAlign:"center", color:"#475569", fontSize:12 }}>
+                          Nenhum medidor digital cadastrado ainda.
+                        </div>
+                      )}
+                      {medidoresAgua.map(m => {
+                        const leituras = leiturasUtil.filter(l => l.medidor_id === m.id).sort((a,b)=>b.data_leitura.localeCompare(a.data_leitura));
+                        const ultima = leituras[0];
+                        return (
+                          <div key={m.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(59,130,246,.2)", borderRadius:10, padding:14, marginBottom:10 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between" }}>
+                              <div>
+                                <div style={{ fontSize:12, fontWeight:700, color:"#3B82F6" }}>💧 {m.numero_serie}</div>
+                                <div style={{ fontSize:11, color:"#94A3B8" }}>📍 {m.local} · {m.unidade_medida}</div>
+                              </div>
+                              <div style={{ textAlign:"right" }}>
+                                {ultima && <div style={{ fontSize:13, fontWeight:700, color:"#10B981" }}>{ultima.leitura_atual} {m.unidade_medida}</div>}
+                                {ultima && <div style={{ fontSize:10, color:"#475569" }}>{ultima.data_leitura}</div>}
+                                {ultima?.consumo != null && <div style={{ fontSize:11, color:"#3B82F6" }}>Δ {ultima.consumo} {m.unidade_medida}</div>}
+                              </div>
+                            </div>
+                            <button onClick={()=>{ setMedidorSelecionado(m); setNovaLeituraForm({leitura_atual:"",custo:"",observacoes:"",data_leitura:new Date().toISOString().slice(0,10)}); setNovaLeituraModal(m.id); }}
+                              style={{ marginTop:10, background:"rgba(59,130,246,.15)", border:"1px solid rgba(59,130,246,.3)", borderRadius:6, padding:"4px 10px", color:"#3B82F6", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                              📖 Nova Leitura
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
@@ -10536,6 +10649,60 @@ Content-Type: application/json
                   })}
                 </div>
 
+                {/* ── Medidores de Consumo (Gás) ── */}
+                <div style={{ marginTop:24 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:"#F97316" }}>🔥 Medidores de Consumo (Gás)</div>
+                    <button onClick={()=>{ setNovoMedidorForm({numero_serie:"",local:"",unidade_medida:"m³",alerta_consumo_alto:""}); setNovoMedidorModal("gas"); }}
+                      style={{ background:"rgba(249,115,22,.15)", border:"1px solid rgba(249,115,22,.3)", borderRadius:8, padding:"6px 14px", color:"#F97316", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                      + Novo Medidor
+                    </button>
+                  </div>
+                  {medidoresLoading && <div style={{ color:"#475569", fontSize:12 }}>Carregando...</div>}
+                  {!medidoresLoading && medidoresGas.length === 0 && (
+                    <div style={{ background:"rgba(249,115,22,.05)", border:"1px solid rgba(249,115,22,.15)", borderRadius:10, padding:16, textAlign:"center", color:"#475569", fontSize:12 }}>
+                      Nenhum medidor de gás cadastrado. Cadastre medidores para registrar leituras mensais e a Di monitorar o consumo.
+                    </div>
+                  )}
+                  {medidoresGas.map(m => {
+                    const leituras = leiturasUtil.filter(l => l.medidor_id === m.id).sort((a,b)=>b.data_leitura.localeCompare(a.data_leitura));
+                    const ultima = leituras[0];
+                    return (
+                      <div key={m.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(249,115,22,.2)", borderRadius:10, padding:14, marginBottom:10 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between" }}>
+                          <div>
+                            <div style={{ fontSize:12, fontWeight:700, color:"#F97316" }}>🔥 {m.numero_serie}</div>
+                            <div style={{ fontSize:11, color:"#94A3B8" }}>📍 {m.local} · {m.unidade_medida}</div>
+                          </div>
+                          <div style={{ textAlign:"right" }}>
+                            {ultima && <div style={{ fontSize:13, fontWeight:700, color:"#10B981" }}>{ultima.leitura_atual} {m.unidade_medida}</div>}
+                            {ultima && <div style={{ fontSize:10, color:"#475569" }}>{ultima.data_leitura}</div>}
+                            {ultima?.consumo != null && <div style={{ fontSize:11, color:"#F97316" }}>Δ {ultima.consumo} {m.unidade_medida}</div>}
+                          </div>
+                        </div>
+                        <div style={{ display:"flex", gap:6, marginTop:10 }}>
+                          <button onClick={()=>{ setMedidorSelecionado(m); setNovaLeituraForm({leitura_atual:"",custo:"",observacoes:"",data_leitura:new Date().toISOString().slice(0,10)}); setNovaLeituraModal(m.id); }}
+                            style={{ background:"rgba(249,115,22,.15)", border:"1px solid rgba(249,115,22,.3)", borderRadius:6, padding:"4px 10px", color:"#F97316", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                            📖 Nova Leitura
+                          </button>
+                        </div>
+                        {leituras.length > 0 && (
+                          <div style={{ marginTop:10 }}>
+                            {leituras.slice(0,3).map(l=>(
+                              <div key={l.id} style={{ display:"flex", justifyContent:"space-between", fontSize:11, padding:"3px 0", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                                <span style={{ color:"#94A3B8" }}>{l.data_leitura}</span>
+                                <span style={{ color:"#fff" }}>{l.leitura_atual} {m.unidade_medida}</span>
+                                {l.consumo != null && <span style={{ color:"#F97316" }}>Δ {l.consumo}</span>}
+                                {l.custo != null && <span style={{ color:"#10B981" }}>R$ {l.custo}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
                 {/* ── Nova leitura modal ── */}
                 {gasNovaLeitModal && (
                   <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setGasNovaLeitModal(false)}>
@@ -10640,6 +10807,7 @@ Content-Type: application/json
 
             const tabDef: [typeof energiaTab, string, string][] = [
               ["ocorrencias",   "⚡", "Ocorrências"],
+              ["medidores",     "🔌", "Medidores"],
               ["consumo",       "📊", "Consumo"],
               ["equipamentos",  "🖥️", "Est. Equipamentos"],
               ["solar",         "☀️", "Placa Solar"],
@@ -10658,7 +10826,7 @@ Content-Type: application/json
                 outline: energiaTab !== id ? "1px solid rgba(255,255,255,.07)" : "none",
               }}>
                 <span style={{ fontSize:22, color: energiaTab === id ? "#0F172A" : {
-                  ocorrencias:"#F59E0B", consumo:"#06B6D4", equipamentos:"#06B6D4",
+                  ocorrencias:"#F59E0B", medidores:"#6366F1", consumo:"#06B6D4", equipamentos:"#06B6D4",
                   solar:"#EAB308", graficos:"#06B6D4", fornecedora:"#10B981", alertas:"#EF4444"
                 }[id] }}>{icon}</span>
                 <span style={{ textAlign:"center", lineHeight:1.3 }}>{label}</span>
@@ -10714,6 +10882,70 @@ Content-Type: application/json
                 {/* ═══════════════════════════════════════════════════════════
                     ABA: OCORRÊNCIAS
                 ═══════════════════════════════════════════════════════════ */}
+                {/* ── MEDIDORES DE ENERGIA ─────────────────────────────────── */}
+                {energiaTab === "medidores" && (() => {
+                  const meds = medidoresEnergia;
+                  return (
+                    <div>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#F59E0B" }}>🔌 Medidores de Energia</div>
+                        <button onClick={()=>{ setNovoMedidorForm({numero_serie:"",local:"",unidade_medida:"kWh",alerta_consumo_alto:""}); setNovoMedidorModal("energia"); }}
+                          style={{ background:"#F59E0B", border:"none", borderRadius:8, padding:"8px 16px", color:"#0F172A", fontSize:12, cursor:"pointer", fontWeight:700 }}>
+                          + Novo Medidor
+                        </button>
+                      </div>
+                      {medidoresLoading && <div style={{ color:"#475569", fontSize:12, textAlign:"center", padding:20 }}>Carregando...</div>}
+                      {!medidoresLoading && meds.length === 0 && (
+                        <div style={{ textAlign:"center", padding:40, color:"#475569" }}>
+                          <div style={{ fontSize:32, marginBottom:8 }}>🔌</div>
+                          <div style={{ fontSize:13, fontWeight:600, marginBottom:4 }}>Nenhum medidor cadastrado</div>
+                          <div style={{ fontSize:11 }}>Cadastre medidores de energia para registrar leituras mensais e monitorar o consumo.</div>
+                          {!condId && <div style={{ marginTop:8, fontSize:11, color:"#EF4444" }}>⚠️ As tabelas de medidores precisam ser criadas no Supabase primeiro.</div>}
+                        </div>
+                      )}
+                      {meds.map(m => {
+                        const leituras = leiturasUtil.filter(l => l.medidor_id === m.id).sort((a,b)=>b.data_leitura.localeCompare(a.data_leitura));
+                        const ultima = leituras[0];
+                        return (
+                          <div key={m.id} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(245,158,11,.25)", borderRadius:12, padding:16, marginBottom:12 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                              <div>
+                                <div style={{ fontSize:13, fontWeight:700, color:"#F59E0B" }}>⚡ {m.numero_serie}</div>
+                                <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>📍 {m.local}</div>
+                                <div style={{ fontSize:11, color:"#475569" }}>Unidade: {m.unidade_medida}</div>
+                              </div>
+                              <div style={{ textAlign:"right" }}>
+                                {ultima && <div style={{ fontSize:14, fontWeight:700, color:"#10B981" }}>{ultima.leitura_atual} {m.unidade_medida}</div>}
+                                {ultima && <div style={{ fontSize:10, color:"#475569" }}>{ultima.data_leitura}</div>}
+                                {ultima?.consumo && <div style={{ fontSize:11, color:"#F59E0B" }}>↗ {ultima.consumo} {m.unidade_medida}</div>}
+                              </div>
+                            </div>
+                            <div style={{ display:"flex", gap:6, marginTop:12, flexWrap:"wrap" }}>
+                              <button onClick={()=>{ setMedidorSelecionado(m); setNovaLeituraForm({leitura_atual:"",custo:"",observacoes:"",data_leitura:new Date().toISOString().slice(0,10)}); setNovaLeituraModal(m.id); }}
+                                style={{ background:"rgba(245,158,11,.15)", border:"1px solid rgba(245,158,11,.3)", borderRadius:7, padding:"5px 12px", color:"#F59E0B", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                                📖 Nova Leitura
+                              </button>
+                            </div>
+                            {leituras.length > 0 && (
+                              <div style={{ marginTop:12 }}>
+                                <div style={{ fontSize:10, color:"#475569", marginBottom:6 }}>Últimas leituras:</div>
+                                {leituras.slice(0,3).map(l => (
+                                  <div key={l.id} style={{ display:"flex", justifyContent:"space-between", fontSize:11, padding:"4px 0", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                                    <span style={{ color:"#94A3B8" }}>{l.data_leitura}</span>
+                                    <span style={{ color:"#fff" }}>{l.leitura_atual} {m.unidade_medida}</span>
+                                    {l.consumo != null && <span style={{ color:"#F59E0B" }}>Δ {l.consumo}</span>}
+                                    {l.custo != null && <span style={{ color:"#10B981" }}>R$ {l.custo}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
                 {energiaTab === "ocorrencias" && (
                   <div>
                     <div style={{ display:"flex", justifyContent:"flex-end", marginBottom:14 }}>
@@ -13238,6 +13470,85 @@ Content-Type: application/json
                 </div>
               )}
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: Novo Medidor ────────────────────────────────────────────── */}
+      {novoMedidorModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}
+          onClick={()=>setNovoMedidorModal("")}>
+          <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:16, padding:28, width:440, maxWidth:"95vw" }}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{ fontSize:16, fontWeight:700, marginBottom:6 }}>
+              {novoMedidorModal === "energia" ? "🔌" : novoMedidorModal === "gas" ? "🔥" : "💧"} Novo Medidor de {novoMedidorModal === "energia" ? "Energia" : novoMedidorModal === "gas" ? "Gás" : "Água"}
+            </div>
+            <div style={{ fontSize:11, color:"#475569", marginBottom:18 }}>Cadastre o medidor para registrar leituras e a Di monitorar o consumo.</div>
+            {[
+              { label:"Número de Série / ID *", field:"numero_serie", ph:"Ex: ENE-A-001, GAZ-12345" },
+              { label:"Local / Descrição *", field:"local", ph:"Ex: Bloco A – Térreo, Área de lazer" },
+              { label:"Unidade de Medida", field:"unidade_medida", ph:"kWh, m³, L" },
+              { label:"Alerta consumo alto (opcional)", field:"alerta_consumo_alto", ph:"Ex: 500 (acima disto a Di alerta)" },
+            ].map(({label, field, ph}) => (
+              <div key={field} style={{ marginBottom:12 }}>
+                <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>{label}</div>
+                <input value={(novoMedidorForm as any)[field]}
+                  onChange={e=>setNovoMedidorForm(f=>({...f,[field]:e.target.value}))}
+                  placeholder={ph}
+                  style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" }}/>
+              </div>
+            ))}
+            <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:8 }}>
+              <button onClick={()=>setNovoMedidorModal("")}
+                style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 18px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>
+                Cancelar
+              </button>
+              <button onClick={salvarMedidor}
+                style={{ background: novoMedidorModal === "energia" ? "#F59E0B" : novoMedidorModal === "gas" ? "#F97316" : "#3B82F6", border:"none", borderRadius:8, padding:"8px 22px", color:"#0F172A", fontSize:12, cursor:"pointer", fontWeight:700 }}>
+                Salvar Medidor
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: Nova Leitura de Medidor ────────────────────────────────── */}
+      {novaLeituraModal && medidorSelecionado && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }}
+          onClick={()=>setNovaLeituraModal("")}>
+          <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:16, padding:28, width:440, maxWidth:"95vw" }}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{ fontSize:16, fontWeight:700, marginBottom:4 }}>
+              📖 Nova Leitura — {medidorSelecionado.numero_serie}
+            </div>
+            <div style={{ fontSize:11, color:"#475569", marginBottom:18 }}>📍 {medidorSelecionado.local} · {medidorSelecionado.unidade_medida}</div>
+            {[
+              { label:`Leitura Atual (${medidorSelecionado.unidade_medida}) *`, field:"leitura_atual", ph:"Ex: 1234.5", type:"number" },
+              { label:"Custo da Conta (R$)", field:"custo", ph:"Ex: 450.00", type:"number" },
+              { label:"Data da Leitura", field:"data_leitura", ph:"", type:"date" },
+              { label:"Observações", field:"observacoes", ph:"Ex: Leitura após obra, mês atípico...", type:"text" },
+            ].map(({label, field, ph, type}) => (
+              <div key={field} style={{ marginBottom:12 }}>
+                <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>{label}</div>
+                <input type={type} value={(novaLeituraForm as any)[field]}
+                  onChange={e=>setNovaLeituraForm(f=>({...f,[field]:e.target.value}))}
+                  placeholder={ph}
+                  style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" }}/>
+              </div>
+            ))}
+            <div style={{ fontSize:11, color:"#475569", marginBottom:16, padding:"8px 12px", background:"rgba(99,102,241,.08)", borderRadius:8, border:"1px solid rgba(99,102,241,.2)" }}>
+              💡 O consumo será calculado automaticamente com base na leitura anterior.
+            </div>
+            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+              <button onClick={()=>setNovaLeituraModal("")}
+                style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 18px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>
+                Cancelar
+              </button>
+              <button onClick={salvarLeitura}
+                style={{ background:"#6366F1", border:"none", borderRadius:8, padding:"8px 22px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>
+                Registrar Leitura
+              </button>
             </div>
           </div>
         </div>

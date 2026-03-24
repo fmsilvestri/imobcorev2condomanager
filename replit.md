@@ -69,6 +69,15 @@ Express API server with all ImobCore routes in `src/routes/imobcore.ts`:
 - `GET /api/sensores` — IoT water sensor data
 - `GET /api/misp` — MISP public alerts
 - `GET /api/financeiro` — Financial data
+- `GET /api/medidores` — List utility meters (filter: condominio_id, tipo agua/gas/energia)
+- `POST /api/medidores` — Create utility meter (numero_serie, local, tipo, unidade_medida, alerta_consumo_alto)
+- `PATCH /api/medidores/:id` — Update meter
+- `DELETE /api/medidores/:id` — Delete meter
+- `GET /api/leituras-medidores` — List meter readings (filter: medidor_id or condominio_id)
+- `POST /api/leituras-medidores` — Register reading (auto-calculates consumo from previous reading, updates ultima_leitura on medidor)
+- `PATCH /api/leituras-medidores/:id` — Update reading
+- `DELETE /api/leituras-medidores/:id` — Delete reading
+- `GET /api/utilities/resumo` — Consolidated summary of agua/gas/energia by condo
 - `POST /api/moradores` — Save residents from onboarding (upsert by condominio_id + unidade)
 - `POST /api/condominios` — Create/upsert condo (onboarding Step 1)
 - `PATCH /api/condominios/:id` — Update condo structure (onboarding Step 2)
