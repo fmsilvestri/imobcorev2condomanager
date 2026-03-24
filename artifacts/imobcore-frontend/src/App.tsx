@@ -813,6 +813,61 @@ export default function App() {
     } catch { showToast("Erro ao atualizar", "error"); }
     setAdminPatchId(null);
   };
+
+  // ── Condo CRUD ─────────────────────────────────────────────────────────────
+  type CondoForm = { nome: string; cidade: string; estado: string; total_unidades: number; total_moradores: number; plano: string; endereco: string };
+  const CONDO_FORM_EMPTY: CondoForm = { nome:"", cidade:"", estado:"", total_unidades:0, total_moradores:0, plano:"starter", endereco:"" };
+  const [condoModal, setCondoModal]         = useState<null | { mode:"criar"|"editar"; id?:string }>(null);
+  const [condoForm,  setCondoForm]          = useState<CondoForm>(CONDO_FORM_EMPTY);
+  const [condoSaving, setCondoSaving]       = useState(false);
+  const [condoDeleteId, setCondoDeleteId]   = useState<string|null>(null);
+  const [condoDeleting, setCondoDeleting]   = useState(false);
+
+  const openCreateCondo = () => { setCondoForm(CONDO_FORM_EMPTY); setCondoModal({ mode:"criar" }); };
+  const openEditCondo   = (c: AdminCondo) => {
+    const parts = (c.cidade || "").split("/");
+    setCondoForm({ nome: c.nome||"", cidade:(parts[0]||"").trim(), estado:(parts[1]||"").trim(), total_unidades:c.total_unidades||0, total_moradores:0, plano:c.plano||"starter", endereco:"" });
+    setCondoModal({ mode:"editar", id: c.id });
+  };
+
+  const saveCondo = async () => {
+    if (!condoForm.nome.trim()) { showToast("Nome é obrigatório", "error"); return; }
+    if (condoForm.total_unidades < 1) { showToast("Total de unidades é obrigatório", "error"); return; }
+    setCondoSaving(true);
+    try {
+      if (condoModal?.mode === "criar") {
+        const r = await fetch("/api/condominios", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ nome: condoForm.nome, cidade: condoForm.cidade, estado: condoForm.estado, total_unidades: condoForm.total_unidades, total_moradores: condoForm.total_moradores, plano: condoForm.plano, endereco: condoForm.endereco, sindico_nome:"—", sindico_email:"—" }) });
+        const res = await r.json();
+        if (!r.ok || !res.ok) { showToast(res.error || "Erro ao criar", "error"); return; }
+        const novo: AdminCondo = { id: res.condominio.id, nome: condoForm.nome, plano: condoForm.plano, status:"ativo", created_at: new Date().toISOString(), total_unidades: condoForm.total_unidades, cidade:`${condoForm.cidade}${condoForm.estado?" / "+condoForm.estado:""}` };
+        setAdminCondos(prev => [novo, ...prev]);
+        showToast("Condomínio criado com sucesso!", "success");
+      } else if (condoModal?.mode === "editar" && condoModal.id) {
+        const r = await adminFetch(`/admin/condominio/${condoModal.id}`, { method:"PATCH", body: JSON.stringify({ nome: condoForm.nome, plano: condoForm.plano, cidade: condoForm.cidade, estado: condoForm.estado, total_unidades: condoForm.total_unidades, total_moradores: condoForm.total_moradores, endereco: condoForm.endereco }) });
+        const res = await r.json();
+        if (!r.ok) { showToast(res.error || "Erro ao salvar", "error"); return; }
+        const cidadeStr = `${condoForm.cidade}${condoForm.estado ? " / " + condoForm.estado : ""}`;
+        setAdminCondos(prev => prev.map(c => c.id === condoModal.id ? { ...c, nome: condoForm.nome, plano: condoForm.plano, total_unidades: condoForm.total_unidades, cidade: cidadeStr } : c));
+        showToast("Condomínio atualizado!", "success");
+      }
+      setCondoModal(null);
+    } catch { showToast("Erro de conexão", "error"); }
+    setCondoSaving(false);
+  };
+
+  const deleteCondo = async () => {
+    if (!condoDeleteId) return;
+    setCondoDeleting(true);
+    try {
+      const r = await fetch(`/api/condominios/${condoDeleteId}`, { method:"DELETE" });
+      const res = await r.json();
+      if (!r.ok || !res.ok) { showToast(res.error || "Erro ao excluir", "error"); return; }
+      setAdminCondos(prev => prev.filter(c => c.id !== condoDeleteId));
+      showToast("Condomínio excluído!", "success");
+    } catch { showToast("Erro de conexão", "error"); }
+    setCondoDeleteId(null);
+    setCondoDeleting(false);
+  };
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [showLoginPass, setShowLoginPass] = useState(false);
@@ -12085,6 +12140,100 @@ Content-Type: application/json
               {/* ── CONDOMÍNIOS ──────────────────────────────────── */}
               {adminSection === "condominios" && (
                 <div>
+                  {/* ── Modal Criar / Editar ─────────────────────────────── */}
+                  {condoModal && (
+                    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:900, display:"flex", alignItems:"center", justifyContent:"center" }}
+                      onClick={e => { if(e.target===e.currentTarget) setCondoModal(null); }}>
+                      <div style={{ background:"#111827", border:"1px solid rgba(255,255,255,.12)", borderRadius:16, padding:32, width:"100%", maxWidth:520, boxShadow:"0 24px 80px rgba(0,0,0,.6)" }}>
+                        <h3 style={{ margin:"0 0 22px", color:"#E2E8F0", fontSize:16, fontWeight:700 }}>
+                          {condoModal.mode==="criar" ? "🏢 Novo Condomínio" : "✏️ Editar Condomínio"}
+                        </h3>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14 }}>
+                          <div style={{ gridColumn:"1/-1" }}>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:600, display:"block", marginBottom:5 }}>NOME DO CONDOMÍNIO *</label>
+                            <input value={condoForm.nome} onChange={e=>setCondoForm(p=>({...p,nome:e.target.value}))}
+                              placeholder="Ex: Residencial Parque das Flores"
+                              style={{ width:"100%", boxSizing:"border-box", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:600, display:"block", marginBottom:5 }}>CIDADE</label>
+                            <input value={condoForm.cidade} onChange={e=>setCondoForm(p=>({...p,cidade:e.target.value}))}
+                              placeholder="Ex: Florianópolis"
+                              style={{ width:"100%", boxSizing:"border-box", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:600, display:"block", marginBottom:5 }}>ESTADO (UF)</label>
+                            <input value={condoForm.estado} onChange={e=>setCondoForm(p=>({...p,estado:e.target.value.toUpperCase().slice(0,2)}))}
+                              placeholder="Ex: SC"
+                              maxLength={2}
+                              style={{ width:"100%", boxSizing:"border-box", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:600, display:"block", marginBottom:5 }}>TOTAL DE UNIDADES *</label>
+                            <input type="number" min={1} value={condoForm.total_unidades||""} onChange={e=>setCondoForm(p=>({...p,total_unidades:Number(e.target.value)}))}
+                              placeholder="Ex: 48"
+                              style={{ width:"100%", boxSizing:"border-box", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:600, display:"block", marginBottom:5 }}>TOTAL DE MORADORES</label>
+                            <input type="number" min={0} value={condoForm.total_moradores||""} onChange={e=>setCondoForm(p=>({...p,total_moradores:Number(e.target.value)}))}
+                              placeholder="Ex: 96"
+                              style={{ width:"100%", boxSizing:"border-box", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:600, display:"block", marginBottom:5 }}>PLANO</label>
+                            <select value={condoForm.plano} onChange={e=>setCondoForm(p=>({...p,plano:e.target.value}))}
+                              style={{ width:"100%", boxSizing:"border-box", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }}>
+                              <option value="starter">Starter</option>
+                              <option value="pro">Pro</option>
+                              <option value="enterprise">Enterprise</option>
+                            </select>
+                          </div>
+                          <div style={{ gridColumn:"1/-1" }}>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:600, display:"block", marginBottom:5 }}>ENDEREÇO</label>
+                            <input value={condoForm.endereco} onChange={e=>setCondoForm(p=>({...p,endereco:e.target.value}))}
+                              placeholder="Ex: Rua das Flores, 123"
+                              style={{ width:"100%", boxSizing:"border-box", background:"#0D1117", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }} />
+                          </div>
+                        </div>
+                        <div style={{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:8 }}>
+                          <button onClick={()=>setCondoModal(null)} disabled={condoSaving}
+                            style={{ padding:"9px 20px", borderRadius:8, border:"1px solid rgba(255,255,255,.1)", background:"transparent", color:"#94A3B8", fontSize:13, cursor:"pointer" }}>
+                            Cancelar
+                          </button>
+                          <button onClick={saveCondo} disabled={condoSaving}
+                            style={{ padding:"9px 20px", borderRadius:8, border:"none", background:"linear-gradient(135deg,#6366F1,#8B5CF6)", color:"#fff", fontSize:13, fontWeight:700, cursor:condoSaving?"wait":"pointer", opacity:condoSaving?.7:1 }}>
+                            {condoSaving ? "Salvando..." : condoModal.mode==="criar" ? "Criar Condomínio" : "Salvar Alterações"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Modal Confirmação Excluir ─────────────────────────── */}
+                  {condoDeleteId && (
+                    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:900, display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <div style={{ background:"#111827", border:"1px solid rgba(239,68,68,.3)", borderRadius:16, padding:32, maxWidth:400, width:"100%", boxShadow:"0 24px 80px rgba(0,0,0,.6)" }}>
+                        <div style={{ fontSize:32, textAlign:"center", marginBottom:12 }}>⚠️</div>
+                        <h3 style={{ margin:"0 0 10px", color:"#EF4444", fontSize:16, fontWeight:700, textAlign:"center" }}>Excluir Condomínio</h3>
+                        <p style={{ margin:"0 0 24px", color:"#94A3B8", fontSize:13, textAlign:"center", lineHeight:1.6 }}>
+                          Esta ação é <strong style={{color:"#EF4444"}}>irreversível</strong>. Todos os dados deste condomínio (OS, financeiro, moradores) serão excluídos permanentemente.
+                        </p>
+                        <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
+                          <button onClick={()=>setCondoDeleteId(null)} disabled={condoDeleting}
+                            style={{ padding:"9px 24px", borderRadius:8, border:"1px solid rgba(255,255,255,.1)", background:"transparent", color:"#94A3B8", fontSize:13, cursor:"pointer" }}>
+                            Cancelar
+                          </button>
+                          <button onClick={deleteCondo} disabled={condoDeleting}
+                            style={{ padding:"9px 24px", borderRadius:8, border:"none", background:"rgba(239,68,68,.85)", color:"#fff", fontSize:13, fontWeight:700, cursor:condoDeleting?"wait":"pointer" }}>
+                            {condoDeleting ? "Excluindo..." : "Sim, excluir"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Barra de ações ───────────────────────────────────── */}
                   <div style={{ display:"flex", gap:12, marginBottom:18, alignItems:"center" }}>
                     <input
                       value={adminCondoFilter} onChange={e=>setAdminCondoFilter(e.target.value)}
@@ -12092,12 +12241,18 @@ Content-Type: application/json
                       style={{ flex:1, background:"#0D1117", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 14px", color:"#E2E8F0", fontSize:13 }}
                     />
                     <div style={{ fontSize:12, color:"#475569" }}>{adminCondos.length} condomínios</div>
+                    <button onClick={openCreateCondo}
+                      style={{ padding:"9px 18px", borderRadius:9, border:"none", background:"linear-gradient(135deg,#6366F1,#8B5CF6)", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                      + Novo Condomínio
+                    </button>
                   </div>
+
+                  {/* ── Tabela ───────────────────────────────────────────── */}
                   <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, overflow:"hidden" }}>
                     <table style={{ width:"100%", borderCollapse:"collapse" }}>
                       <thead>
                         <tr style={{ background:"rgba(255,255,255,.03)" }}>
-                          {["Nome","Cidade","Plano","Status","Síndico","Unidades","Ações"].map(h => (
+                          {["Nome","Cidade","Plano","Status","Unidades","Ações"].map(h => (
                             <th key={h} style={{ padding:"12px 16px", textAlign:"left", fontSize:11, fontWeight:700, color:"#475569", textTransform:"uppercase", letterSpacing:.5, borderBottom:"1px solid rgba(255,255,255,.06)" }}>{h}</th>
                           ))}
                         </tr>
@@ -12106,47 +12261,41 @@ Content-Type: application/json
                         {adminCondos
                           .filter(c => !adminCondoFilter || c.nome?.toLowerCase().includes(adminCondoFilter.toLowerCase()) || c.cidade?.toLowerCase().includes(adminCondoFilter.toLowerCase()))
                           .map(c => (
-                          <tr key={c.id} style={{ borderBottom:"1px solid rgba(255,255,255,.04)", transition:"background .15s" }}>
+                          <tr key={c.id} style={{ borderBottom:"1px solid rgba(255,255,255,.04)" }}>
                             <td style={{ padding:"12px 16px" }}>
                               <div style={{ fontSize:13, fontWeight:600, color:"#E2E8F0" }}>{c.nome}</div>
-                              <div style={{ fontSize:10, color:"#334155" }}>{c.id.slice(0,8)}...</div>
+                              <div style={{ fontSize:10, color:"#334155", marginTop:2 }}>{c.id.slice(0,8)}...</div>
                             </td>
-                            <td style={{ padding:"12px 16px", fontSize:12, color:"#64748B" }}>{c.cidade||"—"}/{c.estado||"—"}</td>
+                            <td style={{ padding:"12px 16px", fontSize:12, color:"#64748B" }}>{c.cidade||"—"}</td>
                             <td style={{ padding:"12px 16px" }}>
                               <select
-                                value={c.plano||"free"}
+                                value={c.plano||"starter"}
                                 onChange={e => patchCondo(c.id, { plano: e.target.value })}
                                 disabled={adminPatchId === c.id}
                                 style={{ background:"rgba(99,102,241,.12)", border:"1px solid rgba(99,102,241,.25)", borderRadius:6, padding:"4px 8px", color:"#818CF8", fontSize:11, fontWeight:700, cursor:"pointer" }}
                               >
-                                <option value="free">FREE</option>
+                                <option value="starter">STARTER</option>
                                 <option value="pro">PRO</option>
                                 <option value="enterprise">ENTERPRISE</option>
                               </select>
                             </td>
                             <td style={{ padding:"12px 16px" }}>
-                              <span style={{ fontSize:11, padding:"3px 10px", borderRadius:20, fontWeight:700, background: c.status==="suspenso" ? "rgba(239,68,68,.15)" : "rgba(16,185,129,.15)", color: c.status==="suspenso" ? "#EF4444" : "#10B981" }}>
+                              <span style={{ fontSize:11, padding:"3px 10px", borderRadius:20, fontWeight:700, background: c.status==="suspenso" ? "rgba(239,68,68,.15)" : "rgba(16,185,129,.15)", color: c.status==="suspenso" ? "#EF4444" : "#10B981", cursor:"pointer" }}
+                                onClick={() => patchCondo(c.id, { status: c.status==="suspenso" ? "ativo" : "suspenso" })}>
                                 {c.status==="suspenso" ? "Suspenso" : "Ativo"}
                               </span>
-                            </td>
-                            <td style={{ padding:"12px 16px" }}>
-                              <div style={{ fontSize:12, color:"#64748B" }}>{c.sindico_nome||"—"}</div>
-                              <div style={{ fontSize:10, color:"#334155" }}>{c.sindico_email||""}</div>
                             </td>
                             <td style={{ padding:"12px 16px", fontSize:12, color:"#475569" }}>{c.total_unidades||"—"}</td>
                             <td style={{ padding:"12px 16px" }}>
                               <div style={{ display:"flex", gap:6 }}>
-                                {c.status !== "suspenso" ? (
-                                  <button onClick={() => patchCondo(c.id, { status:"suspenso" })} disabled={adminPatchId===c.id}
-                                    style={{ padding:"5px 10px", borderRadius:6, border:"1px solid rgba(239,68,68,.3)", background:"rgba(239,68,68,.1)", color:"#EF4444", fontSize:11, fontWeight:600, cursor:"pointer" }}>
-                                    ⏸ Suspender
-                                  </button>
-                                ) : (
-                                  <button onClick={() => patchCondo(c.id, { status:"ativo" })} disabled={adminPatchId===c.id}
-                                    style={{ padding:"5px 10px", borderRadius:6, border:"1px solid rgba(16,185,129,.3)", background:"rgba(16,185,129,.1)", color:"#10B981", fontSize:11, fontWeight:600, cursor:"pointer" }}>
-                                    ▶ Ativar
-                                  </button>
-                                )}
+                                <button onClick={() => openEditCondo(c)}
+                                  style={{ padding:"5px 10px", borderRadius:6, border:"1px solid rgba(99,102,241,.3)", background:"rgba(99,102,241,.1)", color:"#818CF8", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                                  ✏️ Editar
+                                </button>
+                                <button onClick={() => setCondoDeleteId(c.id)}
+                                  style={{ padding:"5px 10px", borderRadius:6, border:"1px solid rgba(239,68,68,.3)", background:"rgba(239,68,68,.08)", color:"#EF4444", fontSize:11, fontWeight:600, cursor:"pointer" }}>
+                                  🗑️
+                                </button>
                               </div>
                             </td>
                           </tr>

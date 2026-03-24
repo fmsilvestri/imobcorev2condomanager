@@ -3925,13 +3925,24 @@ router.get("/admin/condominios", checkAdminGlobal, async (_req: Request, res: Re
   res.json({ data: mapped.length > 0 ? mapped : DEMO });
 });
 
-// PATCH /api/admin/condominio/:id  — atualiza plano ou status (ativo)
+// PATCH /api/admin/condominio/:id  — atualiza campos do condomínio (plano, status, nome, cidade, unidades...)
 router.patch("/admin/condominio/:id", checkAdminGlobal, async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { plano, status } = req.body as { plano?: string; status?: string };
+  const { plano, status, nome, cidade, estado, total_unidades, total_moradores, endereco } =
+    req.body as { plano?: string; status?: string; nome?: string; cidade?: string; estado?: string; total_unidades?: number; total_moradores?: number; endereco?: string };
   const updates: Record<string, unknown> = {};
-  if (plano  !== undefined) updates.plano = plano;
-  // "status" do frontend ("suspenso"/"ativo") mapeia para "ativo" boolean no banco
+  if (plano           !== undefined) updates.plano           = plano;
+  if (nome            !== undefined) updates.nome            = nome;
+  if (endereco        !== undefined) updates.endereco        = endereco;
+  if (total_unidades  !== undefined) updates.total_unidades  = Number(total_unidades);
+  if (total_moradores !== undefined) updates.total_moradores = Number(total_moradores);
+  // Cidade e estado combinados em um único campo
+  if (cidade !== undefined || estado !== undefined) {
+    const cidadeAtual = cidade ?? "";
+    const estadoAtual = estado ?? "";
+    updates.cidade = estadoAtual ? `${cidadeAtual} / ${estadoAtual}` : cidadeAtual;
+  }
+  // "status" do frontend ("suspenso"/"ativo") → "ativo" boolean no banco
   if (status !== undefined) updates.ativo = status !== "suspenso";
   if (!Object.keys(updates).length) return res.status(400).json({ error: "Nenhum campo enviado" });
   const { data, error } = await supabase.from("condominios").update(updates).eq("id", id).select().single();
