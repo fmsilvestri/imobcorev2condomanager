@@ -2006,6 +2006,15 @@ export default function App() {
   const [diFalando, setDiFalando] = useState(false);
   const [diView, setDiView] = useState<"briefing" | "relatorio">("briefing");
 
+  // ── Di Briefing por Módulo ─────────────────────────────────────────────────
+  type BriefModData = { total?:number; urgentes?:number; altas?:number; lista?:unknown[]; score:number; nivel_medio?:number; sensores?:{nome:string;nivel:number|null;status:string}[]; criticos?:number; pendentes?:number; antigas?:number; saldo?:number; totalRec?:number; totalDesp?:number; txInadimplencia?:number; em_manutencao?:number; atencao?:number; ultima_leitura?:Record<string,unknown>|null };
+  type BriefingSnap = { timestamp:string; condominio:{nome:string;total_unidades:number;total_moradores:number}; score_geral:number; modulos:{os:BriefModData;agua:BriefModData;encomendas:BriefModData;financeiro:BriefModData;equipamentos:BriefModData;piscina:BriefModData} };
+  const [briefSnap, setBriefSnap] = useState<BriefingSnap | null>(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [briefExpanded, setBriefExpanded] = useState<string | null>(null);
+  const [briefAnalise, setBriefAnalise] = useState<Record<string,string>>({});
+  const [briefAnalLoading, setBriefAnalLoading] = useState<string | null>(null);
+
   // ── Notificações multicanal ────────────────────────────────────────────────
   type NotifCfg = {
     telegram_ativo: boolean; telegram_token: string; telegram_chat_id: string;
@@ -4234,6 +4243,162 @@ export default function App() {
     if (!sindicoScreen) return null;
 
     // ── Di Síndica Virtual — tela mobile completa ─────────────────────────────
+    // ── BRIEFING DA DI — tela completa por módulo ─────────────────────────────
+    if (sindicoScreen === "briefing") {
+      const scoreColor = (s:number) => s>=80?"#10B981":s>=60?"#F59E0B":"#EF4444";
+      const scoreGlow  = (s:number) => s>=80?"rgba(16,185,129,.45)":s>=60?"rgba(245,158,11,.45)":"rgba(239,68,68,.45)";
+      const scoreLabel = (s:number) => s>=80?"✅ Ótimo":s>=60?"⚠️ Atenção":"🚨 Crítico";
+
+      function ScoreArc({ score, size=56 }:{ score:number; size?:number }) {
+        const r=size*0.37, cx=size/2, cy=size/2;
+        const circ=2*Math.PI*r, dash=(score/100)*circ;
+        const col=scoreColor(score);
+        return (
+          <svg width={size} height={size} style={{flexShrink:0}}>
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth={size*.11}/>
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke={col} strokeWidth={size*.11} strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" style={{transform:`rotate(-90deg)`,transformOrigin:`${cx}px ${cy}px`,transition:"stroke-dasharray .6s"}}/>
+            <text x={cx} y={cy+4} textAnchor="middle" fill={col} fontSize={size*.22} fontWeight={900} fontFamily="Inter,sans-serif">{score}</text>
+          </svg>
+        );
+      }
+
+      const loadBriefing = async () => {
+        setBriefLoading(true); setBriefExpanded(null); setBriefAnalise({});
+        try {
+          const r = await fetch(`/api/di/briefing${condId?`?condominio_id=${condId}`:""}`);
+          const d = await r.json() as BriefingSnap;
+          setBriefSnap(d);
+        } catch { /* usa dados anteriores */ }
+        setBriefLoading(false);
+      };
+
+      const loadAnalise = async (modulo:string, dados:BriefModData) => {
+        if (briefAnalise[modulo]) { setBriefExpanded(briefExpanded===modulo?null:modulo); return; }
+        setBriefExpanded(modulo); setBriefAnalLoading(modulo);
+        try {
+          const r = await fetch("/api/di/analise-modulo",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ modulo, dados, condominio_id:condId }) });
+          const j = await r.json() as { analise:string };
+          setBriefAnalise(prev=>({...prev,[modulo]:j.analise}));
+        } catch { setBriefAnalise(prev=>({...prev,[modulo]:"Análise temporariamente indisponível."})); }
+        setBriefAnalLoading(null);
+      };
+
+      const modCfg:{[k:string]:{icon:string;label:string;grad:string;glow:string;screen:string;getStats:(d:BriefModData)=>string}} = {
+        os:           { icon:"⚙️", label:"Ordens de Serviço", grad:"linear-gradient(135deg,#1E1B4B,#3730A3)", glow:"rgba(99,102,241,.5)", screen:"os",           getStats:d=>`${d.total??0} abertas · ${d.urgentes??0} urgentes` },
+        agua:         { icon:"💧", label:"Água & Reservatórios", grad:"linear-gradient(135deg,#0C4A6E,#0284C7)", glow:"rgba(2,132,199,.5)", screen:"iot",         getStats:d=>`${d.nivel_medio??0}% nível médio · ${d.criticos??0} críticos` },
+        encomendas:   { icon:"📦", label:"Encomendas", grad:"linear-gradient(135deg,#78350F,#D97706)", glow:"rgba(217,119,6,.5)", screen:"encomendas",           getStats:d=>`${d.total??0} pendentes · ${d.antigas??0} +3 dias` },
+        financeiro:   { icon:"💰", label:"Financeiro", grad:"linear-gradient(135deg,#064E3B,#059669)", glow:"rgba(5,150,105,.5)", screen:"financeiro",            getStats:d=>`Saldo R$${(d.saldo??0).toLocaleString("pt-BR",{maximumFractionDigits:0})} · Inad. ${d.txInadimplencia??0}%` },
+        equipamentos: { icon:"🔧", label:"Equipamentos", grad:"linear-gradient(135deg,#1E1B4B,#7C3AED)", glow:"rgba(124,58,237,.5)", screen:"manutencao",         getStats:d=>`${d.total??0} total · ${d.em_manutencao??0} em manutenção` },
+        piscina:      { icon:"🏊", label:"Piscina", grad:"linear-gradient(135deg,#0E7490,#06B6D4)", glow:"rgba(6,182,212,.5)", screen:"piscina",                  getStats:d=>d.ultima_leitura?`pH ${(d.ultima_leitura as Record<string,unknown>)?.ph??"-"} · Cl ${(d.ultima_leitura as Record<string,unknown>)?.cloro??"-"}`:"Sem leitura recente" },
+      };
+
+      const mods = briefSnap?.modulos;
+
+      return (
+        <div style={{ position:"absolute", inset:0, zIndex:50, display:"flex", flexDirection:"column", background:"#09081A", fontFamily:"'Nunito',sans-serif", overflowY:"hidden" }}>
+          {/* ── Header Di Briefing ── */}
+          <div style={{ background:"linear-gradient(160deg,#2E1065 0%,#4C1D95 60%,#1E1B4B 100%)", padding:"16px 18px 14px", flexShrink:0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
+              <button onClick={()=>setSindicoScreen(null)} style={{ height:38,padding:"0 16px",borderRadius:20,background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",color:"#E9D5FF",fontSize:14,fontWeight:800,cursor:"pointer" }}>← Voltar</button>
+              <div style={{ flex:1, fontSize:16, fontWeight:900, color:"#F3E8FF" }}>🟣 Briefing da Di</div>
+              {briefSnap && (
+                <div style={{ textAlign:"right" }}>
+                  <div style={{ fontSize:9, color:"#A78BFA", fontWeight:700, letterSpacing:".06em" }}>SCORE GERAL</div>
+                  <div style={{ fontSize:22, fontWeight:900, color:scoreColor(briefSnap.score_geral), lineHeight:1 }}>{briefSnap.score_geral}</div>
+                </div>
+              )}
+            </div>
+            {/* Score geral + condo info */}
+            {briefSnap && (
+              <div style={{ display:"flex", alignItems:"center", gap:14, background:"rgba(255,255,255,.06)", borderRadius:12, padding:"10px 14px" }}>
+                <ScoreArc score={briefSnap.score_geral} size={64} />
+                <div>
+                  <div style={{ fontSize:13, fontWeight:800, color:"#E9D5FF" }}>{briefSnap.condominio.nome}</div>
+                  <div style={{ fontSize:10, color:"#A78BFA", marginBottom:4 }}>{briefSnap.condominio.total_unidades} unidades · {briefSnap.condominio.total_moradores} moradores</div>
+                  <span style={{ background:scoreColor(briefSnap.score_geral)+"33", border:`1px solid ${scoreColor(briefSnap.score_geral)}66`, color:scoreColor(briefSnap.score_geral), borderRadius:20, padding:"2px 10px", fontSize:10, fontWeight:800 }}>{scoreLabel(briefSnap.score_geral)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Body ── */}
+          <div style={{ flex:1, overflowY:"auto", padding:"14px 14px 24px" }}>
+            {/* Botão gerar */}
+            <button onClick={loadBriefing} disabled={briefLoading}
+              style={{ width:"100%", marginBottom:14, padding:"13px", borderRadius:14, background:"linear-gradient(135deg,#7C3AED,#A855F7,#C084FC)", border:"none", color:"#fff", fontSize:13, fontWeight:900, cursor:briefLoading?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, boxShadow:"0 4px 18px rgba(124,58,237,.55)", opacity:briefLoading?.7:1 }}>
+              {briefLoading ? "⏳ Analisando condomínio..." : "🟣 Gerar Novo Briefing"}
+            </button>
+
+            {!briefSnap && !briefLoading && (
+              <div style={{ textAlign:"center", padding:"32px 20px", color:"#3B2F6E" }}>
+                <div style={{ fontSize:40, marginBottom:10 }}>🟣</div>
+                <div style={{ fontSize:14, fontWeight:700, color:"#7C3AED", marginBottom:6 }}>Di pronta para analisar</div>
+                <div style={{ fontSize:12, color:"#4C1D95" }}>Toque em "Gerar Novo Briefing" para ver o diagnóstico completo por módulo.</div>
+              </div>
+            )}
+
+            {/* Cards de módulo */}
+            {mods && Object.entries(modCfg).map(([key, cfg]) => {
+              const dados = mods[key as keyof typeof mods];
+              if (!dados) return null;
+              const isOpen = briefExpanded === key;
+              const analise = briefAnalise[key];
+              const loading = briefAnalLoading === key;
+              const sc = dados.score;
+              return (
+                <div key={key} style={{ marginBottom:12, borderRadius:16, overflow:"hidden", border:`1px solid ${scoreColor(sc)}22`, boxShadow:`0 4px 18px ${scoreGlow(sc)}`, background:"rgba(255,255,255,.03)" }}>
+                  {/* Card header — gradiente do módulo */}
+                  <div style={{ background:cfg.grad, padding:"12px 14px", display:"flex", alignItems:"center", gap:12 }}>
+                    <div style={{ width:40, height:40, borderRadius:12, background:"rgba(255,255,255,.18)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{cfg.icon}</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:11, fontWeight:900, color:"rgba(255,255,255,.7)", letterSpacing:".05em", textTransform:"uppercase" as const }}>{cfg.label}</div>
+                      <div style={{ fontSize:11, color:"rgba(255,255,255,.75)", marginTop:2 }}>{cfg.getStats(dados)}</div>
+                    </div>
+                    <ScoreArc score={sc} size={52} />
+                  </div>
+
+                  {/* Ações e expandir */}
+                  <div style={{ padding:"10px 14px", display:"flex", gap:8 }}>
+                    <button onClick={()=>loadAnalise(key, dados)}
+                      style={{ flex:1, padding:"8px 0", borderRadius:10, background:isOpen?"rgba(139,92,246,.2)":"rgba(255,255,255,.05)", border:`1px solid ${isOpen?"rgba(139,92,246,.4)":"rgba(255,255,255,.08)"}`, color:isOpen?"#C4B5FD":"#94A3B8", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                      {loading ? "⏳ Analisando..." : isOpen ? "▲ Fechar análise" : "🧠 Ver análise Da Di"}
+                    </button>
+                    <button onClick={()=>setSindicoScreen(cfg.screen)}
+                      style={{ padding:"8px 14px", borderRadius:10, background:cfg.grad, border:"none", color:"#fff", fontSize:11, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" as const }}>
+                      Abrir →
+                    </button>
+                  </div>
+
+                  {/* Painel de análise expandido */}
+                  {isOpen && (
+                    <div style={{ padding:"0 14px 14px" }}>
+                      {loading ? (
+                        <div style={{ textAlign:"center", padding:"16px 0", color:"#7C3AED", fontSize:12 }}>⏳ Di está analisando...</div>
+                      ) : analise ? (
+                        <div style={{ background:"rgba(139,92,246,.08)", border:"1px solid rgba(139,92,246,.2)", borderRadius:12, padding:"12px 14px" }}>
+                          <div style={{ fontSize:9, fontWeight:800, color:"#7C3AED", letterSpacing:".08em", marginBottom:8, textTransform:"uppercase" as const }}>🧠 Análise da Di</div>
+                          {analise.split("\n").filter(Boolean).map((line, i) => (
+                            <div key={i} style={{ fontSize:12, color:line.startsWith("•")?"#C4B5FD":"#A5B4FC", lineHeight:1.6, marginBottom:line.startsWith("•")?6:4, paddingLeft:line.startsWith("•")?4:0, fontWeight:line.startsWith("•")?700:400 }}>{line}</div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Timestamp */}
+            {briefSnap?.timestamp && (
+              <div style={{ textAlign:"center", fontSize:9, color:"#3B2F6E", marginTop:8 }}>
+                Atualizado: {new Date(briefSnap.timestamp).toLocaleString("pt-BR")}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     if (sindicoScreen === "di") {
       type DiCard = {
         tipo: "critico" | "atencao" | "info" | "insight";
@@ -4435,6 +4600,12 @@ export default function App() {
               style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.4)", color:"#A5B4FC", borderRadius:12, padding:"11px 12px", fontSize:12, fontWeight:700, cursor:"pointer" }}
             >
               💬 Chat IA
+            </button>
+            <button
+              onClick={() => setSindicoScreen("briefing")}
+              style={{ background:"linear-gradient(135deg,#4C1D95,#7C3AED)", border:"none", color:"#E9D5FF", borderRadius:12, padding:"11px 12px", fontSize:12, fontWeight:800, cursor:"pointer", boxShadow:"0 3px 12px rgba(124,58,237,.45)" }}
+            >
+              📊 Módulos
             </button>
           </div>
           </>)}

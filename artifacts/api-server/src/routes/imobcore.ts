@@ -3985,6 +3985,130 @@ Sem markdown, sem explicação.`,
   }
 });
 
+// ── Di Briefing — snapshot estruturado por módulo (sem Claude) ───────────────
+router.get("/di/briefing", async (req: Request, res: Response) => {
+  const condId = req.query.condominio_id as string | undefined;
+  try {
+    const [
+      { data: cond },
+      { data: osAbertas },
+      { data: reservoirs },
+      { data: sensores },
+      { data: encomendas },
+      { data: equipamentos },
+      { data: lancamentos },
+      { data: piscina },
+    ] = await Promise.all([
+      condId ? supabase.from("condominios").select("*").eq("id", condId).single() : supabase.from("condominios").select("*").limit(1).single(),
+      condId ? supabase.from("ordens_servico").select("id,titulo,prioridade,status,area,sla_horas,created_at").in("status",["aberta","em_andamento"]).eq("condominio_id",condId).order("created_at",{ascending:false}).limit(20) : supabase.from("ordens_servico").select("id,titulo,prioridade,status,area,sla_horas,created_at").in("status",["aberta","em_andamento"]).limit(20),
+      condId ? supabase.from("reservoirs").select("name,iot_last_reading,capacity_liters,iot_status").eq("condominio_id",condId).limit(20) : supabase.from("reservoirs").select("name,iot_last_reading,capacity_liters,iot_status").limit(20),
+      condId ? supabase.from("sensores").select("nome,local,nivel_atual,capacidade_litros").eq("condominio_id",condId).limit(20) : supabase.from("sensores").select("nome,local,nivel_atual,capacidade_litros").limit(20),
+      condId ? supabase.from("encomendas").select("id,morador_nome,unidade,status,tipo,created_at").in("status",["aguardando_retirada","notificado"]).eq("condominio_id",condId).order("created_at",{ascending:true}).limit(30) : supabase.from("encomendas").select("id,morador_nome,unidade,status,tipo,created_at").in("status",["aguardando_retirada","notificado"]).limit(30),
+      condId ? supabase.from("equipamentos").select("nome,status,categoria,local").eq("condominio_id",condId).limit(30) : supabase.from("equipamentos").select("nome,status,categoria,local").limit(30),
+      condId ? supabase.from("lancamentos_financeiros").select("tipo,valor,status").eq("condominio_id",condId).limit(100) : supabase.from("lancamentos_financeiros").select("tipo,valor,status").limit(100),
+      condId ? supabase.from("piscina_leituras").select("ph,cloro,temperatura,status,created_at").eq("condominio_id",condId).order("created_at",{ascending:false}).limit(1) : supabase.from("piscina_leituras").select("ph,cloro,temperatura,status,created_at").order("created_at",{ascending:false}).limit(1),
+    ]);
+
+    // OS scores
+    const osTotal    = (osAbertas||[]).length;
+    const osUrgentes = (osAbertas||[]).filter(o=>o.prioridade==="urgente").length;
+    const osAltas    = (osAbertas||[]).filter(o=>o.prioridade==="alta").length;
+    const osScore    = Math.max(10, 100 - osUrgentes*25 - osAltas*10 - Math.max(0,osTotal-3)*5);
+
+    // Água/IoT
+    type AS = { nome:string; nivel:number|null; status:string };
+    const aguaSens: AS[] = [];
+    for (const r of (reservoirs||[])) aguaSens.push({ nome:r.name, nivel:r.iot_last_reading!=null?Number(r.iot_last_reading):null, status:r.iot_status||"unknown" });
+    if (!aguaSens.length) for (const s of (sensores||[])) aguaSens.push({ nome:s.nome||s.local, nivel:s.nivel_atual!=null?Number(s.nivel_atual):null, status:Number(s.nivel_atual)<25?"critical":Number(s.nivel_atual)<60?"warning":"online" });
+    const nivelArr   = aguaSens.filter(s=>s.nivel!=null).map(s=>s.nivel as number);
+    const nivelMedio = nivelArr.length ? Math.round(nivelArr.reduce((a,b)=>a+b,0)/nivelArr.length) : 70;
+    const aguaCrit   = aguaSens.filter(s=>(s.nivel??100)<25).length;
+    const aguaScore  = Math.max(10, nivelMedio - aguaCrit*20);
+
+    // Encomendas
+    const encTotal    = (encomendas||[]).length;
+    const encPend     = (encomendas||[]).filter(e=>e.status==="aguardando_retirada").length;
+    const now         = Date.now();
+    const encAntigas  = (encomendas||[]).filter(e=>(now-new Date(e.created_at).getTime())/864e5>=3).length;
+    const encScore    = encAntigas>0 ? Math.max(20,80-encAntigas*15) : encTotal>0 ? 75 : 95;
+
+    // Financeiro
+    const totRec  = (lancamentos||[]).filter(l=>l.tipo==="receita").reduce((s,l)=>s+Number(l.valor),0);
+    const totDesp = (lancamentos||[]).filter(l=>l.tipo==="despesa").reduce((s,l)=>s+Number(l.valor),0);
+    const saldoFin = totRec - totDesp;
+    const inadCount = (lancamentos||[]).filter(l=>l.tipo==="receita"&&l.status==="atrasado").length;
+    const recCount  = (lancamentos||[]).filter(l=>l.tipo==="receita").length;
+    const txInad    = recCount>0 ? Math.round((inadCount/recCount)*100) : 0;
+    const finScore  = Math.max(10, 100 - txInad*2 - (saldoFin<0?30:0));
+
+    // Equipamentos
+    const eqManut = (equipamentos||[]).filter(e=>e.status==="manutencao").length;
+    const eqAtenc = (equipamentos||[]).filter(e=>e.status==="atencao").length;
+    const eqScore = Math.max(20, 100 - eqManut*20 - eqAtenc*8);
+
+    // Piscina
+    const pisc      = (piscina||[])[0] || null;
+    const piscScore = pisc ? 90 : 80;
+
+    const scoreGeral = Math.round([osScore,aguaScore,encScore,finScore,eqScore].reduce((a,b)=>a+b,0)/5);
+
+    res.json({
+      timestamp:  new Date().toISOString(),
+      condominio: { nome: cond?.nome||"Condomínio", total_unidades: cond?.total_unidades||0, total_moradores: cond?.total_moradores||0 },
+      score_geral: scoreGeral,
+      modulos: {
+        os:           { total:osTotal, urgentes:osUrgentes, altas:osAltas, lista:(osAbertas||[]).slice(0,5), score:osScore },
+        agua:         { sensores:aguaSens, nivel_medio:nivelMedio, criticos:aguaCrit, score:aguaScore },
+        encomendas:   { total:encTotal, pendentes:encPend, antigas:encAntigas, lista:(encomendas||[]).slice(0,5), score:encScore },
+        financeiro:   { saldo:saldoFin, totalRec:totRec, totalDesp:totDesp, txInadimplencia:txInad, score:finScore },
+        equipamentos: { total:(equipamentos||[]).length, em_manutencao:eqManut, atencao:eqAtenc, lista:(equipamentos||[]).slice(0,5), score:eqScore },
+        piscina:      { ultima_leitura:pisc, score:piscScore },
+      },
+    });
+  } catch(err) {
+    console.error("[di/briefing]", err);
+    res.json({ timestamp:new Date().toISOString(), condominio:{nome:"Condomínio",total_unidades:94,total_moradores:168}, score_geral:72,
+      modulos:{ os:{total:3,urgentes:1,altas:1,lista:[],score:55}, agua:{sensores:[],nivel_medio:60,criticos:0,score:60}, encomendas:{total:2,pendentes:2,antigas:1,lista:[],score:55}, financeiro:{saldo:5000,totalRec:20000,totalDesp:15000,txInadimplencia:8,score:78}, equipamentos:{total:10,em_manutencao:1,atencao:2,lista:[],score:72}, piscina:{ultima_leitura:null,score:80} },
+    });
+  }
+});
+
+// ── Di Análise por Módulo — chamado ao expandir card do briefing ──────────────
+router.post("/di/analise-modulo", async (req: Request, res: Response) => {
+  const { modulo, dados, condominio_id } = req.body as { modulo:string; dados:unknown; condominio_id?:string };
+  const d = dados as Record<string,unknown>;
+  const prompts: Record<string,string> = {
+    os:           `Analise as OSs abertas: total ${d?.total}, urgentes ${d?.urgentes}, altas ${d?.altas}. Lista: ${JSON.stringify(d?.lista)}. Diagnóstico em 2 parágrafos + 3 ações objetivas com •`,
+    agua:         `Analise reservatórios: nível médio ${d?.nivel_medio}%, críticos (<25%) ${d?.criticos}. Dados: ${JSON.stringify(d?.sensores)}. Autonomia e 3 ações com •`,
+    encomendas:   `Analise encomendas pendentes: total ${d?.total}, aguardando ${d?.pendentes}, +3 dias ${d?.antigas}. Lista: ${JSON.stringify(d?.lista)}. 3 ações de gestão com •`,
+    financeiro:   `Analise financeiro: saldo R$${d?.saldo}, receitas R$${d?.totalRec}, despesas R$${d?.totalDesp}, inadimplência ${d?.txInadimplencia}%. Diagnóstico e 3 ações com •`,
+    equipamentos: `Analise equipamentos: total ${d?.total}, manutenção ${d?.em_manutencao}, atenção ${d?.atencao}. Lista: ${JSON.stringify(d?.lista)}. 3 ações prioritárias com •`,
+    piscina:      `Analise piscina: ${JSON.stringify(d?.ultima_leitura)}. Avalie qualidade da água e sugira 3 ações de tratamento com •`,
+  };
+  if (!prompts[modulo]) return res.status(400).json({ error:"Módulo inválido" });
+  try {
+    let condNome = "Condomínio";
+    if (condominio_id) { const { data:c } = await supabase.from("condominios").select("nome").eq("id",condominio_id).single(); condNome = c?.nome||condNome; }
+    const msg = await anthropic.messages.create({
+      model:"claude-haiku-4-5", max_tokens:380,
+      system:`Você é Di, consultora do síndico do ${condNome}. Responda em 2 parágrafos curtos de diagnóstico + 3 ações com •. Tom: direto e empático.`,
+      messages:[{ role:"user", content:prompts[modulo] }],
+    });
+    const analise = (msg.content.find(b=>b.type==="text") as Anthropic.TextBlock)?.text ?? "";
+    res.json({ analise, modulo });
+  } catch {
+    const fb:Record<string,string> = {
+      os:           "Há OSs abertas que precisam de atenção. Priorize as urgentes e acompanhe o SLA de cada uma.\n\n• Acione técnico para OS urgentes hoje\n• Programe visita para OS com SLA próximo\n• Atualize status das OS em andamento",
+      agua:         "Monitore os reservatórios regularmente. Níveis abaixo de 30% exigem ação imediata.\n\n• Verifique sensores com leitura desatualizada\n• Contate empresa de abastecimento se nível crítico\n• Instrua zelador para vistoria visual diária",
+      encomendas:   "Encomendas aguardando retirada há mais de 3 dias precisam de notificação urgente.\n\n• Notifique via WhatsApp moradores com encomendas antigas\n• Ligue diretamente para perecíveis\n• Registre tentativas de contato no sistema",
+      financeiro:   "Acompanhe o fluxo de caixa e a inadimplência de perto.\n\n• Envie comunicado de cobrança para inadimplentes\n• Revise despesas acima do previsto\n• Agende reunião com conselho fiscal",
+      equipamentos: "Equipamentos em manutenção afetam a operação do condomínio.\n\n• Acompanhe prazo de retorno dos equipamentos em manutenção\n• Crie OS para equipamentos em atenção antes que piorem\n• Atualize o plano de manutenção preventiva",
+      piscina:      "A qualidade da água da piscina deve ser mantida nos parâmetros ideais.\n\n• Realize nova medição de pH e cloro hoje\n• Ajuste produtos conforme última leitura\n• Agende limpeza completa se necessário",
+    };
+    res.json({ analise:fb[modulo]||"Análise temporariamente indisponível.", modulo, offline:true });
+  }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // NOTIFICAÇÕES MULTICANAL — Telegram | WhatsApp | Expo Push
 // Tabelas: notificacoes_config (config por condo) + notificacoes_log (histórico)

@@ -1,0 +1,234 @@
+# Prompt — Replit Agent · ImobCore
+# BRIEFING DA Di: endpoint + tela por módulo com análise Claude + ações
+# Cole no chat do Replit AI
+
+---
+
+## PASSO 1 — Novo endpoint em `src/routes/sindico.ts`
+
+Adicionar ANTES do `export default r`:
+
+```typescript
+// ── Briefing da Di — snapshot completo por módulo ────────────────────────────
+// Retorna dados estruturados para cada módulo com análise da Di
+r.get("/di/briefing", async (req: Request, res: Response) => {
+  const condoId = req.user!.condominio_id;
+  try {
+    const snap = await gerarSnapshot(condoId);
+    const condo = snap.condominio as Record<string, unknown> ?? {};
+
+    // Montar dados por módulo sem chamar Claude ainda
+    // O frontend chama /di/chat por módulo individualmente quando o card for aberto
+    const modulos = {
+      os: {
+        total:    snap.os_abertas?.length ?? 0,
+        urgentes: snap.os_abertas?.filter(o => o.prioridade === "urgente").length ?? 0,
+        lista:    snap.os_abertas?.slice(0, 5) ?? [],
+        score:    Math.max(0, 100 - (snap.os_abertas?.length??0)*15 - (snap.os_abertas?.filter(o=>o.prioridade==="urgente").length??0)*20),
+      },
+      iot: {
+        reservatorios: snap.reservatorios ?? [],
+        nivel_medio:   snap.reservatorios?.length
+          ? Math.round(snap.reservatorios.reduce((s,r) => s + (r.ultimo_nivel_pct??0), 0) / snap.reservatorios.length)
+          : 0,
+        criticos:      snap.reservatorios?.filter(r => (r.ultimo_nivel_pct??100) < 15).length ?? 0,
+        score:         snap.reservatorios?.length
+          ? Math.round(snap.reservatorios.reduce((s,r) => s + (r.ultimo_nivel_pct??0), 0) / snap.reservatorios.length)
+          : 80,
+      },
+      misp: {
+        total:    snap.alertas_misp?.length ?? 0,
+        urgentes: snap.alertas_misp?.filter(a => a.severidade === "urgente").length ?? 0,
+        lista:    snap.alertas_misp?.slice(0, 5) ?? [],
+        score:    snap.alertas_misp?.filter(a=>a.severidade==="urgente").length ?? 0 > 0 ? 15
+          : snap.alertas_misp?.length ?? 0 > 0 ? 55 : 95,
+      },
+      encomendas: {
+        total:      snap.encomendas_pendentes?.length ?? 0,
+        pereciveis: snap.encomendas_pendentes?.filter(e => e.tipo === "perecivel").length ?? 0,
+        antigas:    snap.encomendas_pendentes?.filter(e => e.dias_na_portaria >= 3).length ?? 0,
+        lista:      snap.encomendas_pendentes?.slice(0, 5) ?? [],
+        score:      snap.encomendas_pendentes?.filter(e=>e.tipo==="perecivel").length ?? 0 > 0 ? 30
+          : snap.encomendas_pendentes?.filter(e=>e.dias_na_portaria>=3).length ?? 0 > 0 ? 55 : 90,
+      },
+      scores: {
+        pilares:     snap.scores ?? [],
+        score_geral: snap.scores?.length
+          ? Math.round(snap.scores.reduce((s,p) => s + p.score, 0) / snap.scores.length)
+          : 84,
+        historico:   snap.historico_30d ?? null,
+      },
+      acoes_pendentes: {
+        total: snap.acoes_pendentes?.length ?? 0,
+        lista: snap.acoes_pendentes?.slice(0, 5) ?? [],
+      },
+    };
+
+    // Score geral agregado
+    const score_geral = Math.round(
+      [modulos.os.score, modulos.iot.score, modulos.misp.score,
+       modulos.encomendas.score, modulos.scores.score_geral].reduce((s,v)=>s+v,0) / 5
+    );
+
+    res.json({
+      timestamp:    new Date().toISOString(),
+      condominio:   { nome: condo.nome, total_unidades: condo.total_unidades, total_moradores: condo.total_moradores },
+      score_geral,
+      modulos,
+    });
+  } catch (err) {
+    // Fallback demo
+    res.json({
+      timestamp: new Date().toISOString(),
+      condominio: { nome: "Demo Condomínio", total_unidades: 94, total_moradores: 168 },
+      score_geral: 74,
+      modulos: {
+        os:         { total: 2, urgentes: 1, lista: [], score: 55 },
+        iot:        { reservatorios: [], nivel_medio: 40, criticos: 1, score: 40 },
+        misp:       { total: 2, urgentes: 0, lista: [], score: 55 },
+        encomendas: { total: 2, pereciveis: 1, antigas: 1, lista: [], score: 30 },
+        scores:     { pilares: [], score_geral: 84, historico: null },
+        acoes_pendentes: { total: 0, lista: [] },
+      },
+    });
+  }
+});
+
+// ── Análise Di de módulo específico ─────────────────────────────────────────
+// Chamado quando o síndico abre um card do briefing
+r.post("/di/analise-modulo", async (req: Request, res: Response) => {
+  const { modulo, dados } = req.body ?? {};
+  const condoId = req.user!.condominio_id;
+
+  const prompts: Record<string, string> = {
+    os:         `Analise estas OSs abertas: ${JSON.stringify(dados?.lista?.slice(0,5))}. Urgentes: ${dados?.urgentes}. Responda em 2 parágrafos curtos: situação atual e próximos passos. Sugira 3 ações objetivas.`,
+    iot:        `Analise reservatórios: ${JSON.stringify(dados?.reservatorios)}. Nível médio: ${dados?.nivel_medio}%. Críticos (<15%): ${dados?.criticos}. Calcule autonomia (consumo ~2%/h) e sugira 3 ações.`,
+    misp:       `Analise alertas de segurança: ${JSON.stringify(dados?.lista?.slice(0,5))}. Total: ${dados?.total}, urgentes: ${dados?.urgentes}. Avalie risco e sugira 3 ações concretas.`,
+    encomendas: `Analise encomendas pendentes: ${JSON.stringify(dados?.lista?.slice(0,5))}. Perecíveis: ${dados?.pereciveis}, com +3 dias: ${dados?.antigas}. Sugira 3 ações de gestão.`,
+    scores:     `Analise pilares do condomínio: ${JSON.stringify(dados?.pilares)}. Score geral: ${dados?.score_geral}. Histórico 30d: ${JSON.stringify(dados?.historico)}. Faça diagnóstico e sugira 3 melhorias prioritárias.`,
+    comunicados:`Com base no estado do condomínio (OSs: ${dados?.os_total}, MISP: ${dados?.misp_total}, encomendas: ${dados?.enc_total}), sugira 3 comunicados relevantes para enviar aos moradores agora.`,
+  };
+
+  const prompt = prompts[modulo];
+  if (!prompt) return res.status(400).json({ error: "Módulo inválido" });
+
+  try {
+    const snap = await gerarSnapshot(condoId);
+    const condo = snap.condominio as Record<string, unknown> ?? {};
+    const msg = await getClaude().messages.create({
+      model: CONFIG.anthropic.model, max_tokens: 400,
+      system: `Você é Di, consultora do síndico do ${condo.nome ?? "condomínio"}.
+Responda de forma objetiva, em parágrafos curtos.
+NÃO discuta: saldo bancário, lista de inadimplentes por nome, dados pessoais.
+Tom: direto, empático, sem jargão técnico.`,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const analise = (msg.content.find(b => b.type === "text") as Anthropic.TextBlock)?.text ?? "";
+    res.json({ analise, modulo, tokens: msg.usage.input_tokens + msg.usage.output_tokens });
+  } catch {
+    const fallbacks: Record<string, string> = {
+      os:         "Há OSs abertas que precisam de acompanhamento. Verifique as urgentes primeiro e acione os técnicos responsáveis.",
+      iot:        "Monitore os reservatórios com atenção. Níveis abaixo de 30% requerem planejamento de reabastecimento.",
+      misp:       "O sistema de segurança apresenta alertas. Verifique câmeras offline e acione manutenção se necessário.",
+      encomendas: "Há encomendas aguardando retirada. Perecíveis precisam de notificação urgente ao morador.",
+      scores:     "O score reflete o estado atual do condomínio. Foque nos pilares com menor pontuação para melhorar o índice geral.",
+      comunicados:"Recomendo enviar comunicados sobre as situações mais relevantes do momento para manter os moradores informados.",
+    };
+    res.json({ analise: fallbacks[modulo] ?? "Análise não disponível no momento.", offline: true });
+  }
+});
+```
+
+---
+
+## PASSO 2 — Criar `public/sindico/briefing.html`
+
+Copiar o conteúdo do arquivo `briefing_sindico.html` gerado para `public/sindico/briefing.html`.
+
+Depois, em `src/index.ts` adicionar:
+```typescript
+// Briefing da Di — página separada
+app.get("/sindico/briefing", (_req, res) =>
+  res.sendFile(path.join(PUBLIC, "sindico", "briefing.html"))
+);
+```
+
+---
+
+## PASSO 3 — Integrar botão no app síndico
+
+Em `public/sindico/index.html`, no botão que abre o briefing:
+```javascript
+// Alterar href do botão de briefing para:
+function abrirBriefing(){
+  window.location.href = '/sindico/briefing';
+}
+```
+
+Ou integrar inline: trocar a tab "Briefing" do header da tela atual
+para `window.location.href = '/sindico/briefing'` ao clicar.
+
+---
+
+## PASSO 4 — Atualizar chamadas no briefing.html
+
+Substituir as 2 chamadas no briefing.html:
+
+**1. Busca de dados** (linha com `/api/sindico/resumo`):
+```javascript
+// ANTES:
+const r = await fetch('/api/sindico/resumo',{credentials:'include'});
+snapData = await r.json();
+
+// DEPOIS — usa endpoint novo com todos os dados:
+const r = await fetch('/api/sindico/di/briefing',{credentials:'include'});
+const briefingData = await r.json();
+snapData = {
+  os_abertas:          briefingData.modulos.os.lista,
+  reservatorios:       briefingData.modulos.iot.reservatorios,
+  alertas_misp:        briefingData.modulos.misp.lista,
+  encomendas_pendentes: briefingData.modulos.encomendas.lista,
+  scores:              briefingData.modulos.scores.pilares,
+  historico_30d:       briefingData.modulos.scores.historico,
+  condominio:          briefingData.condominio,
+};
+```
+
+**2. Análise por módulo** (dentro de `toggleCard`, linha com `/api/sindico/di/chat`):
+```javascript
+// ANTES:
+const r = await fetch('/api/sindico/di/chat',{...});
+
+// DEPOIS — endpoint específico por módulo:
+const r = await fetch('/api/sindico/di/analise-modulo', {
+  method: 'POST',
+  headers: {'Content-Type':'application/json'},
+  credentials: 'include',
+  body: JSON.stringify({ modulo: id, dados: mod.getStatus(snapData) })
+});
+```
+
+---
+
+## VERIFICAÇÃO
+
+```bash
+npm run dev
+
+# 1. Buscar briefing
+curl http://localhost:3000/api/sindico/di/briefing -b "token=sindico_token"
+# Esperado: { score_geral: 74, modulos: { os: {...}, iot: {...}, ... } }
+
+# 2. Análise de módulo
+curl -X POST http://localhost:3000/api/sindico/di/analise-modulo \
+  -H "Content-Type: application/json" -b "token=sindico_token" \
+  -d '{"modulo":"os","dados":{"lista":[],"urgentes":1,"total":2}}'
+# Esperado: { analise: "Há 1 OS urgente..." }
+
+# 3. Abrir no celular:
+# http://localhost:3000/sindico/briefing
+# ✓ Clique em "Novo briefing da Di" → cards aparecem com score
+# ✓ Toque em qualquer card → expande com análise Da Di + sugestões
+# ✓ Toque em uma sugestão → abre ação (chat, rota, sheet)
+# ✓ Tab "Relatório" → visão consolidada
+```
