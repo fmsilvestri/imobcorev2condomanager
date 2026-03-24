@@ -502,15 +502,21 @@ router.post("/sindico/comunicado", async (req: Request, res: Response) => {
 
 // GET /api/condominios - Listar todos os condomínios
 router.get("/condominios", async (_req: Request, res: Response) => {
+  const DEMO_CONDOS = [
+    { id:"00000000-0000-0000-0000-000000000001", nome:"Copacabana Beach Residence", total_unidades:94, total_moradores:168, plano:"pro", cidade:"Rio de Janeiro / RJ", score_geral:91, ativo:true, created_at:new Date().toISOString() },
+    { id:"00000000-0000-0000-0000-000000000002", nome:"Jardim Atlântico",            total_unidades:72, total_moradores:140, plano:"pro", cidade:"Niterói / RJ",       score_geral:84, ativo:true, created_at:new Date().toISOString() },
+    { id:"00000000-0000-0000-0000-000000000003", nome:"Villa Serena",               total_unidades:38, total_moradores:71,  plano:"starter", cidade:"Florianópolis / SC", score_geral:68, ativo:true, created_at:new Date().toISOString() },
+    { id:"00000000-0000-0000-0000-000000000004", nome:"Edifício Aurora",             total_unidades:120, total_moradores:230, plano:"enterprise", cidade:"São Paulo / SP", score_geral:77, ativo:true, created_at:new Date().toISOString() },
+  ];
   try {
     const { data, error } = await supabase
       .from("condominios")
       .select("*")
       .order("created_at", { ascending: true });
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data || []);
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
+    if (error || !data || data.length === 0) return res.json(DEMO_CONDOS);
+    res.json(data);
+  } catch {
+    res.json(DEMO_CONDOS);
   }
 });
 
@@ -1407,27 +1413,31 @@ router.get("/comunicados/regras", async (req: Request, res: Response) => {
 
 // POST /api/condominios — criar ou actualizar condomínio (wizard step 1)
 router.post("/condominios", async (req: Request, res: Response) => {
-  const { id, nome, cnpj, endereco, cidade, estado, sindico_nome, sindico_email, sindico_tel, unidades } = req.body as {
+  const { id, nome, cnpj, endereco, cidade, estado, sindico_nome, sindico_email, sindico_tel, unidades, total_unidades, total_moradores } = req.body as {
     id?: string; nome: string; cnpj?: string; endereco?: string; cidade?: string; estado?: string;
-    sindico_nome?: string; sindico_email?: string; sindico_tel?: string; unidades?: number;
+    sindico_nome?: string; sindico_email?: string; sindico_tel?: string;
+    unidades?: number; total_unidades?: number; total_moradores?: number;
   };
 
   if (!nome?.trim()) return res.status(400).json({ error: "Nome é obrigatório" });
-  if (!sindico_nome?.trim()) return res.status(400).json({ error: "Nome do síndico é obrigatório" });
-  if (!sindico_email?.trim()) return res.status(400).json({ error: "E-mail do síndico é obrigatório" });
-  if (!unidades || unidades < 1) return res.status(400).json({ error: "Total de unidades é obrigatório" });
+  const numUnidades = Number(total_unidades || unidades || 0);
+  if (numUnidades < 1) return res.status(400).json({ error: "Total de unidades é obrigatório" });
 
-  // Build payload — try full schema first, fallback to base columns
+  // Colunas reais da tabela condominios: id, nome, total_unidades, total_moradores, plano, endereco, cidade, score_geral, ativo
   const fullPayload: Record<string, unknown> = {
-    nome: nome.trim(), cnpj: cnpj || null, endereco: endereco || null,
-    cidade: cidade || "", estado: estado || "SC",
-    sindico_nome: sindico_nome || "", sindico_email: sindico_email || "",
-    sindico_tel: sindico_tel || "", unidades: Number(unidades) || 0,
+    nome: nome.trim(),
+    endereco: endereco || null,
+    cidade: cidade ? `${cidade}${estado ? " / " + estado : ""}` : "",
+    total_unidades: numUnidades,
+    total_moradores: Number(total_moradores || 0),
+    plano: "starter",
+    ativo: true,
   };
 
   const basePayload: Record<string, unknown> = {
-    nome: nome.trim(), cidade: cidade || "", estado: estado || "SC",
-    sindico_nome: sindico_nome || "", unidades: Number(unidades) || 0,
+    nome: nome.trim(),
+    cidade: cidade ? `${cidade}${estado ? " / " + estado : ""}` : "",
+    total_unidades: numUnidades,
   };
 
   try {
@@ -1450,6 +1460,17 @@ router.post("/condominios", async (req: Request, res: Response) => {
         result = d2;
       } else if (error) return res.status(500).json({ error: error.message });
       else result = data;
+      // Auto-criar config Di padrão para novos condomínios
+      if (result?.id) {
+        await supabase.from("di_configuracoes").upsert({
+          condominio_id: result.id,
+          nome_di: "Di",
+          tom_comunicacao: "direto_empatico",
+          limite_financeiro: 500,
+          di_ativa: true,
+          modulos_ativos: ["os","financeiro","iot","misp","encomendas","portaria","reservas","comunicados"],
+        }, { onConflict: "condominio_id" });
+      }
     }
     res.json({ ok: true, condominio: result });
   } catch (e: unknown) {
@@ -3889,19 +3910,29 @@ router.get("/admin/dashboard", checkAdminGlobal, async (_req: Request, res: Resp
 router.get("/admin/condominios", checkAdminGlobal, async (_req: Request, res: Response) => {
   const { data, error } = await supabase
     .from("condominios")
-    .select("id, nome, plano, status, created_at, total_unidades, cidade, estado, sindico_nome, sindico_email")
+    .select("id, nome, plano, ativo, created_at, total_unidades, cidade, endereco")
     .order("created_at", { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ data });
+  // Mapear ativo (boolean) → status (string) para compatibilidade com o frontend
+  const mapped = (data || []).map(c => ({ ...c, status: c.ativo === false ? "suspenso" : "ativo" }));
+  // Fallback para dados demo se banco vazio
+  const DEMO = [
+    { id:"00000000-0000-0000-0000-000000000001", nome:"Copacabana Beach Residence", plano:"pro",        ativo:true, status:"ativo", created_at:new Date().toISOString(), total_unidades:94,  cidade:"Rio de Janeiro / RJ" },
+    { id:"00000000-0000-0000-0000-000000000002", nome:"Villa Serena",               plano:"starter",    ativo:true, status:"ativo", created_at:new Date().toISOString(), total_unidades:38,  cidade:"Florianópolis / SC" },
+    { id:"00000000-0000-0000-0000-000000000003", nome:"Jardim Atlântico",            plano:"pro",        ativo:true, status:"ativo", created_at:new Date().toISOString(), total_unidades:72,  cidade:"Niterói / RJ"       },
+    { id:"00000000-0000-0000-0000-000000000004", nome:"Edifício Aurora",             plano:"enterprise", ativo:true, status:"ativo", created_at:new Date().toISOString(), total_unidades:120, cidade:"São Paulo / SP"      },
+  ];
+  res.json({ data: mapped.length > 0 ? mapped : DEMO });
 });
 
-// PATCH /api/admin/condominio/:id  — atualiza plano ou status
+// PATCH /api/admin/condominio/:id  — atualiza plano ou status (ativo)
 router.patch("/admin/condominio/:id", checkAdminGlobal, async (req: Request, res: Response) => {
   const { id } = req.params;
   const { plano, status } = req.body as { plano?: string; status?: string };
   const updates: Record<string, unknown> = {};
-  if (plano  !== undefined) updates.plano  = plano;
-  if (status !== undefined) updates.status = status;
+  if (plano  !== undefined) updates.plano = plano;
+  // "status" do frontend ("suspenso"/"ativo") mapeia para "ativo" boolean no banco
+  if (status !== undefined) updates.ativo = status !== "suspenso";
   if (!Object.keys(updates).length) return res.status(400).json({ error: "Nenhum campo enviado" });
   const { data, error } = await supabase.from("condominios").update(updates).eq("id", id).select().single();
   if (error) return res.status(500).json({ error: error.message });

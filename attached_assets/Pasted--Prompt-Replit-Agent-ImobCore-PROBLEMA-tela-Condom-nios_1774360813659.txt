@@ -1,0 +1,221 @@
+# Prompt — Replit Agent · ImobCore
+# PROBLEMA: tela "Condomínios" mostra "0 condomínios" / "Nenhum condomínio encontrado"
+# CAUSA: banco Supabase vazio → data=[](array vazio) → data ?? fallback nunca dispara
+# SOLUÇÃO: 3 fixes cirúrgicos + fluxo completo criar condo → Di → usuários
+#
+# Cole no chat do Replit AI
+
+---
+
+## FIX 1 — Backend: `src/routes/master.ts`
+## GET /condominios retorna [] vazio quando banco vazio — trocar fallback
+
+### Localizar e SUBSTITUIR:
+```typescript
+// ANTES (linha ~39):
+r.get("/condominios", async (_req, res) => {
+  try {
+    const { data } = await getDB().from("condominios").select("*").order("nome");
+    res.json(data ?? getDemoCondos());
+  } catch { res.json(getDemoCondos()); }
+});
+```
+
+### Por:
+```typescript
+// DEPOIS — fallback quando banco vazio OU erro:
+r.get("/condominios", async (_req, res) => {
+  try {
+    const { data, error } = await getDB().from("condominios").select("*").order("nome");
+    // data=[] quando banco vazio — usar demo nesse caso também
+    if (error || !data || data.length === 0) {
+      return res.json(getDemoCondos());
+    }
+    res.json(data);
+  } catch { res.json(getDemoCondos()); }
+});
+```
+
+---
+
+## FIX 2 — Frontend: `public/master/index.html`
+## init() carrega CONDOS_DEMO fixo, mas não busca do backend. Corrigir.
+
+### Localizar e SUBSTITUIR a função init():
+```javascript
+// ANTES:
+async function init(){
+  S.condos=CONDOS_DEMO;
+  S.usuarios=USERS_DEMO;
+  // ...
+}
+```
+
+### Por:
+```javascript
+async function init(){
+  // Tenta carregar do backend primeiro; fallback para DEMO se falhar
+  try {
+    const [condosRes, usersRes] = await Promise.allSettled([
+      api("/master/condominios"),
+      api("/master/usuarios"),
+    ]);
+    S.condos = (condosRes.status==="fulfilled" && Array.isArray(condosRes.value) && condosRes.value.length > 0)
+      ? condosRes.value : CONDOS_DEMO;
+    S.usuarios = (usersRes.status==="fulfilled" && Array.isArray(usersRes.value) && usersRes.value.length > 0)
+      ? usersRes.value : USERS_DEMO;
+  } catch {
+    S.condos   = CONDOS_DEMO;
+    S.usuarios = USERS_DEMO;
+  }
+  S.regrasCurr=[...REGRAS_DEMO];
+  populateCondoSelects();
+  await loadStats();
+  renderOverview();
+  renderCondominos();
+  renderUsuarios();
+  renderBilling();
+  renderBlocosGlobal();
+  renderRegras();
+  renderCandoSelectGrid();
+  renderEngineSelects();
+  renderLogsFilters();
+  renderModSelects();
+  loadLogs();
+  setTimeout(startFeedLive,800);
+}
+```
+
+---
+
+## FIX 3 — SQL Supabase: seed inicial para não ficar tela vazia
+
+### Executar no SQL Editor do Supabase:
+
+```sql
+-- Verificar se o banco tem dados
+SELECT COUNT(*) FROM condominios;
+
+-- Se retornar 0, inserir um condo inicial para teste
+INSERT INTO condominios (id, nome, total_unidades, total_moradores, plano, cidade, ativo)
+VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'Copacabana Beach Residence',
+  94, 168, 'pro', 'Rio de Janeiro', true
+) ON CONFLICT (id) DO NOTHING;
+
+-- Criar config Di padrão para este condo
+INSERT INTO di_configuracoes (condominio_id, nome_di, tom_comunicacao, limite_financeiro, di_ativa, modulos_ativos)
+VALUES (
+  '00000000-0000-0000-0000-000000000001',
+  'Di', 'direto_empatico', 500, true,
+  '["os","financeiro","iot","misp","encomendas","portaria","reservas","comunicados","votacoes"]'
+) ON CONFLICT (condominio_id) DO NOTHING;
+
+-- Verificar resultado
+SELECT c.nome, dc.nome_di, dc.di_ativa
+FROM condominios c
+LEFT JOIN di_configuracoes dc ON dc.condominio_id = c.id;
+```
+
+---
+
+## FLUXO COMPLETO — Criar condomínio + Di personalizada + usuários
+
+### PASSO 1: Master cria o condomínio
+**No painel Master → Condomínios → "+ Novo condomínio"**
+
+O endpoint já faz tudo automaticamente:
+```
+POST /api/master/condominios
+{ nome, total_unidades, total_moradores, plano, endereco, cidade }
+
+↓ action no backend (master.ts):
+1. INSERT condominios
+2. criarConfigDiPadrao(id) → INSERT di_configuracoes com defaults
+   { nome_di: "Di", tom: "direto_empatico", limite: 500, di_ativa: true,
+     modulos_ativos: ["os","financeiro","iot","misp","encomendas",...] }
+```
+
+### PASSO 2: Master personaliza a Di do condomínio
+**Master → Config por Condo → selecionar → "Configurações Di"**
+
+```
+PUT /api/master/di/settings/:condoId
+{ nome_di: "Dircelene", tom_comunicacao: "amigavel",
+  limite_financeiro: 1000, di_ativa: true,
+  modulos_ativos: ["os","financeiro","iot","comunicados","encomendas"] }
+```
+
+**Master → Config por Condo → "System Prompt" → bloco B01 Identidade**
+```
+PUT /api/master/di/config/condo/:condoId/1_identidade
+{ conteudo: "Você é Dircelene, síndica virtual do {{nome_condominio}}.
+  Receptiva, empática e pronta para ajudar cada morador.
+  Tom: {{tom_comunicacao}}. Limite: R$ {{limite_financeiro}}." }
+```
+
+### PASSO 3: Master cria usuários para o condomínio
+**Master → Usuários → "+ Novo usuário" → selecionar condo**
+
+```
+POST /api/master/usuarios
+{ nome, email, role: "gestor"|"sindico"|"morador"|"zelador",
+  condominio_id: UUID_DO_CONDO,
+  unidade_id: "802"  // só para morador }
+```
+
+**Perfis disponíveis:**
+| role | o que pode fazer |
+|------|-----------------|
+| gestor | tudo no painel gestor — OS, financeiro, aprovações Di |
+| sindico | comunicados, OS (sem custo), votações |
+| morador | seus dados, encomendas, reservas, chat Di |
+| zelador | OS operacionais, portaria |
+
+### PASSO 4: Di já está personalizada e ativa
+A partir do login de qualquer usuário deste condo:
+- Chat Di usa o `nome_di` e o `system prompt` configurados pelo Master
+- Módulos visíveis = apenas os marcados em `modulos_ativos`
+- Limite financeiro = o configurado em `di_configuracoes`
+
+---
+
+## VERIFICAÇÃO COMPLETA
+
+```bash
+npm run dev
+
+# 1. GET condomínios (não deve retornar array vazio)
+curl http://localhost:3000/api/master/condominios \
+  -H "x-master-token: master-dev-token"
+# Esperado: [ { id, nome, plano, ... }, ... ] — mínimo os demos
+
+# 2. Criar novo condomínio
+curl -X POST http://localhost:3000/api/master/condominios \
+  -H "Content-Type: application/json" \
+  -H "x-master-token: master-dev-token" \
+  -d '{"nome":"Residencial Teste","total_unidades":48,"plano":"pro"}'
+# Esperado: { ok: true, id: "uuid", condominio: {...} }
+# Verificar Supabase: di_configuracoes deve ter 1 novo registro com condominio_id
+
+# 3. Personalizar Di
+curl -X PUT http://localhost:3000/api/master/di/settings/UUID \
+  -H "Content-Type: application/json" \
+  -H "x-master-token: master-dev-token" \
+  -d '{"nome_di":"Sofia","tom_comunicacao":"amigavel","limite_financeiro":800}'
+# Esperado: { ok: true }
+
+# 4. Criar gestor para o condo
+curl -X POST http://localhost:3000/api/master/usuarios \
+  -H "Content-Type: application/json" \
+  -H "x-master-token: master-dev-token" \
+  -d '{"nome":"Carlos Silva","email":"gestor@teste.com","role":"gestor","condominio_id":"UUID"}'
+# Esperado: { ok: true, usuario: {...} }
+
+# 5. Verificar Di usa configuração correta
+curl -X POST http://localhost:3000/api/master/di/engine/ciclo \
+  -H "x-master-token: master-dev-token" \
+  -d '{"condoId":"UUID","modo":"rapido"}'
+# No log deve aparecer: "Você é Sofia, síndica virtual de Residencial Teste"
+```
