@@ -179,11 +179,11 @@ export default function SindicoHome({
   ];
   const mods = isDark ? modsDark : modsLight;
 
-  const navItem = (emoji: string, label: string, screen: string | null, onClick: () => void) => {
+  const navItem = (imgSrc: string, label: string, screen: string | null, onClick: () => void) => {
     const active = sindicoScreen === screen || (screen === null && !sindicoScreen);
     return (
-      <button onClick={onClick} style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:2, opacity:active?1:0.35, transition:"opacity .15s" }}>
-        <span style={{ fontSize:20 }}>{emoji}</span>
+      <button onClick={onClick} style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 10px", display:"flex", flexDirection:"column", alignItems:"center", gap:2, opacity:active?1:0.45, transition:"opacity .15s, transform .15s", transform: active ? "scale(1.08)" : "scale(1)" }}>
+        <img src={imgSrc} alt={label} style={{ width:28, height:28, objectFit:"contain", filter: active ? "none" : "grayscale(30%)" }} />
         <span style={{ fontSize:9, fontWeight:800, color:active?v.activeClr:v.muted, lineHeight:1 }}>{label}</span>
       </button>
     );
@@ -407,14 +407,14 @@ export default function SindicoHome({
         padding:"6px 0 max(6px,env(safe-area-inset-bottom))",
         zIndex:50, flexShrink:0,
       }}>
-        {navItem("⊞", "Início",   null,           () => setSindicoScreen(null))}
-        {navItem("🔔", "Alertas", "misp",          () => setSindicoScreen("misp"))}
-        {/* FAB — Di */}
-        <button onClick={() => setSindicoScreen("di")} style={{ width:52, height:52, borderRadius:"50%", background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"2.5px solid rgba(167,139,250,.7)", cursor:"pointer", marginTop:-12, boxShadow:"0 4px 18px rgba(168,85,247,0.65),0 0 0 3px rgba(168,85,247,.2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, padding:0, overflow:"hidden" }}>
+        {navItem("/nav-inicio.png",   "Início",  null,          () => setSindicoScreen(null))}
+        {navItem("/nav-alertas.png",  "Alertas", "misp",        () => setSindicoScreen("misp"))}
+        {/* FAB — Di (centro) */}
+        <button onClick={() => setSindicoScreen("di")} style={{ width:56, height:56, borderRadius:"50%", background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"2.5px solid rgba(167,139,250,.7)", cursor:"pointer", marginTop:-14, boxShadow:"0 4px 18px rgba(168,85,247,0.65),0 0 0 3px rgba(168,85,247,.2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, padding:0, overflow:"hidden" }}>
           <img src="/di.png" alt="Di" style={{ width:"100%", height:"100%", objectFit:"cover", objectPosition:"top", borderRadius:"50%", display:"block" }} />
         </button>
-        {navItem("👤", "Usuário", "planejamento",  () => setSindicoScreen("planejamento"))}
-        {navItem("👥", "CRM",     "crm",           () => setSindicoScreen("crm"))}
+        {navItem("/nav-usuario.png",  "Usuário", "planejamento",() => setSindicoScreen("planejamento"))}
+        {navItem("/nav-crm.png",      "CRM",     "crm",         () => setSindicoScreen("crm"))}
       </div>
     </div>
   );
