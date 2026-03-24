@@ -197,7 +197,7 @@ export default function SindicoHome({
           transition:"background .15s",
           boxShadow: active ? `0 0 0 1.5px ${clr}44` : "none",
         }}>
-          <img src={imgSrc} alt={label} style={{ width:30, height:30, objectFit:"contain", filter: active ? "none" : isDark ? "brightness(0.75)" : "brightness(0.85)" }} />
+          <img src={imgSrc} alt={label} style={{ width:30, height:30, objectFit:"contain", mixBlendMode: isDark ? "screen" : "multiply", filter: active ? "none" : "brightness(0.88)" }} />
         </div>
         <span style={{ fontSize:10, fontWeight:900, color: active ? clr : (isDark ? "rgba(200,190,255,0.70)" : "rgba(80,60,180,0.65)"), lineHeight:1, letterSpacing:"0.02em" }}>{label}</span>
       </button>
