@@ -1153,7 +1153,12 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
 
   // Derived list: urgentes first, then by SLA remaining
   const displayed = [...osList]
-    .filter(o => filter==="urgente" ? o.prioridade==="urgente"&&o.status!=="fechada" : true)
+    .filter(o => {
+      if (filter==="urgente") return o.prioridade==="urgente"&&o.status!=="fechada";
+      if (filter==="aberta") return o.status==="aberta";
+      if (filter==="em_andamento") return o.status==="em_andamento";
+      return true; // "todos"
+    })
     .sort((a,b)=>{
       const pa = a.prioridade==="urgente"?0:a.prioridade==="alta"?1:a.prioridade==="media"?2:3;
       const pb = b.prioridade==="urgente"?0:b.prioridade==="alta"?1:b.prioridade==="media"?2:3;
@@ -1168,8 +1173,11 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
   }
 
   function handleOSUpdate(updated: OS) {
+    // Atualiza imediatamente no estado local (drawer + cards)
     setOsList(prev=>prev.map(o=>o.id===updated.id?updated:o));
     if(selectedOS?.id===updated.id)setSelectedOS(updated);
+    // Refetch do servidor para garantir KPIs e contadores atualizados
+    setTimeout(()=>load(), 300);
   }
 
   const slaBreach = osList.filter(o=>o.status!=="fechada"&&elapsed(o.created_at,o.sla_horas||48).pct>80).length;
