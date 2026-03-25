@@ -5698,6 +5698,28 @@ router.patch("/manutencao/alertas/:id/resolver", async (req: Request, res: Respo
 // ════════════════════════════════════════════════════════════════
 // DOCUMENTOS & LICENÇAS
 // ════════════════════════════════════════════════════════════════
+const DOC_BUCKET = "documentos-condominio";
+const _docUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } }); // 25 MB
+
+async function ensureDocBucket() {
+  const { error } = await supabase.storage.createBucket(DOC_BUCKET, { public: true });
+  // ignore "already exists" errors
+  if (error && !error.message.toLowerCase().includes("already exists") && !error.message.toLowerCase().includes("duplicate")) {
+    console.warn("ensureDocBucket:", error.message);
+  }
+}
+
+async function uploadDocArquivo(condId: string, file: Express.Multer.File): Promise<{ url: string; path: string }> {
+  await ensureDocBucket();
+  const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+  const filePath = `${condId}/${Date.now()}_${safeName}`;
+  const { error: upErr } = await supabase.storage.from(DOC_BUCKET).upload(filePath, file.buffer, {
+    contentType: file.mimetype, upsert: true,
+  });
+  if (upErr) throw new Error(upErr.message);
+  const { data: urlData } = supabase.storage.from(DOC_BUCKET).getPublicUrl(filePath);
+  return { url: urlData.publicUrl, path: filePath };
+}
 
 // GET /api/documentos?condominio_id=...
 router.get("/documentos", async (req: Request, res: Response) => {
@@ -5705,7 +5727,7 @@ router.get("/documentos", async (req: Request, res: Response) => {
   if (!condId) return res.status(400).json({ error: "condominio_id required" });
   const { data, error } = await supabase
     .from("documentos_condominio")
-    .select("id,nome,tipo,descricao,conteudo_texto,created_at")
+    .select("id,nome,tipo,descricao,conteudo_texto,arquivo_url,arquivo_nome,arquivo_mime,arquivo_path,created_at")
     .eq("condominio_id", condId)
     .order("created_at", { ascending: false });
   if (error) {
@@ -5715,7 +5737,7 @@ router.get("/documentos", async (req: Request, res: Response) => {
   return res.json({ docs: data ?? [] });
 });
 
-// POST /api/documentos
+// POST /api/documentos — JSON-only (text content, no file)
 router.post("/documentos", async (req: Request, res: Response) => {
   const { condominio_id, nome, tipo, descricao, conteudo_texto } = req.body as Record<string, string>;
   if (!condominio_id || !nome || !tipo)
@@ -5732,7 +5754,42 @@ router.post("/documentos", async (req: Request, res: Response) => {
   return res.status(201).json({ doc: data });
 });
 
-// PUT /api/documentos/:id
+// POST /api/documentos/upload — multipart: create document + upload file
+router.post("/documentos/upload", _docUpload.single("arquivo"), async (req: Request, res: Response) => {
+  const { condominio_id, nome, tipo, descricao, conteudo_texto } = req.body as Record<string, string>;
+  if (!condominio_id || !nome || !tipo)
+    return res.status(400).json({ error: "condominio_id, nome e tipo são obrigatórios" });
+
+  let arquivo_url: string | null = null;
+  let arquivo_nome: string | null = null;
+  let arquivo_mime: string | null = null;
+  let arquivo_path: string | null = null;
+
+  if (req.file) {
+    try {
+      const result = await uploadDocArquivo(condominio_id, req.file);
+      arquivo_url = result.url;
+      arquivo_path = result.path;
+      arquivo_nome = req.file.originalname;
+      arquivo_mime = req.file.mimetype;
+    } catch (e) {
+      return res.status(500).json({ error: `Falha no upload: ${(e as Error).message}` });
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("documentos_condominio")
+    .insert({ condominio_id, nome, tipo, descricao: descricao || null, conteudo_texto: conteudo_texto || null, arquivo_url, arquivo_nome, arquivo_mime, arquivo_path })
+    .select().single();
+  if (error) {
+    if (isMissingTable(error))
+      return res.status(503).json({ error: "missing_table", message: "Execute o SQL de migração no Supabase Dashboard" });
+    return res.status(500).json({ error: error.message });
+  }
+  return res.status(201).json({ doc: data });
+});
+
+// PUT /api/documentos/:id — update text fields
 router.put("/documentos/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
   const { nome, tipo, descricao, conteudo_texto } = req.body as Record<string, string>;
@@ -5744,11 +5801,46 @@ router.put("/documentos/:id", async (req: Request, res: Response) => {
   return res.json({ doc: data });
 });
 
-// DELETE /api/documentos/:id
+// POST /api/documentos/:id/arquivo — upload or replace file for existing document
+router.post("/documentos/:id/arquivo", _docUpload.single("arquivo"), async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!req.file) return res.status(400).json({ error: "arquivo é obrigatório" });
+
+  // Fetch doc to get condominio_id and old arquivo_path
+  const { data: doc } = await supabase.from("documentos_condominio").select("condominio_id,arquivo_path").eq("id", id).single();
+  if (!doc) return res.status(404).json({ error: "Documento não encontrado" });
+
+  // Remove old file from storage if exists
+  const oldPath = (doc as Record<string, unknown>).arquivo_path as string | null;
+  if (oldPath) {
+    await supabase.storage.from(DOC_BUCKET).remove([oldPath]);
+  }
+
+  try {
+    const condId = (doc as Record<string, unknown>).condominio_id as string;
+    const result = await uploadDocArquivo(condId, req.file);
+    const { data: updated, error } = await supabase
+      .from("documentos_condominio")
+      .update({ arquivo_url: result.url, arquivo_path: result.path, arquivo_nome: req.file.originalname, arquivo_mime: req.file.mimetype })
+      .eq("id", id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ doc: updated });
+  } catch (e) {
+    return res.status(500).json({ error: `Falha no upload: ${(e as Error).message}` });
+  }
+});
+
+// DELETE /api/documentos/:id — also removes file from storage
 router.delete("/documentos/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
+  // Fetch arquivo_path before deleting
+  const { data: doc } = await supabase.from("documentos_condominio").select("arquivo_path").eq("id", id).single();
+  const arquivoPath = doc ? (doc as Record<string, unknown>).arquivo_path as string | null : null;
   const { error } = await supabase.from("documentos_condominio").delete().eq("id", id);
   if (error) return res.status(500).json({ error: error.message });
+  if (arquivoPath) {
+    await supabase.storage.from(DOC_BUCKET).remove([arquivoPath]);
+  }
   return res.json({ ok: true });
 });
 
@@ -5864,11 +5956,21 @@ CREATE TABLE IF NOT EXISTS documentos_condominio (
   tipo            VARCHAR(100) NOT NULL,
   descricao       TEXT,
   conteudo_texto  TEXT,
+  arquivo_url     TEXT,
+  arquivo_nome    VARCHAR(255),
+  arquivo_mime    VARCHAR(100),
+  arquivo_path    TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS doc_condo ON documentos_condominio(condominio_id, created_at DESC);
+
+-- Se já criou a tabela sem as colunas de arquivo, execute:
+ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_url    TEXT;
+ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_nome   VARCHAR(255);
+ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_mime   VARCHAR(100);
+ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_path   TEXT;
 
 -- Verificar criação:
 SELECT table_name FROM information_schema.tables
