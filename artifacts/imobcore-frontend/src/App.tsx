@@ -5195,18 +5195,20 @@ export default function App() {
         {/* ── ENERGIA ──────────────────────────────────────────────────── */}
         {sindicoScreen === "energia" && (
           <div className="ph-sub-body">
-            {/* KPI row */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14 }}>
+            {/* KPI row — 3D colorido */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
               {[
-                { label: "Consumo Atual", val: "284 kWh", icon: "⚡", color: "#F59E0B" },
-                { label: "Meta Mensal", val: "320 kWh", icon: "🎯", color: "#6366F1" },
-                { label: "Geração Solar", val: "62 kWh", icon: "☀️", color: "#10B981" },
-                { label: "Economia", val: "R$186", icon: "💚", color: "#14B8A6" },
+                { label: "Consumo Atual", val: "284 kWh", icon: "⚡", top:"#FDE68A", bot:"#D97706", edge:"#B45309", glow:"rgba(245,158,11,.6)" },
+                { label: "Meta Mensal",   val: "320 kWh", icon: "🎯", top:"#A5B4FC", bot:"#4F46E5", edge:"#3730A3", glow:"rgba(99,102,241,.6)" },
+                { label: "Geração Solar", val: "62 kWh",  icon: "☀️", top:"#6EE7B7", bot:"#059669", edge:"#047857", glow:"rgba(16,185,129,.6)" },
+                { label: "Economia",      val: "R$186",   icon: "💚", top:"#5EEAD4", bot:"#0D9488", edge:"#115E59", glow:"rgba(20,184,166,.6)" },
               ].map(k => (
-                <div key={k.label} className="ph-os-item" style={{ textAlign: "center", padding: "10px 8px" }}>
-                  <div style={{ fontSize: 20, marginBottom: 4 }}>{k.icon}</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: k.color }}>{k.val}</div>
-                  <div style={{ fontSize: 10, color: "#475569" }}>{k.label}</div>
+                <div key={k.label} style={{ borderRadius:14, padding:"12px 10px 10px", textAlign:"center", position:"relative", overflow:"hidden", background:`linear-gradient(160deg,${k.top} 0%,${k.bot} 100%)`, boxShadow:`0 3px 0 ${k.edge}, 0 6px 18px ${k.glow}, inset 0 1px 0 rgba(255,255,255,.35)`, border:"1px solid rgba(255,255,255,.15)" }}>
+                  <div style={{ position:"absolute",top:0,left:0,right:0,height:"50%",background:"linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,0))",borderRadius:"14px 14px 0 0",pointerEvents:"none" }} />
+                  <div style={{ position:"absolute",bottom:-6,right:4,fontSize:36,opacity:.14,lineHeight:1,pointerEvents:"none" }}>{k.icon}</div>
+                  <div style={{ fontSize: 22, marginBottom: 4, position:"relative", filter:"drop-shadow(0 2px 4px rgba(0,0,0,.3))" }}>{k.icon}</div>
+                  <div style={{ fontSize: 17, fontWeight: 900, color:"#fff", lineHeight:1.1, textShadow:"0 2px 6px rgba(0,0,0,.35)", position:"relative", letterSpacing:"-0.5px" }}>{k.val}</div>
+                  <div style={{ fontSize: 9, color:"rgba(255,255,255,.85)", fontWeight:800, textTransform:"uppercase", letterSpacing:".05em", marginTop:4, position:"relative", textShadow:"0 1px 2px rgba(0,0,0,.3)" }}>{k.label}</div>
                 </div>
               ))}
             </div>
