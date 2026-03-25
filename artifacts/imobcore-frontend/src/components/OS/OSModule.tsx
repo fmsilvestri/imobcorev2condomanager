@@ -795,7 +795,7 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
 }
 
 // ── OSDetail Drawer ───────────────────────────────────────────────────────────
-function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS; condId:string; condNome:string; osList:OS[]; onClose:()=>void; onUpdate:(os:OS)=>void }) {
+function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS; condId:string; condNome:string; osList:OS[]; onClose:()=>void; onUpdate:(os:OS, refetch?:boolean)=>void }) {
   const [comments, setComments] = useState<Comentario[]>([]);
   const [newMsg, setNewMsg]     = useState("");
   const [diTexto, setDiTexto]   = useState((os.di_sugestao as {texto?:string}|undefined)?.texto || "");
@@ -837,15 +837,17 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
   }
 
   async function changeStatus(status: string) {
-    // Atualização otimista: reflete mudança imediatamente na UI
-    onUpdate({ ...os, status });
+    // Atualização otimista: reflete mudança imediatamente na UI (sem refetch)
+    onUpdate({ ...os, status }, false);
     try {
       const r = await fetch(`/api/os/${os.id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ status }) });
       const updated = await r.json();
-      if (updated.id) onUpdate(updated); // Sincroniza com dados reais do servidor
+      // Sincroniza com dados reais do servidor E dispara refetch dos KPIs
+      if (updated.id) onUpdate(updated, true);
+      else onUpdate({ ...os, status }, true);
     } catch {
       // Em caso de erro, reverte para o status original
-      onUpdate({ ...os });
+      onUpdate({ ...os }, false);
     }
   }
 
@@ -1186,12 +1188,12 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
     } catch { load(); }
   }
 
-  function handleOSUpdate(updated: OS) {
+  function handleOSUpdate(updated: OS, refetch = false) {
     // Atualiza imediatamente no estado local (drawer + cards)
     setOsList(prev=>prev.map(o=>o.id===updated.id?updated:o));
     if(selectedOS?.id===updated.id)setSelectedOS(updated);
-    // Refetch do servidor para garantir KPIs e contadores atualizados
-    setTimeout(()=>load(), 300);
+    // Refetch apenas quando confirmado pelo servidor (não na atualização otimista)
+    if (refetch) setTimeout(()=>load(), 200);
   }
 
   const slaBreach = osList.filter(o=>o.status!=="fechada"&&elapsed(o.created_at,o.sla_horas||48).pct>80).length;
