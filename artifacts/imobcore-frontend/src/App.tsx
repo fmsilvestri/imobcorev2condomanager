@@ -1502,6 +1502,9 @@ export default function App() {
   const [piscForm, setPiscForm] = useState(emptyPiscinaForm());
   const [piscFotoFile, setPiscFotoFile] = useState<File|null>(null);
   const [piscFotoPreview, setPiscFotoPreview] = useState<string|null>(null);
+  const [piscSetupModal, setPiscSetupModal] = useState(false);
+  const [piscSetupSql, setPiscSetupSql] = useState("");
+  const [piscSetupUrl, setPiscSetupUrl] = useState("");
 
   const loadFornecedores = async (cId: string) => {
     setFornecLoading(true);
@@ -6124,9 +6127,30 @@ export default function App() {
                 setPiscFotoFile(null); setPiscFotoPreview(null);
                 showToast(piscEditId?"Leitura atualizada!":"Leitura registrada! 🏊","success");
               } else {
-                const errJson = await r.json().catch(() => ({})) as Record<string,string>;
-                if (errJson.error === "missing_table") showToast("Tabela não criada. Execute o SQL de migração no Supabase Dashboard.","error");
-                else showToast("Erro ao salvar leitura","error");
+                const errJson = await r.json().catch(() => ({})) as { error?: string; sql?: string; supabase_url?: string };
+                if (errJson.error === "missing_table") {
+                  showToast("Tabela não encontrada. Tentando configurar automaticamente...","info");
+                  try {
+                    const migrRes = await fetch("/api/admin/piscina/auto-migrate", { method:"POST" });
+                    const migrJson = await migrRes.json() as { ok: boolean; sql?: string; supabase_url?: string };
+                    if (migrJson.ok) {
+                      showToast("Banco configurado! Salvando leitura...","success");
+                      const r2 = await fetch(url, { method: piscEditId?"PUT":"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ condominio_id:condId, ph:Number(piscForm.ph), cloro:Number(piscForm.cloro), temperatura:piscForm.temperatura?Number(piscForm.temperatura):null, alcalinidade:piscForm.alcalinidade?Number(piscForm.alcalinidade):null, dureza_calcica:piscForm.dureza_calcica?Number(piscForm.dureza_calcica):null, observacoes:piscForm.observacoes||null }) });
+                      if (r2.ok) {
+                        const saved2 = await r2.json() as { leitura?: { id: string } };
+                        const leitId2 = saved2.leitura?.id || piscEditId;
+                        if (piscFotoFile && leitId2) { const fd2=new FormData(); fd2.append("foto",piscFotoFile); await fetch(`/api/piscina/${leitId2}/foto`,{method:"POST",body:fd2}); }
+                        if (condId) await loadPiscina(condId);
+                        setPiscModal(false); setPiscEditId(null); setPiscForm(emptyPiscinaForm()); setPiscFotoFile(null); setPiscFotoPreview(null);
+                        showToast("Leitura registrada! 🏊","success");
+                      }
+                    } else {
+                      setPiscSetupSql(migrJson.sql || "");
+                      setPiscSetupUrl(migrJson.supabase_url || "");
+                      setPiscSetupModal(true);
+                    }
+                  } catch { showToast("Erro ao configurar banco. Veja as instruções abaixo.","error"); }
+                } else showToast("Erro ao salvar leitura","error");
               }
             } catch { showToast("Erro de conexão","error"); }
             setPiscSaving(false);
@@ -6212,6 +6236,41 @@ export default function App() {
                   </div>
                 </div>
               ))}
+
+              {/* ── Modal Setup Banco (piscina_leituras não existe) ── */}
+              {piscSetupModal && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.85)", zIndex:4000, display:"flex", alignItems:"flex-end", justifyContent:"center", paddingBottom:24 }} onClick={() => setPiscSetupModal(false)}>
+                  <div style={{ background:"#0F172A", border:"1px solid rgba(239,68,68,.3)", borderRadius:20, padding:"24px 20px", width:"94%", maxWidth:440 }} onClick={e=>e.stopPropagation()}>
+                    <div style={{ fontSize:15, fontWeight:800, color:"#EF4444", marginBottom:8 }}>⚠️ Setup do Banco de Dados</div>
+                    <div style={{ fontSize:12, color:"#94A3B8", marginBottom:14, lineHeight:1.6 }}>
+                      A tabela <code style={{ background:"rgba(255,255,255,.08)", padding:"1px 6px", borderRadius:4 }}>piscina_leituras</code> não existe ainda.
+                      Copie o SQL abaixo e execute no seu <strong style={{ color:"#F1F5F9" }}>Supabase SQL Editor</strong>.
+                    </div>
+                    <textarea
+                      readOnly value={piscSetupSql}
+                      style={{ width:"100%", height:180, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, padding:"10px 12px", color:"#94A3B8", fontSize:11, fontFamily:"monospace", resize:"none", boxSizing:"border-box" }}
+                    />
+                    <div style={{ display:"flex", gap:8, marginTop:12, flexWrap:"wrap" }}>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(piscSetupSql); showToast("SQL copiado! Cole no Supabase SQL Editor.","success"); }}
+                        style={{ flex:1, padding:"11px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#1E3A5F,#0EA5E9)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        📋 Copiar SQL
+                      </button>
+                      {piscSetupUrl && (
+                        <a href={piscSetupUrl} target="_blank" rel="noopener noreferrer"
+                          style={{ flex:1, padding:"11px", borderRadius:10, border:"1px solid rgba(14,165,233,.3)", background:"transparent", color:"#0EA5E9", fontSize:12, fontWeight:700, cursor:"pointer", textDecoration:"none", textAlign:"center", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                          🔗 Abrir Supabase
+                        </a>
+                      )}
+                    </div>
+                    <button
+                      onClick={async () => { setPiscSetupModal(false); if (condId) await loadPiscina(condId); }}
+                      style={{ width:"100%", marginTop:8, padding:"11px", borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"#94A3B8", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                      ✓ Já executei o SQL — Tentar novamente
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* ── Modal Registrar Leitura (mobile) ── */}
               {piscModal && (

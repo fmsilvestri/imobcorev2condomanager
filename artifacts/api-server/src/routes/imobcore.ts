@@ -6306,6 +6306,56 @@ INSTRUÇÕES:
   });
 });
 
+// POST /api/admin/piscina/auto-migrate — tenta criar a tabela piscina_leituras via Management API
+router.post("/admin/piscina/auto-migrate", async (_req: Request, res: Response) => {
+  const supabaseUrl = process.env.SUPABASE_URL ?? "";
+  const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const projectRef  = supabaseUrl.replace("https://", "").split(".")[0];
+
+  const sql = `
+CREATE TABLE IF NOT EXISTS piscina_leituras (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id   UUID,
+  ph              NUMERIC NOT NULL,
+  cloro           NUMERIC NOT NULL,
+  temperatura     NUMERIC,
+  alcalinidade    NUMERIC,
+  dureza_calcica  NUMERIC,
+  status          TEXT DEFAULT 'ok',
+  observacoes     TEXT,
+  foto_url        TEXT,
+  foto_path       TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS pisc_condo ON piscina_leituras(condominio_id, created_at DESC);
+ALTER TABLE piscina_leituras ADD COLUMN IF NOT EXISTS foto_url  TEXT;
+ALTER TABLE piscina_leituras ADD COLUMN IF NOT EXISTS foto_path TEXT;
+`.trim();
+
+  try {
+    const mgmtRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: sql }),
+    });
+    if (mgmtRes.ok) {
+      return res.json({ ok: true, method: "management_api", message: "Tabela piscina_leituras criada com sucesso!" });
+    }
+    const errText = await mgmtRes.text();
+    console.log("[piscina/auto-migrate] Management API failed:", mgmtRes.status, errText.substring(0, 200));
+  } catch (e) {
+    console.log("[piscina/auto-migrate] exception:", (e as Error).message);
+  }
+
+  return res.status(202).json({
+    ok: false,
+    method: "manual",
+    message: "Execute o SQL abaixo no Supabase SQL Editor.",
+    sql,
+    supabase_url: `https://supabase.com/dashboard/project/${projectRef}/sql/new`,
+  });
+});
+
 // POST /api/admin/documentos/auto-migrate — tenta criar a tabela automaticamente via Management API
 router.post("/admin/documentos/auto-migrate", async (_req: Request, res: Response) => {
   const supabaseUrl = process.env.SUPABASE_URL ?? "";
