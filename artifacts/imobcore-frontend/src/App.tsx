@@ -2112,20 +2112,37 @@ export default function App() {
   // Sub-screen navigation
   const [sindicoScreen, setSindicoScreen] = useState<string | null>(null);
 
-  // Auto-load Dicas da Di when entering Di screens (síndico app or gestor panel)
-  useEffect(() => {
-    const isDiOpen = sindicoScreen === "di" || panel === "sv-di";
-    if (!isDiOpen || diData || diLoading || !condId) return;
+  // Auto-load Dicas da Di — recarrega SEMPRE que a Di é aberta (dados em tempo real)
+  const diSessionRef = useRef<string | null>(null);
+  const fetchDiData = useCallback((cid: string) => {
+    if (diLoading) return;
     setDiLoading(true);
     fetch("/api/di", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ condominio_id: condId, perfil: (loggedUser as Record<string,unknown>)?.perfil || loginMode || "gestor", nome_usuario: (loggedUser as Record<string,unknown>)?.nome || "Usuário" }),
+      body: JSON.stringify({ condominio_id: cid, perfil: (loggedUser as Record<string,unknown>)?.perfil || loginMode || "gestor", nome_usuario: (loggedUser as Record<string,unknown>)?.nome || "Usuário" }),
     })
       .then(r => r.json())
       .then(json => { if (json.fala) setDiData({ fala: json.fala, cards: json.cards || [] }); })
       .catch(() => {})
       .finally(() => setDiLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loginMode, loggedUser]);
+
+  useEffect(() => {
+    const isDiOpen = sindicoScreen === "di" || panel === "sv-di";
+    if (!isDiOpen) {
+      // Di fechou — limpar dados para forçar recarga na próxima abertura
+      diSessionRef.current = null;
+      setDiData(null);
+      return;
+    }
+    if (diLoading || !condId) return;
+    // Só carrega se entrou numa nova sessão (nova abertura da Di ou mudança de condo)
+    const sessionKey = `${condId}-${sindicoScreen}-${panel}`;
+    if (diSessionRef.current === sessionKey) return;
+    diSessionRef.current = sessionKey;
+    fetchDiData(condId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sindicoScreen, panel, condId]);
   const [moradorScreen, setMoradorScreen] = useState<string | null>(null);
