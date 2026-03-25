@@ -1585,6 +1585,20 @@ export default function App() {
   // ── Gás state ──────────────────────────────────────────────────────────────
   const [gasNovaLeitModal, setGasNovaLeitModal] = useState(false);
   const [gasNovaLeitForm, setGasNovaLeitForm] = useState({ nivel:"", obs:"" });
+  const saveGasReading = () => {
+    if (!gasNovaLeitForm.nivel) return;
+    const now = new Date();
+    setGasLeituras((prev: {id:string;nivel:number;data:string;hora:string;foto:boolean;obs:string}[]) => [{
+      id: `g${Date.now()}`,
+      nivel: Number(gasNovaLeitForm.nivel),
+      data: `${String(now.getDate()).padStart(2,"0")}/${String(now.getMonth()+1).padStart(2,"0")}/${now.getFullYear()}`,
+      hora: `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`,
+      foto: false,
+      obs: gasNovaLeitForm.obs,
+    }, ...prev]);
+    setGasNovaLeitForm({ nivel:"", obs:"" });
+    setGasNovaLeitModal(false);
+  };
   const [gasLeituras, setGasLeituras] = useState([
     { id:"g1",  nivel:35, data:"29/01/2026", hora:"16:34", foto:true,  obs:"Verificação final do dia" },
     { id:"g2",  nivel:15, data:"29/01/2026", hora:"13:07", foto:true,  obs:"Nível crítico detectado" },
@@ -5316,6 +5330,70 @@ export default function App() {
                   <div className="ph-fin-val" style={{ color: l.nivel < 20 ? "#EF4444" : l.nivel < 50 ? "#F59E0B" : "#10B981" }}>{l.nivel}%</div>
                 </div>
               ))}
+
+              {/* ── Botão registrar nova leitura ── */}
+              <button
+                onClick={() => setGasNovaLeitModal(true)}
+                style={{ width:"100%", marginTop:10, padding:"13px 0", borderRadius:14, border:"none", background:"linear-gradient(135deg,#EA580C,#F97316)", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, boxShadow:"0 4px 0 #C2410C, 0 6px 18px rgba(249,115,22,.45)" }}>
+                🔥 Registrar Nova Leitura
+              </button>
+
+              {/* ── Modal nova leitura ── */}
+              {gasNovaLeitModal && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center", paddingBottom:24 }} onClick={() => setGasNovaLeitModal(false)}>
+                  <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:20, padding:"24px 20px", width:"94%", maxWidth:420 }} onClick={e => e.stopPropagation()}>
+                    <div style={{ fontSize:15, fontWeight:800, color:"#F97316", marginBottom:18, display:"flex", alignItems:"center", gap:8 }}>🔥 Nova Leitura de Gás</div>
+
+                    {/* Nível */}
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ fontSize:11, color:"#64748B", fontWeight:700, marginBottom:6, textTransform:"uppercase", letterSpacing:".05em" }}>Nível do Botijão / Reservatório (%)</div>
+                      <input
+                        type="number" min="0" max="100"
+                        value={gasNovaLeitForm.nivel}
+                        onChange={e => setGasNovaLeitForm(f => ({ ...f, nivel: e.target.value }))}
+                        placeholder="0 – 100"
+                        style={{ width:"100%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.14)", borderRadius:10, padding:"12px 14px", color:"#fff", fontSize:22, fontWeight:800, boxSizing:"border-box", textAlign:"center" }}
+                      />
+                      {gasNovaLeitForm.nivel && (
+                        <div style={{ marginTop:10 }}>
+                          <div style={{ height:10, background:"rgba(255,255,255,.06)", borderRadius:6 }}>
+                            <div style={{ width:`${Math.min(100, Number(gasNovaLeitForm.nivel))}%`, height:"100%", borderRadius:6, transition:"width .3s",
+                              background: Number(gasNovaLeitForm.nivel) < 20 ? "#EF4444" : Number(gasNovaLeitForm.nivel) < 40 ? "#F59E0B" : "#10B981" }}/>
+                          </div>
+                          <div style={{ fontSize:12, marginTop:6, fontWeight:700,
+                            color: Number(gasNovaLeitForm.nivel) < 20 ? "#F87171" : Number(gasNovaLeitForm.nivel) < 40 ? "#FBBF24" : "#34D399" }}>
+                            {Number(gasNovaLeitForm.nivel) < 20 ? "⚠️ Nível crítico — abastecer urgente" : Number(gasNovaLeitForm.nivel) < 40 ? "⚡ Nível baixo — programar abastecimento" : "✅ Nível adequado"}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Observação */}
+                    <div style={{ marginBottom:20 }}>
+                      <div style={{ fontSize:11, color:"#64748B", fontWeight:700, marginBottom:6, textTransform:"uppercase", letterSpacing:".05em" }}>Observação (opcional)</div>
+                      <input
+                        type="text"
+                        value={gasNovaLeitForm.obs}
+                        onChange={e => setGasNovaLeitForm(f => ({ ...f, obs: e.target.value }))}
+                        placeholder="Ex: Após abastecimento"
+                        style={{ width:"100%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.14)", borderRadius:10, padding:"10px 14px", color:"#fff", fontSize:13, boxSizing:"border-box" }}
+                      />
+                    </div>
+
+                    {/* Botões */}
+                    <div style={{ display:"flex", gap:10 }}>
+                      <button onClick={() => setGasNovaLeitModal(false)}
+                        style={{ flex:1, padding:"12px 0", borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"#94A3B8", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                        Cancelar
+                      </button>
+                      <button onClick={saveGasReading}
+                        style={{ flex:2, padding:"12px 0", borderRadius:10, border:"none", background:"linear-gradient(135deg,#EA580C,#F97316)", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", boxShadow:"0 3px 0 #C2410C" }}>
+                        🔥 Registrar Leitura
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -11930,20 +12008,7 @@ Content-Type: application/json
             const nivelColor = (n: number) =>
               n < 20 ? "#EF4444" : n < 40 ? "#F59E0B" : "#10B981";
 
-            const saveReading = () => {
-              if (!gasNovaLeitForm.nivel) return;
-              const now = new Date();
-              setGasLeituras(prev => [{
-                id: `g${Date.now()}`,
-                nivel: Number(gasNovaLeitForm.nivel),
-                data: `${String(now.getDate()).padStart(2,"0")}/${String(now.getMonth()+1).padStart(2,"0")}/${now.getFullYear()}`,
-                hora: `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`,
-                foto: false,
-                obs: gasNovaLeitForm.obs,
-              }, ...prev]);
-              setGasNovaLeitForm({ nivel:"", obs:"" });
-              setGasNovaLeitModal(false);
-            };
+            const saveReading = saveGasReading;
 
             return (
               <div style={{ padding:20 }}>
