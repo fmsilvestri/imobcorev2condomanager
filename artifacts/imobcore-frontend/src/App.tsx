@@ -5133,22 +5133,43 @@ export default function App() {
         {sindicoScreen === "sindico" && (
           <>
             <div style={{ display: "flex", gap: 5, overflowX: "auto", padding: "6px 12px 4px", borderBottom: "1px solid rgba(255,255,255,0.08)", flexShrink: 0, background: "var(--neu-bg)", scrollbarWidth: "none" }}>
-              {([
-                ["📊 Resumo",       "Gere um resumo executivo completo do condomínio: financeiro, OS abertas, manutenção, moradores e utilidades.",                              undefined],
-                ["💰 Financeiro",   "Analise o financeiro do condomínio: saldo, inadimplência, receitas vs despesas, lançamentos atrasados. Gere relatório.",                   "Financeiro"],
-                ["💧 Água",        "Relatório do módulo de Água: medidores, leituras, consumo mensal, alertas e reservatórios.",                                               "Água"],
-                ["🔥 Gás",         "Relatório do módulo de Gás: medidores, consumo, nível atual, alertas.",                                                                   "Gás"],
-                ["⚡ Energia",      "Relatório do módulo de Energia Elétrica: consumo kWh, medidores, evolução mensal.",                                                       "Energia"],
-                ["🔧 Manutenção",   "Análise completa de manutenção: equipamentos, status, planos, próximas manutenções e riscos.",                                              "Manutenção"],
-                ["👥 CRM",          "Relatório de moradores (CRM): total cadastrado, ativos, inadimplentes, proprietários vs inquilinos, novos cadastros.",                     "CRM / Moradores"],
-                ["🏊 Piscina",      "Análise da piscina: pH atual, cloro, temperatura, histórico de leituras e recomendações de tratamento.",                                  "Piscina"],
-                ["📦 Encomendas",   "Status das encomendas: pendentes, aguardando retirada, há quanto tempo estão no sistema.",                                               "Encomendas"],
-                ["📢 Comunicados",  "Sugira comunicados relevantes para enviar aos moradores com base na situação atual do condomínio.",                                       "Comunicados"],
-                ["🚨 Urgentes",     "Quais são as OS urgentes, alertas externos e situações críticas que exigem ação imediata?",                                               undefined],
-              ] as [string, string, string | undefined][]).map(([label, msg, modulo]) => (
-                <button key={label} className="chip" style={{ whiteSpace: "nowrap", fontSize: 10, padding: "4px 10px", flexShrink: 0 }}
-                  onClick={() => sendChat(msg, mobileHistory, setMobileMsgs, setMobileTyping, setMobileHistory, modulo)}>{label}</button>
-              ))}
+              {(() => {
+                const CHIP_CLR: Record<string,[string,string,string,string]> = {
+                  "📊":["linear-gradient(160deg,#7C3AED 0%,#4C1D95 100%)","#9333EA55","#DDD6FE","#3B0764"],
+                  "💰":["linear-gradient(160deg,#059669 0%,#064E3B 100%)","#34D39955","#A7F3D0","#022C22"],
+                  "💧":["linear-gradient(160deg,#2563EB 0%,#1E3A8A 100%)","#60A5FA55","#BFDBFE","#1E3A8A"],
+                  "🔥":["linear-gradient(160deg,#EA580C 0%,#7C2D12 100%)","#FB923C55","#FED7AA","#431407"],
+                  "⚡":["linear-gradient(160deg,#CA8A04 0%,#713F12 100%)","#FACC1555","#FEF08A","#451A03"],
+                  "🔧":["linear-gradient(160deg,#64748B 0%,#1E293B 100%)","#94A3B855","#E2E8F0","#0F172A"],
+                  "👥":["linear-gradient(160deg,#0891B2 0%,#083344 100%)","#22D3EE55","#A5F3FC","#082F49"],
+                  "🏊":["linear-gradient(160deg,#1D4ED8 0%,#1E3A8A 100%)","#60A5FA55","#BAE6FD","#0C1A4A"],
+                  "📦":["linear-gradient(160deg,#D97706 0%,#78350F 100%)","#FBBF2455","#FDE68A","#451A03"],
+                  "📢":["linear-gradient(160deg,#7C3AED 0%,#4C1D95 100%)","#A78BFA55","#EDE9FE","#2E1065"],
+                  "🚨":["linear-gradient(160deg,#DC2626 0%,#7F1D1D 100%)","#EF444455","#FECACA","#450A0A"],
+                };
+                const getC = (l: string) => CHIP_CLR[[...l][0]] || ["linear-gradient(160deg,#334155,#1E293B)","#47556955","#94A3B8","#0F172A"];
+                return ([
+                  ["📊 Resumo",       "Gere um resumo executivo completo do condomínio: financeiro, OS abertas, manutenção, moradores e utilidades.",                              undefined],
+                  ["💰 Financeiro",   "Analise o financeiro do condomínio: saldo, inadimplência, receitas vs despesas, lançamentos atrasados. Gere relatório.",                   "Financeiro"],
+                  ["💧 Água",        "Relatório do módulo de Água: medidores, leituras, consumo mensal, alertas e reservatórios.",                                               "Água"],
+                  ["🔥 Gás",         "Relatório do módulo de Gás: medidores, consumo, nível atual, alertas.",                                                                   "Gás"],
+                  ["⚡ Energia",      "Relatório do módulo de Energia Elétrica: consumo kWh, medidores, evolução mensal.",                                                       "Energia"],
+                  ["🔧 Manutenção",   "Análise completa de manutenção: equipamentos, status, planos, próximas manutenções e riscos.",                                              "Manutenção"],
+                  ["👥 CRM",          "Relatório de moradores (CRM): total cadastrado, ativos, inadimplentes, proprietários vs inquilinos, novos cadastros.",                     "CRM / Moradores"],
+                  ["🏊 Piscina",      "Análise da piscina: pH atual, cloro, temperatura, histórico de leituras e recomendações de tratamento.",                                  "Piscina"],
+                  ["📦 Encomendas",   "Status das encomendas: pendentes, aguardando retirada, há quanto tempo estão no sistema.",                                               "Encomendas"],
+                  ["📢 Comunicados",  "Sugira comunicados relevantes para enviar aos moradores com base na situação atual do condomínio.",                                       "Comunicados"],
+                  ["🚨 Urgentes",     "Quais são as OS urgentes, alertas externos e situações críticas que exigem ação imediata?",                                               undefined],
+                ] as [string, string, string | undefined][]).map(([label, msg, modulo]) => {
+                  const [bg,glow,txt,shadow] = getC(label);
+                  return (
+                    <button key={label} onClick={() => sendChat(msg, mobileHistory, setMobileMsgs, setMobileTyping, setMobileHistory, modulo)}
+                      style={{ background:bg, border:`1px solid ${glow}`, color:txt, boxShadow:`0 3px 0 ${shadow}, 0 5px 14px ${glow}`, fontSize:12, padding:"5px 13px", fontWeight:700, whiteSpace:"nowrap" as const, flexShrink:0, borderRadius:20, cursor:"pointer", fontFamily:"inherit", transition:"all .15s", outline:"none" }}>
+                      {label}
+                    </button>
+                  );
+                });
+              })()}
             </div>
             <div className="ph-sub-body" style={{ padding: "8px", display: "flex", flexDirection: "column", gap: 8 }}
               ref={el => { if (el) el.scrollTop = el.scrollHeight; }}>
@@ -7802,9 +7823,29 @@ export default function App() {
             </div>
             <div className="gestor-chat">
               <div className="chat-chips">
-                {[["📊 Resumo executivo", "Faça um resumo executivo do condomínio agora", ""], ["🔴 OSs urgentes", "Quais são as OSs urgentes pendentes?", "manutencao"], ["💧 Água + IoT", "Como está a situação da água e sensores IoT?", "agua"], ["💰 Financeiro", "Análise financeira completa", "financeiro"], ["🔧 Manutenção", "Análise completa do módulo de manutenção: equipamentos com problema, custos, planos agendados e recomendações", "manutencao"], ["⚙️ Equipamentos críticos", "Quais equipamentos precisam de atenção imediata? Liste por prioridade com impacto e custo estimado", "manutencao"], ["📅 Planos de manutenção", "Quais planos de manutenção vencem nos próximos 30 dias? Faça um cronograma de execução", "manutencao"], ["🏭 Fornecedores", "Liste todos os fornecedores cadastrados por categoria com nome, contato e serviço. Destaque os que podem atender manutenções urgentes.", "fornecedores"], ["⭐ Score", "Como melhorar o score do condomínio?", ""]].map(([l, m, ctx]) => (
-                  <button key={l} className="chip" onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory, ctx || undefined); setSideMsgs(p => [...p, { role: "user", content: m, time: fmtTime() }]); }}>{l}</button>
-                ))}
+                {(() => {
+                  const CHIP_CLR: Record<string,[string,string,string,string]> = {
+                    "📊":["linear-gradient(160deg,#7C3AED 0%,#4C1D95 100%)","#9333EA55","#DDD6FE","#3B0764"],
+                    "🔴":["linear-gradient(160deg,#DC2626 0%,#7F1D1D 100%)","#EF444455","#FECACA","#450A0A"],
+                    "💧":["linear-gradient(160deg,#2563EB 0%,#1E3A8A 100%)","#60A5FA55","#BFDBFE","#1E3A8A"],
+                    "💰":["linear-gradient(160deg,#059669 0%,#064E3B 100%)","#34D39955","#A7F3D0","#022C22"],
+                    "🔧":["linear-gradient(160deg,#64748B 0%,#1E293B 100%)","#94A3B855","#E2E8F0","#0F172A"],
+                    "⚙️":["linear-gradient(160deg,#475569 0%,#1E293B 100%)","#94A3B855","#CBD5E1","#0F172A"],
+                    "📅":["linear-gradient(160deg,#D97706 0%,#78350F 100%)","#FBBF2455","#FDE68A","#451A03"],
+                    "🏭":["linear-gradient(160deg,#0891B2 0%,#083344 100%)","#22D3EE55","#A5F3FC","#082F49"],
+                    "⭐":["linear-gradient(160deg,#CA8A04 0%,#713F12 100%)","#FACC1555","#FEF08A","#431407"],
+                  };
+                  const getC = (l: string) => CHIP_CLR[[...l][0]] || ["linear-gradient(160deg,#334155,#1E293B)","#47556955","#94A3B8","#0F172A"];
+                  return [["📊 Resumo executivo","Faça um resumo executivo do condomínio agora",""],["🔴 OSs urgentes","Quais são as OSs urgentes pendentes?","manutencao"],["💧 Água + IoT","Como está a situação da água e sensores IoT?","agua"],["💰 Financeiro","Análise financeira completa","financeiro"],["🔧 Manutenção","Análise completa do módulo de manutenção: equipamentos com problema, custos, planos agendados e recomendações","manutencao"],["⚙️ Equipamentos críticos","Quais equipamentos precisam de atenção imediata? Liste por prioridade com impacto e custo estimado","manutencao"],["📅 Planos de manutenção","Quais planos de manutenção vencem nos próximos 30 dias? Faça um cronograma de execução","manutencao"],["🏭 Fornecedores","Liste todos os fornecedores cadastrados por categoria com nome, contato e serviço. Destaque os que podem atender manutenções urgentes.","fornecedores"],["⭐ Score","Como melhorar o score do condomínio?",""]].map(([l,m,ctx]) => {
+                    const [bg,glow,txt,shadow] = getC(l);
+                    return (
+                      <button key={l} onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory, ctx||undefined); setSideMsgs(p => [...p, { role:"user", content:m, time:fmtTime() }]); }}
+                        style={{ background:bg, border:`1px solid ${glow}`, color:txt, boxShadow:`0 3px 0 ${shadow}, 0 6px 18px ${glow}`, fontSize:14, padding:"7px 15px", fontWeight:700, letterSpacing:".01em", whiteSpace:"nowrap" as const, flexShrink:0, borderRadius:22, cursor:"pointer", fontFamily:"inherit", transition:"all .15s", outline:"none" }}>
+                        {l}
+                      </button>
+                    );
+                  });
+                })()}
               </div>
               <div className="chat-area" ref={el => { if (el) el.scrollTop = el.scrollHeight; }}>
                 {deskMsgs.map((m, i) => (
@@ -13899,9 +13940,25 @@ Content-Type: application/json
                 </div>
                 {/* Quick chips */}
                 <div style={{ display:"flex", gap:5, padding:"8px 12px", overflowX:"auto", flexShrink:0, borderBottom:"1px solid rgba(255,255,255,.06)", background:"#0D1424" }}>
-                  {[["📊 Resumo","Faça um resumo executivo do condomínio",""],["🔴 Urgentes","Quais OSs urgentes pendentes?","manutencao"],["💰 Financeiro","Análise financeira completa","financeiro"],["🏭 Fornecedores","Liste todos os fornecedores cadastrados com contatos. Destaque os que atendem manutenções urgentes.","fornecedores"],["⭐ Score","Como melhorar o score do condomínio?",""]].map(([l,m,ctx]) => (
-                    <button key={l} className="chip" onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory, ctx||undefined); }} style={{ flexShrink:0, fontSize:10, padding:"4px 10px" }}>{l}</button>
-                  ))}
+                  {(() => {
+                    const CHIP_CLR: Record<string,[string,string,string,string]> = {
+                      "📊":["linear-gradient(160deg,#7C3AED 0%,#4C1D95 100%)","#9333EA55","#DDD6FE","#3B0764"],
+                      "🔴":["linear-gradient(160deg,#DC2626 0%,#7F1D1D 100%)","#EF444455","#FECACA","#450A0A"],
+                      "💰":["linear-gradient(160deg,#059669 0%,#064E3B 100%)","#34D39955","#A7F3D0","#022C22"],
+                      "🏭":["linear-gradient(160deg,#0891B2 0%,#083344 100%)","#22D3EE55","#A5F3FC","#082F49"],
+                      "⭐":["linear-gradient(160deg,#CA8A04 0%,#713F12 100%)","#FACC1555","#FEF08A","#431407"],
+                    };
+                    const getC = (l: string) => CHIP_CLR[[...l][0]] || ["linear-gradient(160deg,#334155,#1E293B)","#47556955","#94A3B8","#0F172A"];
+                    return [["📊 Resumo","Faça um resumo executivo do condomínio",""],["🔴 Urgentes","Quais OSs urgentes pendentes?","manutencao"],["💰 Financeiro","Análise financeira completa","financeiro"],["🏭 Fornecedores","Liste todos os fornecedores cadastrados com contatos. Destaque os que atendem manutenções urgentes.","fornecedores"],["⭐ Score","Como melhorar o score do condomínio?",""]].map(([l,m,ctx]) => {
+                      const [bg,glow,txt,shadow] = getC(l);
+                      return (
+                        <button key={l} onClick={() => { sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory, ctx||undefined); }}
+                          style={{ background:bg, border:`1px solid ${glow}`, color:txt, boxShadow:`0 3px 0 ${shadow}, 0 6px 16px ${glow}`, fontSize:13, padding:"6px 13px", fontWeight:700, whiteSpace:"nowrap" as const, flexShrink:0, borderRadius:20, cursor:"pointer", fontFamily:"inherit", transition:"all .15s", outline:"none" }}>
+                          {l}
+                        </button>
+                      );
+                    });
+                  })()}
                 </div>
                 {/* Messages */}
                 <div className="chat-area" style={{ flex:1, overflow:"auto", padding:"10px 14px" }} ref={el => { if(el) el.scrollTop=el.scrollHeight; }}>
