@@ -887,7 +887,10 @@ router.post("/sindico/comunicado", async (req: Request, res: Response) => {
   try {
     const { tema, condominio_id } = req.body as { tema: string; condominio_id?: string };
 
-    const { data: cond } = await supabase.from("condominios").select("*").limit(1).single();
+    const condQuery = condominio_id
+      ? supabase.from("condominios").select("*").eq("id", condominio_id).single()
+      : supabase.from("condominios").select("*").limit(1).single();
+    const { data: cond } = await condQuery;
 
     const aiResponse = await anthropic.messages.create({
       model: "claude-sonnet-4-6",

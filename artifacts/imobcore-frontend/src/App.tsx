@@ -2192,6 +2192,8 @@ export default function App() {
 
   // Sub-screen navigation
   const [sindicoScreen, setSindicoScreen] = useState<string | null>(null);
+  // Reseta badge ao abrir comunicados no síndico ou morador
+  useEffect(() => { if (sindicoScreen === "comunicados") setUnreadComunicados(0); }, [sindicoScreen]);
 
   // Auto-load Dicas da Di — recarrega SEMPRE que a Di é aberta (dados em tempo real)
   const diSessionRef = useRef<string | null>(null);
@@ -2301,6 +2303,9 @@ export default function App() {
   // Insights
   const [insights, setInsights] = useState("");
   const [insightsLoading, setInsightsLoading] = useState(false);
+
+  // Notificações de comunicados não-lidos
+  const [unreadComunicados, setUnreadComunicados] = useState(0);
 
   // Documentos & Licenças
   type DocItem = { id: string; nome: string; tipo: string; descricao: string | null; conteudo_texto: string | null; validade: string | null; arquivo_url: string | null; arquivo_nome: string | null; arquivo_mime: string | null; arquivo_path: string | null; created_at: string };
@@ -2761,7 +2766,23 @@ export default function App() {
           loadDashboard();
           if (evt === "alerta_sensor") showToast("⚠️ " + data.message, "warn");
           if (evt === "nova_os") { showToast("🔧 Nova OS criada", "info"); ringBell(); }
-          if (evt === "novo_comunicado") { showToast("📢 Novo comunicado publicado", "info"); ringBell(); }
+          if (evt === "novo_comunicado") {
+            // Filtra pelo condomínio do usuário logado
+            const myCondId = loggedUserRef.current?.condominio_id || condIdRef.current;
+            if (data.condominio_id && myCondId && data.condominio_id !== myCondId) return;
+            const title = data.titulo || "Novo comunicado publicado";
+            showToast(`📢 ${title}`, "info");
+            ringBell();
+            setUnreadComunicados(prev => prev + 1);
+            // Notificação do browser (quando aba não está em foco)
+            if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+              new Notification("📢 Novo Comunicado", {
+                body: title,
+                icon: "/favicon.svg",
+                tag: "comunicado",
+              });
+            }
+          }
           if (evt === "os_atualizada") showToast("🔄 OS atualizada", "info");
         });
       });
@@ -5061,9 +5082,14 @@ export default function App() {
             </button>
             <button
               onClick={() => setSindicoScreen("briefing")}
-              style={{ background:"linear-gradient(135deg,#4C1D95,#7C3AED)", border:"none", color:"#E9D5FF", borderRadius:12, padding:"11px 12px", fontSize:12, fontWeight:800, cursor:"pointer", boxShadow:"0 3px 12px rgba(124,58,237,.45)" }}
+              style={{ background:"linear-gradient(135deg,#4C1D95,#7C3AED)", border:"none", color:"#E9D5FF", borderRadius:12, padding:"11px 12px", fontSize:12, fontWeight:800, cursor:"pointer", boxShadow:"0 3px 12px rgba(124,58,237,.45)", position:"relative" }}
             >
               📊 Módulos
+              {unreadComunicados > 0 && (
+                <span style={{ position:"absolute", top:-6, right:-6, background:"#EF4444", color:"#fff", fontSize:9, fontWeight:900, borderRadius:99, minWidth:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px", lineHeight:1, boxShadow:"0 2px 8px rgba(239,68,68,.7)" }}>
+                  {unreadComunicados > 9 ? "9+" : unreadComunicados}
+                </span>
+              )}
             </button>
           </div>
           </>)}
@@ -7134,6 +7160,10 @@ export default function App() {
         setLoggedUser(data);
         if (data.condominio_id) {
           await loadDashboard(data.condominio_id);
+        }
+        // Solicita permissão de notificação do browser (para comunicados)
+        if ("Notification" in window && Notification.permission === "default") {
+          Notification.requestPermission().catch(() => {/* silencia */});
         }
         setView("selector");
         showToast(`Bem-vindo, ${data.nome}!`, "ok");
@@ -14083,7 +14113,7 @@ Content-Type: application/json
               const eName = loginEmail.split("@")[0] || "Morador";
               const fname = eName.charAt(0).toUpperCase() + eName.slice(1);
               const condo = dash?.condominios?.[0]?.nome || "Residencial Parque das Flores";
-              const notifs = t?.alertas_ativos || 0;
+              const notifs = (t?.alertas_ativos || 0) + unreadComunicados;
               return (
                 <div className="phone-header">
                   <div className="ph-topbar">
@@ -14092,11 +14122,15 @@ Content-Type: application/json
                       <div className="ph-brand-name">ImobCore <span>v2</span></div>
                     </div>
                     <div className="ph-topbar-btns">
-                      <button className="ph-btn-neu" title="Notificações">
+                      <button className="ph-btn-neu" title="Notificações" onClick={() => { if (unreadComunicados > 0) { setMoradorScreen("comunicados"); setUnreadComunicados(0); } }}>
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
                         </svg>
-                        {notifs > 0 && <div className="ph-bell-dot"/>}
+                        {notifs > 0 && (
+                          <div className="ph-bell-dot" style={{ minWidth: notifs > 0 ? 14 : undefined, height: notifs > 0 ? 14 : undefined, display:"flex", alignItems:"center", justifyContent:"center", fontSize:8, fontWeight:900, padding: notifs > 0 ? "0 3px" : undefined }}>
+                            {notifs > 9 ? "9+" : notifs}
+                          </div>
+                        )}
                       </button>
                       <button className="ph-btn-neu" onClick={() => setView("selector")} title="Trocar interface">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -14178,7 +14212,14 @@ Content-Type: application/json
               <div className={`nav-item ${!moradorScreen ? "active" : ""}`} onClick={() => setMoradorScreen(null)}><span>🏠</span>Início</div>
               <div className={`nav-item ${moradorScreen === "misp" ? "active" : ""}`} onClick={() => setMoradorScreen("misp")}><span>🚨</span>Alertas</div>
               <button className="nav-fab" onClick={() => setMoradorScreen("visitante")}>➕</button>
-              <div className={`nav-item ${moradorScreen === "comunicados" ? "active" : ""}`} onClick={() => setMoradorScreen("comunicados")}><span>💬</span>Avisos</div>
+              <div className={`nav-item ${moradorScreen === "comunicados" ? "active" : ""}`} onClick={() => { setMoradorScreen("comunicados"); setUnreadComunicados(0); }} style={{ position:"relative" }}>
+                {unreadComunicados > 0 && (
+                  <span style={{ position:"absolute", top:4, right:6, background:"#EF4444", color:"#fff", fontSize:9, fontWeight:900, borderRadius:99, minWidth:16, height:16, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px", lineHeight:1, boxShadow:"0 2px 6px rgba(239,68,68,.6)", zIndex:10 }}>
+                    {unreadComunicados > 9 ? "9+" : unreadComunicados}
+                  </span>
+                )}
+                <span>💬</span>Avisos
+              </div>
               <div className={`nav-item ${moradorScreen === "boletos" ? "active" : ""}`} onClick={() => setMoradorScreen("boletos")}><span>💳</span>Boletos</div>
             </div>
       </div>
