@@ -2130,6 +2130,30 @@ export default function App() {
       setNotifLog(j.historico || []);
     } catch { /* silent */ }
   };
+  // ── Energia leituras ─────────────────────────────────────────────────────
+  const [energiaNovaLeitModal, setEnergiaNovaLeitModal] = useState(false);
+  const [energiaNovaLeitForm, setEnergiaNovaLeitForm] = useState({ kwh:"", obs:"" });
+  const [energiaLeituras, setEnergiaLeituras] = useState([
+    { id:"el1", kwh:284, data:"29/01/2026", hora:"16:30", obs:"Leitura do final do dia" },
+    { id:"el2", kwh:270, data:"28/01/2026", hora:"08:00", obs:"" },
+    { id:"el3", kwh:256, data:"27/01/2026", hora:"08:10", obs:"Após abastecimento solar" },
+    { id:"el4", kwh:245, data:"26/01/2026", hora:"08:05", obs:"" },
+    { id:"el5", kwh:238, data:"25/01/2026", hora:"08:15", obs:"" },
+  ]);
+  const saveEnergiaReading = () => {
+    if (!energiaNovaLeitForm.kwh) return;
+    const now = new Date();
+    setEnergiaLeituras((prev: {id:string;kwh:number;data:string;hora:string;obs:string}[]) => [{
+      id: `el${Date.now()}`,
+      kwh: Number(energiaNovaLeitForm.kwh),
+      data: `${String(now.getDate()).padStart(2,"0")}/${String(now.getMonth()+1).padStart(2,"0")}/${now.getFullYear()}`,
+      hora: `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`,
+      obs: energiaNovaLeitForm.obs,
+    }, ...prev]);
+    setEnergiaNovaLeitForm({ kwh:"", obs:"" });
+    setEnergiaNovaLeitModal(false);
+  };
+
   const [energiaOcorrencias, setEnergiaOcorrencias] = useState([
     { id:"oc1", titulo:"queda energia 29/01/2026", tipo:"queda",     data:"29/01/2026", hora:"10:21:16", obs:"Queda total no bloco A" },
     { id:"oc2", titulo:"energia normal",            tipo:"retorno",   data:"29/01/2026", hora:"10:21:04", obs:"Energia restaurada pela CELESC" },
@@ -5267,6 +5291,85 @@ export default function App() {
                 <div style={{ fontSize: 10, color: "#475569" }}>{fmtDate(o.data)}</div>
               </div>
             ))}
+
+            {/* ── Leituras do medidor ── */}
+            <div style={{ fontSize:11, fontWeight:700, color:"#94A3B8", margin:"14px 0 8px" }}>⚡ Leituras do Medidor</div>
+            {energiaLeituras.slice(0, 5).map((l, i) => {
+              const diff = i < energiaLeituras.length - 1 ? l.kwh - energiaLeituras[i + 1].kwh : null;
+              return (
+                <div key={l.id} className="ph-fin-item" style={{ marginBottom:6 }}>
+                  <div>
+                    <div className="ph-fin-label">{l.data} {l.hora}</div>
+                    <div className="ph-fin-sub">{l.obs || (diff !== null ? `+${diff} kWh vs anterior` : "—")}</div>
+                  </div>
+                  <div className="ph-fin-val" style={{ color:"#FBBF24" }}>{l.kwh} kWh</div>
+                </div>
+              );
+            })}
+
+            {/* ── Botão nova leitura ── */}
+            <button
+              onClick={() => setEnergiaNovaLeitModal(true)}
+              style={{ width:"100%", marginTop:10, padding:"13px 0", borderRadius:14, border:"none", background:"linear-gradient(135deg,#3730A3,#6366F1)", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, boxShadow:"0 4px 0 #312E81, 0 6px 18px rgba(99,102,241,.45)" }}>
+              ⚡ Registrar Nova Leitura
+            </button>
+
+            {/* ── Modal nova leitura de energia ── */}
+            {energiaNovaLeitModal && (
+              <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:1000, display:"flex", alignItems:"flex-end", justifyContent:"center", paddingBottom:24 }} onClick={() => setEnergiaNovaLeitModal(false)}>
+                <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:20, padding:"24px 20px", width:"94%", maxWidth:420 }} onClick={e => e.stopPropagation()}>
+                  <div style={{ fontSize:15, fontWeight:800, color:"#818CF8", marginBottom:18, display:"flex", alignItems:"center", gap:8 }}>⚡ Nova Leitura de Energia</div>
+
+                  {/* kWh */}
+                  <div style={{ marginBottom:14 }}>
+                    <div style={{ fontSize:11, color:"#64748B", fontWeight:700, marginBottom:6, textTransform:"uppercase", letterSpacing:".05em" }}>Leitura do Medidor (kWh)</div>
+                    <input
+                      type="number" min="0"
+                      value={energiaNovaLeitForm.kwh}
+                      onChange={e => setEnergiaNovaLeitForm(f => ({ ...f, kwh: e.target.value }))}
+                      placeholder="Ex: 284"
+                      style={{ width:"100%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.14)", borderRadius:10, padding:"12px 14px", color:"#fff", fontSize:22, fontWeight:800, boxSizing:"border-box", textAlign:"center" }}
+                    />
+                    {energiaNovaLeitForm.kwh && energiaLeituras.length > 0 && (
+                      <div style={{ marginTop:8, padding:"8px 10px", borderRadius:8, background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)" }}>
+                        <div style={{ fontSize:11, color:"#A5B4FC", fontWeight:600 }}>
+                          Consumo desde última leitura: <strong>{(Number(energiaNovaLeitForm.kwh) - energiaLeituras[0].kwh).toFixed(0)} kWh</strong>
+                          {Number(energiaNovaLeitForm.kwh) - energiaLeituras[0].kwh > 50
+                            ? " ⚠️ consumo alto"
+                            : Number(energiaNovaLeitForm.kwh) - energiaLeituras[0].kwh < 0
+                            ? " ❌ valor menor que anterior"
+                            : " ✅ dentro do normal"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Observação */}
+                  <div style={{ marginBottom:20 }}>
+                    <div style={{ fontSize:11, color:"#64748B", fontWeight:700, marginBottom:6, textTransform:"uppercase", letterSpacing:".05em" }}>Observação (opcional)</div>
+                    <input
+                      type="text"
+                      value={energiaNovaLeitForm.obs}
+                      onChange={e => setEnergiaNovaLeitForm(f => ({ ...f, obs: e.target.value }))}
+                      placeholder="Ex: Após manutenção elevador"
+                      style={{ width:"100%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.14)", borderRadius:10, padding:"10px 14px", color:"#fff", fontSize:13, boxSizing:"border-box" }}
+                    />
+                  </div>
+
+                  {/* Botões */}
+                  <div style={{ display:"flex", gap:10 }}>
+                    <button onClick={() => setEnergiaNovaLeitModal(false)}
+                      style={{ flex:1, padding:"12px 0", borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"#94A3B8", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                      Cancelar
+                    </button>
+                    <button onClick={saveEnergiaReading}
+                      style={{ flex:2, padding:"12px 0", borderRadius:10, border:"none", background:"linear-gradient(135deg,#3730A3,#6366F1)", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", boxShadow:"0 3px 0 #312E81" }}>
+                      ⚡ Registrar Leitura
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
