@@ -1153,7 +1153,7 @@ export default function App() {
       ? items.map(it => `<div style="padding:6px 10px;margin-bottom:4px;border-left:3px solid ${color};background:${color}0d;border-radius:0 6px 6px 0;"><span style="font-weight:600;font-size:11px;color:#1e293b;">${prefix} ${it.nome}</span><span style="float:right;font-size:10px;color:#64748b;">${MISP_PILAR_ICONS[it.pilar]} ${it.pilar}</span></div>`).join("")
       : `<p style="color:#94a3b8;font-size:11px;font-style:italic;">Nenhum item.</p>`;
 
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Diagnóstico MISP – ${condNome}</title><style>
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Diagnóstico Alertas Externos – ${condNome}</title><style>
       *{margin:0;padding:0;box-sizing:border-box;}
       body{font-family:'Segoe UI',Arial,sans-serif;background:#fff;color:#1e293b;padding:32px;max-width:900px;margin:0 auto;}
       h1{font-size:22px;font-weight:900;color:#1e293b;margin-bottom:2px;}
@@ -1178,7 +1178,7 @@ export default function App() {
       <div class="score-hero">
         <div class="score-num">${calc.score}</div>
         <div class="score-nivel">${calc.nivel}</div>
-        <div class="score-sub">Score MISP (0–100)</div>
+        <div class="score-sub">Score Alertas Externos (0–100)</div>
       </div>
 
       <div class="kpi-grid">
@@ -2894,7 +2894,7 @@ export default function App() {
     greetedRef.current = true;
     const urgentes = (dash.ordens_servico || []).filter(o => o.prioridade === "urgente" && o.status === "aberta").length;
     sendChat(
-      `Bom dia! Analise a situação atual: ${urgentes} OS(s) urgentes, ${dash.totais.alertas_ativos} alertas MISP, ${dash.sensores.length} sensores IoT. Dê um status executivo conciso.`,
+      `Bom dia! Analise a situação atual: ${urgentes} OS(s) urgentes, ${dash.totais.alertas_ativos} alertas externos, ${dash.sensores.length} sensores IoT. Dê um status executivo conciso.`,
       [], setDeskMsgs, setDeskTyping, setDeskHistory
     );
     setBellCount(urgentes + dash.totais.alertas_ativos);
@@ -5031,7 +5031,7 @@ export default function App() {
       iot: "📡 Monitor IoT",
       agua: "💧 Água & Reservatórios",
       financeiro: "💰 Financeiro",
-      misp: "🚨 Alertas MISP",
+      misp: "🚨 Alertas Externos",
       energia: "⚡ Módulo Energia",
       gas: "🔥 Módulo Gás",
       manutencao: "🔧 Manutenção",
@@ -5110,12 +5110,12 @@ export default function App() {
                 ["💧 Água",        "Relatório do módulo de Água: medidores, leituras, consumo mensal, alertas e reservatórios.",                                               "Água"],
                 ["🔥 Gás",         "Relatório do módulo de Gás: medidores, consumo, nível atual, alertas.",                                                                   "Gás"],
                 ["⚡ Energia",      "Relatório do módulo de Energia Elétrica: consumo kWh, medidores, evolução mensal.",                                                       "Energia"],
-                ["🔧 Manutenção",   "Análise completa de manutenção (MISP): equipamentos, status, planos, próximas manutenções e riscos.",                                     "Manutenção / MISP"],
+                ["🔧 Manutenção",   "Análise completa de manutenção: equipamentos, status, planos, próximas manutenções e riscos.",                                              "Manutenção"],
                 ["👥 CRM",          "Relatório de moradores (CRM): total cadastrado, ativos, inadimplentes, proprietários vs inquilinos, novos cadastros.",                     "CRM / Moradores"],
                 ["🏊 Piscina",      "Análise da piscina: pH atual, cloro, temperatura, histórico de leituras e recomendações de tratamento.",                                  "Piscina"],
                 ["📦 Encomendas",   "Status das encomendas: pendentes, aguardando retirada, há quanto tempo estão no sistema.",                                               "Encomendas"],
                 ["📢 Comunicados",  "Sugira comunicados relevantes para enviar aos moradores com base na situação atual do condomínio.",                                       "Comunicados"],
-                ["🚨 Urgentes",     "Quais são as OS urgentes, alertas MISP e situações críticas que exigem ação imediata?",                                                  undefined],
+                ["🚨 Urgentes",     "Quais são as OS urgentes, alertas externos e situações críticas que exigem ação imediata?",                                               undefined],
               ] as [string, string, string | undefined][]).map(([label, msg, modulo]) => (
                 <button key={label} className="chip" style={{ whiteSpace: "nowrap", fontSize: 10, padding: "4px 10px", flexShrink: 0 }}
                   onClick={() => sendChat(msg, mobileHistory, setMobileMsgs, setMobileTyping, setMobileHistory, modulo)}>{label}</button>
@@ -7435,7 +7435,7 @@ export default function App() {
             <span className="sb-icon">💧</span> Água & Reservatórios
           </div>
           <div className={`sb-item ${panel === "misp" ? "active" : ""}`} onClick={() => setPanel("misp")}>
-            <span className="sb-icon">🚨</span> MISP<span className="sb-badge">{t?.alertas_ativos || 0}</span>
+            <span className="sb-icon">🚨</span> Alertas Externos<span className="sb-badge">{t?.alertas_ativos || 0}</span>
           </div>
           <div className={`sb-item ${panel === "diagnostico" ? "active" : ""}`} onClick={() => setPanel("diagnostico")}>
             <span className="sb-icon">🫀</span> Diagnóstico
@@ -7497,7 +7497,7 @@ export default function App() {
               { label: "OSs Abertas", val: String(t?.os_abertas || 0), sub: `${urgentes} urgentes`, color: "var(--red)" },
               { label: "Saldo", val: fmtBRL(t?.saldo || 0), sub: "em caixa", color: (t?.saldo || 0) >= 0 ? "var(--green)" : "var(--red)" },
               { label: "Água Média", val: (nivelMedio || 0) + "%", sub: "nível médio", color: "var(--cyan)" },
-              { label: "Alertas MISP", val: String(t?.alertas_ativos || 0), sub: "ativos", color: "var(--amber)" },
+              { label: "Alertas Externos", val: String(t?.alertas_ativos || 0), sub: "ativos", color: "var(--amber)" },
               { label: "Score Cond.", val: String(diagAutoResult?.score.total ?? mispCalc(mispAnswers).score), sub: diagAutoResult?.score.nivel ?? (mispCalc(mispAnswers).answered > 0 ? mispCalc(mispAnswers).nivel : "–"), color: (diagAutoResult?.score.total ?? mispCalc(mispAnswers).score) >= 80 ? "#10B981" : (diagAutoResult?.score.total ?? mispCalc(mispAnswers).score) >= 60 ? "#F59E0B" : "#EF4444" },
             ].map(k => (
               <div key={k.label} className="kpi-card">
@@ -7522,7 +7522,7 @@ export default function App() {
                 { id:"operacao",   icon:"🔧", label:"OS",          badge: t?.os_abertas || 0 },
                 { id:"financeiro", icon:"💰", label:"Financeiro",  badge: 0 },
                 { id:"iot",        icon:"💧", label:"Água",        badge: 0 },
-                { id:"misp",       icon:"🚨", label:"MISP",        badge: t?.alertas_ativos || 0 },
+                { id:"misp",       icon:"🚨", label:"Alertas Externos", badge: t?.alertas_ativos || 0 },
                 { id:"diagnostico",icon:"🫀", label:"Diagnóstico", badge: 0 },
                 { id:"crm",        icon:"👥", label:"CRM",         badge: 0 },
                 { id:"manutencao", icon:"🏗️", label:"Manutenção",  badge: equipList.filter((e: {status:string}) => e.status==="manutencao"||e.status==="atencao").length },
@@ -9659,7 +9659,7 @@ Content-Type: application/json
 
           {/* PANEL: MISP – Alertas Públicos */}
           <div className={`panel ${panel === "misp" ? "active" : ""} card`}>
-            <div className="card-title">🚨 Alertas Públicos – MISP</div>
+            <div className="card-title">🚨 Alertas Externos</div>
             {(dash?.alertas_publicos || []).length === 0 && <div style={{ color: "#475569", textAlign: "center", padding: 20, fontSize: 13 }}>Nenhum alerta ativo no momento</div>}
             {(dash?.alertas_publicos || []).map(a => {
               const nc = { alto: "pill-red", medio: "pill-amber", baixo: "pill-green" }[a.nivel] || "pill-gray";
@@ -11608,7 +11608,7 @@ Content-Type: application/json
                     {key:"chatIA",label:"Chat IA",icon:"🤖"},{key:"insights",label:"Insights",icon:"📊"},
                     {key:"comunicados",label:"Comunicados",icon:"📢"},{key:"ordens",label:"Ordens",icon:"📋"},
                     {key:"financeiro",label:"Financeiro",icon:"💰"},{key:"agua",label:"Água",icon:"💧"},
-                    {key:"misp",label:"MISP",icon:"🎯"},{key:"diagnostico",label:"Diagnóstico",icon:"🔍"},
+                    {key:"misp",label:"Alertas Externos",icon:"🎯"},{key:"diagnostico",label:"Diagnóstico",icon:"🔍"},
                     {key:"crm",label:"CRM",icon:"👥"},{key:"manutencao",label:"Manutenção",icon:"🔧"},
                     {key:"energia",label:"Energia",icon:"⚡"},{key:"gas",label:"Gás",icon:"🔥"},
                     {key:"encomendas",label:"Encomendas",icon:"📦"},{key:"condominios",label:"Condomínios",icon:"🏢"},
@@ -11730,7 +11730,7 @@ Content-Type: application/json
                               { key:"ordens",       label:"Ordens",        icon:"📋" },
                               { key:"financeiro",   label:"Financeiro",    icon:"💰" },
                               { key:"agua",         label:"Água",          icon:"💧" },
-                              { key:"misp",         label:"MISP",          icon:"🎯" },
+                              { key:"misp",         label:"Alertas Externos", icon:"🎯" },
                               { key:"diagnostico",  label:"Diagnóstico",   icon:"🔍" },
                               { key:"crm",          label:"CRM",           icon:"👥" },
                               { key:"manutencao",   label:"Manutenção",    icon:"🔧" },
@@ -11767,7 +11767,7 @@ Content-Type: application/json
                               {key:"chatIA",label:"Chat IA",icon:"🤖"},{key:"insights",label:"Insights",icon:"📊"},
                               {key:"comunicados",label:"Comunicados",icon:"📢"},{key:"ordens",label:"Ordens",icon:"📋"},
                               {key:"financeiro",label:"Financeiro",icon:"💰"},{key:"agua",label:"Água",icon:"💧"},
-                              {key:"misp",label:"MISP",icon:"🎯"},{key:"diagnostico",label:"Diagnóstico",icon:"🔍"},
+                              {key:"misp",label:"Alertas Externos",icon:"🎯"},{key:"diagnostico",label:"Diagnóstico",icon:"🔍"},
                               {key:"crm",label:"CRM",icon:"👥"},{key:"manutencao",label:"Manutenção",icon:"🔧"},
                               {key:"energia",label:"Energia",icon:"⚡"},{key:"gas",label:"Gás",icon:"🔥"},
                               {key:"encomendas",label:"Encomendas",icon:"📦"},{key:"condominios",label:"Condomínios",icon:"🏢"},
@@ -13775,7 +13775,7 @@ Content-Type: application/json
             <span className={`status-badge ${sseOnline ? "badge-online" : "badge-offline"}`}>● {sseOnline ? "online" : "offline"}</span>
           </div>
           <div className="ctx-pills">
-            {["OSs", "IoT", "MISP", "Financeiro"].map(p => <span key={p} className="ctx-pill">{p}</span>)}
+            {["OSs", "IoT", "Alertas Externos", "Financeiro"].map(p => <span key={p} className="ctx-pill">{p}</span>)}
           </div>
           <div className="ai-panel-msgs" ref={el => { if (el) el.scrollTop = el.scrollHeight; }}>
             {sideMsgs.map((m, i) => (
@@ -13945,7 +13945,7 @@ Content-Type: application/json
                   <div style={{ fontSize: 10, color: "var(--neu-text-2)", fontWeight: 600 }}>nível médio ↻10s</div>
                 </div>
                 <div className="ph-card" style={{ margin: 0, textAlign: "center", cursor: "pointer" }} onClick={() => setMoradorScreen("misp")}>
-                  <div style={{ fontSize: 10, fontWeight: 800, color: "var(--neu-text-2)", marginBottom: 6 }}>🚨 MISP</div>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: "var(--neu-text-2)", marginBottom: 6 }}>🚨 Alertas Externos</div>
                   <div style={{ fontSize: 26, fontWeight: 900, color: "#F59E0B" }}>{t?.alertas_ativos || 0}</div>
                   <div style={{ fontSize: 10, color: "var(--neu-text-2)", fontWeight: 600 }}>alertas ativos</div>
                 </div>
@@ -13963,7 +13963,7 @@ Content-Type: application/json
                   { icon: "🚗", name: "Autorizar Visitante", count: "✓", color: "#10B981", screen: "visitante" },
                   { icon: "📦", name: "Minhas Encomendas", count: String(encList.filter(e=>e.morador_nome.toLowerCase().includes("fabio")||e.unidade==="101A").filter(e=>e.status!=="retirado"&&e.status!=="devolvido").length || "0"), color: "#F59E0B", screen: "encomendas" },
                   { icon: "📢", name: "Comunicados", count: String(dash?.comunicados?.length || 0), color: "#7C5CFC", screen: "comunicados" },
-                  { icon: "🚨", name: "Alertas MISP", count: String(t?.alertas_ativos || 0), color: "#EF4444", screen: "misp" },
+                  { icon: "🚨", name: "Alertas Externos", count: String(t?.alertas_ativos || 0), color: "#EF4444", screen: "misp" },
                   { icon: "🏢", name: "Fornecedores", count: String(fornecList.length), color: "#10B981", screen: "fornecedores" },
                   { icon: "📄", name: "Documentos", count: docList.length > 0 ? String(docList.length) : "—", color: "#A78BFA", screen: "documentos" },
                 ].map(s => (
