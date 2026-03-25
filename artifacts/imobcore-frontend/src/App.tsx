@@ -1776,7 +1776,7 @@ export default function App() {
   const [whTestLog, setWhTestLog] = useState<{id:string; ok:boolean; status:number; ts:string}[]>([]);
 
   // ── FINANCEIRO INTELIGENTE ──────────────────────────────────────────────────
-  type FinTab = "dashboard"|"lancamentos"|"orcamento"|"previsao"|"insights";
+  type FinTab = "dashboard"|"lancamentos"|"orcamento"|"previsao"|"insights"|"executivo";
   const [finTab, setFinTab] = useState<FinTab>("dashboard");
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [orcamento, setOrcamento] = useState<OrcamentoEntry[]>([]);
@@ -1895,7 +1895,7 @@ export default function App() {
   };
 
   // ── FINANCEIRO INTELIGENTE — Síndico View ─────────────────────────────────
-  type FinSindicoTab = "overview"|"lancamentos"|"simulador";
+  type FinSindicoTab = "overview"|"lancamentos"|"simulador"|"executivo";
   const [finSindicoTab, setFinSindicoTab] = useState<FinSindicoTab>("overview");
   const [finSindicoLoading, setFinSindicoLoading] = useState(false);
   const [finSindicoResumo, setFinSindicoResumo] = useState<{totalRec:number;totalDesp:number;saldo:number;txInad:number;vlrInad:number;score:number;risco:string}|null>(null);
@@ -1912,6 +1912,28 @@ export default function App() {
   const [finSindicoForm, setFinSindicoForm] = useState<{tipo:"receita"|"despesa";categoria:string;descricao:string;valor:string;data:string;status:"previsto"|"pago"|"atrasado"}>({ tipo:"receita", categoria:"", descricao:"", valor:"", data:new Date().toISOString().slice(0,10), status:"previsto" });
   const [finSindicoSaving, setFinSindicoSaving] = useState(false);
   const [finMigrationModal, setFinMigrationModal] = useState<{sql:string;url:string}|null>(null);
+
+  // ── DASHBOARD EXECUTIVO ──────────────────────────────────────────────────
+  type ExecDash = {
+    score_geral: number; score_financeiro: number; score_operacional: number; score_inadimplencia: number;
+    saldo_atual: number; receitas: number; despesas: number; txInad: number; vlrInad: number; risco: string;
+    previsao_12_meses: {mes:string;receita_prevista:number;despesa_prevista:number;saldo_previsto:number;saldo_acumulado:number}[];
+    avg_rec_mensal: number; avg_desp_mensal: number;
+    metas: {id:string;tipo:string;descricao:string;valor_meta:number;valor_atual:number;prazo:string|null;status:string}[];
+    metas_missing: boolean;
+    riscos: {tipo:string;descricao:string;impacto:number;badge:string}[];
+    oportunidades: {descricao:string;potencial:string}[];
+    os_abertas: number; os_urgentes: number;
+  };
+  type MetaForm = { tipo:"financeiro"|"operacional"|"inadimplencia"; descricao:string; valor_meta:string; valor_atual:string; prazo:string; status:"ok"|"risco"|"atrasado" };
+  const [execDash, setExecDash]     = useState<ExecDash|null>(null);
+  const [execLoading, setExecLoading] = useState(false);
+  const [execDiLoading, setExecDiLoading] = useState(false);
+  const [execDiResult, setExecDiResult] = useState<{diagnostico:string;riscos:string;oportunidades:string;plano:string;gerado_em:string}|null>(null);
+  const [execMetaModal, setExecMetaModal] = useState<{open:boolean; editing:{id:string}&MetaForm|null}>({open:false,editing:null});
+  const [execMetaForm, setExecMetaForm]   = useState<MetaForm>({tipo:"financeiro",descricao:"",valor_meta:"",valor_atual:"",prazo:"",status:"ok"});
+  const [execMetaSaving, setExecMetaSaving] = useState(false);
+  const [execMigModal, setExecMigModal]   = useState<{sql:string}|null>(null);
 
   const finSindicoLoad = useCallback(async () => {
     const cid = condId || dash?.condominios?.[0]?.id;
@@ -2018,6 +2040,95 @@ export default function App() {
       }
     } catch { showToast("Erro ao salvar", "warn"); }
     setFinSindicoSaving(false);
+  };
+
+  // ── DASHBOARD EXECUTIVO — funções ─────────────────────────────────────────
+  const loadExecDash = useCallback(async () => {
+    const cid = condId || dash?.condominios?.[0]?.id;
+    setExecLoading(true);
+    try {
+      const q = cid ? `?condominio_id=${cid}` : "";
+      const r = await fetch(`/api/executivo/dashboard${q}`);
+      if (r.ok) setExecDash(await r.json());
+      else showToast("Erro ao carregar dashboard executivo", "warn");
+    } catch { showToast("Erro ao carregar dashboard executivo", "warn"); }
+    setExecLoading(false);
+  }, [condId, dash]);
+
+  useEffect(() => {
+    if (finTab === "executivo" && !execDash) loadExecDash();
+  }, [finTab]);
+
+  const execDiAnalisar = async (pergunta?: string) => {
+    if (!execDash) return;
+    const cid = condId || dash?.condominios?.[0]?.id;
+    setExecDiLoading(true);
+    try {
+      const r = await fetch("/api/executivo/di-analise", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          condominio_id: cid,
+          score_geral: execDash.score_geral,
+          score_financeiro: execDash.score_financeiro,
+          score_operacional: execDash.score_operacional,
+          score_inadimplencia: execDash.score_inadimplencia,
+          saldo_atual: execDash.saldo_atual,
+          txInad: execDash.txInad,
+          vlrInad: execDash.vlrInad,
+          receitas: execDash.receitas,
+          despesas: execDash.despesas,
+          previsao_12_meses: execDash.previsao_12_meses,
+          metas: execDash.metas,
+          riscos: execDash.riscos,
+          oportunidades: execDash.oportunidades,
+          os_abertas: execDash.os_abertas,
+          os_urgentes: execDash.os_urgentes,
+          pergunta: pergunta || undefined,
+        }),
+      });
+      if (r.ok) setExecDiResult(await r.json());
+      else showToast("Erro na análise da Di", "warn");
+    } catch { showToast("Erro na análise da Di", "warn"); }
+    setExecDiLoading(false);
+  };
+
+  const execAbrirMeta = (m?: ExecDash["metas"][0]) => {
+    if (m) {
+      setExecMetaForm({ tipo: m.tipo as MetaForm["tipo"], descricao: m.descricao, valor_meta: String(m.valor_meta), valor_atual: String(m.valor_atual), prazo: m.prazo || "", status: m.status as MetaForm["status"] });
+      setExecMetaModal({ open:true, editing: { id:m.id, tipo:m.tipo as any, descricao:m.descricao, valor_meta:String(m.valor_meta), valor_atual:String(m.valor_atual), prazo:m.prazo||"", status:m.status as any } });
+    } else {
+      setExecMetaForm({ tipo:"financeiro", descricao:"", valor_meta:"", valor_atual:"", prazo:"", status:"ok" });
+      setExecMetaModal({ open:true, editing:null });
+    }
+  };
+
+  const execSalvarMeta = async () => {
+    const cid = condId || dash?.condominios?.[0]?.id;
+    if (!execMetaForm.descricao || !cid) return;
+    setExecMetaSaving(true);
+    try {
+      const body = { condominio_id: cid, ...execMetaForm, valor_meta: Number(execMetaForm.valor_meta)||0, valor_atual: Number(execMetaForm.valor_atual)||0, prazo: execMetaForm.prazo || null };
+      const url  = execMetaModal.editing ? `/api/executivo/metas/${execMetaModal.editing.id}` : "/api/executivo/metas";
+      const meth = execMetaModal.editing ? "PUT" : "POST";
+      const r = await fetch(url, { method:meth, headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+      if (r.ok) {
+        setExecMetaModal({open:false,editing:null});
+        loadExecDash();
+        showToast("Meta salva!", "success");
+      } else {
+        const d = await r.json().catch(()=>({}));
+        if (d.error === "missing_table") { setExecMetaModal({open:false,editing:null}); setExecMigModal({sql: d.migration_sql || ""}); }
+        else showToast(d.error || "Erro ao salvar meta", "warn");
+      }
+    } catch { showToast("Erro ao salvar meta", "warn"); }
+    setExecMetaSaving(false);
+  };
+
+  const execDeletarMeta = async (id: string) => {
+    if (!confirm("Remover esta meta?")) return;
+    const r = await fetch(`/api/executivo/metas/${id}`, { method:"DELETE" });
+    if (r.ok) { loadExecDash(); showToast("Meta removida", "success"); }
+    else showToast("Erro ao remover meta", "warn");
   };
 
   const resTestCFById = async (r: Reservatorio) => {
@@ -5620,9 +5731,9 @@ export default function App() {
                 )}
               </div>
               {/* Tab bar */}
-              <div style={{ display:"flex", background:"#0F172A", borderBottom:"1px solid rgba(255,255,255,.06)", flexShrink:0 }}>
-                {([["overview","📊 Visão Geral"],["lancamentos","📋 Lançamentos"],["simulador","🧪 Simulador"]] as const).map(([tab, lbl]) => (
-                  <button key={tab} onClick={()=>setFinSindicoTab(tab)} style={{ flex:1, padding:"10px 4px", border:"none", background:"transparent", color:finSindicoTab===tab?"#10B981":"#475569", fontSize:10, fontWeight:800, cursor:"pointer", borderBottom:finSindicoTab===tab?"2px solid #10B981":"2px solid transparent", textTransform:"uppercase" as const, letterSpacing:".04em" }}>
+              <div style={{ display:"flex", background:"#0F172A", borderBottom:"1px solid rgba(255,255,255,.06)", flexShrink:0, overflowX:"auto" }}>
+                {([["overview","📊 Visão"],["executivo","🧠 CEO"],["lancamentos","📋 Lançamentos"],["simulador","🧪 Simulador"]] as const).map(([tab, lbl]) => (
+                  <button key={tab} onClick={()=>setFinSindicoTab(tab as typeof finSindicoTab)} style={{ flex:"none", minWidth:80, padding:"10px 8px", border:"none", background:"transparent", color:finSindicoTab===tab?"#10B981":"#475569", fontSize:9, fontWeight:800, cursor:"pointer", borderBottom:finSindicoTab===tab?"2px solid #10B981":"2px solid transparent", textTransform:"uppercase" as const, letterSpacing:".04em", whiteSpace:"nowrap" as const }}>
                     {lbl}
                   </button>
                 ))}
@@ -5875,6 +5986,166 @@ export default function App() {
                     )}
                   </>
                 )}
+
+                {/* ══ ABA EXECUTIVO — Síndico Mobile ══ */}
+                {finSindicoTab === "executivo" && (() => {
+                  const ed = execDash;
+                  const scC = (s: number) => s >= 80 ? "#10B981" : s >= 60 ? "#F59E0B" : s >= 40 ? "#EF4444" : "#991B1B";
+                  const stL = (s: number) => s >= 85 ? "EXCELENTE" : s >= 70 ? "SAUDÁVEL" : s >= 50 ? "ATENÇÃO" : "CRÍTICO";
+                  const fmtBRLm = (v: number) => `R$${Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:0})}`;
+                  return (
+                    <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                      {/* Score hero */}
+                      <div style={{ background:"linear-gradient(135deg,rgba(16,185,129,.12),rgba(6,182,212,.06))", border:"1px solid rgba(16,185,129,.2)", borderRadius:16, padding:"18px 16px" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                          <div style={{ position:"relative", width:72, height:72, flexShrink:0 }}>
+                            <svg width="72" height="72" viewBox="0 0 72 72">
+                              <circle cx="36" cy="36" r="30" fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="8"/>
+                              <circle cx="36" cy="36" r="30" fill="none"
+                                stroke={ed ? scC(ed.score_geral) : "#334155"} strokeWidth="8"
+                                strokeDasharray={`${2*Math.PI*30*((ed?.score_geral||0)/100)} ${2*Math.PI*30}`}
+                                strokeLinecap="round" transform="rotate(-90 36 36)"
+                              />
+                              <text x="36" y="33" textAnchor="middle" fontSize="16" fontWeight="900" fill={ed ? scC(ed.score_geral) : "#475569"}>{ed?.score_geral ?? "—"}</text>
+                              <text x="36" y="44" textAnchor="middle" fontSize="7" fill="#64748B">/ 100</text>
+                            </svg>
+                          </div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:11, fontWeight:700, color:"#64748B", textTransform:"uppercase" as const }}>Dashboard CEO</div>
+                            <div style={{ fontSize:15, fontWeight:900, color:"#E2E8F0", marginTop:2 }}>Visão Executiva</div>
+                            <div style={{ fontSize:12, fontWeight:700, color: ed ? scC(ed.score_geral) : "#475569", marginTop:4 }}>
+                              {ed ? `${stL(ed.score_geral)} · Risco ${ed.risco?.toUpperCase()}` : "Carregando..."}
+                            </div>
+                          </div>
+                          <button onClick={loadExecDash} disabled={execLoading}
+                            style={{ padding:"7px 14px", borderRadius:10, background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", color:"#34D399", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+                            {execLoading ? "⏳" : "↻"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {execLoading && !ed && (
+                        <div style={{ textAlign:"center", padding:36, color:"#64748B" }}>⏳ Calculando scores...</div>
+                      )}
+
+                      {ed && <>
+                        {/* 4 scores mini */}
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                          {[
+                            {label:"Financeiro",val:ed.score_financeiro,icon:"💰"},
+                            {label:"Operacional",val:ed.score_operacional,icon:"⚙️"},
+                            {label:"Inadimplência",val:ed.score_inadimplencia,icon:"⚠️"},
+                            {label:"Saldo Atual",val:fmtBRLm(ed.saldo_atual),icon:"💵",raw:ed.saldo_atual,isVal:true},
+                          ].map((k,i) => (
+                            <div key={i} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"12px 12px", borderTop:`2px solid ${k.isVal ? (k.raw >= 0 ? "#10B981" : "#EF4444") : scC(k.val as number)}` }}>
+                              <div style={{ fontSize:14, marginBottom:4 }}>{k.icon}</div>
+                              <div style={{ fontSize: k.isVal ? 14 : 20, fontWeight:900, color: k.isVal ? (k.raw >= 0 ? "#10B981" : "#EF4444") : scC(k.val as number) }}>{k.isVal ? k.val : k.val}</div>
+                              <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{k.label.toUpperCase()}</div>
+                              {!k.isVal && (
+                                <div style={{ marginTop:6, background:"rgba(255,255,255,.05)", borderRadius:3, height:4, overflow:"hidden" }}>
+                                  <div style={{ height:"100%", borderRadius:3, background:scC(k.val as number), width:`${k.val}%` }}/>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Riscos */}
+                        {ed.riscos.length > 0 && (
+                          <div style={{ background:"rgba(239,68,68,.05)", border:"1px solid rgba(239,68,68,.12)", borderRadius:14, padding:"14px 16px" }}>
+                            <div style={{ fontSize:11, fontWeight:800, color:"#FCA5A5", marginBottom:10 }}>🚨 Riscos ({ed.riscos.length})</div>
+                            {ed.riscos.slice(0,3).map((r,i)=>(
+                              <div key={i} style={{ background:"rgba(0,0,0,.2)", borderRadius:10, padding:"10px 12px", marginBottom:8, borderLeft:"3px solid #EF4444" }}>
+                                <div style={{ fontSize:10, fontWeight:800, color:"#FCA5A5" }}>{r.badge}</div>
+                                <div style={{ fontSize:11, color:"#CBD5E1", marginTop:4, lineHeight:1.5 }}>{r.descricao}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Di Estratégica mobile */}
+                        <div style={{ background:"linear-gradient(135deg,rgba(16,185,129,.08),rgba(6,182,212,.04))", border:"1px solid rgba(16,185,129,.2)", borderRadius:14, padding:"16px 16px" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+                            <div style={{ fontSize:28 }}>🧠</div>
+                            <div>
+                              <div style={{ fontSize:12, fontWeight:800, color:"#34D399" }}>Di Estratégica</div>
+                              <div style={{ fontSize:10, color:"#475569" }}>Consultora AI · Claude</div>
+                            </div>
+                          </div>
+                          <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const, marginBottom:12 }}>
+                            {["Diagnóstico","Riscos 90d","Redução de custos"].map(q=>(
+                              <button key={q} onClick={()=>execDiAnalisar(q)} disabled={execDiLoading}
+                                style={{ padding:"5px 12px", borderRadius:16, background:"rgba(16,185,129,.08)", border:"1px solid rgba(16,185,129,.2)", color:"#34D399", fontSize:10, cursor:"pointer" }}>
+                                {q}
+                              </button>
+                            ))}
+                          </div>
+                          <button onClick={()=>execDiAnalisar()} disabled={execDiLoading}
+                            style={{ width:"100%", padding:"11px", borderRadius:10, background:execDiLoading?"rgba(16,185,129,.15)":"#10B981", border:"none", color:execDiLoading?"#34D399":"#000", fontSize:13, fontWeight:800, cursor:"pointer" }}>
+                            {execDiLoading ? "⏳ Analisando..." : "🧠 Análise Executiva Completa"}
+                          </button>
+                          {execDiResult && (
+                            <div style={{ marginTop:12, display:"flex", flexDirection:"column", gap:10 }}>
+                              {[
+                                {title:"📋 Diagnóstico",content:execDiResult.diagnostico,color:"#34D399"},
+                                {title:"🚨 Riscos",content:execDiResult.riscos,color:"#FCA5A5"},
+                                {title:"💡 Oportunidades",content:execDiResult.oportunidades,color:"#FCD34D"},
+                                {title:"🎯 Plano 30d",content:execDiResult.plano,color:"#818CF8"},
+                              ].filter(s=>s.content).map(s=>(
+                                <div key={s.title} style={{ background:"rgba(255,255,255,.03)", borderRadius:10, padding:"10px 12px", borderLeft:`3px solid ${s.color}` }}>
+                                  <div style={{ fontSize:10, fontWeight:800, color:s.color, marginBottom:6 }}>{s.title}</div>
+                                  <div style={{ fontSize:11, color:"#CBD5E1", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>{s.content}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Metas mini */}
+                        <div style={{ background:"rgba(99,102,241,.04)", border:"1px solid rgba(99,102,241,.12)", borderRadius:14, padding:"14px 16px" }}>
+                          <div style={{ fontSize:11, fontWeight:800, color:"#818CF8", marginBottom:10 }}>🎯 Metas ({ed.metas.length})</div>
+                          {ed.metas.length === 0 ? (
+                            <div style={{ textAlign:"center" as const, padding:16, color:"#475569", fontSize:12 }}>Nenhuma meta cadastrada</div>
+                          ) : (
+                            ed.metas.slice(0,4).map(m => {
+                              const p = Math.min(100, Math.round((Number(m.valor_atual)/Number(m.valor_meta))*100));
+                              const sc = m.status==="ok"?"#10B981":m.status==="risco"?"#F59E0B":"#EF4444";
+                              return (
+                                <div key={m.id} style={{ background:"rgba(0,0,0,.2)", borderRadius:10, padding:"10px 12px", marginBottom:8, borderLeft:`3px solid ${sc}` }}>
+                                  <div style={{ fontSize:11, fontWeight:700, color:"#E2E8F0", marginBottom:6 }}>{m.descricao}</div>
+                                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                    <div style={{ flex:1, background:"rgba(255,255,255,.06)", borderRadius:3, height:6, overflow:"hidden" }}>
+                                      <div style={{ height:"100%", borderRadius:3, background:sc, width:`${p}%` }}/>
+                                    </div>
+                                    <div style={{ fontSize:10, fontWeight:800, color:sc }}>{p}%</div>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        {/* Previsão top 6 */}
+                        {ed.previsao_12_meses?.length > 0 && (
+                          <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:14, padding:"14px 16px" }}>
+                            <div style={{ fontSize:11, fontWeight:800, color:"#34D399", marginBottom:10 }}>🔮 Previsão Caixa — Próx. 6 meses</div>
+                            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:6 }}>
+                              {ed.previsao_12_meses.slice(0,6).map(p=>(
+                                <div key={p.mes} style={{ textAlign:"center", background:"rgba(255,255,255,.03)", borderRadius:8, padding:"8px 4px" }}>
+                                  <div style={{ fontSize:9, color:"#475569" }}>{p.mes}</div>
+                                  <div style={{ fontSize:12, fontWeight:800, color:p.saldo_previsto>=0?"#10B981":"#EF4444", marginTop:4 }}>
+                                    {p.saldo_previsto >= 0 ? "+" : ""}{Number(p.saldo_previsto).toLocaleString("pt-BR",{maximumFractionDigits:0})}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>}
+                    </div>
+                  );
+                })()}
+
               </div>
               {/* Modal Add Lançamento */}
               {finSindicoAddModal && (
@@ -8984,6 +9255,7 @@ export default function App() {
               // Tab button helper
               const TAB_DEFS: [string,string,string,string][] = [
                 ["dashboard","📊","Dashboard","#6366F1"],
+                ["executivo","🧠","Executivo","#10B981"],
                 ["lancamentos","📋","Lançamentos","#06B6D4"],
                 ["previsao","🧪","Simulador","#A855F7"],
                 ["insights","🤖","Di — IA","#F59E0B"],
@@ -9466,6 +9738,407 @@ export default function App() {
                         )}
                       </div>
                     )}
+
+                    {/* ══════════ ABA: DASHBOARD EXECUTIVO ══════════ */}
+                    {finTab === "executivo" && (() => {
+                      const ed = execDash;
+                      const scoreColor = (s: number) => s >= 80 ? "#10B981" : s >= 60 ? "#F59E0B" : s >= 40 ? "#EF4444" : "#991B1B";
+                      const statusLabel = (s: number) => s >= 85 ? "EXCELENTE" : s >= 70 ? "SAUDÁVEL" : s >= 50 ? "ATENÇÃO" : "CRÍTICO";
+                      const fmtBRLEx = (v: number) => `R$ ${Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:0,maximumFractionDigits:0})}`;
+                      const pct = (a: number, b: number) => b > 0 ? Math.min(100, Math.round((a/b)*100)) : 0;
+
+                      // SVG Line Chart de previsão 12 meses
+                      const LineChart12m = () => {
+                        if (!ed?.previsao_12_meses?.length) return null;
+                        const prev = ed.previsao_12_meses;
+                        const W = 480; const H = 120; const PAD = 28;
+                        const vals = prev.map(p => p.saldo_previsto);
+                        const minV = Math.min(...vals, 0);
+                        const maxV = Math.max(...vals, 1);
+                        const rangeV = maxV - minV || 1;
+                        const toX = (i: number) => PAD + (i / (prev.length-1)) * (W - 2*PAD);
+                        const toY = (v: number) => PAD + ((maxV - v) / rangeV) * (H - 2*PAD);
+                        const pts = prev.map((p,i) => `${toX(i)},${toY(p.saldo_previsto)}`).join(" ");
+                        const areaPath = `M ${toX(0)},${toY(prev[0].saldo_previsto)} ` + prev.slice(1).map((p,i)=>`L ${toX(i+1)},${toY(p.saldo_previsto)}`).join(" ") + ` L ${toX(prev.length-1)},${H-PAD+8} L ${toX(0)},${H-PAD+8} Z`;
+                        const zeroY = toY(0);
+                        return (
+                          <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display:"block" }}>
+                            <defs>
+                              <linearGradient id="execLineGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#10B981" stopOpacity="0.3"/>
+                                <stop offset="100%" stopColor="#10B981" stopOpacity="0"/>
+                              </linearGradient>
+                            </defs>
+                            {zeroY > PAD && zeroY < H-PAD && (
+                              <line x1={PAD} y1={zeroY} x2={W-PAD} y2={zeroY} stroke="rgba(255,255,255,.1)" strokeDasharray="3,3" strokeWidth="1"/>
+                            )}
+                            <path d={areaPath} fill="url(#execLineGrad)"/>
+                            <polyline points={pts} fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinejoin="round"/>
+                            {prev.map((p,i) => (
+                              <g key={i}>
+                                <circle cx={toX(i)} cy={toY(p.saldo_previsto)} r="3.5" fill={p.saldo_previsto >= 0 ? "#10B981" : "#EF4444"} stroke="#0F172A" strokeWidth="1.5"/>
+                                {i % 3 === 0 && (
+                                  <text x={toX(i)} y={H-2} textAnchor="middle" fontSize="8" fill="#475569">{p.mes}</text>
+                                )}
+                              </g>
+                            ))}
+                            <text x={PAD-2} y={toY(maxV)} textAnchor="end" fontSize="7" fill="#475569">{fmtBRLEx(maxV)}</text>
+                            {minV < 0 && <text x={PAD-2} y={toY(minV)} textAnchor="end" fontSize="7" fill="#EF4444">{fmtBRLEx(minV)}</text>}
+                          </svg>
+                        );
+                      };
+
+                      return (
+                        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+
+                          {/* HEADER SCORE EXECUTIVO */}
+                          <div style={{ background:"linear-gradient(135deg,rgba(16,185,129,.1),rgba(6,182,212,.05))", border:"1px solid rgba(16,185,129,.2)", borderRadius:18, padding:"22px 24px" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:20, flexWrap:"wrap" as const }}>
+                              {/* Score circular */}
+                              <div style={{ position:"relative" as const, width:100, height:100, flexShrink:0 }}>
+                                <svg width="100" height="100" viewBox="0 0 100 100">
+                                  <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,.07)" strokeWidth="10"/>
+                                  <circle cx="50" cy="50" r="42" fill="none"
+                                    stroke={ed ? scoreColor(ed.score_geral) : "#334155"} strokeWidth="10"
+                                    strokeDasharray={`${2*Math.PI*42*((ed?.score_geral||0)/100)} ${2*Math.PI*42}`}
+                                    strokeLinecap="round"
+                                    transform="rotate(-90 50 50)"
+                                    style={{ transition:"stroke-dasharray .8s ease" }}
+                                  />
+                                  <text x="50" y="46" textAnchor="middle" fontSize="20" fontWeight="900" fill={ed ? scoreColor(ed.score_geral) : "#475569"}>
+                                    {ed?.score_geral ?? "—"}
+                                  </text>
+                                  <text x="50" y="60" textAnchor="middle" fontSize="8" fill="#64748B">/ 100</text>
+                                </svg>
+                              </div>
+                              {/* Labels */}
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:11, fontWeight:700, color:"#64748B", letterSpacing:".1em", textTransform:"uppercase" as const }}>Visão Estratégica</div>
+                                <div style={{ fontSize:20, fontWeight:900, color:"#E2E8F0", marginTop:4, letterSpacing:"-.02em" }}>Dashboard Executivo</div>
+                                <div style={{ fontSize:13, fontWeight:700, color: ed ? scoreColor(ed.score_geral) : "#475569", marginTop:6 }}>
+                                  {ed ? `${statusLabel(ed.score_geral)} — Risco ${ed.risco?.toUpperCase()}` : "Carregando..."}
+                                </div>
+                                <div style={{ fontSize:10, color:"#334155", marginTop:4 }}>Previsão 12 meses · Metas · IA Estratégica</div>
+                              </div>
+                              {/* Reload */}
+                              <button onClick={loadExecDash} disabled={execLoading}
+                                style={{ padding:"9px 18px", borderRadius:10, background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", color:"#34D399", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                                {execLoading ? "⏳" : "↻ Atualizar"}
+                              </button>
+                            </div>
+                          </div>
+
+                          {execLoading && !ed && (
+                            <div style={{ textAlign:"center", padding:48, color:"#64748B" }}>
+                              <div style={{ fontSize:36, marginBottom:10 }}>⏳</div>
+                              <div>Calculando scores e previsões...</div>
+                            </div>
+                          )}
+
+                          {ed && <>
+                            {/* 4 SCORE CARDS */}
+                            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
+                              {[
+                                {label:"Score Geral",val:ed.score_geral,icon:"🏆",weight:"Geral"},
+                                {label:"Financeiro",val:ed.score_financeiro,icon:"💰",weight:"40%"},
+                                {label:"Operacional",val:ed.score_operacional,icon:"⚙️",weight:"30%"},
+                                {label:"Inadimplência",val:ed.score_inadimplencia,icon:"⚠️",weight:"30%"},
+                              ].map(k => (
+                                <div key={k.label} style={{ background:"#0F172A", border:`1px solid ${scoreColor(k.val)}33`, borderRadius:12, padding:"14px 12px", borderTop:`3px solid ${scoreColor(k.val)}` }}>
+                                  <div style={{ fontSize:18, marginBottom:6 }}>{k.icon}</div>
+                                  <div style={{ fontSize:22, fontWeight:900, color:scoreColor(k.val) }}>{k.val}</div>
+                                  <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{k.label.toUpperCase()}</div>
+                                  <div style={{ fontSize:8, color:"#334155", marginTop:2 }}>peso: {k.weight}</div>
+                                  {/* Mini progress */}
+                                  <div style={{ marginTop:8, background:"rgba(255,255,255,.05)", borderRadius:3, height:4, overflow:"hidden" }}>
+                                    <div style={{ height:"100%", borderRadius:3, background:scoreColor(k.val), width:`${k.val}%`, transition:"width .8s" }}/>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* FINANCEIRO OVERVIEW */}
+                            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8 }}>
+                              {[
+                                {label:"Saldo Atual",val:fmtBRLEx(ed.saldo_atual),icon:"💵",color:ed.saldo_atual>=0?"#10B981":"#EF4444",note:ed.saldo_atual>=0?"✅ positivo":"⚠️ negativo"},
+                                {label:"Média Rec/mês",val:fmtBRLEx(ed.avg_rec_mensal),icon:"📈",color:"#06B6D4",note:"últimos 6 meses"},
+                                {label:"Inadimplência",val:`${ed.txInad}%`,icon:"⚠️",color:ed.txInad>20?"#EF4444":ed.txInad>10?"#F59E0B":"#10B981",note:`R$ ${Number(ed.vlrInad||0).toLocaleString("pt-BR",{maximumFractionDigits:0})} em aberto`},
+                              ].map(k=>(
+                                <div key={k.label} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"14px 14px" }}>
+                                  <div style={{ fontSize:11, color:"#475569" }}>{k.icon} {k.label}</div>
+                                  <div style={{ fontSize:18, fontWeight:900, color:k.color, marginTop:6 }}>{k.val}</div>
+                                  <div style={{ fontSize:10, color:"#334155", marginTop:4 }}>{k.note}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* PREVISÃO 12 MESES — gráfico */}
+                            <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:14, padding:"18px 20px" }}>
+                              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                                <div>
+                                  <div style={{ fontSize:12, fontWeight:800, color:"#34D399" }}>🔮 Previsão de Caixa — 12 Meses</div>
+                                  <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>Baseado em histórico + tendência · Saldo mensal projetado</div>
+                                </div>
+                                <div style={{ fontSize:10, color:"#475569", textAlign:"right" as const }}>
+                                  <div>Déficit previsto:</div>
+                                  <div style={{ color: ed.previsao_12_meses.filter(p=>p.saldo_previsto<0).length > 0 ? "#EF4444" : "#10B981", fontWeight:800 }}>
+                                    {ed.previsao_12_meses.filter(p=>p.saldo_previsto<0).length} mês(es)
+                                  </div>
+                                </div>
+                              </div>
+                              <LineChart12m/>
+                              {/* Grid data */}
+                              <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:4, marginTop:12 }}>
+                                {ed.previsao_12_meses.slice(0,6).map(p=>(
+                                  <div key={p.mes} style={{ textAlign:"center" as const, background:"rgba(255,255,255,.03)", borderRadius:8, padding:"6px 4px" }}>
+                                    <div style={{ fontSize:9, color:"#475569" }}>{p.mes}</div>
+                                    <div style={{ fontSize:11, fontWeight:800, color:p.saldo_previsto>=0?"#10B981":"#EF4444", marginTop:2 }}>
+                                      {p.saldo_previsto >= 0 ? "+" : ""}{Number(p.saldo_previsto).toLocaleString("pt-BR",{maximumFractionDigits:0})}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* RISCOS + OPORTUNIDADES */}
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                              {/* Riscos */}
+                              <div style={{ background:"rgba(239,68,68,.05)", border:"1px solid rgba(239,68,68,.12)", borderRadius:14, padding:"16px 18px" }}>
+                                <div style={{ fontSize:12, fontWeight:800, color:"#FCA5A5", marginBottom:12 }}>🚨 Riscos Identificados</div>
+                                {ed.riscos.length === 0 ? (
+                                  <div style={{ fontSize:12, color:"#10B981", textAlign:"center" as const, padding:16 }}>✅ Nenhum risco crítico detectado</div>
+                                ) : (
+                                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                                    {ed.riscos.map((r,i)=>(
+                                      <div key={i} style={{ background:"rgba(0,0,0,.2)", borderRadius:10, padding:"10px 12px", borderLeft:"3px solid #EF4444" }}>
+                                        <div style={{ fontSize:10, fontWeight:800, color:"#FCA5A5", marginBottom:4 }}>{r.badge}</div>
+                                        <div style={{ fontSize:11, color:"#CBD5E1", lineHeight:1.5 }}>{r.descricao}</div>
+                                        <div style={{ marginTop:6, display:"flex", alignItems:"center", gap:6 }}>
+                                          <div style={{ fontSize:9, color:"#475569" }}>Impacto</div>
+                                          <div style={{ flex:1, background:"rgba(255,255,255,.05)", borderRadius:3, height:4 }}>
+                                            <div style={{ width:`${r.impacto*10}%`, height:"100%", borderRadius:3, background:r.impacto>=8?"#EF4444":r.impacto>=5?"#F59E0B":"#F59E0B" }}/>
+                                          </div>
+                                          <div style={{ fontSize:9, color:"#EF4444", fontWeight:700 }}>{r.impacto}/10</div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              {/* Oportunidades */}
+                              <div style={{ background:"rgba(16,185,129,.05)", border:"1px solid rgba(16,185,129,.12)", borderRadius:14, padding:"16px 18px" }}>
+                                <div style={{ fontSize:12, fontWeight:800, color:"#6EE7B7", marginBottom:12 }}>💡 Oportunidades</div>
+                                {ed.oportunidades.length === 0 ? (
+                                  <div style={{ fontSize:12, color:"#475569", textAlign:"center" as const, padding:16 }}>Nenhuma oportunidade identificada no momento</div>
+                                ) : (
+                                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                                    {ed.oportunidades.map((o,i)=>(
+                                      <div key={i} style={{ background:"rgba(0,0,0,.2)", borderRadius:10, padding:"10px 12px", borderLeft:"3px solid #10B981" }}>
+                                        <div style={{ fontSize:11, color:"#CBD5E1", lineHeight:1.5 }}>💡 {o.descricao}</div>
+                                        <div style={{ fontSize:9, color:"#10B981", marginTop:6, fontWeight:700 }}>Potencial: {o.potencial}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* METAS */}
+                            <div style={{ background:"rgba(99,102,241,.04)", border:"1px solid rgba(99,102,241,.15)", borderRadius:14, padding:"18px 20px" }}>
+                              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:14 }}>
+                                <div style={{ fontSize:12, fontWeight:800, color:"#818CF8" }}>🎯 Metas do Condomínio ({ed.metas.length})</div>
+                                <button onClick={()=>execAbrirMeta()}
+                                  style={{ padding:"7px 16px", borderRadius:8, background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.4)", color:"#818CF8", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                                  + Nova Meta
+                                </button>
+                              </div>
+                              {ed.metas_missing && (
+                                <div style={{ background:"rgba(245,158,11,.1)", border:"1px solid rgba(245,158,11,.3)", borderRadius:10, padding:"12px 16px", marginBottom:12 }}>
+                                  <div style={{ fontSize:12, color:"#FCD34D", marginBottom:8 }}>⚠️ Tabela de metas não encontrada no banco de dados.</div>
+                                  <button onClick={async()=>{ const r=await fetch("/api/executivo/migration-sql"); if(r.ok){const d=await r.json();setExecMigModal({sql:d.sql||""}); }}}
+                                    style={{ padding:"6px 14px", borderRadius:6, background:"rgba(245,158,11,.2)", border:"1px solid rgba(245,158,11,.4)", color:"#FCD34D", fontSize:11, cursor:"pointer" }}>
+                                    Ver SQL de migração
+                                  </button>
+                                </div>
+                              )}
+                              {ed.metas.length === 0 && !ed.metas_missing ? (
+                                <div style={{ textAlign:"center" as const, padding:24, color:"#334155" }}>
+                                  <div style={{ fontSize:36, marginBottom:8 }}>🎯</div>
+                                  <div style={{ fontSize:13, color:"#475569" }}>Nenhuma meta cadastrada. Crie metas para acompanhar o progresso do condomínio.</div>
+                                </div>
+                              ) : (
+                                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                                  {ed.metas.map(m=>{
+                                    const progPct = pct(Number(m.valor_atual), Number(m.valor_meta));
+                                    const statColor = m.status === "ok" ? "#10B981" : m.status === "risco" ? "#F59E0B" : "#EF4444";
+                                    const statIcon  = m.status === "ok" ? "✅" : m.status === "risco" ? "⚠️" : "🔴";
+                                    const tipoIcon  = m.tipo === "financeiro" ? "💰" : m.tipo === "operacional" ? "⚙️" : "⚠️";
+                                    return (
+                                      <div key={m.id} style={{ background:"rgba(0,0,0,.2)", borderRadius:12, padding:"12px 16px", borderLeft:`3px solid ${statColor}` }}>
+                                        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                                          <span style={{ fontSize:14 }}>{tipoIcon}</span>
+                                          <div style={{ flex:1 }}>
+                                            <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0" }}>{m.descricao}</div>
+                                            <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>
+                                              Meta: {Number(m.valor_meta).toLocaleString("pt-BR")} · Atual: {Number(m.valor_atual).toLocaleString("pt-BR")}
+                                              {m.prazo && ` · Prazo: ${new Date(m.prazo).toLocaleDateString("pt-BR")}`}
+                                            </div>
+                                          </div>
+                                          <div style={{ fontSize:10, fontWeight:800, color:statColor }}>{statIcon} {m.status?.toUpperCase()}</div>
+                                          <button onClick={()=>execAbrirMeta(m)} style={{ padding:"4px 10px", borderRadius:6, background:"rgba(99,102,241,.15)", border:"none", color:"#818CF8", fontSize:10, cursor:"pointer" }}>✏️</button>
+                                          <button onClick={()=>execDeletarMeta(m.id)} style={{ padding:"4px 10px", borderRadius:6, background:"rgba(239,68,68,.1)", border:"none", color:"#FCA5A5", fontSize:10, cursor:"pointer" }}>✕</button>
+                                        </div>
+                                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                          <div style={{ flex:1, background:"rgba(255,255,255,.06)", borderRadius:4, height:8, overflow:"hidden" }}>
+                                            <div style={{ height:"100%", borderRadius:4, background:statColor, width:`${progPct}%`, transition:"width .6s" }}/>
+                                          </div>
+                                          <div style={{ fontSize:11, fontWeight:800, color:statColor, width:36, textAlign:"right" as const }}>{progPct}%</div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* DI ESTRATÉGICA */}
+                            <div style={{ background:"linear-gradient(135deg,rgba(16,185,129,.08),rgba(6,182,212,.04))", border:"1px solid rgba(16,185,129,.2)", borderRadius:14, padding:"20px 22px" }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:16 }}>
+                                <div style={{ fontSize:36 }}>🧠</div>
+                                <div style={{ flex:1 }}>
+                                  <div style={{ fontSize:13, fontWeight:800, color:"#34D399" }}>Di — Consultora Estratégica</div>
+                                  <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>Análise executiva · Diagnóstico · Plano de ação · Claude AI</div>
+                                </div>
+                                <button onClick={()=>execDiAnalisar()} disabled={execDiLoading}
+                                  style={{ padding:"10px 20px", borderRadius:10, background:execDiLoading?"rgba(16,185,129,.15)":"#10B981", border:"none", color:execDiLoading?"#34D399":"#000", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" as const }}>
+                                  {execDiLoading ? "⏳ Analisando..." : "🧠 Análise Executiva"}
+                                </button>
+                              </div>
+                              {/* Quick prompts */}
+                              <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const, marginBottom:14 }}>
+                                {["Diagnóstico completo","Riscos para os próximos 90 dias","Plano de redução de custos","Como aumentar o score?","Análise de inadimplência"].map(q=>(
+                                  <button key={q} onClick={()=>execDiAnalisar(q)} disabled={execDiLoading}
+                                    style={{ padding:"5px 12px", borderRadius:20, background:"rgba(16,185,129,.08)", border:"1px solid rgba(16,185,129,.2)", color:"#34D399", fontSize:10, cursor:"pointer" }}>
+                                    {q}
+                                  </button>
+                                ))}
+                              </div>
+                              {execDiResult ? (
+                                <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                                  {[
+                                    {title:"📋 Diagnóstico Executivo", content:execDiResult.diagnostico, color:"#34D399", bg:"rgba(16,185,129,.05)"},
+                                    {title:"🚨 Riscos Prioritários",   content:execDiResult.riscos,       color:"#FCA5A5", bg:"rgba(239,68,68,.05)"},
+                                    {title:"💡 Oportunidades",         content:execDiResult.oportunidades, color:"#FCD34D", bg:"rgba(245,158,11,.05)"},
+                                    {title:"🎯 Plano — Próximos 30d",  content:execDiResult.plano,        color:"#818CF8", bg:"rgba(99,102,241,.05)"},
+                                  ].filter(s => s.content).map(s=>(
+                                    <div key={s.title} style={{ background:s.bg, border:`1px solid ${s.color}22`, borderRadius:12, padding:"14px 16px" }}>
+                                      <div style={{ fontSize:12, fontWeight:800, color:s.color, marginBottom:8 }}>{s.title}</div>
+                                      <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{s.content}</div>
+                                    </div>
+                                  ))}
+                                  <div style={{ fontSize:10, color:"#334155", textAlign:"right" as const }}>
+                                    Gerado em {new Date(execDiResult.gerado_em).toLocaleString("pt-BR")} · Di (Claude AI)
+                                  </div>
+                                </div>
+                              ) : !execDiLoading && (
+                                <div style={{ textAlign:"center" as const, padding:28, color:"#334155" }}>
+                                  <div style={{ fontSize:13, color:"#475569" }}>Clique em "Análise Executiva" para que a Di gere um diagnóstico estratégico completo com plano de ação</div>
+                                </div>
+                              )}
+                            </div>
+
+                          </>}
+
+                          {/* Migration Modal */}
+                          {execMigModal && (
+                            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.8)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:2000 }}>
+                              <div style={{ background:"#1E293B", border:"1px solid rgba(255,255,255,.1)", borderRadius:18, padding:28, width:560, maxWidth:"95vw" }}>
+                                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                                  <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>🔧 Migração Necessária</div>
+                                  <button onClick={()=>setExecMigModal(null)} style={{ width:32,height:32,borderRadius:16,background:"rgba(255,255,255,.08)",border:"none",color:"#94A3B8",fontSize:16,cursor:"pointer" }}>✕</button>
+                                </div>
+                                <div style={{ fontSize:12, color:"#94A3B8", marginBottom:12 }}>Execute este SQL no Supabase para criar a tabela de metas:</div>
+                                <pre style={{ background:"#0F172A", borderRadius:10, padding:"12px 14px", fontSize:11, color:"#34D399", overflowX:"auto", maxHeight:200, overflowY:"auto" }}>{execMigModal.sql}</pre>
+                                <div style={{ display:"flex", gap:10, marginTop:14 }}>
+                                  <button onClick={()=>{navigator.clipboard.writeText(execMigModal.sql);showToast("SQL copiado!","success");}}
+                                    style={{ flex:1, padding:"10px", borderRadius:10, background:"rgba(16,185,129,.2)", border:"1px solid rgba(16,185,129,.4)", color:"#34D399", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                    📋 Copiar SQL
+                                  </button>
+                                  <a href="https://supabase.com/dashboard/project/vlljtyliavfutklobvkn/sql/new" target="_blank" rel="noopener noreferrer"
+                                    style={{ flex:1, padding:"10px", borderRadius:10, background:"#10B981", border:"none", color:"#000", fontSize:12, fontWeight:800, cursor:"pointer", textDecoration:"none", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                                    🔗 Abrir Supabase SQL Editor
+                                  </a>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Modal: Nova/Editar Meta */}
+                          {execMetaModal.open && (
+                            <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.8)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:2000 }}>
+                              <div style={{ background:"#1E293B", border:"1px solid rgba(255,255,255,.1)", borderRadius:18, padding:28, width:480, maxWidth:"95vw" }}>
+                                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                                  <div style={{ fontSize:16, fontWeight:800, color:"#E2E8F0" }}>{execMetaModal.editing ? "✏️ Editar Meta" : "🎯 Nova Meta"}</div>
+                                  <button onClick={()=>setExecMetaModal({open:false,editing:null})} style={{ width:32,height:32,borderRadius:16,background:"rgba(255,255,255,.08)",border:"none",color:"#94A3B8",fontSize:16,cursor:"pointer" }}>✕</button>
+                                </div>
+                                <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                                  <div>
+                                    <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>TIPO</label>
+                                    <select value={execMetaForm.tipo} onChange={e=>setExecMetaForm(p=>({...p,tipo:e.target.value as any}))}
+                                      style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none" }}>
+                                      <option value="financeiro">💰 Financeiro</option>
+                                      <option value="operacional">⚙️ Operacional</option>
+                                      <option value="inadimplencia">⚠️ Inadimplência</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>DESCRIÇÃO</label>
+                                    <input value={execMetaForm.descricao} onChange={e=>setExecMetaForm(p=>({...p,descricao:e.target.value}))}
+                                      placeholder="Ex: Reduzir inadimplência para 5%"
+                                      style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }}/>
+                                  </div>
+                                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                                    <div>
+                                      <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>VALOR META</label>
+                                      <input type="number" value={execMetaForm.valor_meta} onChange={e=>setExecMetaForm(p=>({...p,valor_meta:e.target.value}))}
+                                        placeholder="0"
+                                        style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }}/>
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>VALOR ATUAL</label>
+                                      <input type="number" value={execMetaForm.valor_atual} onChange={e=>setExecMetaForm(p=>({...p,valor_atual:e.target.value}))}
+                                        placeholder="0"
+                                        style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }}/>
+                                    </div>
+                                  </div>
+                                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                                    <div>
+                                      <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>PRAZO</label>
+                                      <input type="date" value={execMetaForm.prazo} onChange={e=>setExecMetaForm(p=>({...p,prazo:e.target.value}))}
+                                        style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }}/>
+                                    </div>
+                                    <div>
+                                      <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>STATUS</label>
+                                      <select value={execMetaForm.status} onChange={e=>setExecMetaForm(p=>({...p,status:e.target.value as any}))}
+                                        style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none" }}>
+                                        <option value="ok">✅ OK</option>
+                                        <option value="risco">⚠️ Risco</option>
+                                        <option value="atrasado">🔴 Atrasado</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                  <button onClick={execSalvarMeta} disabled={execMetaSaving}
+                                    style={{ width:"100%", padding:"13px", borderRadius:12, background:execMetaSaving?"rgba(99,102,241,.3)":"linear-gradient(135deg,#6366F1,#A855F7)", border:"none", color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer", marginTop:8 }}>
+                                    {execMetaSaving ? "Salvando..." : execMetaModal.editing ? "✅ Salvar Alterações" : "🎯 Criar Meta"}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                        </div>
+                      );
+                    })()}
 
                   </div>
 

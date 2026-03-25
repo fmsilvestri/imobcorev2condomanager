@@ -1,0 +1,313 @@
+# ============================================
+# 🧠 ImobCore V6 — Dashboard Executivo (CEO)
+# Previsão 12 meses + Metas + IA Estratégica
+# ============================================
+
+Criar um módulo chamado:
+
+"Dashboard Executivo"
+
+Integrado ao módulo Financeiro Inteligente.
+
+---
+
+# 🎯 OBJETIVO
+
+Criar um painel de decisão estratégica que mostre:
+
+✔ Futuro financeiro (12 meses)
+✔ Saúde do condomínio
+✔ Metas e performance
+✔ Riscos antecipados
+✔ Recomendações da Di
+
+---
+
+# 🧱 1. BANCO DE DADOS (SUPABASE)
+
+## 📊 executivo_kpis
+- id
+- condominio_id
+- score_financeiro (0-100)
+- score_operacional (0-100)
+- score_inadimplencia (0-100)
+- score_geral (0-100)
+- created_at
+
+---
+
+## 🎯 metas_condominio
+- id
+- condominio_id
+- tipo (financeiro | operacional | inadimplencia)
+- descricao
+- valor_meta
+- valor_atual
+- prazo (date)
+- status (ok | risco | atrasado)
+
+---
+
+## 🔮 previsoes_financeiras
+- id
+- condominio_id
+- mes
+- receita_prevista
+- despesa_prevista
+- saldo_previsto
+
+---
+
+## 🤖 insights_executivos
+- id
+- condominio_id
+- tipo (risco | oportunidade | estrategia)
+- descricao
+- impacto (1-10)
+- created_at
+
+---
+
+# ⚙️ 2. BACKEND (Express)
+
+## 📊 /api/executivo/dashboard
+
+Retornar:
+
+{
+  score_geral,
+  score_financeiro,
+  score_operacional,
+  score_inadimplencia,
+
+  saldo_atual,
+  previsao_12_meses: [...],
+
+  metas: [...],
+
+  riscos: [...],
+
+  insights: [...]
+}
+
+---
+
+## 🔮 /api/executivo/previsao-12m
+
+Gerar previsão:
+
+Baseado em:
+- histórico financeiro
+- média mensal
+- tendência
+
+Retornar array:
+
+[
+  { mes: "Jan", saldo: 12000 },
+  ...
+]
+
+---
+
+## 🎯 /api/executivo/metas
+
+CRUD completo de metas
+
+---
+
+## 🤖 /api/executivo/insights
+
+Gerar automaticamente:
+
+- risco de déficit
+- aumento de custos
+- oportunidades de economia
+
+---
+
+## 🧠 /api/executivo/di-analise
+
+Resposta da Di:
+
+1. Situação geral
+2. Principais riscos
+3. Oportunidades
+4. Plano recomendado (30 dias)
+
+---
+
+# 🧠 3. LÓGICA INTELIGENTE
+
+## 📊 Score Geral (0-100)
+
+Fórmula:
+
+score_geral =
+  (financeiro * 0.4) +
+  (operacional * 0.3) +
+  (inadimplencia * 0.3)
+
+---
+
+## 🔮 Previsão 12 meses
+
+Calcular:
+
+- média últimos 6 meses
+- tendência (crescimento ou queda)
+- sazonalidade
+
+---
+
+## 🚨 Riscos
+
+Detectar:
+
+- saldo negativo futuro
+- inadimplência crescente
+- aumento de despesas
+
+---
+
+## 💡 Oportunidades
+
+Detectar:
+
+- redução de custos
+- aumento de receita
+- otimização de contratos
+
+---
+
+# 🎨 4. FRONTEND (UI EXECUTIVA)
+
+Criar layout estilo:
+
+🔥 Nubank + Power BI + App de CEO
+
+---
+
+## 🧠 HEADER PRINCIPAL
+
+"Visão Estratégica do Condomínio"
+
+Score geral grande:
+
+85 / 100 → "Saudável"
+
+---
+
+## 📊 CARDS PRINCIPAIS
+
+### 🟢 Saúde Geral
+- Score
+- Status (excelente / atenção / crítico)
+
+---
+
+### 🔮 Previsão 12 meses
+Gráfico linha:
+
+Saldo futuro mês a mês
+
+---
+
+### 🚨 Risco Executivo
+Exibir:
+
+- baixo
+- médio
+- alto
+- crítico
+
+---
+
+### 🎯 Metas
+
+Lista:
+
+✔ Reduzir inadimplência para 3%  
+✔ Aumentar reserva em 20%  
+
+Status visual
+
+---
+
+### 💡 Insights da Di
+
+Ex:
+
+"Custos de manutenção subiram 18% — revisar contratos"
+
+---
+
+## 📈 GRÁFICOS
+
+- previsão 12 meses
+- evolução score
+- despesas vs receita
+
+---
+
+# 🤖 5. COMPORTAMENTO DA DI
+
+A Di deve atuar como:
+
+"Consultora estratégica do condomínio"
+
+---
+
+Resposta padrão:
+
+1. Diagnóstico
+2. Risco
+3. Oportunidade
+4. Plano de ação
+
+---
+
+Exemplo:
+
+"Seu condomínio está saudável, porém há risco de déficit em 60 dias devido ao aumento de custos..."
+
+---
+
+# 🔥 6. DIFERENCIAIS V6
+
+Implementar:
+
+✔ Previsão financeira de longo prazo  
+✔ Score executivo  
+✔ Metas com acompanhamento  
+✔ Insights automáticos  
+✔ Riscos antecipados  
+✔ Planejamento estratégico  
+
+---
+
+# 🚀 7. RESULTADO FINAL
+
+O módulo deve:
+
+✔ Mostrar o futuro (não só passado)
+✔ Ajudar na tomada de decisão
+✔ Ser visual e intuitivo
+✔ Integrar com a Di
+✔ Ser nível executivo
+
+---
+
+# ⚠️ REGRAS
+
+- Código limpo
+- Modular
+- Responsivo
+- Integração com sistema atual
+
+---
+
+# 💥 NÍVEL
+
+Este dashboard deve parecer um painel de CEO de empresa,
+não um sistema de condomínio tradicional.

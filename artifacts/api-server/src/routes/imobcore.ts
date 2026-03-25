@@ -1868,6 +1868,348 @@ router.get("/financeiro/inadimplencia", async (req: Request, res: Response) => {
   } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
 });
 
+// ══════════════════════════════════════════════════════════════════════════════
+// 🧠 DASHBOARD EXECUTIVO (CEO) — Score · Previsão 12m · Metas · Insights · Di
+// ══════════════════════════════════════════════════════════════════════════════
+
+// SQL de migração para tabela metas_condominio
+const METAS_MIGRATION_SQL = `
+CREATE TABLE IF NOT EXISTS metas_condominio (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID NOT NULL,
+  tipo TEXT NOT NULL CHECK (tipo IN ('financeiro','operacional','inadimplencia')),
+  descricao TEXT NOT NULL,
+  valor_meta NUMERIC NOT NULL DEFAULT 0,
+  valor_atual NUMERIC NOT NULL DEFAULT 0,
+  prazo DATE,
+  status TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok','risco','atrasado')),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+`;
+
+// Helper: busca ou auto-migra metas_condominio
+async function fetchMetas(condId?: string): Promise<{ data: Record<string,unknown>[]; missing: boolean }> {
+  let q = supabase.from("metas_condominio").select("*").order("created_at", { ascending: false });
+  if (condId) q = q.eq("condominio_id", condId);
+  const { data, error } = await q;
+  if (error && (error.message?.includes("does not exist") || error.message?.includes("schema cache"))) {
+    return { data: [], missing: true };
+  }
+  return { data: (data || []) as Record<string,unknown>[], missing: false };
+}
+
+// Helper: gera previsão 12 meses com base em histórico de lançamentos
+function gerarPrevisao12m(lancs: Lancamento[]) {
+  const hoje = new Date();
+  const mesesHist: Record<string, { rec: number; desp: number }> = {};
+
+  for (const l of lancs) {
+    const d = l.data ? new Date(l.data) : null;
+    if (!d) continue;
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    if (!mesesHist[key]) mesesHist[key] = { rec: 0, desp: 0 };
+    if (l.tipo === "receita") mesesHist[key].rec += Number(l.valor);
+    else mesesHist[key].desp += Number(l.valor);
+  }
+
+  const hist = Object.entries(mesesHist).sort(([a],[b]) => a.localeCompare(b)).slice(-6);
+  const avgRec  = hist.length ? hist.reduce((s,[,v]) => s + v.rec, 0) / hist.length : 0;
+  const avgDesp = hist.length ? hist.reduce((s,[,v]) => s + v.desp, 0) / hist.length : 0;
+
+  // Tendência simples (diferença entre últimos 2 vs anteriores 2 meses)
+  let tendRec  = 0;
+  let tendDesp = 0;
+  if (hist.length >= 4) {
+    const recA = hist.slice(-2).reduce((s,[,v]) => s + v.rec, 0) / 2;
+    const recB = hist.slice(-4,-2).reduce((s,[,v]) => s + v.rec, 0) / 2;
+    const despA = hist.slice(-2).reduce((s,[,v]) => s + v.desp, 0) / 2;
+    const despB = hist.slice(-4,-2).reduce((s,[,v]) => s + v.desp, 0) / 2;
+    tendRec  = recB > 0 ? (recA - recB) / recB : 0;
+    tendDesp = despB > 0 ? (despA - despB) / despB : 0;
+  }
+
+  const MESES_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+  const previsoes = [];
+  let saldoAcum = 0;
+  for (let i = 1; i <= 12; i++) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1);
+    const fator = Math.min(i * 0.005, 0.03); // sazonalidade discreta
+    const recPrev  = avgRec  * (1 + tendRec  * 0.5 + (Math.sin(i/2) * fator));
+    const despPrev = avgDesp * (1 + tendDesp * 0.5 + (Math.cos(i/3) * fator));
+    const saldo = recPrev - despPrev;
+    saldoAcum += saldo;
+    previsoes.push({
+      mes: MESES_PT[d.getMonth()] + "/" + String(d.getFullYear()).slice(2),
+      receita_prevista: Math.round(recPrev),
+      despesa_prevista: Math.round(despPrev),
+      saldo_previsto: Math.round(saldo),
+      saldo_acumulado: Math.round(saldoAcum),
+    });
+  }
+  return { previsoes, avgRec, avgDesp, tendRec, tendDesp };
+}
+
+// Helper: detecta riscos e oportunidades automaticamente
+function detectarRiscosOport(ind: ReturnType<typeof calcularIndicadores>, previsoes: ReturnType<typeof gerarPrevisao12m>["previsoes"], metas: Record<string,unknown>[]) {
+  const riscos: { tipo: string; descricao: string; impacto: number; badge: string }[] = [];
+  const oportunidades: { descricao: string; potencial: string }[] = [];
+
+  if (ind.saldo < 0) riscos.push({ tipo:"financeiro", descricao:"Saldo negativo — condomínio operando com déficit", impacto:9, badge:"⛔ CRÍTICO" });
+  if (ind.txInad > 20) riscos.push({ tipo:"inadimplencia", descricao:`Taxa de inadimplência em ${ind.txInad}% — acima do limite saudável de 10%`, impacto:8, badge:"🔴 ALTO" });
+  else if (ind.txInad > 10) riscos.push({ tipo:"inadimplencia", descricao:`Inadimplência em ${ind.txInad}% — monitorar para evitar piora`, impacto:5, badge:"🟡 MÉDIO" });
+
+  const deficitFuturo = previsoes.filter(p => p.saldo_previsto < 0);
+  if (deficitFuturo.length > 0) riscos.push({ tipo:"previsao", descricao:`Déficit previsto em ${deficitFuturo.length} dos próximos 12 meses (${deficitFuturo.map(p=>p.mes).slice(0,3).join(", ")})`, impacto:7, badge:"🔴 ALTO" });
+
+  const metasAtrasadas = metas.filter(m => m.status === "atrasado");
+  if (metasAtrasadas.length > 0) riscos.push({ tipo:"metas", descricao:`${metasAtrasadas.length} meta(s) com prazo vencido sem atingimento`, impacto:4, badge:"🟡 MÉDIO" });
+
+  if (ind.saldo > 0) oportunidades.push({ descricao:"Saldo positivo — considere aplicar em fundo de reserva", potencial:"Alta" });
+  if (ind.txInad < 5) oportunidades.push({ descricao:"Inadimplência baixa — momento ideal para renegociar contratos de fornecedores", potencial:"Média" });
+  const crescRec = previsoes.slice(0,6).reduce((s,p) => s + p.receita_prevista, 0) / 6;
+  if (crescRec > ind.receitas) oportunidades.push({ descricao:"Tendência de crescimento nas receitas — planejar reinvestimento estrutural", potencial:"Média" });
+
+  return { riscos, oportunidades };
+}
+
+// GET /api/executivo/dashboard
+router.get("/executivo/dashboard", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.query as { condominio_id?: string };
+    const [indResult, metasResult, osResult, equipsResult, moradoresResult] = await Promise.all([
+      calcIndicadores(condominio_id),
+      fetchMetas(condominio_id),
+      condominio_id
+        ? supabase.from("ordens_servico").select("id,status,prioridade").in("status",["aberta","em_andamento"]).eq("condominio_id", condominio_id)
+        : supabase.from("ordens_servico").select("id,status,prioridade").in("status",["aberta","em_andamento"]).limit(200),
+      condominio_id
+        ? supabase.from("equipamentos").select("id,status").eq("condominio_id", condominio_id)
+        : supabase.from("equipamentos").select("id,status").limit(200),
+      condominio_id
+        ? supabase.from("moradores").select("id,status").eq("condominio_id", condominio_id)
+        : supabase.from("moradores").select("id,status").limit(200),
+    ]);
+
+    const ind = indResult;
+    const metas = metasResult.data;
+
+    // ── Calcular scores ───────────────────────────────────────────────────────
+    const score_financeiro = ind.score;
+
+    // Score operacional: baseado em OS abertas e equipamentos
+    const osAbertas    = (osResult.data || []).length;
+    const osUrgentes   = (osResult.data || []).filter((o: any) => o.prioridade === "urgente" || o.prioridade === "alta").length;
+    const equipsTotal  = (equipsResult.data || []).length;
+    const equipsOk     = (equipsResult.data || []).filter((e: any) => e.status === "ok" || e.status === "funcionando" || e.status === "ativo").length;
+    const equipsRatio  = equipsTotal > 0 ? equipsOk / equipsTotal : 1;
+    const osDeduction  = Math.min(osUrgentes * 8 + osAbertas * 2, 40);
+    const score_operacional = Math.max(0, Math.min(100, Math.round(100 - osDeduction + equipsRatio * 10)));
+
+    // Score inadimplência
+    const score_inadimplencia = ind.txInad >= 30 ? 20 : ind.txInad >= 20 ? 40 : ind.txInad >= 10 ? 60 : ind.txInad >= 5 ? 80 : 100;
+
+    // Score geral ponderado
+    const score_geral = Math.round(score_financeiro * 0.4 + score_operacional * 0.3 + score_inadimplencia * 0.3);
+
+    // ── Previsão 12 meses ────────────────────────────────────────────────────
+    const { all } = await fetchLancamentosDB(condominio_id);
+    const { previsoes, avgRec, avgDesp } = gerarPrevisao12m(all);
+
+    // ── Riscos e oportunidades ───────────────────────────────────────────────
+    const { riscos, oportunidades } = detectarRiscosOport(ind, previsoes, metas);
+
+    // ── Insights automáticos ─────────────────────────────────────────────────
+    const insights: { tipo: string; descricao: string; impacto: number }[] = [];
+    riscos.forEach(r => insights.push({ tipo:"risco", descricao:r.descricao, impacto:r.impacto }));
+    oportunidades.forEach(o => insights.push({ tipo:"oportunidade", descricao:o.descricao, impacto:5 }));
+
+    res.json({
+      score_geral, score_financeiro, score_operacional, score_inadimplencia,
+      saldo_atual: ind.saldo,
+      receitas: ind.receitas, despesas: ind.despesas,
+      txInad: ind.txInad, vlrInad: ind.vlrInad,
+      risco: ind.risco,
+      previsao_12_meses: previsoes,
+      avg_rec_mensal: Math.round(avgRec),
+      avg_desp_mensal: Math.round(avgDesp),
+      metas,
+      metas_missing: metasResult.missing,
+      riscos,
+      oportunidades,
+      insights,
+      os_abertas: osAbertas,
+      os_urgentes: osUrgentes,
+      gerado_em: new Date().toISOString(),
+    });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/executivo/previsao-12m
+router.get("/executivo/previsao-12m", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.query as { condominio_id?: string };
+    const { all } = await fetchLancamentosDB(condominio_id);
+    const result = gerarPrevisao12m(all);
+    res.json(result);
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/executivo/metas
+router.get("/executivo/metas", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.query as { condominio_id?: string };
+    const { data, missing } = await fetchMetas(condominio_id);
+    if (missing) return res.json({ data: [], missing: true, migration_sql: METAS_MIGRATION_SQL });
+    res.json(data);
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/executivo/metas
+router.post("/executivo/metas", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, tipo, descricao, valor_meta, valor_atual, prazo, status } = req.body as Record<string, unknown>;
+    if (!condominio_id || !tipo || !descricao) return res.status(400).json({ error: "condominio_id, tipo e descricao obrigatórios" });
+    const { data, error } = await supabase.from("metas_condominio").insert({
+      condominio_id, tipo, descricao, valor_meta: Number(valor_meta)||0, valor_atual: Number(valor_atual)||0,
+      prazo: prazo || null, status: status || "ok",
+    }).select().single();
+    if (error) {
+      if (error.message?.includes("does not exist") || error.message?.includes("schema cache")) {
+        return res.status(400).json({ error:"missing_table", migration_sql: METAS_MIGRATION_SQL });
+      }
+      return res.status(400).json({ error: error.message });
+    }
+    res.json(data);
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// PUT /api/executivo/metas/:id
+router.put("/executivo/metas/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { tipo, descricao, valor_meta, valor_atual, prazo, status } = req.body as Record<string, unknown>;
+    const { data, error } = await supabase.from("metas_condominio").update({
+      tipo, descricao, valor_meta: Number(valor_meta)||0, valor_atual: Number(valor_atual)||0,
+      prazo: prazo || null, status: status || "ok",
+    }).eq("id", id).select().single();
+    if (error) return res.status(400).json({ error: error.message });
+    res.json(data);
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// DELETE /api/executivo/metas/:id
+router.delete("/executivo/metas/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabase.from("metas_condominio").delete().eq("id", id);
+    if (error) return res.status(400).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// POST /api/executivo/di-analise — Di como consultora estratégica CEO
+router.post("/executivo/di-analise", async (req: Request, res: Response) => {
+  try {
+    const {
+      condominio_id,
+      score_geral, score_financeiro, score_operacional, score_inadimplencia,
+      saldo_atual, txInad, vlrInad, receitas, despesas,
+      previsao_12_meses, metas, riscos, oportunidades,
+      os_abertas, os_urgentes,
+      pergunta,
+    } = req.body as Record<string, unknown>;
+
+    const { data: cond } = await (condominio_id
+      ? supabase.from("condominios").select("nome,cidade,sindico_nome,unidades").eq("id", condominio_id as string).single()
+      : supabase.from("condominios").select("nome,cidade,sindico_nome,unidades").limit(1).single()
+    );
+
+    const condNome  = cond?.nome  || "condomínio";
+    const sindicoNm = cond?.sindico_nome || "síndico";
+
+    const geral = Number(score_geral) || 0;
+    const statusGeral = geral >= 85 ? "EXCELENTE 🏆" : geral >= 70 ? "SAUDÁVEL ✅" : geral >= 50 ? "ATENÇÃO ⚠️" : "CRÍTICO 🚨";
+    const riscoBadge  = geral >= 80 ? "🟢 BAIXO" : geral >= 60 ? "🟡 MODERADO" : geral >= 40 ? "🔴 ALTO" : "⛔ CRÍTICO";
+
+    const prev12 = (previsao_12_meses as any[]) || [];
+    const deficitMeses = prev12.filter(p => p.saldo_previsto < 0).map(p => p.mes);
+    const melhorMes = [...prev12].sort((a,b) => b.saldo_previsto - a.saldo_previsto)[0];
+    const piorMes   = [...prev12].sort((a,b) => a.saldo_previsto - b.saldo_previsto)[0];
+
+    const metasList = (metas as any[]) || [];
+    const riscosLst = (riscos as any[]) || [];
+    const oposLst   = (oportunidades as any[]) || [];
+
+    const systemPrompt = `Você é Di, a Síndica Virtual Estratégica e Consultora Executiva do ${condNome}. Você atua como CEO advisor — combina expertise financeira condominial com visão estratégica de longo prazo. Seu papel é dar ao síndico ${sindicoNm} uma visão executiva clara, com diagnóstico, riscos, oportunidades e plano de ação concreto.
+
+ESTILO: Executivo, direto, estratégico. Use dados concretos. Seja assertiva. Máximo 600 palavras.`;
+
+    const contexto = `📊 DASHBOARD EXECUTIVO — ${condNome} (${new Date().toLocaleDateString("pt-BR")})
+
+━━━ SCORES EXECUTIVOS ━━━
+• Score Geral: ${geral}/100 — ${statusGeral} | Risco: ${riscoBadge}
+• Score Financeiro: ${score_financeiro}/100 | Score Operacional: ${score_operacional}/100 | Score Inadimplência: ${score_inadimplencia}/100
+
+━━━ FINANCEIRO ATUAL ━━━
+• Saldo em Caixa: R$ ${Number(saldo_atual).toLocaleString("pt-BR",{minimumFractionDigits:2})} ${Number(saldo_atual)>=0?"✅":"⚠️ NEGATIVO"}
+• Receitas: R$ ${Number(receitas).toLocaleString("pt-BR",{minimumFractionDigits:2})} | Despesas: R$ ${Number(despesas).toLocaleString("pt-BR",{minimumFractionDigits:2})}
+• Inadimplência: ${txInad}% (R$ ${Number(vlrInad).toLocaleString("pt-BR",{minimumFractionDigits:2})} em aberto)
+• OS Abertas: ${os_abertas} | Urgentes: ${os_urgentes}
+
+━━━ PREVISÃO 12 MESES ━━━
+• Meses com déficit previsto: ${deficitMeses.length > 0 ? deficitMeses.join(", ") : "Nenhum 🟢"}
+• Melhor mês projetado: ${melhorMes ? `${melhorMes.mes} (R$ ${Number(melhorMes.saldo_previsto).toLocaleString("pt-BR")})` : "—"}
+• Pior mês projetado: ${piorMes ? `${piorMes.mes} (R$ ${Number(piorMes.saldo_previsto).toLocaleString("pt-BR")})` : "—"}
+
+━━━ METAS (${metasList.length}) ━━━
+${metasList.length ? metasList.slice(0,5).map((m:any) => `• [${m.status?.toUpperCase()||"OK"}] ${m.descricao} — Meta: ${m.valor_meta} | Atual: ${m.valor_atual} | Prazo: ${m.prazo || "—"}`).join("\n") : "• Nenhuma meta cadastrada"}
+
+━━━ RISCOS IDENTIFICADOS ━━━
+${riscosLst.length ? riscosLst.map((r:any) => `• ${r.badge} ${r.descricao}`).join("\n") : "• Nenhum risco crítico detectado 🟢"}
+
+━━━ OPORTUNIDADES ━━━
+${oposLst.length ? oposLst.map((o:any) => `• 💡 ${o.descricao}`).join("\n") : "• Sem oportunidades detectadas"}`;
+
+    const userMsg = String(pergunta || "Gere uma análise estratégica executiva completa com diagnóstico, riscos principais, oportunidades e plano de ação para os próximos 30 dias.");
+
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const msg = await ai.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 1000,
+      system: systemPrompt,
+      messages: [{ role:"user", content:`${contexto}\n\n---\nSOLICITAÇÃO DO SÍNDICO:\n${userMsg}\n\nResponda com seções:\n1. DIAGNÓSTICO EXECUTIVO\n2. RISCOS PRIORITÁRIOS\n3. OPORTUNIDADES\n4. PLANO DE AÇÃO — PRÓXIMOS 30 DIAS` }],
+    });
+
+    const text = msg.content[0].type === "text" ? msg.content[0].text : "";
+    const diagnostico    = text.match(/DIAGNÓSTICO[^:]*[:\s]+([\s\S]+?)(?=\n\s*\d+\.|RISCO|OPORT|PLANO|$)/i)?.[1]?.trim() || text.slice(0,400);
+    const riscosText     = text.match(/RISCO[S]?[^:]*[:\s]+([\s\S]+?)(?=\n\s*\d+\.|OPORT|PLANO|$)/i)?.[1]?.trim() || "";
+    const oportunidades  = text.match(/OPORT[^:]*[:\s]+([\s\S]+?)(?=\n\s*\d+\.|PLANO|$)/i)?.[1]?.trim() || "";
+    const plano          = text.match(/PLANO[^:]*[:\s]+([\s\S]+)/i)?.[1]?.trim() || "";
+
+    res.json({ diagnostico, riscos: riscosText, oportunidades, plano, texto_completo: text, gerado_em: new Date().toISOString() });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/executivo/insights — insights automáticos (sem IA, determinísticos)
+router.get("/executivo/insights", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.query as { condominio_id?: string };
+    const ind = await calcIndicadores(condominio_id);
+    const { all } = await fetchLancamentosDB(condominio_id);
+    const { previsoes } = gerarPrevisao12m(all);
+    const { data: metas } = await fetchMetas(condominio_id);
+    const { riscos, oportunidades } = detectarRiscosOport(ind, previsoes, metas);
+    res.json({ riscos, oportunidades });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/executivo/migration-sql — SQL para criar tabelas executivas
+router.get("/executivo/migration-sql", async (req: Request, res: Response) => {
+  res.json({ sql: METAS_MIGRATION_SQL, supabase_url: `https://supabase.com/dashboard/project/vlljtyliavfutklobvkn/sql/new` });
+});
+
 // ─── COMUNICADOS META ENCODING ────────────────────────────────────────────────
 // New columns (canais, categoria, etc.) stored as JSON inside `corpo` until Migration 14 applied
 const COM_META_SEP = "\u001FIMB_COM_META\u001F";
