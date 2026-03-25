@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import SindicoHome from "./components/sindico/SindicoHome";
 import RelatorioExecutivo from "./components/sindico/RelatorioExecutivo";
 import AguaModule from "./modules/agua/AguaModule";
@@ -1221,6 +1221,20 @@ export default function App() {
   };
 
   // ── MISP Checklist state ────────────────────────────────────────────────────
+  const [avatarUrl, setAvatarUrl] = useState<string>(() => { try { return localStorage.getItem("imobcore_avatar") || ""; } catch { return ""; } });
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const url = ev.target?.result as string;
+      setAvatarUrl(url);
+      try { localStorage.setItem("imobcore_avatar", url); } catch { /* quota */ }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const [mispTab, setMispTab] = useState<"checklist"|"resultado"|"historico"|"automatico">("automatico");
   const [mispActivePilar, setMispActivePilar] = useState("Financeiro");
   const [mispAnswers, setMispAnswers] = useState<Record<string,"sim"|"parcial"|"nao">>({});
@@ -5082,52 +5096,88 @@ export default function App() {
         </div>
 
         {/* USUÁRIO: Perfil do síndico */}
-        {sindicoScreen === "planejamento" && (
-          <div className="ph-sub-body" style={{ paddingBottom: 32 }}>
-            {/* Avatar + nome */}
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"24px 0 20px" }}>
-              <div style={{ width:80, height:80, borderRadius:"50%", background:"var(--neu-grad)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:34, fontWeight:900, color:"#fff", boxShadow:"var(--neu-out-lg)" }}>
-                S
-              </div>
-              <div style={{ fontSize:18, fontWeight:900, color:"var(--neu-text)", fontFamily:"Nunito, sans-serif" }}>Carlos Silva</div>
-              <div style={{ padding:"4px 14px", borderRadius:20, background:"linear-gradient(135deg,var(--neu-purple),var(--neu-purple-2))", color:"#fff", fontSize:11, fontWeight:800, letterSpacing:".06em" }}>🛡️ SÍNDICO</div>
-            </div>
-
-            {/* Info cards */}
-            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-              {[
-                { icon:"👤", label:"Nome completo",  value:"Carlos Silva" },
-                { icon:"🏠", label:"Apartamento",    value:"101" },
-                { icon:"🏢", label:"Bloco",           value:"Bloco A" },
-                { icon:"✉️", label:"E-mail",          value:"carlos.silva@email.com" },
-              ].map(f => (
-                <div key={f.label} style={{ background:"var(--neu-bg)", borderRadius:14, boxShadow:"var(--neu-out-sm)", padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
-                  <div style={{ width:40, height:40, borderRadius:12, boxShadow:"var(--neu-in-sm)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
-                    {f.icon}
+        {sindicoScreen === "planejamento" && (() => {
+          const perfil = loggedUser?.perfil || loginMode || "sindico";
+          const displayNome = loggedUser?.nome || "Usuário";
+          const displayEmail = loggedUser?.email || "";
+          const condNome = dash?.condominios?.find(c => c.id === (loggedUser?.condominio_id || condId))?.nome || "Condomínio";
+          const roleLabelMap: Record<string,string> = { morador:"MORADOR", sindico:"SÍNDICO", gestor:"GESTOR", zelador:"ZELADOR" };
+          const roleLabel = roleLabelMap[perfil] || "USUÁRIO";
+          const roleIcon = ({ morador:"👤", sindico:"🛡️", gestor:"⚙️", zelador:"🔧" } as Record<string,string>)[perfil] || "👤";
+          const initials = displayNome.split(" ").map((p:string)=>p[0]).slice(0,2).join("").toUpperCase() || "U";
+          const CARD_COLORS: [string,string,string,string][] = [
+            ["linear-gradient(135deg,#6366F1 0%,#4338CA 100%)","#818CF8","#E0E7FF","#3730A3"],
+            ["linear-gradient(135deg,#059669 0%,#047857 100%)","#34D399","#D1FAE5","#064E3B"],
+            ["linear-gradient(135deg,#0891B2 0%,#0E7490 100%)","#22D3EE","#CFFAFE","#083344"],
+            ["linear-gradient(135deg,#D97706 0%,#B45309 100%)","#FBBF24","#FEF3C7","#78350F"],
+          ];
+          const infoFields = [
+            { icon:"👤", label:"Nome completo",  value: displayNome },
+            { icon:"✉️", label:"E-mail",          value: displayEmail || "–" },
+            { icon:"🏠", label:"Perfil",          value: roleLabel },
+            { icon:"🔑", label:"ID do usuário",   value: (loggedUser?.id || "–").slice(0,14)+"…" },
+          ];
+          return (
+            <div className="ph-sub-body" style={{ paddingBottom:32 }}>
+              {/* Avatar + nome */}
+              <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:10, padding:"24px 0 20px" }}>
+                {/* Avatar clicável */}
+                <div style={{ position:"relative", cursor:"pointer" }} onClick={() => avatarInputRef.current?.click()}>
+                  <div style={{ width:90, height:90, borderRadius:"50%", background:"linear-gradient(135deg,#7C3AED,#6366F1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:36, fontWeight:900, color:"#fff", boxShadow:"0 6px 24px rgba(99,102,241,.5), 0 0 0 3px rgba(139,92,246,.35)", overflow:"hidden", flexShrink:0 }}>
+                    {avatarUrl
+                      ? <img src={avatarUrl} alt="avatar" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
+                      : <span>{initials}</span>
+                    }
                   </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:10, color:"var(--neu-text-2)", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:".06em", marginBottom:2 }}>{f.label}</div>
-                    <div style={{ fontSize:14, fontWeight:800, color:"var(--neu-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{f.value}</div>
+                  {/* Ícone de câmera */}
+                  <div style={{ position:"absolute", bottom:2, right:2, width:26, height:26, borderRadius:"50%", background:"linear-gradient(135deg,#6366F1,#7C3AED)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, boxShadow:"0 2px 8px rgba(0,0,0,.4)", border:"2px solid #fff" }}>
+                    📷
                   </div>
                 </div>
-              ))}
-            </div>
-
-            {/* Condomínio */}
-            <div style={{ margin:"16px 0 0", background:"linear-gradient(135deg,rgba(124,92,252,.12),rgba(168,85,247,.08))", border:"1.5px solid rgba(124,92,252,.25)", borderRadius:14, padding:"14px 18px", display:"flex", alignItems:"center", gap:12 }}>
-              <span style={{ fontSize:22 }}>🏘️</span>
-              <div>
-                <div style={{ fontSize:10, color:"var(--neu-purple)", fontWeight:800, textTransform:"uppercase" as const, letterSpacing:".06em" }}>Condomínio</div>
-                <div style={{ fontSize:13, fontWeight:800, color:"var(--neu-text)" }}>Residencial Parque das Flores</div>
+                <input ref={avatarInputRef} type="file" accept="image/*" style={{ display:"none" }} onChange={handleAvatarChange} />
+                <div style={{ fontSize:10, color:"#64748B", marginTop:-4 }}>Toque na foto para alterar</div>
+                <div style={{ fontSize:19, fontWeight:900, color:"var(--neu-text)", fontFamily:"Nunito, sans-serif", marginTop:4 }}>{displayNome}</div>
+                <div style={{ padding:"5px 16px", borderRadius:20, background:"linear-gradient(135deg,#7C3AED,#4338CA)", color:"#E0E7FF", fontSize:11, fontWeight:800, letterSpacing:".08em", boxShadow:"0 3px 10px rgba(124,58,237,.45)" }}>
+                  {roleIcon} {roleLabel}
+                </div>
               </div>
-            </div>
 
-            {/* Botão SAIR */}
-            <button onClick={() => setView("login")} style={{ marginTop:24, width:"100%", padding:"16px", borderRadius:16, background:"rgba(239,68,68,.12)", border:"1.5px solid rgba(239,68,68,.3)", color:"#EF4444", fontSize:15, fontWeight:900, fontFamily:"Nunito, sans-serif", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10, boxShadow:"none" }}>
-              🚪 Sair
-            </button>
-          </div>
-        )}
+              {/* Info cards coloridos 3D */}
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {infoFields.map((f, i) => {
+                  const [bg, accent, txtLight, shadow] = CARD_COLORS[i % CARD_COLORS.length];
+                  return (
+                    <div key={f.label} style={{ background:bg, borderRadius:16, padding:"14px 18px", display:"flex", alignItems:"center", gap:14, boxShadow:`0 4px 0 ${shadow}, 0 8px 20px ${accent}44`, border:`1px solid ${accent}44`, position:"relative", overflow:"hidden" }}>
+                      <div style={{ position:"absolute", top:0, left:0, right:0, height:"40%", background:"linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,0))", borderRadius:"16px 16px 0 0", pointerEvents:"none" }} />
+                      <div style={{ width:42, height:42, borderRadius:12, background:"rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0, position:"relative", boxShadow:"inset 0 1px 2px rgba(255,255,255,.3)" }}>
+                        {f.icon}
+                      </div>
+                      <div style={{ flex:1, minWidth:0, position:"relative" }}>
+                        <div style={{ fontSize:9, color:txtLight, fontWeight:800, textTransform:"uppercase" as const, letterSpacing:".08em", marginBottom:3, opacity:.8 }}>{f.label}</div>
+                        <div style={{ fontSize:14, fontWeight:900, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, textShadow:"0 1px 3px rgba(0,0,0,.3)" }}>{f.value}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Condomínio card */}
+              <div style={{ margin:"12px 0 0", background:"linear-gradient(135deg,#7C3AED,#5B21B6)", borderRadius:16, padding:"14px 18px", display:"flex", alignItems:"center", gap:14, boxShadow:"0 4px 0 #3B0764, 0 8px 24px rgba(124,58,237,.4)", border:"1px solid rgba(196,181,253,.3)", position:"relative", overflow:"hidden" }}>
+                <div style={{ position:"absolute", top:0, left:0, right:0, height:"40%", background:"linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,0))", borderRadius:"16px 16px 0 0", pointerEvents:"none" }} />
+                <div style={{ width:42, height:42, borderRadius:12, background:"rgba(255,255,255,.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>🏘️</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:9, color:"#DDD6FE", fontWeight:800, textTransform:"uppercase" as const, letterSpacing:".08em", opacity:.85 }}>Condomínio</div>
+                  <div style={{ fontSize:14, fontWeight:900, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const, textShadow:"0 1px 3px rgba(0,0,0,.3)" }}>{condNome}</div>
+                </div>
+              </div>
+
+              {/* Botão SAIR */}
+              <button onClick={() => { setLoggedUser(null); setView("login"); }} style={{ marginTop:20, width:"100%", padding:"15px", borderRadius:16, background:"linear-gradient(135deg,#DC2626,#991B1B)", border:"none", color:"#fff", fontSize:15, fontWeight:900, fontFamily:"Nunito, sans-serif", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:10, boxShadow:"0 4px 0 #7F1D1D, 0 8px 20px rgba(220,38,38,.4)" }}>
+                🚪 Sair
+              </button>
+            </div>
+          );
+        })()}
 
         {/* SÍNDICO IA: chat fullscreen */}
         {sindicoScreen === "sindico" && (
