@@ -5329,6 +5329,21 @@ export default function App() {
           const allOk = last ? (isOk2("ph",last.ph)&&isOk2("cloro",last.cloro)&&isOk2("temperatura",last.temperatura)&&isOk2("alcalinidade",last.alcalinidade)&&isOk2("dureza_calcica",last.dureza_calcica)) : null;
           const colPiscMap: Record<PKey2,string> = { ph:"#0EA5E9", cloro:"#22C55E", temperatura:"#F97316", alcalinidade:"#6366F1", dureza_calcica:"#A855F7" };
           const fmtDt = (iso: string) => new Date(iso).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+          const piscSaveSindico = async () => {
+            if (!piscForm.ph || !piscForm.cloro) { showToast("pH e Cloro são obrigatórios","error"); return; }
+            setPiscSaving(true);
+            try {
+              const url = piscEditId ? `/api/piscina/${piscEditId}` : `/api/piscina`;
+              const r = await fetch(url, { method: piscEditId?"PUT":"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ condominio_id:condId, ph:Number(piscForm.ph), cloro:Number(piscForm.cloro), temperatura:piscForm.temperatura?Number(piscForm.temperatura):null, alcalinidade:piscForm.alcalinidade?Number(piscForm.alcalinidade):null, dureza_calcica:piscForm.dureza_calcica?Number(piscForm.dureza_calcica):null, observacoes:piscForm.observacoes||null }) });
+              if (r.ok) { if (condId) await loadPiscina(condId); setPiscModal(false); setPiscEditId(null); setPiscForm(emptyPiscinaForm()); showToast(piscEditId?"Leitura atualizada!":"Leitura registrada! 🏊","success"); }
+              else {
+                const errJson = await r.json().catch(() => ({})) as Record<string,string>;
+                if (errJson.error === "missing_table") showToast("Tabela não criada. Execute o SQL de migração no Supabase Dashboard.","error");
+                else showToast("Erro ao salvar leitura","error");
+              }
+            } catch { showToast("Erro de conexão","error"); }
+            setPiscSaving(false);
+          };
           return (
             <div className="ph-sub-body" style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:12 }}>
               {/* Status geral */}
@@ -5402,6 +5417,70 @@ export default function App() {
                   {l.observacoes && <div style={{ fontSize:11, color:"var(--neu-text-2)", fontStyle:"italic" }}>{l.observacoes}</div>}
                 </div>
               ))}
+
+              {/* ── Modal Registrar Leitura (mobile) ── */}
+              {piscModal && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.72)", zIndex:3000, display:"flex", alignItems:"flex-end", justifyContent:"center" }}
+                  onClick={e => { if (e.target === e.currentTarget) { setPiscModal(false); setPiscEditId(null); } }}>
+                  <div style={{ background:"#0F172A", borderRadius:"20px 20px 0 0", width:"100%", maxWidth:480, padding:"20px 18px 32px", boxShadow:"0 -8px 40px rgba(0,0,0,.5)" }}>
+                    {/* Handle bar */}
+                    <div style={{ width:40, height:4, borderRadius:99, background:"rgba(255,255,255,.15)", margin:"0 auto 16px" }} />
+                    {/* Title */}
+                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:20 }}>
+                      <div style={{ width:38, height:38, borderRadius:12, background:"linear-gradient(135deg,#0EA5E9,#0284C7)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>🏊</div>
+                      <div>
+                        <div style={{ fontSize:15, fontWeight:900, color:"#F1F5F9" }}>{piscEditId ? "Editar Leitura" : "Nova Leitura de Piscina"}</div>
+                        <div style={{ fontSize:11, color:"#64748B" }}>pH e Cloro são obrigatórios</div>
+                      </div>
+                    </div>
+                    {/* Fields */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+                      {([
+                        { key:"ph",             label:"pH",                  placeholder:"7.4", unit:"",     color:"#0EA5E9", required:true  },
+                        { key:"cloro",          label:"Cloro Livre",         placeholder:"2.0", unit:"ppm",  color:"#22C55E", required:true  },
+                        { key:"temperatura",    label:"Temperatura",         placeholder:"28",  unit:"°C",   color:"#F97316", required:false },
+                        { key:"alcalinidade",   label:"Alcalinidade",        placeholder:"100", unit:"ppm",  color:"#6366F1", required:false },
+                        { key:"dureza_calcica", label:"Dureza Cálcica",      placeholder:"300", unit:"ppm",  color:"#A855F7", required:false },
+                      ] as const).map(({ key, label, placeholder, unit, color, required }) => (
+                        <div key={key}>
+                          <label style={{ fontSize:10, fontWeight:700, color, textTransform:"uppercase", display:"block", marginBottom:4 }}>
+                            {label}{unit ? ` (${unit})` : ""}{required ? " *" : ""}
+                          </label>
+                          <input
+                            type="number" step="0.01" placeholder={placeholder}
+                            value={(piscForm as Record<string,string>)[key]}
+                            onChange={e => setPiscForm(p => ({ ...p, [key]: e.target.value }))}
+                            style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:`1px solid ${color}44`, background:"rgba(255,255,255,.05)", color:"#F1F5F9", fontSize:15, fontWeight:700, boxSizing:"border-box", outline:"none" }}
+                          />
+                        </div>
+                      ))}
+                      <div style={{ gridColumn:"1 / -1" }}>
+                        <label style={{ fontSize:10, fontWeight:700, color:"#94A3B8", textTransform:"uppercase", display:"block", marginBottom:4 }}>Observações</label>
+                        <textarea
+                          placeholder="Ex: adicionado cloro granulado, pH ajustado..."
+                          value={piscForm.observacoes}
+                          onChange={e => setPiscForm(p => ({ ...p, observacoes: e.target.value }))}
+                          rows={2}
+                          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"#F1F5F9", fontSize:13, resize:"none", boxSizing:"border-box", outline:"none" }}
+                        />
+                      </div>
+                    </div>
+                    {/* Buttons */}
+                    <div style={{ display:"flex", gap:10 }}>
+                      <button
+                        onClick={() => { setPiscModal(false); setPiscEditId(null); setPiscForm(emptyPiscinaForm()); }}
+                        style={{ flex:1, padding:"13px", borderRadius:12, border:"1px solid rgba(255,255,255,.15)", background:"transparent", color:"#94A3B8", fontSize:13, fontWeight:600, cursor:"pointer" }}>
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={piscSaveSindico} disabled={piscSaving}
+                        style={{ flex:2, padding:"13px", borderRadius:12, border:"none", background:"linear-gradient(135deg,#0EA5E9,#0284C7)", color:"#fff", fontSize:14, fontWeight:800, cursor:piscSaving?"not-allowed":"pointer", opacity:piscSaving?.7:1, boxShadow:"0 4px 16px rgba(14,165,233,.4)" }}>
+                        {piscSaving ? "⏳ Salvando..." : (piscEditId ? "✔ Atualizar" : "✔ Registrar Leitura")}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}

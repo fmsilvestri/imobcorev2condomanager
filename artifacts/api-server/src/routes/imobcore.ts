@@ -3490,6 +3490,7 @@ router.get("/piscina", async (req: Request, res: Response) => {
   const condId = String(req.query.condominio_id || "");
   if (!condId) return res.status(400).json({ error: "condominio_id obrigatório" });
   const { data, error } = await supabase.from("piscina_leituras").select("*").eq("condominio_id", condId).order("created_at", { ascending: false }).limit(100);
+  if (error && isMissingTable(error)) return res.json([]);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data || []);
 });
@@ -3509,6 +3510,7 @@ router.post("/piscina", async (req: Request, res: Response) => {
     temperatura: tempN ?? null, alcalinidade: alcN ?? null, dureza_calcica: durN ?? null,
     observacoes: observacoes || null, status,
   }).select().single();
+  if (error && isMissingTable(error)) return res.status(503).json({ error: "missing_table", message: "Tabela piscina_leituras não existe. Execute o SQL de migração em /api/admin/migration-sql" });
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true, leitura: data });
 });
@@ -5735,9 +5737,25 @@ CREATE TABLE IF NOT EXISTS alertas_manutencao (
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS piscina_leituras (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id   UUID,
+  ph              NUMERIC NOT NULL,
+  cloro           NUMERIC NOT NULL,
+  temperatura     NUMERIC,
+  alcalinidade    NUMERIC,
+  dureza_calcica  NUMERIC,
+  status          TEXT DEFAULT 'ok',
+  observacoes     TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS pisc_condo ON piscina_leituras(condominio_id, created_at DESC);
+
 -- Verificar criação:
 SELECT table_name FROM information_schema.tables
-WHERE table_schema = 'public' AND table_name IN ('manutencoes','alertas_manutencao');`;
+WHERE table_schema = 'public'
+  AND table_name IN ('manutencoes','alertas_manutencao','piscina_leituras');`;
 
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   return res.send(sql);
