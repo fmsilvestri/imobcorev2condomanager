@@ -954,6 +954,9 @@ export default function App() {
   const loggedUserRef = useRef<LoggedUser | null>(null);
   // Mantém ref sincronizado para uso dentro de callbacks/effects sem stale closure
   useEffect(() => { loggedUserRef.current = loggedUser; }, [loggedUser]);
+  // effectiveCondId: usuários com condominio_id próprio ficam BLOQUEADOS ao seu condo.
+  // Gestores/admin sem condominio_id podem usar o seletor (condId livre).
+  const effectiveCondId = loggedUser?.condominio_id || condId;
   // ── Manutenção state ────────────────────────────────────────────────────
   const [mantTab, setMantTab] = useState<"equip"|"mapa"|"plano"|"os"|"qr"|"ia">("equip");
   const [mantSearch, setMantSearch] = useState("");
@@ -2438,7 +2441,7 @@ export default function App() {
     try {
       const r = await fetch("/api/documentos/consultar", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ condominio_id: condId, pergunta: docPergunta }),
+        body: JSON.stringify({ condominio_id: effectiveCondId, pergunta: docPergunta }),
       });
       const j = await r.json() as { resposta?: string };
       setDocResposta(j.resposta ?? "Sem resposta.");
@@ -2584,7 +2587,7 @@ export default function App() {
       body: JSON.stringify({
         message: messageToSend,
         history: userMsg ? [{ role: "user", content: userMsg }] : [],
-        condominio_id: condId,
+        condominio_id: effectiveCondId,
         perfil: (loggedUser as Record<string,unknown>)?.perfil || loginMode || "sindico",
         nome_usuario: (loggedUser as Record<string,unknown>)?.nome || "Síndico",
         auto_greeting: !userMsg,
@@ -2970,7 +2973,7 @@ export default function App() {
       const body: Record<string, unknown> = {
         message: msg,
         history: nh.slice(-10),
-        condominio_id: condId,
+        condominio_id: effectiveCondId,
         perfil: loggedUser?.perfil || loginMode || "gestor",
         nome_usuario: loggedUser?.nome || "Usuário",
       };
@@ -3084,7 +3087,7 @@ export default function App() {
     if (!comTema.trim()) { showToast("Informe o tema", "warn"); return; }
     setComLoading(true);
     try {
-      const r = await fetch("/api/sindico/comunicado", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tema: comTema, condominio_id: condId }) });
+      const r = await fetch("/api/sindico/comunicado", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tema: comTema, condominio_id: effectiveCondId }) });
       const com = await r.json();
       setComPreview({ titulo: com.titulo, corpo: com.corpo });
       showToast("✅ Comunicado gerado via IA", "success");
@@ -4635,7 +4638,7 @@ export default function App() {
       const loadBriefing = async () => {
         setBriefLoading(true); setBriefExpanded(null); setBriefAnalise({});
         try {
-          const r = await fetch(`/api/di/briefing${condId?`?condominio_id=${condId}`:""}`);
+          const r = await fetch(`/api/di/briefing${effectiveCondId?`?condominio_id=${effectiveCondId}`:""}`);
           const d = await r.json() as BriefingSnap;
           setBriefSnap(d);
         } catch { /* usa dados anteriores */ }
@@ -4646,7 +4649,7 @@ export default function App() {
         if (briefAnalise[modulo]) { setBriefExpanded(briefExpanded===modulo?null:modulo); return; }
         setBriefExpanded(modulo); setBriefAnalLoading(modulo);
         try {
-          const r = await fetch("/api/di/analise-modulo",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ modulo, dados, condominio_id:condId }) });
+          const r = await fetch("/api/di/analise-modulo",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ modulo, dados, condominio_id:effectiveCondId }) });
           const j = await r.json() as { analise:string };
           setBriefAnalise(prev=>({...prev,[modulo]:j.analise}));
         } catch { setBriefAnalise(prev=>({...prev,[modulo]:"Análise temporariamente indisponível."})); }
@@ -4845,7 +4848,7 @@ export default function App() {
           {/* ── Tabs Di ── */}
           <div style={{ display:"flex", borderBottom:"1px solid rgba(255,255,255,.07)", background:"#0A0818", flexShrink:0 }}>
             {(["briefing","relatorio","documentos"] as const).map(v => (
-              <button key={v} onClick={() => { setDiView(v); if (v==="documentos" && !diDocLoaded && condId) loadDiDocResumo(condId); }}
+              <button key={v} onClick={() => { setDiView(v); if (v==="documentos" && !diDocLoaded && effectiveCondId) loadDiDocResumo(effectiveCondId); }}
                 style={{ flex:1, padding:"10px 4px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:10, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit" }}>
                 {v==="briefing" ? "🚦 Central de Risco" : v==="relatorio" ? "📊 Relatório" : "📄 Docs IA"}
               </button>
@@ -4872,7 +4875,7 @@ export default function App() {
               )}
               {/* Botão carregar/recarregar */}
               {!diDocLoaded && !diDocLoading && (
-                <button onClick={() => condId && loadDiDocResumo(condId)}
+                <button onClick={() => effectiveCondId && loadDiDocResumo(effectiveCondId)}
                   style={{ width:"100%", padding:"12px 16px", background:"linear-gradient(135deg,#7C3AED,#6D28D9)", border:"none", borderRadius:12, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:14 }}>
                   📄 Gerar Resumo IA dos Documentos
                 </button>
@@ -4915,7 +4918,7 @@ export default function App() {
                 );
               })}
               {diDocLoaded && diDocCards.length > 0 && (
-                <button onClick={() => { setDiDocLoaded(false); setDiDocCards([]); if (condId) loadDiDocResumo(condId); }}
+                <button onClick={() => { setDiDocLoaded(false); setDiDocCards([]); if (effectiveCondId) loadDiDocResumo(effectiveCondId); }}
                   style={{ width:"100%", padding:"10px", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, color:"#94A3B8", fontSize:11, cursor:"pointer", marginTop:4 }}>
                   🔄 Atualizar Resumo
                 </button>
@@ -5015,7 +5018,7 @@ export default function App() {
                 speechSynthesis.cancel();
                 setDiFalando(false);
                 try {
-                  const r = await fetch("/api/di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id: condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }) });
+                  const r = await fetch("/api/di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id: effectiveCondId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }) });
                   const json = await r.json();
                   if (json.fala) {
                     setDiData({ fala: json.fala, cards: json.cards || [] });
@@ -7657,7 +7660,7 @@ export default function App() {
                   {/* ── Tabs ── */}
                   <div style={{ display:"flex", background:"#0A0818", borderBottom:"1px solid rgba(255,255,255,.07)", flexShrink:0 }}>
                     {(["briefing","relatorio","documentos"] as const).map(v => (
-                      <button key={v} onClick={() => { setDiView(v); if (v==="documentos" && !diDocLoaded && condId) loadDiDocResumo(condId); }}
+                      <button key={v} onClick={() => { setDiView(v); if (v==="documentos" && !diDocLoaded && effectiveCondId) loadDiDocResumo(effectiveCondId); }}
                         style={{ flex:1, padding:"12px 8px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:12, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all .2s" }}>
                         {v==="briefing" ? "🚦 Central de Risco" : v==="relatorio" ? "📋 Relatório" : "📄 Docs IA"}
                       </button>
@@ -7677,7 +7680,7 @@ export default function App() {
                         </div>
                       )}
                       {!diDocLoaded && !diDocLoading && (
-                        <button onClick={() => condId && loadDiDocResumo(condId)}
+                        <button onClick={() => effectiveCondId && loadDiDocResumo(effectiveCondId)}
                           style={{ padding:"12px 24px", background:"linear-gradient(135deg,#7C3AED,#6D28D9)", border:"none", borderRadius:12, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:16 }}>
                           📄 Gerar Resumo IA dos Documentos
                         </button>
@@ -7722,7 +7725,7 @@ export default function App() {
                         })}
                       </div>
                       {diDocLoaded && diDocCards.length > 0 && (
-                        <button onClick={() => { setDiDocLoaded(false); setDiDocCards([]); if (condId) loadDiDocResumo(condId); }}
+                        <button onClick={() => { setDiDocLoaded(false); setDiDocCards([]); if (effectiveCondId) loadDiDocResumo(effectiveCondId); }}
                           style={{ marginTop:16, padding:"8px 20px", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, color:"#94A3B8", fontSize:12, cursor:"pointer" }}>
                           🔄 Atualizar Resumo
                         </button>
@@ -7735,7 +7738,7 @@ export default function App() {
                         onClick={async () => {
                           setDiLoading(true); speechSynthesis.cancel(); setDiFalando(false);
                           try {
-                            const r = await fetch("/api/di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }) });
+                            const r = await fetch("/api/di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:effectiveCondId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }) });
                             const json = await r.json();
                             if (json.fala) {
                               setDiData({ fala:json.fala, cards:json.cards||[] });
@@ -7923,7 +7926,7 @@ export default function App() {
             <button className="btn btn-primary" onClick={async () => {
               setInsightsLoading(true); setInsights("");
               try {
-                const r = await fetch("/api/sindico/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Gere uma análise executiva completa com insights sobre financeiro, OSs, água, alertas e recomendações. Use emojis.", history: [], condominio_id: condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }) });
+                const r = await fetch("/api/sindico/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: "Gere uma análise executiva completa com insights sobre financeiro, OSs, água, alertas e recomendações. Use emojis.", history: [], condominio_id: effectiveCondId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário" }) });
                 const res = await r.json(); setInsights(res.reply);
               } catch { setInsights("Erro ao gerar insights."); }
               setInsightsLoading(false);
@@ -11302,7 +11305,7 @@ Content-Type: application/json
                                 const r = await fetch("/api/manutencao/di/analisar", {
                                   method: "POST",
                                   headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ condominio_id: condId, contexto: "dashboard_ia" }),
+                                  body: JSON.stringify({ condominio_id: effectiveCondId, contexto: "dashboard_ia" }),
                                 });
                                 const d = await r.json();
                                 setMantAiResult(d.analise || "Sem resposta da Di.");
