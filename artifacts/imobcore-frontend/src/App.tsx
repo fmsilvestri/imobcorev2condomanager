@@ -1460,6 +1460,24 @@ export default function App() {
   // ── Fornecedores e Contatos ────────────────────────────────────────────────
   const FORNEC_CATEGORIAS = ["Geral","Bombas","Elevadores","Elétrico","Hidráulico","Jardinagem","Limpeza","Segurança","Pintura","Estrutural","TI/Câmeras","Climatização","Gás","Portaria","Manutenção","Outros"];
   const FORNEC_ICONES = ["🏢","🔧","⚡","💧","🛗","🔒","🌿","🧹","🎨","🏗️","📷","❄️","🔥","🚪","🔩","🪛","🛠️","📦","🚛","📞","💡","🔌","🪟","🛁","🚿","🌡️","⚙️","🔑"];
+  const FORNEC_CAT_COLOR: Record<string,[string,string,string,string]> = {
+    "Geral":       ["#C7D2FE","#4338CA","#3730A3","rgba(99,102,241,.55)"],
+    "Bombas":      ["#7DD3FC","#0284C7","#075985","rgba(14,165,233,.55)"],
+    "Elevadores":  ["#C4B5FD","#7C3AED","#5B21B6","rgba(139,92,246,.55)"],
+    "Elétrico":    ["#FDE68A","#D97706","#B45309","rgba(245,158,11,.55)"],
+    "Hidráulico":  ["#93C5FD","#2563EB","#1E40AF","rgba(59,130,246,.55)"],
+    "Jardinagem":  ["#86EFAC","#16A34A","#166534","rgba(34,197,94,.55)"],
+    "Limpeza":     ["#5EEAD4","#0D9488","#115E59","rgba(20,184,166,.55)"],
+    "Segurança":   ["#FCA5A5","#DC2626","#991B1B","rgba(239,68,68,.55)"],
+    "Pintura":     ["#F9A8D4","#DB2777","#9D174D","rgba(236,72,153,.55)"],
+    "Estrutural":  ["#D1D5DB","#6B7280","#374151","rgba(107,114,128,.55)"],
+    "TI/Câmeras":  ["#A5B4FC","#4F46E5","#3730A3","rgba(99,102,241,.55)"],
+    "Climatização":["#BAE6FD","#0369A1","#0C4A6E","rgba(14,165,233,.55)"],
+    "Gás":         ["#FED7AA","#EA580C","#9A3412","rgba(249,115,22,.55)"],
+    "Portaria":    ["#6EE7B7","#059669","#064E3B","rgba(16,185,129,.55)"],
+    "Manutenção":  ["#CBD5E1","#475569","#1E293B","rgba(100,116,139,.55)"],
+    "Outros":      ["#E9D5FF","#9333EA","#6B21A8","rgba(168,85,247,.55)"],
+  };
   type Fornecedor = { id:string; condominio_id:string; nome:string; categoria:string; icone:string; telefone:string; whatsapp:string; email:string; endereco:string; observacoes:string; status:string; created_at:string; updated_at:string };
   const emptyFornec = (): Omit<Fornecedor,"id"|"condominio_id"|"created_at"|"updated_at"> => ({ nome:"", categoria:"Geral", icone:"🏢", telefone:"", whatsapp:"", email:"", endereco:"", observacoes:"", status:"ativo" });
   const [fornecList, setFornecList] = useState<Fornecedor[]>([]);
@@ -6180,20 +6198,24 @@ export default function App() {
                   </button>
                 </div>
               ) : (
-                fornecList.map(f => (
+                fornecList.map(f => {
+                  const [top,bot,edge,glow] = FORNEC_CAT_COLOR[f.categoria] || FORNEC_CAT_COLOR["Geral"];
+                  return (
                   <div key={f.id} onClick={()=>setSindFornecDetail(f.id)}
-                    style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, padding:"12px 14px", cursor:"pointer", display:"flex", gap:12, alignItems:"center" }}>
-                    <div style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-in-sm)", borderRadius:10, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{f.icone||"🏢"}</div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontWeight:700, fontSize:13, color:"var(--neu-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.nome}</div>
-                      <div style={{ fontSize:11, color:"var(--neu-text-2)" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
+                    style={{ borderRadius:12, padding:"10px 12px", cursor:"pointer", display:"flex", gap:10, alignItems:"center", position:"relative", overflow:"hidden", background:`linear-gradient(135deg,${top} 0%,${bot} 100%)`, boxShadow:`0 3px 0 ${edge}, 0 5px 16px ${glow}`, border:"1px solid rgba(255,255,255,.12)" }}>
+                    <div style={{ position:"absolute",top:0,left:0,right:0,height:"45%",background:"linear-gradient(180deg,rgba(255,255,255,.25),rgba(255,255,255,0))",borderRadius:"12px 12px 0 0",pointerEvents:"none" }} />
+                    <div style={{ background:"rgba(0,0,0,.25)", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, position:"relative" }}>{f.icone||"🏢"}</div>
+                    <div style={{ flex:1, minWidth:0, position:"relative" }}>
+                      <div style={{ fontWeight:700, fontSize:13, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textShadow:"0 1px 4px rgba(0,0,0,.4)" }}>{f.nome}</div>
+                      <div style={{ fontSize:10, color:"rgba(255,255,255,.8)" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
                     </div>
                     <button onClick={e=>{ e.stopPropagation(); fornecWhatsApp(f); }} disabled={!(f.whatsapp||f.telefone)}
-                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"var(--neu-bg)", boxShadow:f.whatsapp||f.telefone?"none":"var(--neu-out-sm)", border:"none", borderRadius:8, padding:"7px 10px", color:f.whatsapp||f.telefone?"#fff":"var(--neu-text-2)", fontSize:11, fontWeight:600, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0 }}>
+                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"rgba(255,255,255,.15)", border:"none", borderRadius:7, padding:"6px 10px", color:"#fff", fontSize:11, fontWeight:700, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0, position:"relative", boxShadow:f.whatsapp||f.telefone?"0 2px 0 #0a5e32":"none", opacity:f.whatsapp||f.telefone?1:.5 }}>
                       💬 WA
                     </button>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           );
@@ -6491,20 +6513,24 @@ export default function App() {
                   </button>
                 </div>
               ) : (
-                fornecList.map(f => (
+                fornecList.map(f => {
+                  const [top,bot,edge,glow] = FORNEC_CAT_COLOR[f.categoria] || FORNEC_CAT_COLOR["Geral"];
+                  return (
                   <div key={f.id} onClick={()=>setMorFornecDetail(f.id)}
-                    style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, padding:"12px 14px", cursor:"pointer", display:"flex", gap:12, alignItems:"center" }}>
-                    <div style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-in-sm)", borderRadius:10, width:40, height:40, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{f.icone||"🏢"}</div>
-                    <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontWeight:700, fontSize:13, color:"var(--neu-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.nome}</div>
-                      <div style={{ fontSize:11, color:"var(--neu-text-2)" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
+                    style={{ borderRadius:12, padding:"10px 12px", cursor:"pointer", display:"flex", gap:10, alignItems:"center", position:"relative", overflow:"hidden", background:`linear-gradient(135deg,${top} 0%,${bot} 100%)`, boxShadow:`0 3px 0 ${edge}, 0 5px 16px ${glow}`, border:"1px solid rgba(255,255,255,.12)" }}>
+                    <div style={{ position:"absolute",top:0,left:0,right:0,height:"45%",background:"linear-gradient(180deg,rgba(255,255,255,.25),rgba(255,255,255,0))",borderRadius:"12px 12px 0 0",pointerEvents:"none" }} />
+                    <div style={{ background:"rgba(0,0,0,.25)", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, position:"relative" }}>{f.icone||"🏢"}</div>
+                    <div style={{ flex:1, minWidth:0, position:"relative" }}>
+                      <div style={{ fontWeight:700, fontSize:13, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textShadow:"0 1px 4px rgba(0,0,0,.4)" }}>{f.nome}</div>
+                      <div style={{ fontSize:10, color:"rgba(255,255,255,.8)" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
                     </div>
                     <button onClick={e=>{ e.stopPropagation(); fornecWhatsApp(f); }} disabled={!(f.whatsapp||f.telefone)}
-                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"var(--neu-bg)", boxShadow:f.whatsapp||f.telefone?"none":"var(--neu-out-sm)", border:"none", borderRadius:8, padding:"7px 10px", color:f.whatsapp||f.telefone?"#fff":"var(--neu-text-2)", fontSize:11, fontWeight:600, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0 }}>
+                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"rgba(255,255,255,.15)", border:"none", borderRadius:7, padding:"6px 10px", color:"#fff", fontSize:11, fontWeight:700, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0, position:"relative", boxShadow:f.whatsapp||f.telefone?"0 2px 0 #0a5e32":"none", opacity:f.whatsapp||f.telefone?1:.5 }}>
                       💬 WA
                     </button>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           );
@@ -12986,47 +13012,52 @@ Content-Type: application/json
                 <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(310px,1fr))", gap:16 }}>
                   {filteredFornec.map(f => {
                     const hasWa = !!(f.whatsapp || f.telefone);
+                    const [top,bot,edge,glow] = FORNEC_CAT_COLOR[f.categoria] || FORNEC_CAT_COLOR["Geral"];
                     return (
-                      <div key={f.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:"16px 18px", display:"flex", flexDirection:"column", gap:10 }}>
-                        {/* Card header: icon + name + badges + actions */}
-                        <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
-                          <div style={{ background:"rgba(255,255,255,.06)", borderRadius:10, width:44, height:44, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0 }}>
+                      <div key={f.id} style={{ borderRadius:16, padding:"16px 16px 14px", display:"flex", flexDirection:"column", gap:10, position:"relative", overflow:"hidden", background:`linear-gradient(145deg,${top} 0%,${bot} 100%)`, boxShadow:`0 4px 0 ${edge}, 0 8px 24px ${glow}, inset 0 1px 0 rgba(255,255,255,.35)`, border:"1px solid rgba(255,255,255,.15)" }}>
+                        {/* Shine */}
+                        <div style={{ position:"absolute",top:0,left:0,right:0,height:"48%",background:"linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,0))",borderRadius:"16px 16px 0 0",pointerEvents:"none" }} />
+                        {/* Decorative icon */}
+                        <div style={{ position:"absolute",bottom:-10,right:6,fontSize:54,opacity:.12,lineHeight:1,pointerEvents:"none" }}>{f.icone||"🏢"}</div>
+                        {/* Card header */}
+                        <div style={{ display:"flex", alignItems:"flex-start", gap:12, position:"relative" }}>
+                          <div style={{ background:"rgba(0,0,0,.25)", borderRadius:12, width:46, height:46, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0, boxShadow:"0 2px 8px rgba(0,0,0,.3)" }}>
                             {f.icone || "🏢"}
                           </div>
                           <div style={{ flex:1, minWidth:0 }}>
-                            <div style={{ fontWeight:700, fontSize:14, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{f.nome}</div>
-                            <span style={{ display:"inline-block", background:"rgba(16,185,129,.12)", color:"#34D399", border:"1px solid rgba(16,185,129,.2)", borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600, marginTop:3 }}>{f.categoria}</span>
+                            <div style={{ fontWeight:800, fontSize:14, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textShadow:"0 2px 6px rgba(0,0,0,.4)" }}>{f.nome}</div>
+                            <span style={{ display:"inline-block", background:"rgba(0,0,0,.25)", color:"rgba(255,255,255,.95)", borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:700, marginTop:3 }}>{f.categoria}</span>
                           </div>
-                          <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                          <div style={{ display:"flex", gap:5, flexShrink:0 }}>
                             <button onClick={()=>{ setFornecMsgModal(f); setFornecMsg(""); }}
-                              style={{ background:"rgba(37,211,102,.15)", border:"1px solid rgba(37,211,102,.3)", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:16 }} title="Enviar WhatsApp">
+                              style={{ background:"rgba(255,255,255,.22)", border:"1px solid rgba(255,255,255,.35)", borderRadius:8, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:15 }} title="Enviar WhatsApp">
                               💬
                             </button>
                             <button onClick={()=>{ setFornecEditId(f.id); setFornecForm({ nome:f.nome, categoria:f.categoria, icone:f.icone, telefone:f.telefone||"", whatsapp:f.whatsapp||"", email:f.email||"", endereco:f.endereco||"", observacoes:f.observacoes||"", status:f.status }); setFornecModal(true); }}
-                              style={{ background:"rgba(59,130,246,.15)", border:"1px solid rgba(59,130,246,.3)", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:14 }} title="Editar">
+                              style={{ background:"rgba(255,255,255,.22)", border:"1px solid rgba(255,255,255,.35)", borderRadius:8, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }} title="Editar">
                               ✏️
                             </button>
                             <button onClick={()=>{ if(window.confirm('Excluir "' + f.nome + '"?')) fornecDelete(f.id); }}
-                              style={{ background:"rgba(239,68,68,.12)", border:"1px solid rgba(239,68,68,.25)", borderRadius:8, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:14 }} title="Excluir">
+                              style={{ background:"rgba(239,68,68,.3)", border:"1px solid rgba(239,68,68,.55)", borderRadius:8, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontSize:13 }} title="Excluir">
                               🗑️
                             </button>
                           </div>
                         </div>
 
                         {/* Contact info */}
-                        <div style={{ display:"flex", flexDirection:"column", gap:4, fontSize:12 }}>
+                        <div style={{ display:"flex", flexDirection:"column", gap:3, fontSize:12, position:"relative" }}>
                           {(f.telefone||f.whatsapp) && (
-                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"#94A3B8" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"rgba(255,255,255,.88)" }}>
                               <span>📞</span> {f.telefone || f.whatsapp}
                             </div>
                           )}
                           {f.email && (
-                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"#94A3B8" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"rgba(255,255,255,.88)" }}>
                               <span>✉️</span> {f.email}
                             </div>
                           )}
                           {f.endereco && (
-                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"#94A3B8" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:6, color:"rgba(255,255,255,.88)" }}>
                               <span>📍</span> {f.endereco}
                             </div>
                           )}
@@ -13035,7 +13066,7 @@ Content-Type: application/json
                         {/* WhatsApp button */}
                         <button onClick={()=>fornecWhatsApp(f)}
                           disabled={!hasWa}
-                          style={{ background: hasWa ? "linear-gradient(135deg,#25D366,#128C7E)" : "rgba(255,255,255,.04)", border:"none", borderRadius:9, padding:"9px 14px", color: hasWa ? "#fff" : "#334155", fontSize:13, fontWeight:700, cursor: hasWa ? "pointer":"not-allowed", display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:2 }}>
+                          style={{ background: hasWa ? "linear-gradient(135deg,#25D366,#128C7E)" : "rgba(0,0,0,.2)", border:"none", borderRadius:9, padding:"9px 14px", color: hasWa ? "#fff" : "rgba(255,255,255,.3)", fontSize:13, fontWeight:700, cursor: hasWa ? "pointer":"not-allowed", display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:2, position:"relative", boxShadow: hasWa ? "0 3px 0 #0a5e32, 0 5px 16px rgba(37,211,102,.45)":"none" }}>
                           💬 Enviar WhatsApp
                         </button>
                       </div>
