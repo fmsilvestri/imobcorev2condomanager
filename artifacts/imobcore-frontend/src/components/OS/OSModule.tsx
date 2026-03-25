@@ -521,7 +521,7 @@ function NovaOSForm({ condId, condNome, osList, onSave, onCancel, view }:
 
   return (
     <div style={panelStyle}>
-      <style>{`.os-nova-input::placeholder{color:rgba(255,255,255,.45);font-weight:400}`}</style>
+      <style>{`.os-nova-input::placeholder{color:rgba(255,255,255,.45);font-weight:400} @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
       {/* Stepper indicator */}
       <div style={{ display:"flex",gap:4,marginBottom:22,alignItems:"center" }}>
         {steps.map((s,i) => (
@@ -856,10 +856,10 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
     navigator.clipboard.writeText(notifTexto).then(()=>{ setNotifCopied(true); setTimeout(()=>setNotifCopied(false),2000); });
   }
 
-  const tabBtn = (t:typeof tab, icon:string, lbl:string, big?:boolean) => {
+  const tabBtn = (t:typeof tab, icon:string, lbl:string, big?:boolean, onClickExtra?:()=>void) => {
     const active = tab === t;
     return (
-      <button key={t} onClick={()=>setTab(t)} style={{
+      <button key={t} onClick={()=>{ setTab(t); onClickExtra?.(); }} style={{
         flex: big ? "1.35" : "1",
         display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:4,
         padding: big ? "10px 4px 9px" : "9px 4px 8px",
@@ -901,7 +901,7 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
           {/* Quick actions */}
           <div style={{ display:"flex",gap:6,marginTop:10 }}>
             {os.status==="aberta"&&<button onClick={()=>changeStatus("em_andamento")} style={{ fontSize:10,padding:"4px 10px",background:"rgba(6,182,212,.15)",border:"1px solid rgba(6,182,212,.3)",borderRadius:6,color:"#67E8F9",cursor:"pointer",fontWeight:700 }}>▶ Iniciar</button>}
-            {os.status==="em_andamento"&&<button onClick={()=>changeStatus("fechada")} style={{ fontSize:10,padding:"4px 10px",background:"rgba(16,185,129,.15)",border:"1px solid rgba(16,185,129,.3)",borderRadius:6,color:"#34D399",cursor:"pointer",fontWeight:700 }}>✓ Concluir</button>}
+            {os.status==="em_andamento"&&<button onClick={async ()=>{ await changeStatus("fechada"); setDiTexto(""); getDi(); }} style={{ fontSize:10,padding:"4px 12px",background:"linear-gradient(135deg,rgba(16,185,129,.25),rgba(5,150,105,.2))",border:"1px solid rgba(16,185,129,.5)",borderRadius:6,color:"#34D399",cursor:"pointer",fontWeight:800,display:"flex",alignItems:"center",gap:4 }}>✓ Concluir OS</button>}
             {os.status==="fechada"&&<button onClick={()=>changeStatus("aberta")} style={{ fontSize:10,padding:"4px 10px",background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:6,color:"#FCD34D",cursor:"pointer",fontWeight:700 }}>↩ Reabrir</button>}
             <button onClick={getDi} disabled={diLoading} style={{ fontSize:10,padding:"4px 10px",background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.3)",borderRadius:6,color:"#C4B5FD",cursor:"pointer",fontWeight:700,opacity:diLoading?.6:1 }}>🟣 Di</button>
           </div>
@@ -911,7 +911,7 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
           {tabBtn("info","ℹ️","Info")}
           {tabBtn("checklist","☑️","Checklist")}
           {tabBtn("comentarios","💬",`(${comments.length})`)}
-          {tabBtn("di","🟣","Di")}
+          {tabBtn("di","🟣","Di",false,()=>{ if (!diTexto && !diLoading) getDi(); })}
           {tabBtn("notif","📢","Avisar",true)}
         </div>
         {/* Tab content */}
@@ -985,13 +985,36 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
           {/* Di */}
           {tab==="di" && (
             <div style={{ background:"rgba(139,92,246,.06)",border:"1px solid rgba(139,92,246,.2)",borderRadius:12,padding:14 }}>
-              <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:10 }}>
-                <img src="/di.png" alt="Di" style={{ width:32,height:32,borderRadius:"50%",objectFit:"cover",objectPosition:"top" }} />
-                <div><div style={{ fontSize:13,fontWeight:800,color:"#C4B5FD" }}>Di — Síndica Virtual</div><div style={{ fontSize:9,color:"#7C3AED" }}>Análise da OS</div></div>
+              <div style={{ display:"flex",alignItems:"center",gap:8,marginBottom:12 }}>
+                <img src="/di.png" alt="Di" style={{ width:36,height:36,borderRadius:"50%",objectFit:"cover",objectPosition:"top",border:"2px solid rgba(167,139,250,.4)" }} />
+                <div>
+                  <div style={{ fontSize:13,fontWeight:800,color:"#C4B5FD" }}>Di — Síndica Virtual</div>
+                  <div style={{ fontSize:9,color:"#7C3AED" }}>Relatório de Andamento da OS</div>
+                </div>
+                {diTexto&&!diLoading&&(
+                  <button onClick={()=>{ setDiTexto(""); getDi(); }} style={{ marginLeft:"auto",fontSize:9,padding:"3px 8px",background:"rgba(139,92,246,.2)",border:"1px solid rgba(139,92,246,.3)",borderRadius:6,color:"#A78BFA",cursor:"pointer",fontWeight:700 }}>🔄 Atualizar</button>
+                )}
               </div>
-              {diLoading&&!diTexto&&<div style={{ color:"#A78BFA",fontSize:12 }}>⏳ Analisando...</div>}
-              {diTexto?<div style={{ fontSize:12,color:"#E9D5FF",lineHeight:1.7,whiteSpace:"pre-wrap" }}>{diTexto}</div>
-                :<div style={{ color:"#4B3B7D",fontSize:12 }}>Clique em "🟣 Di" no header para obter uma análise.</div>}
+              {diLoading&&(
+                <div style={{ display:"flex",flexDirection:"column",gap:8,alignItems:"center",padding:"20px 0" }}>
+                  <div style={{ width:32,height:32,border:"3px solid rgba(139,92,246,.2)",borderTop:"3px solid #A78BFA",borderRadius:"50%",animation:"spin 1s linear infinite" }} />
+                  <div style={{ color:"#A78BFA",fontSize:12 }}>Di está analisando a OS…</div>
+                  {diTexto&&<div style={{ fontSize:12,color:"#E9D5FF",lineHeight:1.7,whiteSpace:"pre-wrap",width:"100%" }}>{diTexto}</div>}
+                </div>
+              )}
+              {!diLoading&&diTexto&&(
+                <div style={{ fontSize:12,color:"#E9D5FF",lineHeight:1.8,whiteSpace:"pre-wrap" }}>{diTexto}</div>
+              )}
+              {!diLoading&&!diTexto&&(
+                <div style={{ textAlign:"center",padding:"20px 0" }}>
+                  <div style={{ fontSize:32,marginBottom:8 }}>🟣</div>
+                  <div style={{ color:"#7C5CFC",fontSize:13,fontWeight:700,marginBottom:4 }}>Relatório de Andamento</div>
+                  <div style={{ color:"#4B3B7D",fontSize:11,marginBottom:16,lineHeight:1.5 }}>A Di irá gerar um relatório completo sobre o andamento desta OS, incluindo análise de riscos e recomendações.</div>
+                  <button onClick={getDi} style={{ padding:"10px 24px",borderRadius:20,border:"none",background:"linear-gradient(135deg,#7C3AED,#A855F7)",color:"#fff",fontSize:12,fontWeight:800,cursor:"pointer",boxShadow:"0 4px 16px rgba(124,58,237,.4)" }}>
+                    🟣 Gerar Relatório Di
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

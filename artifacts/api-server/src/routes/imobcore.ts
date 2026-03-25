@@ -1137,13 +1137,45 @@ router.post("/os/:id/di", async (req: Request, res: Response) => {
     const Anthropic = (await import("@anthropic-ai/sdk")).default;
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+    // Buscar comentários da OS para contexto adicional
+    const { data: comentarios } = await supabase.from("os_comentarios").select("autor,mensagem,created_at").eq("os_id", id).order("created_at", { ascending: false }).limit(5);
+    const foiConcluida = os.status === "fechada";
+    const checklist = Array.isArray(os.checklist) ? os.checklist as {done:boolean}[] : [];
+
     const msg = await client.messages.create({
-      model: "claude-opus-4-5",
-      max_tokens: 600,
-      system: `Você é Di, síndica virtual de ${condNome} em Florianópolis, SC. Analise a OS em 2-3 parágrafos curtos e objetivos. Sugira prestador baseado no histórico, estime risco de recorrência e recomende prazo. Seja direta e prática. Use emojis com moderação.`,
+      model: "claude-sonnet-4-5",
+      max_tokens: 700,
+      system: `Você é Di, síndica virtual de ${condNome}. Gere um relatório de andamento claro, objetivo e estruturado sobre esta OS. Use seções com emoji. Seja direta e prática. Português brasileiro.`,
       messages: [{
         role: "user",
-        content: `OS a analisar:\n${JSON.stringify(os, null, 2)}\n\nHistórico de OSs desta categoria (últimas 5):\n${JSON.stringify((historico || []).slice(-5), null, 2)}`
+        content: `Gere um relatório de andamento para a OS abaixo.${foiConcluida ? " A OS foi CONCLUÍDA — inclua um resumo do que foi resolvido e recomendações preventivas." : " A OS está EM ANDAMENTO — inclua situação atual, próximos passos e riscos."}
+
+OS:
+- Número: ${os.numero || "S/N"}
+- Título: ${os.titulo}
+- Descrição: ${os.descricao || "–"}
+- Status: ${os.status}
+- Prioridade: ${os.prioridade}
+- Categoria: ${os.categoria}
+- Local: ${os.local || "–"}
+- Responsável: ${os.responsavel || "–"}
+- SLA: ${os.sla_horas || 48}h
+- Criada em: ${os.created_at ? new Date(os.created_at).toLocaleDateString("pt-BR") : "–"}
+- Custo estimado: R$ ${(os.custo_estimado || 0).toLocaleString("pt-BR")}
+${os.custo_real ? `- Custo real: R$ ${os.custo_real.toLocaleString("pt-BR")}` : ""}
+${checklist ? `- Checklist: ${(os.checklist || []).filter((c: {done:boolean}) => c.done).length}/${(os.checklist || []).length} itens concluídos` : ""}
+
+Comentários/atividade recente:
+${(comentarios || []).length > 0 ? (comentarios || []).map((c: {autor:string;mensagem:string}) => `- ${c.autor}: ${c.mensagem}`).join("\n") : "Sem comentários."}
+
+Histórico de OSs similares (últimas 5):
+${JSON.stringify((historico || []).slice(-5).map((h: Record<string, unknown>) => ({ titulo: h.titulo, status: h.status, prioridade: h.prioridade })), null, 2)}
+
+Formato do relatório:
+📊 **Situação Atual**: [status e contexto]
+⚙️ **Ações ${foiConcluida ? "Realizadas" : "em Andamento"}**: [o que foi/está sendo feito]
+${foiConcluida ? "✅ **Conclusão**: [resumo do que foi resolvido]" : "⏱️ **Próximos Passos**: [ações necessárias e prazo estimado]"}
+🔍 **Análise**: [riscos, recorrência e recomendações preventivas]`
       }]
     });
 
