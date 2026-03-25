@@ -9707,20 +9707,58 @@ Content-Type: application/json
           {/* PANEL: MISP – Alertas Públicos */}
           <div className={`panel ${panel === "misp" ? "active" : ""} card`}>
             <div className="card-title">🚨 Alertas Externos</div>
-            {(dash?.alertas_publicos || []).length === 0 && <div style={{ color: "#475569", textAlign: "center", padding: 20, fontSize: 13 }}>Nenhum alerta ativo no momento</div>}
+
+            {/* ── Central de Risco — 3 KPI cols ── */}
+            {(() => {
+              const alertas = dash?.alertas_publicos || [];
+              const criticos    = alertas.filter(a => a.nivel === "alto").length;
+              const riscos      = alertas.filter(a => a.nivel === "medio").length;
+              const oportunidades = alertas.filter(a => a.nivel === "baixo").length;
+              const kpis = [
+                { icon:"🚨", label:"Crítico Imediato",  val: criticos,     bg:"linear-gradient(135deg,#EF444422,#EF444408)", border:"rgba(239,68,68,.35)",  num:"#EF4444", glow:"rgba(239,68,68,.18)" },
+                { icon:"⚠️", label:"Risco Futuro",       val: riscos,       bg:"linear-gradient(135deg,#F59E0B22,#F59E0B08)", border:"rgba(245,158,11,.35)", num:"#F59E0B", glow:"rgba(245,158,11,.15)" },
+                { icon:"💡", label:"Oportunidades",      val: oportunidades, bg:"linear-gradient(135deg,#10B98122,#10B98108)", border:"rgba(16,185,129,.35)", num:"#10B981", glow:"rgba(16,185,129,.12)" },
+              ];
+              return (
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:18 }}>
+                  {kpis.map(k => (
+                    <div key={k.label} style={{ background:k.bg, border:`1px solid ${k.border}`, borderRadius:14, padding:"14px 10px 12px", textAlign:"center", boxShadow:`0 4px 18px ${k.glow}` }}>
+                      <div style={{ fontSize:22, marginBottom:4 }}>{k.icon}</div>
+                      <div style={{ fontSize:28, fontWeight:900, color:k.num, lineHeight:1 }}>{k.val}</div>
+                      <div style={{ fontSize:9, color:"#64748B", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:.6, marginTop:5, lineHeight:1.3 }}>{k.label}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* ── Lista de alertas ── */}
+            {(dash?.alertas_publicos || []).length === 0 && (
+              <div style={{ color: "#475569", textAlign: "center", padding: 20, fontSize: 13 }}>Nenhum alerta ativo no momento</div>
+            )}
             {(dash?.alertas_publicos || []).map(a => {
               const nc = { alto: "pill-red", medio: "pill-amber", baixo: "pill-green" }[a.nivel] || "pill-gray";
+              const nivelIcon = { alto:"🚨", medio:"⚠️", baixo:"💡" }[a.nivel] || "📌";
+              const nivelBorder = { alto:"rgba(239,68,68,.25)", medio:"rgba(245,158,11,.2)", baixo:"rgba(16,185,129,.2)" }[a.nivel] || "rgba(255,255,255,.06)";
               return (
-                <div key={a.id} className="misp-card">
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>{a.titulo}</div>
+                <div key={a.id} className="misp-card" style={{ border:`1px solid ${nivelBorder}` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems:"flex-start", marginBottom: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, display:"flex", alignItems:"center", gap:6 }}>
+                      <span style={{ fontSize:14 }}>{nivelIcon}</span>
+                      {a.titulo}
+                    </div>
                     <span className={`pill ${nc}`}>{a.nivel}</span>
                   </div>
-                  <div style={{ fontSize: 12, color: "#64748B", marginBottom: 8 }}>{a.descricao}</div>
+                  <div style={{ fontSize: 12, color: "#94A3B8", marginBottom: 8, lineHeight:1.5 }}>{a.descricao}</div>
+                  {a.di_analise && (
+                    <div style={{ background:"rgba(99,102,241,.08)", border:"1px solid rgba(99,102,241,.2)", borderRadius:8, padding:"8px 10px", marginBottom:8, fontSize:11, color:"#A5B4FC", lineHeight:1.5 }}>
+                      🤖 {a.di_analise}
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" as const }}>
-                    <span className="pill pill-gray">{a.tipo}</span>
-                    <span className="pill pill-gray">{a.cidade} – {a.bairro}</span>
-                    <span className="pill pill-blue">{a.origem}</span>
+                    {a.tipo   && <span className="pill pill-gray">{a.tipo}</span>}
+                    {a.cidade && <span className="pill pill-gray">{a.cidade}{a.bairro ? ` – ${a.bairro}` : ""}</span>}
+                    {a.origem && <span className="pill pill-blue">{a.origem}</span>}
                   </div>
                 </div>
               );
