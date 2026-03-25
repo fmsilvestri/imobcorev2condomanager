@@ -5695,6 +5695,111 @@ router.patch("/manutencao/alertas/:id/resolver", async (req: Request, res: Respo
 });
 
 // ── SQL MIGRATION HELPER ──────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════
+// DOCUMENTOS & LICENÇAS
+// ════════════════════════════════════════════════════════════════
+
+// GET /api/documentos?condominio_id=...
+router.get("/documentos", async (req: Request, res: Response) => {
+  const condId = String(req.query.condominio_id || "");
+  if (!condId) return res.status(400).json({ error: "condominio_id required" });
+  const { data, error } = await supabase
+    .from("documentos_condominio")
+    .select("id,nome,tipo,descricao,conteudo_texto,created_at")
+    .eq("condominio_id", condId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (isMissingTable(error)) return res.json({ docs: [], missing_table: true });
+    return res.status(500).json({ error: error.message });
+  }
+  return res.json({ docs: data ?? [] });
+});
+
+// POST /api/documentos
+router.post("/documentos", async (req: Request, res: Response) => {
+  const { condominio_id, nome, tipo, descricao, conteudo_texto } = req.body as Record<string, string>;
+  if (!condominio_id || !nome || !tipo)
+    return res.status(400).json({ error: "condominio_id, nome e tipo são obrigatórios" });
+  const { data, error } = await supabase
+    .from("documentos_condominio")
+    .insert({ condominio_id, nome, tipo, descricao: descricao || null, conteudo_texto: conteudo_texto || null })
+    .select().single();
+  if (error) {
+    if (isMissingTable(error))
+      return res.status(503).json({ error: "missing_table", message: "Execute o SQL de migração no Supabase Dashboard" });
+    return res.status(500).json({ error: error.message });
+  }
+  return res.status(201).json({ doc: data });
+});
+
+// PUT /api/documentos/:id
+router.put("/documentos/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { nome, tipo, descricao, conteudo_texto } = req.body as Record<string, string>;
+  const { data, error } = await supabase
+    .from("documentos_condominio")
+    .update({ nome, tipo, descricao: descricao || null, conteudo_texto: conteudo_texto || null })
+    .eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json({ doc: data });
+});
+
+// DELETE /api/documentos/:id
+router.delete("/documentos/:id", async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { error } = await supabase.from("documentos_condominio").delete().eq("id", id);
+  if (error) return res.status(500).json({ error: error.message });
+  return res.json({ ok: true });
+});
+
+// POST /api/documentos/consultar — Di responde perguntas com base nos documentos
+router.post("/documentos/consultar", async (req: Request, res: Response) => {
+  const { condominio_id, pergunta } = req.body as Record<string, string>;
+  if (!condominio_id || !pergunta)
+    return res.status(400).json({ error: "condominio_id e pergunta são obrigatórios" });
+
+  const { data: docs } = await supabase
+    .from("documentos_condominio")
+    .select("nome,tipo,descricao,conteudo_texto")
+    .eq("condominio_id", condominio_id)
+    .order("created_at", { ascending: false });
+
+  if (!docs || docs.length === 0) {
+    return res.json({
+      resposta: "Não há documentos cadastrados para este condomínio ainda. Adicione documentos como AVCB, Regimento Interno ou Convenção Condominial para que eu possa consultá-los e responder suas dúvidas com base no conteúdo real. 📄",
+      docs_count: 0,
+    });
+  }
+
+  type DocRow = { nome: string; tipo: string; descricao?: string; conteudo_texto?: string };
+  const docsContext = (docs as DocRow[]).map(d => {
+    const tipoLabel: Record<string, string> = { avcb:"AVCB/Bombeiros", regimento:"Regimento Interno", convencao:"Convenção Condominial", contrato:"Contrato", alvara:"Alvará/Licença", manual:"Manual Técnico", outro:"Outro" };
+    return `\n--- ${d.nome} (${tipoLabel[d.tipo] ?? d.tipo}) ---\n${d.descricao ? `Descrição: ${d.descricao}\n` : ""}Conteúdo:\n${(d.conteudo_texto || "[sem texto cadastrado]").substring(0, 3500)}`;
+  }).join("\n");
+
+  const systemPrompt = `Você é Di, a Síndica Virtual IA do ImobCore. Você tem acesso aos documentos oficiais do condomínio listados abaixo e deve responder perguntas com base neles.
+
+DOCUMENTOS CADASTRADOS (${docs.length} no total):
+${docsContext}
+
+Instruções:
+- Responda de forma direta, clara e útil com base nos documentos acima
+- Se a informação não estiver nos documentos, diga isso claramente e sugira onde buscar
+- Use formatação markdown simples quando útil (negrito, listas)
+- Seja concisa e objetiva
+- Se o documento não tiver conteúdo textual, informe ao síndico que é necessário adicionar o texto do documento`;
+
+  const msg = await anthropic.messages.create({
+    model: "claude-haiku-4-5",
+    max_tokens: 1200,
+    system: systemPrompt,
+    messages: [{ role: "user", content: pergunta }],
+  });
+
+  const resposta = (msg.content[0] as { type: string; text: string }).text;
+  return res.json({ resposta, docs_count: docs.length });
+});
+
 // GET /api/admin/manutencao/migration-sql — retorna o SQL para criar as tabelas
 router.get("/admin/manutencao/migration-sql", (_req: Request, res: Response) => {
   const sql = `-- Execute no Supabase SQL Editor (https://supabase.com/dashboard)
@@ -5752,10 +5857,23 @@ CREATE TABLE IF NOT EXISTS piscina_leituras (
 
 CREATE INDEX IF NOT EXISTS pisc_condo ON piscina_leituras(condominio_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS documentos_condominio (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id   UUID NOT NULL,
+  nome            VARCHAR(255) NOT NULL,
+  tipo            VARCHAR(100) NOT NULL,
+  descricao       TEXT,
+  conteudo_texto  TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS doc_condo ON documentos_condominio(condominio_id, created_at DESC);
+
 -- Verificar criação:
 SELECT table_name FROM information_schema.tables
 WHERE table_schema = 'public'
-  AND table_name IN ('manutencoes','alertas_manutencao','piscina_leituras');`;
+  AND table_name IN ('manutencoes','alertas_manutencao','piscina_leituras','documentos_condominio');`;
 
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   return res.send(sql);

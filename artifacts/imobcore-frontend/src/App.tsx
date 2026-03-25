@@ -2187,6 +2187,80 @@ export default function App() {
   const [insights, setInsights] = useState("");
   const [insightsLoading, setInsightsLoading] = useState(false);
 
+  // Documentos & Licenças
+  type DocItem = { id: string; nome: string; tipo: string; descricao: string | null; conteudo_texto: string | null; created_at: string };
+  const docTipos = [
+    { value: "avcb",      label: "🔥 AVCB/Bombeiros" },
+    { value: "regimento", label: "📋 Regimento Interno" },
+    { value: "convencao", label: "📜 Convenção Condominial" },
+    { value: "contrato",  label: "🤝 Contrato" },
+    { value: "alvara",    label: "🏛️ Alvará/Licença" },
+    { value: "manual",    label: "📘 Manual Técnico" },
+    { value: "outro",     label: "📁 Outro" },
+  ];
+  const docTipoLabel = (v: string) => docTipos.find(t => t.value === v)?.label ?? v;
+  const [docList, setDocList] = useState<DocItem[]>([]);
+  const [docLoading, setDocLoading] = useState(false);
+  const [docMissingTable, setDocMissingTable] = useState(false);
+  const [docFilter, setDocFilter] = useState("todos");
+  const [docModal, setDocModal] = useState<"add" | "edit" | null>(null);
+  const [docEditId, setDocEditId] = useState<string | null>(null);
+  const [docForm, setDocForm] = useState({ nome: "", tipo: "avcb", descricao: "", conteudo_texto: "" });
+  const [docSaving, setDocSaving] = useState(false);
+  const [docPergunta, setDocPergunta] = useState("");
+  const [docResposta, setDocResposta] = useState("");
+  const [docConsultaLoading, setDocConsultaLoading] = useState(false);
+  const loadDocs = async (cid: string) => {
+    setDocLoading(true);
+    try {
+      const r = await fetch(`/api/documentos?condominio_id=${cid}`);
+      const j = await r.json() as { docs: DocItem[]; missing_table?: boolean };
+      setDocList(j.docs ?? []);
+      setDocMissingTable(j.missing_table ?? false);
+    } catch { setDocList([]); }
+    setDocLoading(false);
+  };
+  const saveDoc = async () => {
+    if (!docForm.nome.trim() || !condId) { showToast("Nome é obrigatório", "error"); return; }
+    setDocSaving(true);
+    try {
+      const url = docEditId ? `/api/documentos/${docEditId}` : "/api/documentos";
+      const r = await fetch(url, {
+        method: docEditId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ condominio_id: condId, ...docForm }),
+      });
+      const j = await r.json() as { error?: string };
+      if (j.error === "missing_table") { showToast("Execute o SQL de migração primeiro", "error"); }
+      else if (j.error) { showToast("Erro ao salvar documento", "error"); }
+      else {
+        showToast(docEditId ? "Documento atualizado!" : "Documento adicionado! 📄", "success");
+        setDocModal(null); setDocEditId(null); setDocForm({ nome: "", tipo: "avcb", descricao: "", conteudo_texto: "" });
+        if (condId) await loadDocs(condId);
+      }
+    } catch { showToast("Erro de conexão", "error"); }
+    setDocSaving(false);
+  };
+  const deleteDoc = async (id: string) => {
+    if (!confirm("Remover este documento?")) return;
+    await fetch(`/api/documentos/${id}`, { method: "DELETE" });
+    showToast("Documento removido", "warn");
+    if (condId) await loadDocs(condId);
+  };
+  const consultarDi = async () => {
+    if (!docPergunta.trim() || !condId) return;
+    setDocConsultaLoading(true); setDocResposta("");
+    try {
+      const r = await fetch("/api/documentos/consultar", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ condominio_id: condId, pergunta: docPergunta }),
+      });
+      const j = await r.json() as { resposta?: string };
+      setDocResposta(j.resposta ?? "Sem resposta.");
+    } catch { setDocResposta("Erro ao consultar Di. Tente novamente."); }
+    setDocConsultaLoading(false);
+  };
+
   // Visitante form
   const [visitante, setVisitante] = useState({ nome: "", documento: "", motivo: "", unidade: "", placa: "" });
   const [visitanteSent, setVisitanteSent] = useState(false);
@@ -2290,6 +2364,12 @@ export default function App() {
   // Load piscina data when sindico piscina screen opens
   useEffect(() => {
     if (sindicoScreen === "piscina" && condId) loadPiscina(condId);
+  }, [sindicoScreen, condId]);
+
+  // Load documentos when screen opens
+  useEffect(() => {
+    if (sindicoScreen === "documentos" && condId) loadDocs(condId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sindicoScreen, condId]);
 
   // Auto-greeting / quick-send: Di starts the conversation when the sindico chat screen opens.
@@ -4730,7 +4810,7 @@ export default function App() {
       manutencao: "🔧 Manutenção",
       crm: "👥 CRM – Moradores",
       comunicados: "📢 Comunicados",
-      insights: "💡 Insights & Análises",
+      documentos: "📄 Documentos & Licenças",
       fornecedores: "🏢 Fornecedores e Contatos",
       encomendas: "📦 Encomendas",
       piscina: "🏊 Piscina & Qualidade",
@@ -5331,40 +5411,157 @@ export default function App() {
           </div>
         )}
 
-        {/* ── INSIGHTS & ANÁLISES ──────────────────────────────────────── */}
-        {sindicoScreen === "insights" && (
-          <>
-            <div style={{ display: "flex", gap: 6, overflowX: "auto", padding: "6px 12px", borderBottom: "1px solid var(--card-border)", flexShrink: 0 }}>
-              {[["💡 Resumo", "Gere insights executivos sobre o condomínio agora"],
-                ["🔴 Riscos", "Quais são os principais riscos e vulnerabilidades?"],
-                ["💰 Financeiro", "Análise financeira: eficiência e oportunidades de economia"],
-                ["🔧 Manutenção", "Relatório completo de manutenção: equipamentos críticos, custos, cronograma de planos"],
-                ["📈 Tendências", "Tendências de consumo de água, energia e gás do mês"]
-              ].map(([l, m]) => (
-                <button key={l} className="chip" style={{ whiteSpace: "nowrap", fontSize: 11 }}
-                  onClick={() => sendChat(m, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory)}>{l}</button>
-              ))}
-            </div>
-            <div className="ph-sub-body" style={{ padding: "8px", display: "flex", flexDirection: "column", gap: 8 }}
-              ref={el => { if (el) el.scrollTop = el.scrollHeight; }}>
-              {deskMsgs.map((m, i) => (
-                <div key={i} className={`msg ${m.role}`}>
-                  <div className="msg-bubble" style={{ fontSize: 12 }}>{m.content}</div>
-                  <div className="msg-time">{m.time}</div>
-                </div>
-              ))}
-              {deskTyping && <TypingIndicator />}
-            </div>
-            <div className="ph-sub-footer">
-              <div style={{ display: "flex", gap: 6 }}>
-                <textarea className="fc" placeholder="Pergunte sobre insights..." rows={2}
-                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const v = (e.target as HTMLTextAreaElement).value; sendChat(v, deskHistory, setDeskMsgs, setDeskTyping, setDeskHistory); (e.target as HTMLTextAreaElement).value = ""; }}}
-                  style={{ flex: 1, fontSize: 12 }} />
-                <button className="btn-send" style={{ padding: "8px 12px" }} disabled={deskTyping}>➤</button>
+        {/* ── DOCUMENTOS & LICENÇAS ────────────────────────────────────── */}
+        {sindicoScreen === "documentos" && (() => {
+          const filteredDocs = docFilter === "todos" ? docList : docList.filter(d => d.tipo === docFilter);
+          const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"2-digit" });
+          return (
+            <>
+              {/* ── Filtros ── */}
+              <div style={{ display:"flex", gap:6, overflowX:"auto", padding:"8px 12px 6px", borderBottom:"1px solid var(--card-border)", flexShrink:0 }}>
+                {[["todos","Todos"],["avcb","Bombeiros"],["regimento","Regimento"],["convencao","Convenção"],["contrato","Contratos"],["alvara","Alvarás"],["manual","Manuais"],["outro","Outros"]].map(([v,l]) => (
+                  <button key={v} onClick={() => setDocFilter(v)}
+                    style={{ whiteSpace:"nowrap", fontSize:11, padding:"5px 10px", borderRadius:20, border:"1px solid var(--card-border)", cursor:"pointer", fontWeight: docFilter===v ? 800 : 500, background: docFilter===v ? "var(--accent)" : "var(--neu-bg)", color: docFilter===v ? "#fff" : "var(--neu-text-2)", fontFamily:"inherit", flexShrink:0 }}>
+                    {l}
+                  </button>
+                ))}
               </div>
-            </div>
-          </>
-        )}
+
+              <div className="ph-sub-body" style={{ padding:"10px 12px", display:"flex", flexDirection:"column", gap:10 }}>
+                {/* ── Alerta tabela ausente ── */}
+                {docMissingTable && (
+                  <div style={{ background:"rgba(245,158,11,.12)", border:"1px solid rgba(245,158,11,.3)", borderRadius:12, padding:"10px 12px", fontSize:12, color:"#D97706" }}>
+                    ⚠️ Tabela ainda não criada. Execute o SQL em <code>/api/admin/manutencao/migration-sql</code> no Supabase Dashboard.
+                  </div>
+                )}
+
+                {/* ── Consultar Di ── */}
+                <div style={{ background:"linear-gradient(135deg,rgba(124,58,237,.08),rgba(168,85,247,.06))", border:"1px solid rgba(124,58,237,.2)", borderRadius:14, padding:"12px 14px" }}>
+                  <div style={{ fontSize:12, fontWeight:800, color:"#A78BFA", marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>
+                    🤖 Consultar Di sobre os Documentos
+                  </div>
+                  <div style={{ display:"flex", gap:6 }}>
+                    <input
+                      value={docPergunta}
+                      onChange={e => setDocPergunta(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") consultarDi(); }}
+                      placeholder="Ex: qual o prazo de validade do AVCB?"
+                      style={{ flex:1, padding:"9px 12px", borderRadius:20, border:"1px solid rgba(124,58,237,.25)", background:"var(--neu-bg)", color:"var(--neu-text)", fontSize:12, fontFamily:"inherit", outline:"none" }}
+                    />
+                    <button onClick={consultarDi} disabled={docConsultaLoading || !docPergunta.trim()}
+                      style={{ padding:"9px 14px", borderRadius:20, border:"none", background:"linear-gradient(135deg,#7C3AED,#A855F7)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer", flexShrink:0 }}>
+                      {docConsultaLoading ? "..." : "▶"}
+                    </button>
+                  </div>
+                  {docResposta && (
+                    <div style={{ marginTop:10, padding:"10px 12px", borderRadius:10, background:"var(--neu-bg)", border:"1px solid var(--card-border)", fontSize:12, color:"var(--neu-text)", lineHeight:1.6, whiteSpace:"pre-wrap" }}>
+                      {docResposta}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Lista de documentos ── */}
+                {docLoading ? (
+                  <div style={{ textAlign:"center", padding:"20px", color:"var(--neu-text-2)", fontSize:13 }}>Carregando...</div>
+                ) : filteredDocs.length === 0 ? (
+                  <div style={{ textAlign:"center", padding:"28px 20px", color:"var(--neu-text-2)", fontSize:13 }}>
+                    <div style={{ fontSize:36, marginBottom:8 }}>📄</div>
+                    {docFilter === "todos" ? "Nenhum documento cadastrado ainda.\nClique em + para adicionar." : `Nenhum documento do tipo "${docFilter}".`}
+                  </div>
+                ) : filteredDocs.map(doc => (
+                  <div key={doc.id} style={{ background:"var(--neu-bg)", border:"1px solid var(--card-border)", borderRadius:14, padding:"12px 14px", display:"flex", alignItems:"flex-start", gap:10 }}>
+                    <div style={{ fontSize:24, flexShrink:0, marginTop:2 }}>
+                      {docTipos.find(t => t.value === doc.tipo)?.label.split(" ")[0] ?? "📄"}
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:800, color:"var(--neu-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{doc.nome}</div>
+                      <div style={{ fontSize:11, color:"var(--neu-text-2)", marginTop:2, display:"flex", gap:6, alignItems:"center", flexWrap:"wrap" }}>
+                        <span style={{ background:"rgba(124,58,237,.12)", color:"#A78BFA", padding:"1px 7px", borderRadius:10, fontWeight:700 }}>{docTipoLabel(doc.tipo).split(" ").slice(1).join(" ")}</span>
+                        <span>{fmtDate(doc.created_at)}</span>
+                        {doc.conteudo_texto ? <span style={{ color:"#22C55E" }}>✓ texto</span> : <span style={{ color:"#F59E0B" }}>⚠ sem texto</span>}
+                      </div>
+                      {doc.descricao && <div style={{ fontSize:11, color:"var(--neu-text-2)", marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{doc.descricao}</div>}
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:4, flexShrink:0 }}>
+                      <button onClick={() => { setDocEditId(doc.id); setDocForm({ nome:doc.nome, tipo:doc.tipo, descricao:doc.descricao||"", conteudo_texto:doc.conteudo_texto||"" }); setDocModal("edit"); }}
+                        style={{ background:"rgba(99,102,241,.12)", border:"1px solid rgba(99,102,241,.2)", color:"#818CF8", borderRadius:8, padding:"4px 8px", fontSize:10, fontWeight:700, cursor:"pointer" }}>✏️</button>
+                      <button onClick={() => deleteDoc(doc.id)}
+                        style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", color:"#EF4444", borderRadius:8, padding:"4px 8px", fontSize:10, fontWeight:700, cursor:"pointer" }}>🗑</button>
+                    </div>
+                  </div>
+                ))}
+
+                {/* ── Dicas rápidas ── */}
+                <div style={{ background:"rgba(14,165,233,.06)", border:"1px solid rgba(14,165,233,.15)", borderRadius:12, padding:"10px 12px", fontSize:11, color:"#0EA5E9" }}>
+                  <div style={{ fontWeight:800, marginBottom:4 }}>💡 Como usar este módulo:</div>
+                  <ul style={{ margin:0, paddingLeft:16, lineHeight:1.8 }}>
+                    <li>Adicione o <strong>texto</strong> de cada documento para que a Di consiga consultá-lo</li>
+                    <li>Cole o conteúdo do AVCB, Regimento, Convenção diretamente no campo de texto</li>
+                    <li>Use o campo "Consultar Di" para tirar dúvidas rapidamente sobre qualquer regra</li>
+                  </ul>
+                </div>
+              </div>
+
+              {/* ── Botão adicionar ── */}
+              <div style={{ padding:"10px 14px", borderTop:"1px solid var(--card-border)", flexShrink:0 }}>
+                <button onClick={() => { setDocForm({ nome:"", tipo:"avcb", descricao:"", conteudo_texto:"" }); setDocEditId(null); setDocModal("add"); }}
+                  style={{ width:"100%", padding:"12px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#7C3AED,#A855F7)", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+                  + Adicionar Documento / Licença
+                </button>
+              </div>
+
+              {/* ── Modal add/edit ── */}
+              {docModal && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.6)", zIndex:900, display:"flex", alignItems:"flex-end" }} onClick={e => { if (e.target === e.currentTarget) setDocModal(null); }}>
+                  <div style={{ background:"var(--neu-bg)", borderRadius:"20px 20px 0 0", width:"100%", maxHeight:"85vh", overflowY:"auto", padding:"20px 18px 28px" }}>
+                    <div style={{ fontSize:16, fontWeight:900, color:"var(--neu-text)", marginBottom:14 }}>
+                      {docModal === "edit" ? "✏️ Editar Documento" : "📄 Novo Documento"}
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                      <div>
+                        <label style={{ fontSize:11, fontWeight:700, color:"var(--neu-text-2)" }}>Nome do Documento *</label>
+                        <input value={docForm.nome} onChange={e => setDocForm(p => ({ ...p, nome: e.target.value }))}
+                          placeholder="Ex: AVCB 2024 – Validade Jan/2026"
+                          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--card-border)", background:"var(--neu-bg)", color:"var(--neu-text)", fontSize:13, fontFamily:"inherit", marginTop:4, boxSizing:"border-box" }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize:11, fontWeight:700, color:"var(--neu-text-2)" }}>Tipo</label>
+                        <select value={docForm.tipo} onChange={e => setDocForm(p => ({ ...p, tipo: e.target.value }))}
+                          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--card-border)", background:"var(--neu-bg)", color:"var(--neu-text)", fontSize:13, fontFamily:"inherit", marginTop:4, boxSizing:"border-box" }}>
+                          {docTipos.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize:11, fontWeight:700, color:"var(--neu-text-2)" }}>Descrição / Validade</label>
+                        <input value={docForm.descricao} onChange={e => setDocForm(p => ({ ...p, descricao: e.target.value }))}
+                          placeholder="Ex: Válido até 31/12/2025"
+                          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--card-border)", background:"var(--neu-bg)", color:"var(--neu-text)", fontSize:13, fontFamily:"inherit", marginTop:4, boxSizing:"border-box" }} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize:11, fontWeight:700, color:"var(--neu-text-2)" }}>
+                          Conteúdo do Documento <span style={{ color:"#A78BFA" }}>(cole o texto para Di consultar)</span>
+                        </label>
+                        <textarea value={docForm.conteudo_texto} onChange={e => setDocForm(p => ({ ...p, conteudo_texto: e.target.value }))}
+                          placeholder="Cole aqui o texto completo do documento: regras, normas, prazos, informações relevantes..."
+                          rows={7}
+                          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--card-border)", background:"var(--neu-bg)", color:"var(--neu-text)", fontSize:12, fontFamily:"inherit", marginTop:4, boxSizing:"border-box", resize:"vertical" }} />
+                      </div>
+                      <div style={{ display:"flex", gap:8, marginTop:4 }}>
+                        <button onClick={() => setDocModal(null)} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid var(--card-border)", background:"transparent", color:"var(--neu-text-2)", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                          Cancelar
+                        </button>
+                        <button onClick={saveDoc} disabled={docSaving || !docForm.nome.trim()}
+                          style={{ flex:2, padding:"12px", borderRadius:12, border:"none", background:"linear-gradient(135deg,#7C3AED,#A855F7)", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>
+                          {docSaving ? "Salvando..." : docModal === "edit" ? "Salvar Alterações" : "Adicionar"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
         {sindicoScreen === "piscina" && (() => {
           const ideal = {
             ph:           { min:7.2, max:7.6, unit:"",     label:"pH" },
