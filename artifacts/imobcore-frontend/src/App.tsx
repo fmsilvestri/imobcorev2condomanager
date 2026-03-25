@@ -6042,7 +6042,7 @@ export default function App() {
           const pendentes  = encList.filter(e=>e.status==="aguardando_retirada");
           const notificados= encList.filter(e=>e.status==="notificado");
           const retirados  = encList.filter(e=>e.status==="retirado");
-          const recentes   = [...encList].sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).slice(0,30);
+          const recentes   = [...encList].filter(e=>encFilter==="todos"||e.status===encFilter).sort((a,b)=>new Date(b.created_at).getTime()-new Date(a.created_at).getTime()).slice(0,30);
           const fmtD = (iso:string) => new Date(iso).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"});
           const initials = (name:string) => name.trim().split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
           const avatarColors = ["#6366f1","#3B82F6","#10B981","#F59E0B","#EC4899","#8B5CF6","#06B6D4","#EF4444"];
@@ -6050,20 +6050,29 @@ export default function App() {
           return (
             <div className="ph-sub-body" style={{ padding:"12px 14px", display:"flex", flexDirection:"column", gap:12 }}>
 
-              {/* ── Resumo por status ── */}
+              {/* ── Resumo por status (clicável para filtrar) ── */}
               <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8 }}>
                 {([
-                  { key:"total",      label:"TOTAL",      val:encList.length,       grad:"linear-gradient(135deg,#4F46E5,#7C3AED)", glow:"rgba(99,102,241,.4)",  icon:"📬" },
-                  { key:"aguardando", label:"AGUARDANDO", val:pendentes.length,     grad:"linear-gradient(135deg,#D97706,#F59E0B)", glow:"rgba(245,158,11,.4)", icon:"📦" },
-                  { key:"notificado", label:"NOTIFICADO", val:notificados.length,   grad:"linear-gradient(135deg,#1D4ED8,#3B82F6)", glow:"rgba(59,130,246,.4)",  icon:"🔔" },
-                  { key:"retirado",   label:"RETIRADO",   val:retirados.length,     grad:"linear-gradient(135deg,#065F46,#10B981)", glow:"rgba(16,185,129,.4)", icon:"✅" },
-                ] as {key:string;label:string;val:number;grad:string;glow:string;icon:string}[]).map(s=>(
-                  <div key={s.key} style={{ borderRadius:14, background:s.grad, boxShadow:`0 4px 14px ${s.glow}`, padding:"12px 6px 10px", textAlign:"center", position:"relative", overflow:"hidden" }}>
-                    <div style={{ position:"absolute", top:-6, right:-6, fontSize:32, opacity:.18, lineHeight:1 }}>{s.icon}</div>
-                    <div style={{ fontSize:22, fontWeight:900, color:"#fff", lineHeight:1 }}>{s.val}</div>
-                    <div style={{ fontSize:8, fontWeight:800, color:"rgba(255,255,255,.75)", marginTop:3, letterSpacing:".05em" }}>{s.label}</div>
+                  { filterVal:"todos",               label:"TOTAL",      val:encList.length,       grad:"linear-gradient(135deg,#4F46E5,#7C3AED)", glow:"rgba(99,102,241,.4)",  edge:"#3730A3", icon:"📬" },
+                  { filterVal:"aguardando_retirada", label:"AGUARDANDO", val:pendentes.length,     grad:"linear-gradient(135deg,#D97706,#F59E0B)", glow:"rgba(245,158,11,.4)",  edge:"#B45309", icon:"📦" },
+                  { filterVal:"notificado",          label:"NOTIFICADO", val:notificados.length,   grad:"linear-gradient(135deg,#1D4ED8,#3B82F6)", glow:"rgba(59,130,246,.4)",  edge:"#1E40AF", icon:"🔔" },
+                  { filterVal:"retirado",            label:"RETIRADO",   val:retirados.length,     grad:"linear-gradient(135deg,#065F46,#10B981)", glow:"rgba(16,185,129,.4)",  edge:"#064E3B", icon:"✅" },
+                ] as {filterVal:string;label:string;val:number;grad:string;glow:string;edge:string;icon:string}[]).map(s=>{
+                  const isActive = encFilter === s.filterVal;
+                  return (
+                  <div key={s.filterVal} onClick={()=>setEncFilter(isActive?"todos":s.filterVal as typeof encFilter)}
+                    style={{ borderRadius:14, background:s.grad, boxShadow: isActive ? `0 0 0 2px rgba(255,255,255,.8), 0 4px 0 ${s.edge}, 0 8px 20px ${s.glow}` : `0 3px 0 ${s.edge}, 0 5px 14px ${s.glow}`, padding:"12px 6px 10px", textAlign:"center", position:"relative", overflow:"hidden", cursor:"pointer", transform: isActive ? "translateY(-2px)" : "none", transition:"all .15s ease", border: isActive ? "1px solid rgba(255,255,255,.4)" : "1px solid rgba(255,255,255,.15)", inset:0 }}>
+                    {/* Shine */}
+                    <div style={{ position:"absolute",top:0,left:0,right:0,height:"48%",background:"linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,0))",borderRadius:"14px 14px 0 0",pointerEvents:"none" }} />
+                    {/* Decorative icon */}
+                    <div style={{ position:"absolute", top:-6, right:-4, fontSize:30, opacity:.18, lineHeight:1, pointerEvents:"none" }}>{s.icon}</div>
+                    {/* Selected check */}
+                    {isActive && <div style={{ position:"absolute",top:5,left:6,fontSize:10,color:"rgba(255,255,255,.9)",fontWeight:900 }}>✓</div>}
+                    <div style={{ fontSize:22, fontWeight:900, color:"#fff", lineHeight:1, position:"relative", textShadow:"0 2px 6px rgba(0,0,0,.3)" }}>{s.val}</div>
+                    <div style={{ fontSize:8, fontWeight:800, color:"rgba(255,255,255,.82)", marginTop:3, letterSpacing:".05em", position:"relative" }}>{s.label}</div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* ── Alerta pendentes ── */}
@@ -6080,13 +6089,20 @@ export default function App() {
 
               {/* ── Lista de encomendas ── */}
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div style={{ fontSize:11, fontWeight:800, color:"var(--neu-text-2)", textTransform:"uppercase", letterSpacing:".06em" }}>Recentes ({recentes.length})</div>
+                <div style={{ fontSize:11, fontWeight:800, color:"var(--neu-text-2)", textTransform:"uppercase", letterSpacing:".06em" }}>
+                  {encFilter==="todos" ? `Todas as Encomendas (${recentes.length})` : `Filtrado: ${encFilter==="aguardando_retirada"?"Aguardando":encFilter==="notificado"?"Notificados":"Retirados"} (${recentes.length})`}
+                </div>
+                {encFilter!=="todos" && (
+                  <button onClick={()=>setEncFilter("todos")} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"4px 10px", color:"#94A3B8", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+                    ✕ Limpar filtro
+                  </button>
+                )}
               </div>
 
               {recentes.length===0 && (
                 <div style={{ textAlign:"center", padding:32, color:"var(--neu-text-2)", fontSize:13 }}>
                   <div style={{ fontSize:48, marginBottom:10 }}>📭</div>
-                  <div style={{ fontWeight:700 }}>Nenhuma encomenda registrada</div>
+                  <div style={{ fontWeight:700 }}>{encFilter==="todos"?"Nenhuma encomenda registrada":"Nenhuma encomenda com este status"}</div>
                 </div>
               )}
 
