@@ -2862,7 +2862,7 @@ export default function App() {
       });
       ["nova_os", "os_atualizada", "sensor_update", "alerta_sensor", "sindico_chat", "novo_comunicado"].forEach(evt => {
         es.addEventListener(evt, (e: MessageEvent) => {
-          const data = JSON.parse(e.data);
+          const data = (JSON.parse(e.data) ?? {}) as any;
           addLog(evt, data);
           loadDashboard();
           if (evt === "alerta_sensor") showToast("⚠️ " + data.message, "warn");
