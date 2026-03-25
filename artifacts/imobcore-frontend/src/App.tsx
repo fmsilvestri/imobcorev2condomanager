@@ -2127,6 +2127,7 @@ export default function App() {
   const [deskHistory, setDeskHistory] = useState<{ role: string; content: string }[]>([]);
   const [mobileHistory, setMobileHistory] = useState<{ role: string; content: string }[]>([]);
   const [tokenInfo, setTokenInfo] = useState("");
+  const [pendingChatMsg, setPendingChatMsg] = useState("");
 
   // OS module
   const OS_BLANK = { numero: "", titulo: "", descricao: "", categoria: "hidraulica", prioridade: "media", unidade: "", responsavel: "" };
@@ -2289,6 +2290,55 @@ export default function App() {
   // Load piscina data when sindico piscina screen opens
   useEffect(() => {
     if (sindicoScreen === "piscina" && condId) loadPiscina(condId);
+  }, [sindicoScreen, condId]);
+
+  // Auto-greeting / quick-send: Di starts the conversation when the sindico chat screen opens.
+  // If the user typed something in the home quick-input (pendingChatMsg), that becomes the
+  // first USER message and Di replies. Otherwise Di sends a personalized welcome greeting.
+  useEffect(() => {
+    if (sindicoScreen !== "sindico" || mobileMsgs.length > 0 || mobileTyping || !condId) return;
+
+    const userMsg = pendingChatMsg.trim();
+    if (userMsg) setPendingChatMsg("");
+
+    const systemPrompt = userMsg
+      ? "" // real user question — no system injection
+      : "Você está iniciando a conversa com o síndico agora. Cumprimente de forma calorosa e pessoal pelo nome se possível. Em seguida, em no máximo 3 frases compactas, dê um panorama rápido do condomínio hoje: mencione OS urgentes se houver, alertas importantes e algo do financeiro. Termine com uma pergunta aberta ou sugestão de como pode ajudar. Seja direta, empática e usa emojis com moderação.";
+
+    const messageToSend = userMsg || systemPrompt;
+    const initialMsgs: ChatMsg[] = userMsg
+      ? [{ role: "user", content: userMsg, time: fmtTime() }]
+      : [];
+
+    if (userMsg) setMobileMsgs(initialMsgs);
+    setMobileTyping(true);
+
+    fetch("/api/sindico/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: messageToSend,
+        history: userMsg ? [{ role: "user", content: userMsg }] : [],
+        condominio_id: condId,
+        perfil: (loggedUser as Record<string,unknown>)?.perfil || loginMode || "sindico",
+        nome_usuario: (loggedUser as Record<string,unknown>)?.nome || "Síndico",
+        auto_greeting: !userMsg,
+      }),
+    })
+      .then(r => r.json())
+      .then(res => {
+        if (res.reply) {
+          setMobileMsgs(prev => [...prev, { role: "ai", content: res.reply, time: fmtTime() }]);
+          setMobileHistory(userMsg
+            ? [{ role: "user", content: userMsg }, { role: "assistant", content: res.reply }]
+            : [{ role: "assistant", content: res.reply }]);
+        }
+      })
+      .catch(() => {
+        setMobileMsgs(prev => [...prev, { role: "ai", content: "👋 Olá! Estou aqui para ajudar. O que você precisa hoje?", time: fmtTime() }]);
+      })
+      .finally(() => setMobileTyping(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sindicoScreen, condId]);
 
   // Carrega histórico de sensor_leituras sempre que a lista de reservatórios mudar
@@ -12632,6 +12682,7 @@ Content-Type: application/json
               piscinaAlerta={piscinaList.some(l => l.status === "alerta")}
               piscinaLastPh={piscinaList[0]?.ph ?? null}
               onPhotoUpdate={(url) => setDash(prev => prev ? { ...prev, condominios: prev.condominios.map((c, i) => i === 0 ? { ...c, photo_url: url } : c) } : prev)}
+              onQuickSend={setPendingChatMsg}
               renderSindicoScreen={renderSindicoScreen}
             />
       </div>

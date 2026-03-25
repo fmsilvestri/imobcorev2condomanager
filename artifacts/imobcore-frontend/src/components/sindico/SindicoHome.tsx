@@ -35,6 +35,7 @@ export interface SindicoHomeProps {
   piscinaAlerta: boolean;
   piscinaLastPh: number | null;
   onPhotoUpdate: (url: string) => void;
+  onQuickSend: (msg: string) => void;
   renderSindicoScreen: () => React.ReactNode;
 }
 
@@ -70,7 +71,7 @@ export default function SindicoHome({
   saldo, osAbertasCount, equipCount, crmCount,
   fornecCount, nivelMedio, sseCount, comunicadosCount,
   gasNivel, encPendentes, piscinaAlerta, piscinaLastPh,
-  onPhotoUpdate,
+  onPhotoUpdate, onQuickSend,
   renderSindicoScreen,
 }: SindicoHomeProps) {
   const isDark = sindicoTheme === "dark";
@@ -319,6 +320,7 @@ export default function SindicoHome({
               onChange={e => setQuickInput(e.target.value)}
               onKeyDown={e => {
                 if (e.key === "Enter" && quickInput.trim()) {
+                  onQuickSend(quickInput.trim());
                   setSindicoScreen("sindico");
                   setQuickInput("");
                 }
@@ -333,7 +335,7 @@ export default function SindicoHome({
               }}
             />
             <button
-              onClick={() => { if (quickInput.trim()) { setSindicoScreen("sindico"); setQuickInput(""); } else { setSindicoScreen("sindico"); } }}
+              onClick={() => { if (quickInput.trim()) { onQuickSend(quickInput.trim()); setQuickInput(""); } setSindicoScreen("sindico"); }}
               style={{
                 width:40, height:40, borderRadius:"50%", flexShrink:0,
                 background:"linear-gradient(135deg,#7C3AED,#A855F7)",
