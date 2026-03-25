@@ -665,15 +665,38 @@ ${(alertas || []).map((a: AlertaRow) =>
       const em30 = new Date(hojeDoc); em30.setDate(hojeDoc.getDate() + 30);
       const docsVencidos = docsChatList.filter(d => d.validade && new Date(d.validade) < hojeDoc);
       const docsAVencer = docsChatList.filter(d => d.validade && new Date(d.validade) >= hojeDoc && new Date(d.validade) <= em30);
-      const docsTxt = docsChatList.slice(0, 20).map(d => {
-        const status = !d.validade ? "sem vencimento" : new Date(d.validade) < hojeDoc ? "VENCIDO ⛔" : new Date(d.validade) <= em30 ? `vence em ${Math.ceil((new Date(d.validade).getTime()-hojeDoc.getTime())/86400000)}d ⚠️` : `válido até ${new Date(d.validade).toLocaleDateString("pt-BR")} ✅`;
-        const resumo = d.conteudo_texto ? ` | CONTEÚDO: "${d.conteudo_texto.slice(0, 600).replace(/\n/g," ")}"` : d.descricao ? ` | ${d.descricao.slice(0,120)}` : "";
-        return `  - ${d.nome} (${d.tipo}) | ${status}${resumo}`;
-      }).join("\n");
-      contextSections.push(`📄 DOCUMENTOS DO CONDOMÍNIO (${docsChatList.length} cadastrados | ${docsVencidos.length} vencidos | ${docsAVencer.length} a vencer em 30 dias):
-${docsTxt}
 
-⚠️ ATENÇÃO: Responda perguntas sobre regulamentos, convenções, AVCB, regimentos e demais documentos com base no conteúdo listado acima.`);
+      // Linha de status (validade) — resumo compacto para todos os docs
+      const docStatusTxt = docsChatList.slice(0, 20).map(d => {
+        const status = !d.validade ? "sem vencimento" : new Date(d.validade) < hojeDoc ? "VENCIDO ⛔" : new Date(d.validade) <= em30 ? `vence em ${Math.ceil((new Date(d.validade).getTime()-hojeDoc.getTime())/86400000)}d ⚠️` : `válido até ${new Date(d.validade).toLocaleDateString("pt-BR")} ✅`;
+        const temTexto = d.conteudo_texto ? "✓ texto" : "sem texto";
+        return `  - ${d.nome} (${d.tipo}) | ${status} | ${temTexto}`;
+      }).join("\n");
+
+      // Conteúdo completo dos documentos que têm texto (até 2000 chars cada)
+      const docsComTexto = docsChatList.filter(d => d.conteudo_texto);
+      const conteudoBlocks = docsComTexto.slice(0, 8).map(d => {
+        const TIPO_LABEL: Record<string, string> = {
+          avcb: "AVCB/Bombeiros", regimento: "Regimento Interno", convencao: "Convenção Condominial",
+          contrato: "Contrato", alvara: "Alvará/Licença", manual: "Manual Técnico",
+          seguro: "Apólice de Seguro", ata: "Ata de Assembleia", laudo: "Laudo Técnico", certidao: "Certidão", outro: "Outro",
+        };
+        const label = TIPO_LABEL[d.tipo] ?? d.tipo;
+        const texto = d.conteudo_texto!.slice(0, 2000);
+        const truncado = d.conteudo_texto!.length > 2000 ? "\n[... texto truncado — use o módulo Documentos para consulta completa ...]" : "";
+        return `--- ${d.nome} (${label}) ---\n${texto}${truncado}`;
+      }).join("\n\n");
+
+      const conteudoSection = docsComTexto.length > 0
+        ? `\nCONTEÚDO TEXTUAL DOS DOCUMENTOS (use para responder perguntas sobre regras, regulamentos e normas):\n\n${conteudoBlocks}`
+        : "\nNenhum documento com texto disponível. Oriente o síndico a adicionar o texto dos documentos para que eu possa consultá-los.";
+
+      contextSections.push(`📄 DOCUMENTOS DO CONDOMÍNIO (${docsChatList.length} cadastrados | ${docsVencidos.length} vencidos | ${docsAVencer.length} a vencer em 30 dias | ${docsComTexto.length} com texto):
+STATUS DE VALIDADE:
+${docStatusTxt}
+${conteudoSection}
+
+⚠️ INSTRUÇÕES: Quando perguntarem sobre regras, penalidades, uso de áreas comuns, barulho, animais ou qualquer norma do condomínio, consulte o conteúdo dos documentos acima e cite a fonte (ex: "Conforme o Regimento Interno, Art. X..."). Se o documento não tiver texto, informe que o conteúdo precisa ser adicionado.`);
     }
 
     // ── Foco no módulo ativo (quando chamado de dentro de um módulo) ─────────
@@ -5877,7 +5900,7 @@ router.post("/di/resumo-documentos", async (req: Request, res: Response) => {
     // Gerar resumo via Claude para cada documento (em lote, prompt único)
     const docsParaResumir = docs.slice(0, 20); // Limitar a 20 docs por vez
     const docsSummaryPrompt = docsParaResumir.map((d, i) => {
-      const conteudo = d.conteudo_texto ? d.conteudo_texto.slice(0, 400) : d.descricao || "";
+      const conteudo = d.conteudo_texto ? d.conteudo_texto.slice(0, 1000) : d.descricao || "";
       return `DOC ${i+1}: ${d.nome} (${d.tipo})
 ${conteudo ? `Conteúdo: ${conteudo}` : "Sem texto disponível — baseie-se no tipo e nome do documento."}`;
     }).join("\n---\n");
