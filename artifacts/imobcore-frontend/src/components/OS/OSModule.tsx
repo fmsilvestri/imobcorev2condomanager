@@ -23,9 +23,9 @@ const PRI_COLOR: Record<string,string> = { urgente:"#EF4444", alta:"#F97316", me
 const PRI_GRAD:  Record<string,string> = { urgente:"linear-gradient(135deg,#991B1B,#EF4444,#FCA5A5)", alta:"linear-gradient(135deg,#C2410C,#F97316,#FED7AA)", media:"linear-gradient(135deg,#1D4ED8,#3B82F6,#93C5FD)", baixa:"linear-gradient(135deg,#065F46,#10B981,#6EE7B7)" };
 const PRI_GLOW:  Record<string,string> = { urgente:"rgba(239,68,68,.45)", alta:"rgba(249,115,22,.40)", media:"rgba(59,130,246,.40)", baixa:"rgba(16,185,129,.40)" };
 const PRI_LABEL: Record<string,string> = { urgente:"🔴 URGENTE", alta:"🟡 Alta", media:"🔵 Média", baixa:"🟢 Baixa" };
-const STS_COLOR: Record<string,string> = { aberta:"#F59E0B", em_andamento:"#06B6D4", fechada:"#10B981", cancelada:"#EF4444" };
-const STS_GRAD:  Record<string,string> = { aberta:"linear-gradient(135deg,#92400E,#F59E0B)", em_andamento:"linear-gradient(135deg,#155E75,#06B6D4)", fechada:"linear-gradient(135deg,#065F46,#10B981)", cancelada:"linear-gradient(135deg,#991B1B,#EF4444)" };
-const STS_LABEL: Record<string,string> = { aberta:"Aberta", em_andamento:"Em andamento", fechada:"Concluída", cancelada:"Cancelada" };
+const STS_COLOR: Record<string,string> = { aberta:"#F59E0B", em_andamento:"#06B6D4", concluida:"#10B981", cancelada:"#EF4444" };
+const STS_GRAD:  Record<string,string> = { aberta:"linear-gradient(135deg,#92400E,#F59E0B)", em_andamento:"linear-gradient(135deg,#155E75,#06B6D4)", concluida:"linear-gradient(135deg,#065F46,#10B981)", cancelada:"linear-gradient(135deg,#991B1B,#EF4444)" };
+const STS_LABEL: Record<string,string> = { aberta:"Aberta", em_andamento:"Em andamento", concluida:"Concluída", cancelada:"Cancelada" };
 const CATS = ["Hidráulico","Elétrico","Estrutural","Equipamento","Segurança","Limpeza","Outro"];
 const SLA_OPTS = [{ v:4,l:"4h — Urgente" },{ v:24,l:"24h" },{ v:48,l:"48h (padrão)" },{ v:72,l:"72h" },{ v:168,l:"7 dias" }];
 const CHECKLISTS: Record<string,string[]> = {
@@ -81,8 +81,8 @@ function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: (
   const sg   = STS_GRAD[os.status]      || "linear-gradient(135deg,#475569,#94A3B8)";
   const cc   = CAT_COLOR[os.categoria]  || "#64748B";
   const ci   = CAT_ICON[os.categoria]   || "📋";
-  const prog = os.status==="fechada"?100:os.status==="em_andamento"?50:0;
-  const isUrgente = os.prioridade === "urgente" && os.status !== "fechada";
+  const prog = os.status==="concluida"?100:os.status==="em_andamento"?50:0;
+  const isUrgente = os.prioridade === "urgente" && os.status !== "concluida";
 
   return (
     <div
@@ -148,7 +148,7 @@ function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: (
         </div>
 
         {/* ── SLA Bar ── */}
-        {os.status !== "fechada" && os.status !== "cancelada" && (
+        {os.status !== "concluida" && os.status !== "cancelada" && (
           <SLABar created_at={os.created_at} sla_horas={os.sla_horas||48} />
         )}
 
@@ -195,7 +195,7 @@ function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: (
               </button>
             )}
             {os.status==="em_andamento" && (
-              <button onClick={e=>{e.stopPropagation();onStatusChange(os.id,"fechada");}}
+              <button onClick={e=>{e.stopPropagation();onStatusChange(os.id,"concluida");}}
                 style={{ flex:1,background:"linear-gradient(135deg,#065F46,#10B981,#34D399)",border:"none",borderRadius:10,padding:"9px 0",color:"#fff",fontSize:12,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6,boxShadow:"0 4px 12px rgba(16,185,129,.45)",letterSpacing:".02em" }}>
                 <span>✓</span> Concluir OS
               </button>
@@ -209,14 +209,14 @@ function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: (
 
 // ── KPI Strip ────────────────────────────────────────────────────────────────
 function KpiStrip({ os, filter, onFilter }: { os: OS[]; filter: string; onFilter:(f:string)=>void }) {
-  const urgentesCount = os.filter(o=>o.prioridade==="urgente"&&o.status!=="fechada").length;
-  const concluidasCount = os.filter(o=>o.status==="fechada").length;
+  const urgentesCount = os.filter(o=>o.prioridade==="urgente"&&o.status!=="concluida").length;
+  const concluidasCount = os.filter(o=>o.status==="concluida").length;
   const stats = [
     { k:"todos",     v:os.length,          icon:"📊", label:"Total",      topColor:"#818CF8", botColor:"#4338CA", edge:"#3730A3", glow:"rgba(99,102,241,.6)",  filt:"todos"       },
     { k:"aberta",    v:os.filter(o=>o.status==="aberta").length, icon:"📋", label:"Abertas", topColor:"#FCD34D", botColor:"#D97706", edge:"#B45309", glow:"rgba(245,158,11,.6)", filt:"aberta" },
     { k:"andamento", v:os.filter(o=>o.status==="em_andamento").length, icon:"🔄", label:"Andamento", topColor:"#67E8F9", botColor:"#0891B2", edge:"#0E7490", glow:"rgba(6,182,212,.6)", filt:"em_andamento"},
     { k:"urgente",   v:urgentesCount,      icon:"🚨", label:"Urgentes",   topColor:"#FCA5A5", botColor:"#DC2626", edge:"#B91C1C", glow:"rgba(239,68,68,.6)",   filt:"urgente"     },
-    { k:"concluidas",v:concluidasCount,    icon:"✅", label:"Concluídas", topColor:"#6EE7B7", botColor:"#059669", edge:"#047857", glow:"rgba(16,185,129,.6)",  filt:"fechada"     },
+    { k:"concluidas",v:concluidasCount,    icon:"✅", label:"Concluídas", topColor:"#6EE7B7", botColor:"#059669", edge:"#047857", glow:"rgba(16,185,129,.6)",  filt:"concluida"     },
   ];
   return (
     <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10, marginBottom:18 }}>
@@ -924,8 +924,8 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
           {/* Quick actions */}
           <div style={{ display:"flex",gap:6,marginTop:10 }}>
             {os.status==="aberta"&&<button onClick={()=>changeStatus("em_andamento")} style={{ fontSize:10,padding:"4px 10px",background:"rgba(6,182,212,.15)",border:"1px solid rgba(6,182,212,.3)",borderRadius:6,color:"#67E8F9",cursor:"pointer",fontWeight:700 }}>▶ Iniciar</button>}
-            {os.status==="em_andamento"&&<button onClick={async ()=>{ await changeStatus("fechada"); setDiTexto(""); getDi(); }} style={{ fontSize:10,padding:"4px 12px",background:"linear-gradient(135deg,rgba(16,185,129,.25),rgba(5,150,105,.2))",border:"1px solid rgba(16,185,129,.5)",borderRadius:6,color:"#34D399",cursor:"pointer",fontWeight:800,display:"flex",alignItems:"center",gap:4 }}>✓ Concluir OS</button>}
-            {os.status==="fechada"&&<button onClick={()=>changeStatus("aberta")} style={{ fontSize:10,padding:"4px 10px",background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:6,color:"#FCD34D",cursor:"pointer",fontWeight:700 }}>↩ Reabrir</button>}
+            {os.status==="em_andamento"&&<button onClick={async ()=>{ await changeStatus("concluida"); setDiTexto(""); getDi(); }} style={{ fontSize:10,padding:"4px 12px",background:"linear-gradient(135deg,rgba(16,185,129,.25),rgba(5,150,105,.2))",border:"1px solid rgba(16,185,129,.5)",borderRadius:6,color:"#34D399",cursor:"pointer",fontWeight:800,display:"flex",alignItems:"center",gap:4 }}>✓ Concluir OS</button>}
+            {os.status==="concluida"&&<button onClick={()=>changeStatus("aberta")} style={{ fontSize:10,padding:"4px 10px",background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:6,color:"#FCD34D",cursor:"pointer",fontWeight:700 }}>↩ Reabrir</button>}
             <button onClick={getDi} disabled={diLoading} style={{ fontSize:10,padding:"4px 10px",background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.3)",borderRadius:6,color:"#C4B5FD",cursor:"pointer",fontWeight:700,opacity:diLoading?.6:1 }}>🟣 Di</button>
           </div>
         </div>
@@ -948,7 +948,7 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
                   <div key={k} style={{ background:"rgba(255,255,255,.03)",borderRadius:8,padding:"8px 10px" }}><div style={{ color:"#64748B",fontSize:9,marginBottom:2 }}>{k}</div><div style={{ color:"#F1F5F9",fontWeight:600 }}>{v}</div></div>
                 ))}
               </div>
-              {os.status!=="fechada"&&<div style={{ marginTop:12 }}><div style={{ fontSize:10,color:"#64748B",marginBottom:4 }}>SLA Progress</div><SLABar created_at={os.created_at} sla_horas={os.sla_horas||48} /></div>}
+              {os.status!=="concluida"&&<div style={{ marginTop:12 }}><div style={{ fontSize:10,color:"#64748B",marginBottom:4 }}>SLA Progress</div><SLABar created_at={os.created_at} sla_horas={os.sla_horas||48} /></div>}
               {os.aprovacao_necessaria&&<div style={{ marginTop:10,background:"rgba(234,179,8,.08)",border:"1px solid rgba(234,179,8,.2)",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#FDE68A" }}>⚠️ Aprovação necessária{os.aprovado_por?` — Aprovado por ${os.aprovado_por}`:""}</div>}
 
               {/* ── Fotos ── */}
@@ -1153,7 +1153,7 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
   const load = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ condominio_id: condId });
-    if (filter !== "todos" && ["aberta","em_andamento","fechada","cancelada"].includes(filter)) params.set("status", filter);
+    if (filter !== "todos" && ["aberta","em_andamento","concluida","cancelada"].includes(filter)) params.set("status", filter);
     if (catFilter !== "todos") params.set("categoria", catFilter);
     if (priFilter !== "todos") params.set("prioridade", priFilter);
     if (search) params.set("search", search);
@@ -1177,10 +1177,10 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
   // Derived list: urgentes first, then by SLA remaining
   const displayed = [...osList]
     .filter(o => {
-      if (filter==="urgente") return o.prioridade==="urgente"&&o.status!=="fechada";
+      if (filter==="urgente") return o.prioridade==="urgente"&&o.status!=="concluida";
       if (filter==="aberta") return o.status==="aberta";
       if (filter==="em_andamento") return o.status==="em_andamento";
-      if (filter==="fechada") return o.status==="fechada";
+      if (filter==="concluida") return o.status==="concluida";
       return true; // "todos"
     })
     .sort((a,b)=>{
@@ -1210,7 +1210,7 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
     if (refetch) setTimeout(()=>load(), 200);
   }
 
-  const slaBreach = osList.filter(o=>o.status!=="fechada"&&elapsed(o.created_at,o.sla_horas||48).pct>80).length;
+  const slaBreach = osList.filter(o=>o.status!=="concluida"&&elapsed(o.created_at,o.sla_horas||48).pct>80).length;
 
   // ── MOBILE LAYOUT ──────────────────────────────────────────────────────────
   if (isMob) {
@@ -1241,8 +1241,8 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
             {[
               {v:osList.filter(o=>o.status==="aberta").length,         l:"Abertas",   top:"#FCD34D", bot:"#D97706", edge:"#B45309", glow:"rgba(245,158,11,.5)",  f:"aberta"},
               {v:osList.filter(o=>o.status==="em_andamento").length,   l:"Andamento", top:"#67E8F9", bot:"#0891B2", edge:"#0E7490", glow:"rgba(6,182,212,.5)",   f:"em_andamento"},
-              {v:osList.filter(o=>o.prioridade==="urgente"&&o.status!=="fechada").length, l:"Urgentes", top:"#FCA5A5", bot:"#DC2626", edge:"#B91C1C", glow:"rgba(239,68,68,.5)", f:"urgente"},
-              {v:osList.filter(o=>o.status==="fechada").length,        l:"Concluídas",top:"#6EE7B7", bot:"#059669", edge:"#047857", glow:"rgba(16,185,129,.5)", f:"fechada"},
+              {v:osList.filter(o=>o.prioridade==="urgente"&&o.status!=="concluida").length, l:"Urgentes", top:"#FCA5A5", bot:"#DC2626", edge:"#B91C1C", glow:"rgba(239,68,68,.5)", f:"urgente"},
+              {v:osList.filter(o=>o.status==="concluida").length,        l:"Concluídas",top:"#6EE7B7", bot:"#059669", edge:"#047857", glow:"rgba(16,185,129,.5)", f:"concluida"},
             ].map(s=>(
               <div key={s.f} onClick={()=>setFilter(filter===s.f?"todos":s.f)} style={{ flex:1,background:`linear-gradient(160deg,${s.top},${s.bot})`,borderRadius:12,padding:"8px 4px 7px",textAlign:"center",cursor:"pointer",position:"relative",overflow:"hidden",
                 boxShadow:filter===s.f?`0 0 0 2px rgba(255,255,255,.3),0 3px 0 ${s.edge},0 5px 12px ${s.glow},inset 0 1px 0 rgba(255,255,255,.4)`:`0 2px 0 ${s.edge}99,0 4px 10px ${s.glow}77,inset 0 1px 0 rgba(255,255,255,.35)`,

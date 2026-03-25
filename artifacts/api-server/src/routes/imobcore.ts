@@ -1139,7 +1139,7 @@ router.post("/os/:id/di", async (req: Request, res: Response) => {
 
     // Buscar comentários da OS para contexto adicional
     const { data: comentarios } = await supabase.from("os_comentarios").select("autor,mensagem,created_at").eq("os_id", id).order("created_at", { ascending: false }).limit(5);
-    const foiConcluida = os.status === "fechada";
+    const foiConcluida = os.status === "concluida";
     const checklist = Array.isArray(os.checklist) ? os.checklist as {done:boolean}[] : [];
 
     const msg = await client.messages.create({
@@ -1215,9 +1215,9 @@ router.post("/sindico/relatorio-executivo", async (req: Request, res: Response) 
     // ── Calcular KPIs ────────────────────────────────────────────────────────
     const osAberta    = osList.filter(o => o.status === "aberta").length;
     const osAndamento = osList.filter(o => o.status === "em_andamento").length;
-    const osConcluida = osList.filter(o => o.status === "fechada").length;
-    const osUrgentes  = osList.filter(o => o.prioridade === "urgente" && o.status !== "fechada").length;
-    const osList5     = osList.filter(o => o.status !== "fechada").slice(0, 5).map(o => ({
+    const osConcluida = osList.filter(o => o.status === "concluida").length;
+    const osUrgentes  = osList.filter(o => o.prioridade === "urgente" && o.status !== "concluida").length;
+    const osList5     = osList.filter(o => o.status !== "concluida").slice(0, 5).map(o => ({
       numero: o.numero, titulo: o.titulo, prioridade: o.prioridade,
       status: o.status, responsavel: o.responsavel || "–",
       custo_estimado: o.custo_estimado || 0, local: o.local || "–",
@@ -3334,7 +3334,7 @@ router.get("/diagnostico/dados", async (req: Request, res: Response) => {
     const os_total = os.length;
     const os_abertas = os.filter(o => o.status === "aberta").length;
     const os_atrasadas = os.filter(o => {
-      if (o.status === "fechada") return false;
+      if (o.status === "concluida") return false;
       const days = (Date.now() - new Date(o.created_at).getTime()) / 86400000;
       return days > 7;
     }).length;
@@ -3396,10 +3396,10 @@ router.post("/diagnostico/calcular", async (req: Request, res: Response) => {
     // Manutenção/OS
     const osAbertas = os.filter(o => o.status === "aberta").length;
     const osAtrasadas = os.filter(o => {
-      if (o.status === "fechada") return false;
+      if (o.status === "concluida") return false;
       return (Date.now() - new Date(o.created_at).getTime()) / 86400000 > 7;
     }).length;
-    const osUrgentes = os.filter(o => o.prioridade === "urgente" && o.status !== "fechada").length;
+    const osUrgentes = os.filter(o => o.prioridade === "urgente" && o.status !== "concluida").length;
     let scoreOS = 100;
     if (osAtrasadas > 5) scoreOS -= 35;
     else if (osAtrasadas > 2) scoreOS -= 20;
