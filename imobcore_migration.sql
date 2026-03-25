@@ -106,3 +106,28 @@ FROM information_schema.tables t
 WHERE table_schema = 'public'
   AND table_name IN ('manutencoes', 'alertas_manutencao', 'piscina_leituras', 'documentos_condominio')
 ORDER BY table_name;
+
+
+-- ============================================================
+-- [MÓDULO FINANCEIRO] Tabela lancamentos_financeiros
+-- Adicionar se ainda não existe
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS lancamentos_financeiros (
+  id                uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  condominio_id     uuid,
+  tipo              text NOT NULL CHECK (tipo IN ('receita', 'despesa')),
+  categoria         text DEFAULT 'geral',
+  subcategoria      text,
+  descricao         text NOT NULL,
+  valor             numeric(12,2) NOT NULL DEFAULT 0,
+  data              date NOT NULL,
+  competencia       text,
+  status            text DEFAULT 'previsto' CHECK (status IN ('previsto','pago','atrasado','cancelado')),
+  recorrente        boolean DEFAULT false,
+  centro_custo      text,
+  created_at        timestamp with time zone DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS lanc_fin_condo ON lancamentos_financeiros (condominio_id, data DESC);
+CREATE INDEX IF NOT EXISTS lanc_fin_tipo  ON lancamentos_financeiros (tipo, status);

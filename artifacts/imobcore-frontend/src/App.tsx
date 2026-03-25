@@ -1894,6 +1894,7 @@ export default function App() {
   const [finSindicoAddModal, setFinSindicoAddModal] = useState(false);
   const [finSindicoForm, setFinSindicoForm] = useState<{tipo:"receita"|"despesa";categoria:string;descricao:string;valor:string;data:string;status:"previsto"|"pago"|"atrasado"}>({ tipo:"receita", categoria:"", descricao:"", valor:"", data:new Date().toISOString().slice(0,10), status:"previsto" });
   const [finSindicoSaving, setFinSindicoSaving] = useState(false);
+  const [finMigrationModal, setFinMigrationModal] = useState<{sql:string;url:string}|null>(null);
 
   const finSindicoLoad = useCallback(async () => {
     const cid = condId || dash?.condominios?.[0]?.id;
@@ -1946,8 +1947,20 @@ export default function App() {
     setFinSindicoSaving(true);
     try {
       const r = await fetch("/api/financeiro/lancamentos", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ ...finSindicoForm, valor:Number(finSindicoForm.valor), condominio_id:cid }) });
-      if (r.ok) { setFinSindicoAddModal(false); setFinSindicoForm({ tipo:"receita", categoria:"", descricao:"", valor:"", data:new Date().toISOString().slice(0,10), status:"previsto" }); finSindicoLoad(); showToast("Lançamento salvo!", "success"); }
-      else showToast("Erro ao salvar", "warn");
+      if (r.ok) {
+        setFinSindicoAddModal(false);
+        setFinSindicoForm({ tipo:"receita", categoria:"", descricao:"", valor:"", data:new Date().toISOString().slice(0,10), status:"previsto" });
+        finSindicoLoad();
+        showToast("Lançamento salvo!", "success");
+      } else {
+        const d = await r.json().catch(() => ({}));
+        if (d.error === "missing_table" && d.migration_sql) {
+          setFinSindicoAddModal(false);
+          setFinMigrationModal({ sql: d.migration_sql, url: d.supabase_sql_url || "https://supabase.com/dashboard" });
+        } else {
+          showToast(d.error || d.message || "Erro ao salvar", "warn");
+        }
+      }
     } catch { showToast("Erro ao salvar", "warn"); }
     setFinSindicoSaving(false);
   };
@@ -7948,6 +7961,52 @@ export default function App() {
       <div className="toast-container">
         {toasts.map(t => <div key={t.id} className={`toast ${t.type}`}>{t.msg}</div>)}
       </div>
+
+      {/* MODAL: Migração SQL — tabela faltando no Supabase */}
+      {finMigrationModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.85)", zIndex:9000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+          <div style={{ background:"#1E293B", border:"1px solid rgba(239,68,68,.4)", borderRadius:18, padding:28, width:640, maxWidth:"98vw", maxHeight:"90vh", overflowY:"auto" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16 }}>
+              <div style={{ fontSize:32 }}>🗄️</div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:16, fontWeight:800, color:"#FCA5A5" }}>Tabela não encontrada no Supabase</div>
+                <div style={{ fontSize:11, color:"#475569", marginTop:2 }}>A tabela <code style={{ background:"rgba(239,68,68,.15)", color:"#FCA5A5", padding:"1px 6px", borderRadius:4 }}>lancamentos_financeiros</code> precisa ser criada</div>
+              </div>
+              <button onClick={() => setFinMigrationModal(null)} style={{ width:32, height:32, borderRadius:16, background:"rgba(255,255,255,.08)", border:"none", color:"#94A3B8", fontSize:16, cursor:"pointer" }}>✕</button>
+            </div>
+
+            <div style={{ marginBottom:14, fontSize:13, color:"#CBD5E1", lineHeight:1.7 }}>
+              Execute o SQL abaixo no <strong style={{ color:"#E2E8F0" }}>Supabase Dashboard → SQL Editor</strong>:
+            </div>
+
+            {/* SQL block */}
+            <div style={{ position:"relative" }}>
+              <pre style={{ background:"rgba(0,0,0,.4)", border:"1px solid rgba(255,255,255,.08)", borderRadius:10, padding:"14px 16px", fontSize:11, color:"#93C5FD", overflowX:"auto", margin:0, whiteSpace:"pre-wrap", lineHeight:1.6 }}>
+                {finMigrationModal.sql}
+              </pre>
+              <button onClick={() => { navigator.clipboard?.writeText(finMigrationModal!.sql); }}
+                style={{ position:"absolute", top:8, right:8, padding:"4px 10px", borderRadius:6, background:"rgba(99,102,241,.25)", border:"1px solid rgba(99,102,241,.4)", color:"#818CF8", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+                📋 Copiar
+              </button>
+            </div>
+
+            <div style={{ display:"flex", gap:10, marginTop:16 }}>
+              <a href={finMigrationModal.url} target="_blank" rel="noopener noreferrer"
+                style={{ flex:1, padding:"12px", borderRadius:10, background:"linear-gradient(135deg,#6366F1,#A855F7)", border:"none", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", textAlign:"center", textDecoration:"none", display:"block" }}>
+                🔗 Abrir Supabase SQL Editor
+              </a>
+              <button onClick={() => setFinMigrationModal(null)}
+                style={{ padding:"12px 20px", borderRadius:10, background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", color:"#94A3B8", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                Fechar
+              </button>
+            </div>
+
+            <div style={{ marginTop:12, fontSize:11, color:"#334155", lineHeight:1.6 }}>
+              Após executar o SQL, atualize a página e tente salvar novamente.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TOPBAR */}
       <div className="topbar" style={{ display: (view === "sindico" || view === "morador") ? "none" : "flex" }}>

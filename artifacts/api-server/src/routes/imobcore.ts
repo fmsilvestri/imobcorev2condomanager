@@ -1538,7 +1538,18 @@ router.post("/financeiro/lancamentos", async (req: Request, res: Response) => {
     if (condominio_id) payload.condominio_id = condominio_id;
     if (competencia) payload.competencia = competencia;
     const { data: row, error } = await supabase.from("lancamentos_financeiros").insert(payload).select().single();
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      if (isMissingTable(error)) {
+        const projectRef = (process.env.SUPABASE_URL ?? "").replace("https://", "").split(".")[0];
+        return res.status(503).json({
+          error: "missing_table",
+          message: "A tabela lancamentos_financeiros não existe no Supabase. Execute o SQL de migração.",
+          migration_sql: `CREATE TABLE IF NOT EXISTS lancamentos_financeiros (\n  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,\n  condominio_id uuid,\n  tipo text NOT NULL CHECK (tipo IN ('receita', 'despesa')),\n  categoria text DEFAULT 'geral',\n  subcategoria text,\n  descricao text NOT NULL,\n  valor numeric(12,2) NOT NULL DEFAULT 0,\n  data date NOT NULL,\n  competencia text,\n  status text DEFAULT 'previsto' CHECK (status IN ('previsto','pago','atrasado','cancelado')),\n  recorrente boolean DEFAULT false,\n  centro_custo text,\n  created_at timestamp with time zone DEFAULT now()\n);\nCREATE INDEX IF NOT EXISTS lanc_fin_condo ON lancamentos_financeiros (condominio_id, data DESC);\nCREATE INDEX IF NOT EXISTS lanc_fin_tipo ON lancamentos_financeiros (tipo, status);`,
+          supabase_sql_url: `https://supabase.com/dashboard/project/${projectRef}/sql/new`,
+        });
+      }
+      return res.status(500).json({ error: error.message });
+    }
     res.json(row);
   } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
 });
@@ -6614,6 +6625,93 @@ SELECT table_name FROM information_schema.tables
 WHERE table_schema = 'public'
   AND table_name IN ('manutencoes','alertas_manutencao','piscina_leituras','documentos_condominio');`;
 
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  return res.send(sql);
+});
+
+// POST /api/admin/financeiro/auto-migrate — cria tabela lancamentos_financeiros via Management API
+router.post("/admin/financeiro/auto-migrate", async (_req: Request, res: Response) => {
+  const supabaseUrl = process.env.SUPABASE_URL ?? "";
+  const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const projectRef  = supabaseUrl.replace("https://", "").split(".")[0];
+
+  const sql = `
+CREATE TABLE IF NOT EXISTS lancamentos_financeiros (
+  id                uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  condominio_id     uuid,
+  tipo              text NOT NULL CHECK (tipo IN ('receita', 'despesa')),
+  categoria         text DEFAULT 'geral',
+  subcategoria      text,
+  descricao         text NOT NULL,
+  valor             numeric(12,2) NOT NULL DEFAULT 0,
+  data              date NOT NULL,
+  competencia       text,
+  status            text DEFAULT 'previsto' CHECK (status IN ('previsto','pago','atrasado','cancelado')),
+  recorrente        boolean DEFAULT false,
+  centro_custo      text,
+  created_at        timestamp with time zone DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS lanc_fin_condo ON lancamentos_financeiros (condominio_id, data DESC);
+CREATE INDEX IF NOT EXISTS lanc_fin_tipo  ON lancamentos_financeiros (tipo, status);
+`.trim();
+
+  try {
+    const mgmtRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${serviceKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ query: sql }),
+    });
+    if (mgmtRes.ok) {
+      return res.json({ ok: true, method: "management_api", message: "Tabela lancamentos_financeiros criada com sucesso!" });
+    }
+    const errText = await mgmtRes.text();
+    console.log("[financeiro/auto-migrate] Management API failed:", mgmtRes.status, errText.substring(0, 300));
+  } catch (e) {
+    console.log("[financeiro/auto-migrate] exception:", (e as Error).message);
+  }
+
+  return res.status(202).json({
+    ok: false,
+    method: "manual",
+    message: "Execute o SQL abaixo no Supabase SQL Editor.",
+    sql,
+    supabase_url: `https://supabase.com/dashboard/project/${projectRef}/sql/new`,
+  });
+});
+
+// GET /api/admin/financeiro/migration-sql — retorna SQL de migração
+router.get("/admin/financeiro/migration-sql", (_req: Request, res: Response) => {
+  const sql = `
+-- ============================================================
+-- ImobCore: Módulo Financeiro — lancamentos_financeiros
+-- Execute no Supabase Dashboard → SQL Editor
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS lancamentos_financeiros (
+  id                uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  condominio_id     uuid,
+  tipo              text NOT NULL CHECK (tipo IN ('receita', 'despesa')),
+  categoria         text DEFAULT 'geral',
+  subcategoria      text,
+  descricao         text NOT NULL,
+  valor             numeric(12,2) NOT NULL DEFAULT 0,
+  data              date NOT NULL,
+  competencia       text,
+  status            text DEFAULT 'previsto' CHECK (status IN ('previsto','pago','atrasado','cancelado')),
+  recorrente        boolean DEFAULT false,
+  centro_custo      text,
+  created_at        timestamp with time zone DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS lanc_fin_condo ON lancamentos_financeiros (condominio_id, data DESC);
+CREATE INDEX IF NOT EXISTS lanc_fin_tipo  ON lancamentos_financeiros (tipo, status);
+
+-- Verificar:
+SELECT table_name, column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'lancamentos_financeiros'
+ORDER BY ordinal_position;
+`;
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   return res.send(sql);
 });
