@@ -5523,22 +5523,27 @@ export default function App() {
           };
           return (
             <div className="ph-sub-body">
-              {/* ── Dashboard Stats — cards coloridos ── */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+              {/* ── Dashboard Stats — cards 3D coloridos ── */}
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
                 {[
                   { label:"Total Planos",    val:String(planoList.length),
-                    icon:"📋", color:"#A78BFA", bg:"rgba(167,139,250,.18)", border:"rgba(167,139,250,.35)" },
+                    icon:"📋", top:"#C4B5FD", bot:"#7C3AED", edge:"#5B21B6", glow:"rgba(124,58,237,.65)" },
                   { label:"Orçamento",       val:orcTotal>=1000?`R$${(orcTotal/1000).toFixed(1)}k`:`R$${orcTotal.toFixed(0)}`,
-                    icon:"💰", color:"#34D399", bg:"rgba(52,211,153,.15)",   border:"rgba(52,211,153,.35)" },
+                    icon:"💰", top:"#6EE7B7", bot:"#059669", edge:"#047857", glow:"rgba(5,150,105,.65)" },
                   { label:"Equip. Cobertos", val:String(equipCobertos),
-                    icon:"⚙️", color:"#FBBF24", bg:"rgba(251,191,36,.15)",   border:"rgba(251,191,36,.35)" },
+                    icon:"⚙️", top:"#FDE68A", bot:"#D97706", edge:"#B45309", glow:"rgba(217,119,6,.65)" },
                   { label:"Próx. Execução",  val:proxExec!=="—"?proxExec.slice(5).split("-").reverse().join("/"):"—",
-                    icon:"📅", color:"#38BDF8", bg:"rgba(56,189,248,.15)",   border:"rgba(56,189,248,.35)" },
+                    icon:"📅", top:"#BAE6FD", bot:"#0284C7", edge:"#0369A1", glow:"rgba(2,132,199,.65)" },
                 ].map(k => (
-                  <div key={k.label} style={{ background:k.bg, border:`1.5px solid ${k.border}`, borderRadius:12, padding:"12px 10px 10px", textAlign:"center" as const }}>
-                    <div style={{ fontSize:26, marginBottom:4 }}>{k.icon}</div>
-                    <div style={{ fontSize:18, fontWeight:800, color:k.color, lineHeight:1.1 }}>{k.val}</div>
-                    <div style={{ fontSize:9, color:"#64748B", fontWeight:600, marginTop:3, textTransform:"uppercase" as const, letterSpacing:".04em" }}>{k.label}</div>
+                  <div key={k.label} style={{ borderRadius:14, padding:"13px 10px 11px", textAlign:"center" as const, position:"relative", overflow:"hidden", background:`linear-gradient(160deg,${k.top} 0%,${k.bot} 100%)`, boxShadow:`0 4px 0 ${k.edge}, 0 8px 24px ${k.glow}, inset 0 1px 0 rgba(255,255,255,.35)`, border:"1px solid rgba(255,255,255,.15)" }}>
+                    {/* Shine overlay */}
+                    <div style={{ position:"absolute", top:0, left:0, right:0, height:"50%", background:"linear-gradient(180deg,rgba(255,255,255,.30),rgba(255,255,255,0))", borderRadius:"14px 14px 0 0", pointerEvents:"none" }} />
+                    {/* Ghost icon */}
+                    <div style={{ position:"absolute", bottom:-8, right:2, fontSize:40, opacity:.13, lineHeight:1, pointerEvents:"none", userSelect:"none" as const }}>{k.icon}</div>
+                    {/* Content */}
+                    <div style={{ fontSize:24, marginBottom:5, position:"relative", filter:"drop-shadow(0 2px 5px rgba(0,0,0,.3))" }}>{k.icon}</div>
+                    <div style={{ fontSize:19, fontWeight:900, color:"#fff", lineHeight:1.1, textShadow:"0 2px 8px rgba(0,0,0,.35)", position:"relative", letterSpacing:"-0.5px" }}>{k.val}</div>
+                    <div style={{ fontSize:9, color:"rgba(255,255,255,.88)", fontWeight:800, textTransform:"uppercase" as const, letterSpacing:".06em", marginTop:4, position:"relative", textShadow:"0 1px 3px rgba(0,0,0,.3)" }}>{k.label}</div>
                   </div>
                 ))}
               </div>
