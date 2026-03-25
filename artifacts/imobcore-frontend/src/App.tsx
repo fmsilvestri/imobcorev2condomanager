@@ -1805,7 +1805,7 @@ export default function App() {
     } catch {}
   }, [dash]);
 
-  useEffect(() => { if (panel === "financeiro") { finFetchLancamentos(); finFetchOrcamento(); } }, [panel, finFetchLancamentos, finFetchOrcamento]);
+  useEffect(() => { if (panel === "financeiro") { finFetchLancamentos(); finFetchOrcamento(); finSindicoLoad(); } }, [panel, finFetchLancamentos, finFetchOrcamento]);
 
   useEffect(() => {
     if (panel === "sv-notificacoes" && condId) {
@@ -8822,622 +8822,598 @@ export default function App() {
           )}
 
           {/* PANEL: FINANCEIRO */}
-          <div className={`panel ${panel === "financeiro" ? "active" : ""}`}>
+          <div className={`panel ${panel === "financeiro" ? "active" : ""}`} style={{ display: panel === "financeiro" ? "flex" : "none", flexDirection:"column", height:"100%", overflow:"hidden" }}>
             {(() => {
-              // ── dados legados do dashboard ──
-              const receitas = dash?.receitas || [];
-              const despesas = dash?.despesas || [];
-              const saldo = t?.saldo || 0;
-              const totalRec = t?.total_receitas || 0;
-              const totalDesp = t?.total_despesas || 0;
-              const resultado = totalRec - totalDesp;
+              const fr = finSindicoResumo;
+              const fp = finSindicoPrevisao;
+              const fi = finSindicoInad;
+              const fluxoHist = finSindicoFluxo.historico;
 
-              // ── Inadimplência: receitas não pagas ──────────────────────
-              const inadimplentes = receitas.filter(r => r.status && !["pago","paga","recebido","recebida","confirmado","confirmada"].includes(r.status.toLowerCase()));
-              const vlrInad = inadimplentes.reduce((s, r) => s + r.valor, 0);
-              const txInad = totalRec > 0 ? Math.round((vlrInad / totalRec) * 100) : 0;
-
-              // ── Score de Saúde Financeira (0–100) ─────────────────────
-              // Critérios: saldo positivo (30), resultado positivo (25), inadimplência baixa (25), reserva suficiente (20)
-              const scoreSaldo = saldo > 0 ? Math.min(30, Math.round((Math.min(saldo, 100000) / 100000) * 30)) : 0;
-              const scoreResult = resultado >= 0 ? 25 : Math.max(0, 25 + Math.round((resultado / (totalRec || 1)) * 25));
-              const scoreInad = txInad <= 5 ? 25 : txInad <= 15 ? 15 : txInad <= 30 ? 8 : 0;
-              const scoreReserva = saldo >= totalDesp * 3 ? 20 : saldo >= totalDesp ? 12 : saldo > 0 ? 6 : 0;
-              const score = Math.min(100, scoreSaldo + scoreResult + scoreInad + scoreReserva);
-              const scoreColor = score >= 80 ? "#10B981" : score >= 60 ? "#F59E0B" : score >= 40 ? "#F97316" : "#EF4444";
-              const scoreLabel = score >= 80 ? "Excelente" : score >= 60 ? "Bom" : score >= 40 ? "Regular" : "Crítico";
-
-              // ── Donut: despesas por categoria ──────────────────────────
-              const despCat: Record<string, number> = {};
-              despesas.forEach(d => { despCat[d.categoria || "outros"] = (despCat[d.categoria || "outros"] || 0) + d.valor; });
-              const pieData = Object.entries(despCat).map(([name, value]) => ({ name, value: Math.round(value) })).sort((a, b) => b.value - a.value);
-              const PIE_COLORS = ["#6366F1","#06B6D4","#10B981","#F59E0B","#EF4444","#A855F7","#EC4899","#14B8A6"];
-
-              // ── Fluxo de caixa mês a mês ───────────────────────────────
-              const now2 = new Date();
-              const monthsMap: Record<string, { rec: number; desp: number }> = {};
-              const getMonth = (d?: string) => {
-                if (!d) return null;
-                const dt = new Date(d);
-                return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-              };
-              // Seed last 6 months
-              for (let i = 5; i >= 0; i--) {
-                const dt = new Date(now2.getFullYear(), now2.getMonth() - i, 1);
-                const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-                monthsMap[key] = { rec: 0, desp: 0 };
-              }
-              receitas.forEach(r => { const m = getMonth(r.created_at); if (m && monthsMap[m]) monthsMap[m].rec += r.valor; });
-              despesas.forEach(d => { const m = getMonth(d.created_at); if (m && monthsMap[m]) monthsMap[m].desp += d.valor; });
-              const lineData = Object.entries(monthsMap).map(([mes, v]) => ({
-                mes: mes.slice(5) + "/" + mes.slice(2, 4),
-                Receitas: Math.round(v.rec),
-                Despesas: Math.round(v.desp),
-                Resultado: Math.round(v.rec - v.desp),
-              }));
-
-              // ── Projeção 3 meses (baseado na média dos últimos 3 meses) ─
-              const last3 = lineData.slice(-3);
-              const avgRec = last3.length ? last3.reduce((s, m) => s + m.Receitas, 0) / last3.length : 0;
-              const avgDesp = last3.length ? last3.reduce((s, m) => s + m.Despesas, 0) / last3.length : 0;
-              const projData = [];
-              let saldoProj = saldo;
-              for (let i = 1; i <= 3; i++) {
-                const d = new Date(now2.getFullYear(), now2.getMonth() + i, 1);
-                const label = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(2)} ▸`;
-                saldoProj += avgRec - avgDesp;
-                projData.push({ mes: label, SaldoProjetado: Math.round(saldoProj), Receitas: Math.round(avgRec), Despesas: Math.round(avgDesp) });
-              }
-
-              const fmtK = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v}`;
-
-              // ── Cats para autocomplete nos lançamentos ──
-              const allCats = Array.from(new Set(lancamentos.map(l => l.categoria).filter(Boolean)));
-              // ── lançamentos filtrados ──
-              const lancFiltrados = lancamentos.filter(l => {
-                if (finLancFilter.tipo && l.tipo !== finLancFilter.tipo) return false;
-                if (finLancFilter.cat && l.categoria !== finLancFilter.cat) return false;
-                if (finLancFilter.mes && !(l.data || "").startsWith(finLancFilter.mes)) return false;
-                return true;
+              // Despesas por categoria (de lançamentos)
+              const despCats: Record<string,number> = {};
+              finSindicoLancs.filter(l=>l.tipo==="despesa").forEach(l => {
+                const c = (l as any).categoria || "outros";
+                despCats[c] = (despCats[c]||0) + Number(l.valor);
               });
-              // ── totais dos lançamentos ──
-              const lancRec = lancamentos.filter(l => l.tipo === "receita").reduce((s, l) => s + Number(l.valor), 0);
-              const lancDesp = lancamentos.filter(l => l.tipo === "despesa").reduce((s, l) => s + Number(l.valor), 0);
-              const lancSaldo = lancRec - lancDesp;
-              const lancInad = lancamentos.filter(l => l.tipo === "receita" && l.status === "atrasado").reduce((s, l) => s + Number(l.valor), 0);
-              const lancTxInad = lancRec > 0 ? Math.round((lancInad / lancRec) * 100) : 0;
-              // ── cats de despesas para orçamento ──
-              const despCatMap: Record<string, number> = {};
-              lancamentos.filter(l => l.tipo === "despesa").forEach(l => { despCatMap[l.categoria || "outros"] = (despCatMap[l.categoria || "outros"] || 0) + Number(l.valor); });
-              const despCatEntries = Object.entries(despCatMap).sort((a, b) => b[1] - a[1]);
-              // ── fluxo de caixa (lançamentos) ──
-              const now3 = new Date();
-              const fluxoMap: Record<string, { rec: number; desp: number }> = {};
-              for (let i = 5; i >= 0; i--) {
-                const dt = new Date(now3.getFullYear(), now3.getMonth() - i, 1);
-                const key = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
-                fluxoMap[key] = { rec: 0, desp: 0 };
-              }
-              lancamentos.forEach(l => {
-                const key = (l.data || "").slice(0, 7);
-                if (fluxoMap[key]) { if (l.tipo === "receita") fluxoMap[key].rec += Number(l.valor); else fluxoMap[key].desp += Number(l.valor); }
-              });
-              const fluxoData = Object.entries(fluxoMap).map(([m, v]) => ({
-                mes: m.slice(5) + "/" + m.slice(2, 4),
-                Receitas: Math.round(v.rec), Despesas: Math.round(v.desp), Resultado: Math.round(v.rec - v.desp),
-              }));
-              // ── projeção 3 meses (lançamentos) ──
-              const last3Lanc = fluxoData.slice(-3);
-              const avgRecLanc = last3Lanc.length ? last3Lanc.reduce((s, m) => s + m.Receitas, 0) / last3Lanc.length : avgRec ?? 0;
-              const avgDespLanc = last3Lanc.length ? last3Lanc.reduce((s, m) => s + m.Despesas, 0) / last3Lanc.length : avgDesp ?? 0;
-              let saldoProj2 = lancSaldo;
-              const projLanc = [1, 2, 3].map(i => {
-                const dt = new Date(now3.getFullYear(), now3.getMonth() + i, 1);
-                saldoProj2 += avgRecLanc - avgDespLanc;
-                return { mes: `${String(dt.getMonth() + 1).padStart(2, "0")}/${String(dt.getFullYear()).slice(2)} ▸`, Receitas: Math.round(avgRecLanc), Despesas: Math.round(avgDespLanc), SaldoProjetado: Math.round(saldoProj2) };
-              });
+              const catEntries = Object.entries(despCats).sort((a,b)=>b[1]-a[1]).slice(0,6);
+              const catTotal = catEntries.reduce((s,[,v])=>s+v,0);
 
-              // ── status colors ──
-              const stColor = (s: string) => s === "pago" ? "#10B981" : s === "atrasado" ? "#EF4444" : "#F59E0B";
-              const stBg = (s: string) => s === "pago" ? "rgba(16,185,129,.15)" : s === "atrasado" ? "rgba(239,68,68,.12)" : "rgba(245,158,11,.12)";
-              const fmtK2 = (v: number) => v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${Math.round(v)}`;
+              // Score + risco
+              const score = fr?.score ?? 0;
+              const risco = fr?.risco ?? "indefinido";
+              const scoreColor = score>=80?"#10B981":score>=60?"#F59E0B":score>=40?"#F97316":"#EF4444";
+              const riscoBadge = risco==="baixo"
+                ? {bg:"rgba(16,185,129,.15)",color:"#10B981",txt:"Baixo"}
+                : risco==="moderado"
+                ? {bg:"rgba(245,158,11,.15)",color:"#F59E0B",txt:"Moderado"}
+                : risco==="alto"
+                ? {bg:"rgba(249,115,22,.15)",color:"#F97316",txt:"Alto"}
+                : {bg:"rgba(239,68,68,.15)",color:"#EF4444",txt:"Crítico"};
 
-              // ── FIN TAB BUTTON ──
-              const ftBtn = (id: FinTab, icon: string, label: string, col: string) => (
-                <button key={id} onClick={() => setFinTab(id)} style={{
-                  padding:"10px 16px", borderRadius:10, border:"none", cursor:"pointer", fontFamily:"inherit",
-                  background: finTab === id ? col : "rgba(255,255,255,.03)",
-                  color: finTab === id ? "#fff" : col,
-                  fontSize:11, fontWeight:700, display:"flex", flexDirection:"column" as const, alignItems:"center", gap:4,
-                  outline: finTab !== id ? "1px solid rgba(255,255,255,.07)" : "none",
-                }}>
-                  <span style={{ fontSize:18 }}>{icon}</span>
-                  <span>{label}</span>
-                </button>
-              );
+              // SVG bar chart helpers
+              const chartMax = Math.max(...fluxoHist.map(h=>Math.max(h.Receitas||0,h.Despesas||0)),1);
+              const CHART_H = 130;
+              const BAR_W = 24;
+              const BAR_GAP = 8;
+              const SLOT_W = BAR_W*2+BAR_GAP+12;
+
+              const fmtK = (v:number) => v>=1000000?`R$${(v/1000000).toFixed(1)}M`:v>=1000?`R$${(v/1000).toFixed(0)}k`:`R$${Math.round(v)}`;
+              const fmtBRL2 = (v:number) => v.toLocaleString("pt-BR",{style:"currency",currency:"BRL",minimumFractionDigits:0,maximumFractionDigits:0});
+
+              // Lancamentos filtro
+              const [lancFiltro, setLancFiltro] = [
+                finTab === "lancamentos" ? (window as any).__gestorLancFiltro || "todos" : "todos",
+                (v:string) => { (window as any).__gestorLancFiltro = v; }
+              ];
+              const lancFiltered = finSindicoLancs.filter(l => lancFiltro==="todos" || l.tipo===lancFiltro);
+
+              // Tab button helper
+              const TAB_DEFS: [string,string,string,string][] = [
+                ["dashboard","📊","Dashboard","#6366F1"],
+                ["lancamentos","📋","Lançamentos","#06B6D4"],
+                ["previsao","🧪","Simulador","#A855F7"],
+                ["insights","🤖","Di — IA","#F59E0B"],
+              ];
 
               return (
-                <div style={{ padding:20 }}>
-                  {/* ── Header ── */}
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
-                    <div>
-                      <div style={{ fontSize:22, fontWeight:800, marginBottom:2 }}>💰 Financeiro Inteligente</div>
-                      <div style={{ fontSize:12, color:"#475569" }}>Gestão financeira · Fluxo de caixa · Previsões · Insights IA</div>
-                    </div>
-                    <button onClick={() => { setFinForm({ tipo:"receita", status:"previsto", categoria:"", descricao:"", valor:0, data: new Date().toISOString().slice(0,10) }); setFinModal({open:true,editing:null}); }}
-                      style={{ background:"#06B6D4", border:"none", borderRadius:8, padding:"9px 18px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                      + Novo Lançamento
-                    </button>
-                  </div>
+                <div style={{ display:"flex", flexDirection:"column", height:"100%", overflow:"hidden" }}>
 
-                  {/* ── KPI topo ── */}
-                  <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" as const }}>
-                    {[
-                      { label:"Saldo Total", val: fmtBRLFull(lancamentos.length > 0 ? lancSaldo : saldo), color: (lancamentos.length > 0 ? lancSaldo : saldo) >= 0 ? "#10B981" : "#EF4444", icon:"💰", sub: lancamentos.length > 0 ? "via lançamentos" : "via dashboard" },
-                      { label:"Receitas", val: fmtBRLFull(lancamentos.length > 0 ? lancRec : totalRec), color:"#06B6D4", icon:"📈", sub: `${lancamentos.filter(l=>l.tipo==="receita").length || receitas.length} lançamentos` },
-                      { label:"Despesas", val: fmtBRLFull(lancamentos.length > 0 ? lancDesp : totalDesp), color:"#EF4444", icon:"📉", sub: `${lancamentos.filter(l=>l.tipo==="despesa").length || despesas.length} lançamentos` },
-                      { label:"Inadimplência", val: `${lancamentos.length > 0 ? lancTxInad : txInad}%`, color: (lancamentos.length > 0 ? lancTxInad : txInad) <= 5 ? "#10B981" : "#EF4444", icon:"⚠️", sub: lancamentos.length > 0 ? fmtBRLFull(lancInad) + " em aberto" : fmtBRLFull(vlrInad) + " em aberto" },
-                    ].map(k => (
-                      <div key={k.label} style={{ flex:1, minWidth:150, background:"#121826", border:`1px solid rgba(255,255,255,.06)`, borderRadius:12, padding:"14px 16px", borderLeft:`3px solid ${k.color}` }}>
-                        <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.icon} {k.label.toUpperCase()}</div>
-                        <div style={{ fontSize:20, fontWeight:800, color:k.color }}>{k.val}</div>
-                        <div style={{ fontSize:10, color:"#334155", marginTop:3 }}>{k.sub}</div>
+                  {/* ── HEADER ── */}
+                  <div style={{ padding:"18px 24px 0", flexShrink:0 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16 }}>
+                      <div style={{ fontSize:28 }}>💰</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:20, fontWeight:900, color:"#E2E8F0", letterSpacing:"-.02em" }}>Financeiro Inteligente</div>
+                        <div style={{ fontSize:11, color:"#475569", marginTop:1 }}>Score · Previsão · Rateio · IA · Simulador</div>
                       </div>
-                    ))}
-                  </div>
-
-                  {/* ── Tab bar ── */}
-                  <div style={{ display:"flex", gap:8, marginBottom:20, flexWrap:"wrap" as const }}>
-                    {ftBtn("dashboard",   "📊", "Dashboard",   "#6366F1")}
-                    {ftBtn("lancamentos", "📋", "Lançamentos", "#06B6D4")}
-                    {ftBtn("orcamento",   "🗓️",  "Orçamento",   "#10B981")}
-                    {ftBtn("previsao",    "🔮", "Previsão",    "#8B5CF6")}
-                    {ftBtn("insights",    "🤖", "Insights IA", "#F59E0B")}
-                  </div>
-
-                  {/* ══════════════ ABA: DASHBOARD ══════════════ */}
-                  {finTab === "dashboard" && (<>
-
-                  {/* ── Score + Inadimplência ── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
-                    {/* Score */}
-                    <div style={{ background: "#121826", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px 20px" }}>
-                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 10 }}>💚 SAÚDE FINANCEIRA</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                        <div style={{ position: "relative", width: 72, height: 72 }}>
-                          <svg viewBox="0 0 36 36" style={{ width: 72, height: 72, transform: "rotate(-90deg)" }}>
-                            <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="3" />
-                            <circle cx="18" cy="18" r="15.9" fill="none" stroke={scoreColor} strokeWidth="3"
-                              strokeDasharray={`${score} ${100 - score}`} strokeLinecap="round" />
-                          </svg>
-                          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: scoreColor }}>{score}</div>
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 20, fontWeight: 800, color: scoreColor }}>{scoreLabel}</div>
-                          <div style={{ fontSize: 10, color: "#475569", marginTop: 4, lineHeight: 1.6 }}>
-                            Saldo: {scoreSaldo}/30 · Resultado: {scoreResult}/25<br/>
-                            Inadimpl.: {scoreInad}/25 · Reserva: {scoreReserva}/20
-                          </div>
-                        </div>
-                      </div>
+                      <button onClick={finSindicoLoad} disabled={finSindicoLoading}
+                        style={{ height:36, width:36, borderRadius:18, background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.4)", color:"#818CF8", fontSize:16, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                        {finSindicoLoading ? "⏳" : "↻"}
+                      </button>
                     </div>
 
-                    {/* Inadimplência */}
-                    <div style={{ background: "#121826", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px 20px" }}>
-                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 10 }}>⚠️ INADIMPLÊNCIA</div>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-                        <div style={{ fontSize: 28, fontWeight: 800, color: txInad <= 5 ? "#10B981" : txInad <= 15 ? "#F59E0B" : "#EF4444" }}>{txInad}%</div>
-                        <div style={{ fontSize: 11, color: "#475569" }}>{inadimplentes.length} lançamento(s) pendentes</div>
-                      </div>
-                      <div style={{ height: 6, background: "rgba(255,255,255,.06)", borderRadius: 3, marginBottom: 8 }}>
-                        <div style={{ width: `${Math.min(txInad, 100)}%`, height: "100%", background: txInad <= 5 ? "#10B981" : txInad <= 15 ? "#F59E0B" : "#EF4444", borderRadius: 3, transition: "width .4s" }} />
-                      </div>
-                      <div style={{ fontSize: 10, color: "#475569" }}>
-                        {txInad <= 5 ? "✅ Excelente — abaixo de 5%" : txInad <= 15 ? "🟡 Atenção — entre 5% e 15%" : "🔴 Crítico — acima de 15%"}
-                        {vlrInad > 0 && ` · ${fmtBRLFull(vlrInad)} em aberto`}
-                      </div>
+                    {/* TAB BAR */}
+                    <div style={{ display:"flex", gap:4, background:"rgba(255,255,255,.03)", borderRadius:12, padding:4, border:"1px solid rgba(255,255,255,.05)" }}>
+                      {TAB_DEFS.map(([id,icon,label,col]) => (
+                        <button key={id} onClick={()=>setFinTab(id as any)} style={{
+                          flex:1, padding:"9px 4px", border:"none", borderRadius:8, cursor:"pointer", fontFamily:"inherit",
+                          background: finTab===id ? col : "transparent",
+                          color: finTab===id ? "#fff" : "#475569",
+                          fontSize:11, fontWeight:700, display:"flex", flexDirection:"column" as const, alignItems:"center", gap:3,
+                          transition:"all .15s",
+                        }}>
+                          <span style={{ fontSize:16 }}>{icon}</span>
+                          <span style={{ whiteSpace:"nowrap" as const }}>{label}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  {/* ── Charts row ── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "300px 1fr", gap: 12, marginBottom: 16 }}>
-                    {/* Donut: despesas por categoria */}
-                    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px" }}>
-                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 12 }}>🍩 DESPESAS POR CATEGORIA</div>
-                      {pieData.length === 0 ? (
-                        <div style={{ textAlign: "center", padding: 20, color: "#334155", fontSize: 12 }}>Nenhuma despesa registrada</div>
-                      ) : (
-                        <>
-                          <ResponsiveContainer width="100%" height={160}>
-                            <PieChart>
-                              <Pie data={pieData} cx="50%" cy="50%" innerRadius={44} outerRadius={70} paddingAngle={3} dataKey="value">
-                                {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                              </Pie>
-                              <Tooltip formatter={(v: number) => fmtBRLFull(v)} contentStyle={{ background: "#0F172A", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, fontSize: 11 }} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {pieData.slice(0, 5).map((d, i) => (
-                              <div key={d.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 10 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                                  <div style={{ width: 8, height: 8, borderRadius: 2, background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                                  <span style={{ color: "#94A3B8" }}>{d.name}</span>
-                                </div>
-                                <span style={{ color: "#64748B" }}>{fmtK(d.value)}</span>
+                  {/* ── CONTENT ── */}
+                  <div style={{ flex:1, overflowY:"auto", padding:24, paddingTop:16 }}>
+
+                    {/* Loading state */}
+                    {finSindicoLoading && !fr && (
+                      <div style={{ textAlign:"center", padding:60, color:"#475569" }}>
+                        <div style={{ fontSize:36, marginBottom:12 }}>⏳</div>
+                        <div style={{ fontSize:13 }}>Carregando dados financeiros...</div>
+                      </div>
+                    )}
+
+                    {/* ══════════ ABA: DASHBOARD ══════════ */}
+                    {finTab === "dashboard" && (
+                      <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+
+                        {/* Score + KPI row */}
+                        <div style={{ display:"grid", gridTemplateColumns:"200px 1fr 1fr 1fr 1fr", gap:12 }}>
+
+                          {/* Score Card */}
+                          <div style={{ background:"linear-gradient(135deg,rgba(99,102,241,.15),rgba(139,92,246,.08))", border:"1px solid rgba(99,102,241,.25)", borderRadius:14, padding:"16px 14px", display:"flex", flexDirection:"column" as const, alignItems:"center", gap:10 }}>
+                            <div style={{ fontSize:11, fontWeight:700, color:"#818CF8", letterSpacing:".05em" }}>SCORE FINANCEIRO</div>
+                            {/* Circular progress */}
+                            <div style={{ position:"relative", width:88, height:88 }}>
+                              <svg width="88" height="88" viewBox="0 0 88 88">
+                                <circle cx="44" cy="44" r="36" fill="none" stroke="rgba(255,255,255,.06)" strokeWidth="8"/>
+                                <circle cx="44" cy="44" r="36" fill="none" stroke={scoreColor} strokeWidth="8"
+                                  strokeDasharray={`${2*Math.PI*36*score/100} ${2*Math.PI*36*(1-score/100)}`}
+                                  strokeLinecap="round" transform="rotate(-90 44 44)" style={{ transition:"stroke-dasharray .6s" }}/>
+                              </svg>
+                              <div style={{ position:"absolute", top:"50%", left:"50%", transform:"translate(-50%,-50%)", textAlign:"center" as const }}>
+                                <div style={{ fontSize:22, fontWeight:900, color:scoreColor, lineHeight:1 }}>{score}</div>
+                                <div style={{ fontSize:8, color:"#475569", marginTop:2 }}>/ 100</div>
                               </div>
-                            ))}
+                            </div>
+                            <div style={{ padding:"3px 10px", borderRadius:20, background:riscoBadge.bg, color:riscoBadge.color, fontSize:10, fontWeight:800 }}>
+                              {riscoBadge.txt}
+                            </div>
                           </div>
-                        </>
-                      )}
-                    </div>
 
-                    {/* Line: fluxo de caixa */}
-                    <div style={{ background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px" }}>
-                      <div style={{ fontSize: 11, color: "#475569", marginBottom: 12 }}>📊 FLUXO DE CAIXA — ÚLTIMOS 6 MESES</div>
-                      <ResponsiveContainer width="100%" height={200}>
-                        <LineChart data={lineData} margin={{ top: 4, right: 10, bottom: 4, left: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
-                          <XAxis dataKey="mes" tick={{ fontSize: 10, fill: "#475569" }} axisLine={false} tickLine={false} />
-                          <YAxis tick={{ fontSize: 10, fill: "#475569" }} axisLine={false} tickLine={false} tickFormatter={fmtK} width={50} />
-                          <Tooltip formatter={(v: number) => fmtBRLFull(v)} contentStyle={{ background: "#0F172A", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, fontSize: 11 }} />
-                          <Legend wrapperStyle={{ fontSize: 10, color: "#475569" }} />
-                          <Line type="monotone" dataKey="Receitas" stroke="#06B6D4" strokeWidth={2} dot={{ r: 3, fill: "#06B6D4" }} />
-                          <Line type="monotone" dataKey="Despesas" stroke="#EF4444" strokeWidth={2} dot={{ r: 3, fill: "#EF4444" }} />
-                          <Line type="monotone" dataKey="Resultado" stroke="#10B981" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 2, fill: "#10B981" }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
+                          {/* KPI: Saldo */}
+                          <div style={{ background:"linear-gradient(135deg,rgba(16,185,129,.12),rgba(16,185,129,.04))", border:"1px solid rgba(16,185,129,.2)", borderRadius:14, padding:"16px 18px" }}>
+                            <div style={{ fontSize:10, fontWeight:700, color:"#10B981", letterSpacing:".05em", marginBottom:8 }}>💰 SALDO ATUAL</div>
+                            <div style={{ fontSize:22, fontWeight:900, color:"#E2E8F0", lineHeight:1 }}>{fr ? fmtK(fr.saldo) : "—"}</div>
+                            <div style={{ fontSize:11, color:"#334155", marginTop:6 }}>Caixa disponível</div>
+                          </div>
 
-                  {/* ── Projeção 3 meses ── */}
-                  <div style={{ background: "rgba(99,102,241,.04)", border: "1px solid rgba(99,102,241,.15)", borderRadius: 12, padding: "16px", marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, color: "#6366F1", marginBottom: 12 }}>🔮 PROJEÇÃO — PRÓXIMOS 3 MESES (baseado na média dos últimos 3 meses)</div>
-                    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                      {projData.map((p, i) => (
-                        <div key={i} style={{ flex: 1, minWidth: 160, background: "rgba(255,255,255,.02)", borderRadius: 10, padding: "12px 14px", border: "1px solid rgba(255,255,255,.05)" }}>
-                          <div style={{ fontSize: 10, color: "#6366F1", fontWeight: 700, marginBottom: 6 }}>{p.mes}</div>
-                          <div style={{ fontSize: 11, color: "#06B6D4", marginBottom: 2 }}>📈 Rec. prev. {fmtBRLFull(p.Receitas)}</div>
-                          <div style={{ fontSize: 11, color: "#EF4444", marginBottom: 6 }}>📉 Desp. prev. {fmtBRLFull(p.Despesas)}</div>
-                          <div style={{ height: 1, background: "rgba(255,255,255,.06)", marginBottom: 6 }} />
-                          <div style={{ fontSize: 14, fontWeight: 700, color: p.SaldoProjetado >= 0 ? "#10B981" : "#EF4444" }}>
-                            {p.SaldoProjetado >= 0 ? "✅" : "⚠️"} Saldo proj. {fmtBRLFull(p.SaldoProjetado)}
+                          {/* KPI: Receitas */}
+                          <div style={{ background:"linear-gradient(135deg,rgba(6,182,212,.12),rgba(6,182,212,.04))", border:"1px solid rgba(6,182,212,.2)", borderRadius:14, padding:"16px 18px" }}>
+                            <div style={{ fontSize:10, fontWeight:700, color:"#06B6D4", letterSpacing:".05em", marginBottom:8 }}>📈 RECEITAS</div>
+                            <div style={{ fontSize:22, fontWeight:900, color:"#E2E8F0", lineHeight:1 }}>{fr ? fmtK(fr.totalRec) : "—"}</div>
+                            <div style={{ fontSize:11, color:"#334155", marginTop:6 }}>Total no período</div>
+                          </div>
+
+                          {/* KPI: Despesas */}
+                          <div style={{ background:"linear-gradient(135deg,rgba(239,68,68,.12),rgba(239,68,68,.04))", border:"1px solid rgba(239,68,68,.2)", borderRadius:14, padding:"16px 18px" }}>
+                            <div style={{ fontSize:10, fontWeight:700, color:"#EF4444", letterSpacing:".05em", marginBottom:8 }}>📉 DESPESAS</div>
+                            <div style={{ fontSize:22, fontWeight:900, color:"#E2E8F0", lineHeight:1 }}>{fr ? fmtK(fr.totalDesp) : "—"}</div>
+                            <div style={{ fontSize:11, color:"#334155", marginTop:6 }}>Total no período</div>
+                          </div>
+
+                          {/* KPI: Inadimplência */}
+                          <div style={{ background:"linear-gradient(135deg,rgba(245,158,11,.12),rgba(245,158,11,.04))", border:"1px solid rgba(245,158,11,.2)", borderRadius:14, padding:"16px 18px" }}>
+                            <div style={{ fontSize:10, fontWeight:700, color:"#F59E0B", letterSpacing:".05em", marginBottom:8 }}>⚠️ INADIMPLÊNCIA</div>
+                            <div style={{ fontSize:22, fontWeight:900, color:"#E2E8F0", lineHeight:1 }}>{fr ? `${fr.txInad}%` : "—"}</div>
+                            <div style={{ fontSize:11, color:"#334155", marginTop:6 }}>{fr ? fmtK(fr.vlrInad) : ""} em aberto</div>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                    <div style={{ fontSize: 10, color: "#334155", marginTop: 10 }}>
-                      Média usada: receitas {fmtBRLFull(Math.round(avgRec))}/mês · despesas {fmtBRLFull(Math.round(avgDesp))}/mês
-                      {avgRec === 0 && avgDesp === 0 && " · Adicione lançamentos com data para gerar projeção precisa"}
-                    </div>
-                  </div>
 
-                  {/* ── Lançamentos lado a lado ── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                    <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 12, padding: "14px 16px" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#06B6D4", marginBottom: 10 }}>📈 RECEITAS ({receitas.length})</div>
-                      {receitas.length === 0 && <div style={{ color: "#334155", fontSize: 12, textAlign: "center", padding: 16 }}>Nenhuma receita registrada</div>}
-                      {receitas.map(r => (
-                        <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
-                          <div>
-                            <div style={{ fontSize: 12 }}>{r.descricao}</div>
-                            <div style={{ fontSize: 10, color: "#475569", marginTop: 1 }}>{r.categoria} · <span style={{ color: ["pago","paga","recebido","recebida"].includes((r.status||"").toLowerCase()) ? "#10B981" : "#F59E0B" }}>{r.status}</span></div>
-                          </div>
-                          <div style={{ color: "#06B6D4", fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" }}>{fmtBRLFull(r.valor)}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 12, padding: "14px 16px" }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#EF4444", marginBottom: 10 }}>📉 DESPESAS ({despesas.length})</div>
-                      {despesas.length === 0 && <div style={{ color: "#334155", fontSize: 12, textAlign: "center", padding: 16 }}>Nenhuma despesa registrada</div>}
-                      {despesas.map(d => (
-                        <div key={d.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,.04)" }}>
-                          <div>
-                            <div style={{ fontSize: 12 }}>{d.descricao}</div>
-                            <div style={{ fontSize: 10, color: "#475569", marginTop: 1 }}>{d.fornecedor || d.categoria}</div>
-                          </div>
-                          <div style={{ color: "#EF4444", fontWeight: 600, fontSize: 12, whiteSpace: "nowrap" }}>-{fmtBRLFull(d.valor)}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                        {/* Charts row */}
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 340px", gap:12 }}>
 
-                  </>)} {/* /finTab === dashboard */}
-
-                  {/* ══════════════ ABA: LANÇAMENTOS ══════════════ */}
-                  {finTab === "lancamentos" && (
-                    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-                      {/* Filtros */}
-                      <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const, alignItems:"center" }}>
-                        <select value={finLancFilter.tipo} onChange={e=>setFinLancFilter(f=>({...f,tipo:e.target.value as ""| "receita"|"despesa"}))}
-                          style={{ background:"#121826", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 12px", color:"#E2E8F0", fontSize:11, cursor:"pointer" }}>
-                          <option value="">📋 Todos tipos</option>
-                          <option value="receita">📈 Receitas</option>
-                          <option value="despesa">📉 Despesas</option>
-                        </select>
-                        <input type="month" value={finLancFilter.mes} onChange={e=>setFinLancFilter(f=>({...f,mes:e.target.value}))}
-                          style={{ background:"#121826", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 12px", color:"#E2E8F0", fontSize:11 }} />
-                        <select value={finLancFilter.cat} onChange={e=>setFinLancFilter(f=>({...f,cat:e.target.value}))}
-                          style={{ background:"#121826", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"7px 12px", color:"#E2E8F0", fontSize:11, cursor:"pointer" }}>
-                          <option value="">🏷️ Todas categorias</option>
-                          {allCats.map(c=><option key={c} value={c}>{c}</option>)}
-                        </select>
-                        {(finLancFilter.tipo || finLancFilter.mes || finLancFilter.cat) && (
-                          <button onClick={()=>setFinLancFilter({tipo:"",mes:"",cat:""})}
-                            style={{ padding:"7px 12px", borderRadius:8, background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.25)", color:"#FCA5A5", fontSize:11, cursor:"pointer" }}>
-                            ✕ Limpar
-                          </button>
-                        )}
-                        <span style={{ marginLeft:"auto", fontSize:11, color:"#475569" }}>{lancFiltrados.length} lançamentos</span>
-                      </div>
-
-                      {/* Totais filtrados */}
-                      {lancFiltrados.length > 0 && (() => {
-                        const fr = lancFiltrados.filter(l=>l.tipo==="receita").reduce((s,l)=>s+Number(l.valor),0);
-                        const fd = lancFiltrados.filter(l=>l.tipo==="despesa").reduce((s,l)=>s+Number(l.valor),0);
-                        return (
-                          <div style={{ display:"flex", gap:8, flexWrap:"wrap" as const }}>
-                            <div style={{ padding:"6px 14px", borderRadius:8, background:"rgba(6,182,212,.1)", border:"1px solid rgba(6,182,212,.2)", fontSize:11, color:"#67E8F9" }}>📈 Receitas: {fmtBRLFull(fr)}</div>
-                            <div style={{ padding:"6px 14px", borderRadius:8, background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", fontSize:11, color:"#FCA5A5" }}>📉 Despesas: {fmtBRLFull(fd)}</div>
-                            <div style={{ padding:"6px 14px", borderRadius:8, background:(fr-fd)>=0?"rgba(16,185,129,.1)":"rgba(239,68,68,.1)", border:`1px solid ${(fr-fd)>=0?"rgba(16,185,129,.25)":"rgba(239,68,68,.25)"}`, fontSize:11, color:(fr-fd)>=0?"#6EE7B7":"#FCA5A5" }}>💰 Saldo: {fmtBRLFull(fr-fd)}</div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* Tabela de lançamentos */}
-                      {lancFiltrados.length === 0 ? (
-                        <div style={{ textAlign:"center", padding:40, color:"#334155", fontSize:13 }}>
-                          <div style={{ fontSize:36, marginBottom:10 }}>📭</div>
-                          <div>Nenhum lançamento encontrado</div>
-                          <div style={{ fontSize:11, marginTop:6, color:"#475569" }}>Clique em "Novo Lançamento" para adicionar</div>
-                        </div>
-                      ) : (
-                        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                          {lancFiltrados.map(l => {
-                            const isRec = l.tipo === "receita";
-                            const sc = stColor(l.status);
-                            const sbg = stBg(l.status);
-                            return (
-                              <div key={l.id} style={{ display:"flex", alignItems:"center", gap:12, background:"#121826", border:`1px solid rgba(255,255,255,.06)`, borderRadius:10, padding:"10px 14px", borderLeft:`3px solid ${isRec?"#06B6D4":"#EF4444"}` }}>
-                                <div style={{ width:32, height:32, borderRadius:8, background:isRec?"rgba(6,182,212,.15)":"rgba(239,68,68,.12)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
-                                  {isRec ? "📈" : "📉"}
-                                </div>
-                                <div style={{ flex:1, minWidth:0 }}>
-                                  <div style={{ fontSize:12, fontWeight:600, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{l.descricao}</div>
-                                  <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>{l.categoria}{l.subcategoria ? ` › ${l.subcategoria}` : ""} · {l.data}</div>
-                                </div>
-                                <div style={{ fontSize:14, fontWeight:800, color:isRec?"#06B6D4":"#EF4444", whiteSpace:"nowrap" as const }}>{isRec?"+":"-"}{fmtBRLFull(Number(l.valor))}</div>
-                                <span style={{ fontSize:9, fontWeight:800, padding:"2px 7px", borderRadius:5, background:sbg, color:sc, border:`1px solid ${sc}44`, whiteSpace:"nowrap" as const }}>
-                                  {l.status === "pago" ? "✓ PAGO" : l.status === "atrasado" ? "⚠ ATRASADO" : "⏳ PREVISTO"}
-                                </span>
-                                <div style={{ display:"flex", gap:4 }}>
-                                  <button onClick={()=>{ setFinForm({...l}); setFinModal({open:true,editing:l}); }}
-                                    style={{ padding:"4px 8px", borderRadius:6, background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)", color:"#A5B4FC", fontSize:10, cursor:"pointer" }}>✏️</button>
-                                  <button onClick={()=>finDeletarLancamento(l.id)}
-                                    style={{ padding:"4px 8px", borderRadius:6, background:"rgba(239,68,68,.08)", border:"1px solid rgba(239,68,68,.2)", color:"#FCA5A5", fontSize:10, cursor:"pointer" }}>🗑️</button>
+                          {/* SVG Bar Chart – Fluxo de Caixa */}
+                          <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:14, padding:"18px 20px" }}>
+                            <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0", marginBottom:16 }}>📊 Fluxo de Caixa — Histórico</div>
+                            {fluxoHist.length > 0 ? (
+                              <div style={{ overflowX:"auto" }}>
+                                <svg width={Math.max(fluxoHist.length*SLOT_W+40,400)} height={CHART_H+50}>
+                                  {/* Gridlines */}
+                                  {[0,25,50,75,100].map(p => {
+                                    const y2 = CHART_H - (p/100)*CHART_H + 10;
+                                    return <line key={p} x1={0} x2={fluxoHist.length*SLOT_W+40} y1={y2} y2={y2} stroke="rgba(255,255,255,.04)" strokeWidth={1}/>;
+                                  })}
+                                  {fluxoHist.map((h, i) => {
+                                    const x = i*SLOT_W + 20;
+                                    const hR = Math.round((h.Receitas/chartMax)*CHART_H);
+                                    const hD = Math.round((h.Despesas/chartMax)*CHART_H);
+                                    return (
+                                      <g key={h.mes}>
+                                        <rect x={x} y={CHART_H-hR+10} width={BAR_W} height={hR} rx={4} fill="#10B981" opacity=".85"/>
+                                        <rect x={x+BAR_W+BAR_GAP} y={CHART_H-hD+10} width={BAR_W} height={hD} rx={4} fill="#EF4444" opacity=".75"/>
+                                        <text x={x+BAR_W} y={CHART_H+26} textAnchor="middle" fill="#475569" fontSize={9}>{h.mes}</text>
+                                      </g>
+                                    );
+                                  })}
+                                </svg>
+                                <div style={{ display:"flex", gap:16, marginTop:8 }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:6 }}><div style={{ width:10,height:10,borderRadius:2,background:"#10B981" }}/><span style={{ fontSize:10, color:"#475569" }}>Receitas</span></div>
+                                  <div style={{ display:"flex", alignItems:"center", gap:6 }}><div style={{ width:10,height:10,borderRadius:2,background:"#EF4444" }}/><span style={{ fontSize:10, color:"#475569" }}>Despesas</span></div>
                                 </div>
                               </div>
-                            );
-                          })}
+                            ) : (
+                              <div style={{ textAlign:"center", padding:30, color:"#334155", fontSize:12 }}>Sem dados de fluxo de caixa ainda</div>
+                            )}
+                          </div>
+
+                          {/* Right column: Previsão 30d + Inadimplência aging */}
+                          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+
+                            {/* Previsão 30 dias */}
+                            <div style={{ background:"linear-gradient(135deg,rgba(139,92,246,.1),rgba(99,102,241,.06))", border:"1px solid rgba(139,92,246,.2)", borderRadius:14, padding:"16px 18px" }}>
+                              <div style={{ fontSize:11, fontWeight:700, color:"#A78BFA", marginBottom:10 }}>🔮 Previsão de Caixa — 30 dias</div>
+                              {fp ? (
+                                <>
+                                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                                    {[
+                                      {label:"Entradas",val:fp.avgRec,color:"#10B981"},
+                                      {label:"Saídas",val:fp.avgDesp,color:"#EF4444"},
+                                      {label:"Projeção",val:fp.projecao[0]?.SaldoProjetado??0,color:"#818CF8"},
+                                    ].map(k=>(
+                                      <div key={k.label} style={{ textAlign:"center" as const }}>
+                                        <div style={{ fontSize:9, color:"#475569", marginBottom:3 }}>{k.label}</div>
+                                        <div style={{ fontSize:13, fontWeight:800, color:k.color }}>{fmtK(k.val)}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={{ marginTop:10, background:"rgba(0,0,0,.2)", borderRadius:6, height:4, overflow:"hidden" }}>
+                                    <div style={{ height:"100%", borderRadius:6, background:(fp.projecao[0]?.SaldoProjetado??0)>=0?"#10B981":"#EF4444", width:`${Math.min(100,Math.abs(fp.projecao[0]?.SaldoProjetado??0)/Math.max(fp.avgRec,1)*100)}%` }}/>
+                                  </div>
+                                </>
+                              ) : <div style={{ color:"#334155", fontSize:11 }}>Aguardando dados...</div>}
+                            </div>
+
+                            {/* Aging Inadimplência */}
+                            <div style={{ background:"rgba(239,68,68,.06)", border:"1px solid rgba(239,68,68,.15)", borderRadius:14, padding:"16px 18px", flex:1 }}>
+                              <div style={{ fontSize:11, fontWeight:700, color:"#FCA5A5", marginBottom:10 }}>📉 Aging Inadimplência</div>
+                              {fi ? (
+                                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                                  {[
+                                    {label:"Até 30d",val:fi.aging.ate30,color:"#F59E0B"},
+                                    {label:"31–60d",val:fi.aging.de31a60,color:"#F97316"},
+                                    {label:"61–90d",val:fi.aging.de61a90,color:"#EF4444"},
+                                    {label:">90d",val:fi.aging.acima90,color:"#991B1B"},
+                                  ].map(k=>(
+                                    <div key={k.label} style={{ background:"rgba(0,0,0,.2)", borderRadius:8, padding:"8px 10px" }}>
+                                      <div style={{ fontSize:9, color:"#475569" }}>{k.label}</div>
+                                      <div style={{ fontSize:14, fontWeight:800, color:k.color, marginTop:2 }}>{fmtK(k.val)}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : <div style={{ color:"#334155", fontSize:11 }}>Aguardando dados...</div>}
+                            </div>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  )}
 
-                  {/* ══════════════ ABA: ORÇAMENTO ══════════════ */}
-                  {finTab === "orcamento" && (
-                    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                      <div style={{ fontSize:12, color:"#475569" }}>Comparativo previsto × realizado por categoria — {new Date().getFullYear()}</div>
-                      {despCatEntries.length === 0 && orcamento.length === 0 ? (
-                        <div style={{ textAlign:"center", padding:40, color:"#334155" }}>
-                          <div style={{ fontSize:32 }}>📭</div>
-                          <div style={{ marginTop:10, fontSize:13 }}>Sem dados de orçamento</div>
-                          <div style={{ fontSize:11, color:"#475569", marginTop:6 }}>Adicione lançamentos de despesa para ver o comparativo</div>
+                        {/* Despesas por categoria + Quick AI Insight */}
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+
+                          {/* Top categorias */}
+                          <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:14, padding:"18px 20px" }}>
+                            <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0", marginBottom:14 }}>🏷️ Top Categorias de Despesa</div>
+                            {catEntries.length > 0 ? (
+                              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                                {catEntries.map(([cat,val])=>{
+                                  const pct = catTotal > 0 ? Math.round((val/catTotal)*100) : 0;
+                                  return (
+                                    <div key={cat}>
+                                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                                        <span style={{ fontSize:11, color:"#94A3B8", textTransform:"capitalize" as const }}>{cat}</span>
+                                        <span style={{ fontSize:11, color:"#E2E8F0", fontWeight:700 }}>{fmtK(val)} <span style={{ color:"#475569" }}>({pct}%)</span></span>
+                                      </div>
+                                      <div style={{ background:"rgba(255,255,255,.06)", borderRadius:3, height:5, overflow:"hidden" }}>
+                                        <div style={{ height:"100%", borderRadius:3, background:"linear-gradient(90deg,#6366F1,#A855F7)", width:`${pct}%`, transition:"width .5s" }}/>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ color:"#334155", fontSize:12, textAlign:"center" as const, padding:20 }}>Nenhum lançamento de despesa cadastrado</div>
+                            )}
+                          </div>
+
+                          {/* Quick Di Insight */}
+                          <div style={{ background:"linear-gradient(135deg,rgba(245,158,11,.08),rgba(251,191,36,.04))", border:"1px solid rgba(245,158,11,.18)", borderRadius:14, padding:"18px 20px" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+                              <div style={{ fontSize:28 }}>🤖</div>
+                              <div>
+                                <div style={{ fontSize:12, fontWeight:800, color:"#FCD34D" }}>Síndica Di — Visão Rápida</div>
+                                <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>Análise em tempo real · Claude AI</div>
+                              </div>
+                            </div>
+                            {finSindicoInsight ? (
+                              <div>
+                                <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.7, marginBottom:12, maxHeight:120, overflowY:"auto" }}>
+                                  {finSindicoInsight.analise?.substring(0,300)}{(finSindicoInsight.analise?.length||0)>300?"...":""}
+                                </div>
+                                <button onClick={()=>setFinTab("insights")} style={{ padding:"7px 16px", borderRadius:8, background:"rgba(245,158,11,.15)", border:"1px solid rgba(245,158,11,.3)", color:"#FCD34D", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                                  Ver análise completa →
+                                </button>
+                              </div>
+                            ) : (
+                              <div>
+                                <div style={{ fontSize:12, color:"#475569", lineHeight:1.6, marginBottom:14 }}>
+                                  A Di analisa saldo, inadimplência, tendências e riscos para gerar recomendações inteligentes.
+                                </div>
+                                <button onClick={finSindicoGerarInsight} disabled={finSindicoInsightLoading}
+                                  style={{ width:"100%", padding:"10px", borderRadius:10, background: finSindicoInsightLoading?"rgba(245,158,11,.2)":"#F59E0B", border:"none", color: finSindicoInsightLoading?"#FCD34D":"#000", fontSize:12, fontWeight:800, cursor:"pointer" }}>
+                                  {finSindicoInsightLoading ? "⏳ Analisando..." : "⚡ Gerar Análise IA"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      ) : (
-                        <>
-                          {/* BarChart: previsto vs. real */}
-                          {despCatEntries.length > 0 && (
-                            <div style={{ background:"#121826", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:16 }}>
-                              <div style={{ fontSize:11, color:"#475569", marginBottom:12 }}>🗓️ DESPESAS REAIS POR CATEGORIA</div>
-                              <ResponsiveContainer width="100%" height={220}>
-                                <BarChart data={despCatEntries.map(([cat, val]) => {
-                                  const orçEntry = orcamento.find(o => o.categoria === cat);
-                                  return { cat, Real: Math.round(val), Previsto: orçEntry ? Math.round(orçEntry.valor_previsto) : 0 };
-                                })} margin={{ top:4, right:10, bottom:30, left:0 }}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
-                                  <XAxis dataKey="cat" tick={{ fontSize:9, fill:"#475569" }} angle={-25} textAnchor="end" interval={0} />
-                                  <YAxis tick={{ fontSize:10, fill:"#475569" }} tickFormatter={fmtK2} width={48} />
-                                  <Tooltip formatter={(v: number) => fmtBRLFull(v)} contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} />
-                                  <Legend wrapperStyle={{ fontSize:10, color:"#475569" }} />
-                                  <Bar dataKey="Real" fill="#EF4444" radius={[4,4,0,0]} />
-                                  <Bar dataKey="Previsto" fill="#6366F1" radius={[4,4,0,0]} />
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
-                          )}
-                          {/* Tabela detalhada */}
-                          <div style={{ background:"#121826", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:16 }}>
-                            <div style={{ fontSize:11, color:"#475569", marginBottom:12 }}>📊 DETALHAMENTO POR CATEGORIA</div>
-                            <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto auto", gap:"6px 16px", alignItems:"center" }}>
-                              <div style={{ fontSize:10, color:"#334155", fontWeight:700 }}>Categoria</div>
-                              <div style={{ fontSize:10, color:"#334155", fontWeight:700, textAlign:"right" as const }}>Previsto</div>
-                              <div style={{ fontSize:10, color:"#334155", fontWeight:700, textAlign:"right" as const }}>Real</div>
-                              <div style={{ fontSize:10, color:"#334155", fontWeight:700, textAlign:"right" as const }}>Δ</div>
-                              {despCatEntries.map(([cat, real]) => {
-                                const orcEntry = orcamento.find(o => o.categoria === cat);
-                                const prev = orcEntry ? Number(orcEntry.valor_previsto) : 0;
-                                const diff = real - prev;
-                                return [
-                                  <div key={`${cat}-n`} style={{ fontSize:12, color:"#E2E8F0" }}>{cat}</div>,
-                                  <div key={`${cat}-p`} style={{ fontSize:12, color:"#6366F1", textAlign:"right" as const }}>{prev > 0 ? fmtBRLFull(prev) : "—"}</div>,
-                                  <div key={`${cat}-r`} style={{ fontSize:12, color:"#EF4444", textAlign:"right" as const }}>{fmtBRLFull(real)}</div>,
-                                  <div key={`${cat}-d`} style={{ fontSize:12, color: prev === 0 ? "#475569" : diff > 0 ? "#EF4444" : "#10B981", textAlign:"right" as const }}>{prev > 0 ? (diff > 0 ? `+${fmtBRLFull(diff)}` : fmtBRLFull(diff)) : "—"}</div>,
-                                ];
-                              })}
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ══════════════ ABA: PREVISÃO ══════════════ */}
-                  {finTab === "previsao" && (
-                    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                      <div style={{ fontSize:12, color:"#475569" }}>Projeção baseada na média dos últimos 3 meses · usando lançamentos cadastrados</div>
-
-                      {/* Cards 3 meses */}
-                      <div style={{ display:"flex", gap:12, flexWrap:"wrap" as const }}>
-                        {projLanc.map((p, i) => (
-                          <div key={i} style={{ flex:1, minWidth:180, background:"#121826", border:"1px solid rgba(99,102,241,.2)", borderRadius:12, padding:"16px 18px" }}>
-                            <div style={{ fontSize:11, color:"#6366F1", fontWeight:700, marginBottom:10 }}>{p.mes}</div>
-                            <div style={{ fontSize:12, color:"#06B6D4", marginBottom:4 }}>📈 Rec. prev. {fmtBRLFull(p.Receitas)}</div>
-                            <div style={{ fontSize:12, color:"#EF4444", marginBottom:10 }}>📉 Desp. prev. {fmtBRLFull(p.Despesas)}</div>
-                            <div style={{ height:1, background:"rgba(255,255,255,.06)", marginBottom:10 }} />
-                            <div style={{ fontSize:16, fontWeight:800, color:p.SaldoProjetado>=0?"#10B981":"#EF4444" }}>
-                              {p.SaldoProjetado>=0?"✅":"⚠️"} {fmtBRLFull(p.SaldoProjetado)}
-                            </div>
-                            <div style={{ fontSize:10, color:"#334155", marginTop:4 }}>saldo projetado</div>
-                          </div>
-                        ))}
-                        {projLanc.length === 0 && (
-                          <div style={{ flex:1, textAlign:"center", padding:40, color:"#334155", fontSize:13 }}>
-                            <div style={{ fontSize:32 }}>🔮</div>
-                            <div style={{ marginTop:10 }}>Sem dados para projeção</div>
-                            <div style={{ fontSize:11, color:"#475569", marginTop:6 }}>Cadastre lançamentos com data para gerar previsão</div>
-                          </div>
-                        )}
                       </div>
+                    )}
 
-                      {/* Fluxo de caixa dos lançamentos */}
-                      {fluxoData.some(d => d.Receitas > 0 || d.Despesas > 0) && (
-                        <div style={{ background:"#121826", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:16 }}>
-                          <div style={{ fontSize:11, color:"#475569", marginBottom:12 }}>📊 FLUXO DE CAIXA — ÚLTIMOS 6 MESES (lançamentos)</div>
-                          <ResponsiveContainer width="100%" height={200}>
-                            <LineChart data={fluxoData} margin={{ top:4, right:10, bottom:4, left:0 }}>
-                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
-                              <XAxis dataKey="mes" tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fontSize:10, fill:"#475569" }} axisLine={false} tickLine={false} tickFormatter={fmtK2} width={50} />
-                              <Tooltip formatter={(v: number) => fmtBRLFull(v)} contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }} />
-                              <Legend wrapperStyle={{ fontSize:10, color:"#475569" }} />
-                              <Line type="monotone" dataKey="Receitas" stroke="#06B6D4" strokeWidth={2} dot={{ r:3, fill:"#06B6D4" }} />
-                              <Line type="monotone" dataKey="Despesas" stroke="#EF4444" strokeWidth={2} dot={{ r:3, fill:"#EF4444" }} />
-                              <Line type="monotone" dataKey="Resultado" stroke="#10B981" strokeWidth={2} strokeDasharray="5 3" dot={{ r:2, fill:"#10B981" }} />
-                            </LineChart>
-                          </ResponsiveContainer>
-                          <div style={{ fontSize:10, color:"#334155", marginTop:8 }}>
-                            Média: receitas {fmtBRLFull(Math.round(avgRecLanc))}/mês · despesas {fmtBRLFull(Math.round(avgDespLanc))}/mês
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
+                    {/* ══════════ ABA: LANÇAMENTOS ══════════ */}
+                    {finTab === "lancamentos" && (
+                      <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
 
-                  {/* ══════════════ ABA: INSIGHTS IA ══════════════ */}
-                  {finTab === "insights" && (
-                    <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                      {/* Trigger + pergunta personalizada */}
-                      <div style={{ background:"linear-gradient(135deg, rgba(245,158,11,.08), rgba(251,191,36,.05))", border:"1px solid rgba(245,158,11,.2)", borderRadius:14, padding:"20px 22px" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:14 }}>
-                          <div style={{ fontSize:40 }}>🤖</div>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontSize:14, fontWeight:800, color:"#FCD34D" }}>Síndico Virtual — Análise Financeira</div>
-                            <div style={{ fontSize:12, color:"#475569", marginTop:2 }}>IA com contexto completo dos seus lançamentos · Powered by Claude</div>
-                          </div>
-                          <button onClick={() => finGerarInsights()} disabled={finInsightLoading}
-                            style={{ padding:"10px 20px", borderRadius:10, background: finInsightLoading ? "rgba(245,158,11,.2)" : "#F59E0B", border:"none", color: finInsightLoading ? "#FCD34D" : "#000", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" as const }}>
-                            {finInsightLoading ? "⏳ Analisando..." : "⚡ Relatório Completo"}
-                          </button>
-                        </div>
-                        {/* Campo de pergunta personalizada */}
-                        <div style={{ display:"flex", gap:8 }}>
-                          <input
-                            id="fin-pergunta"
-                            placeholder="Pergunte algo específico ao Síndico (ex: como reduzir custos com manutenção?)"
-                            style={{ flex:1, background:"rgba(0,0,0,.3)", border:"1px solid rgba(245,158,11,.3)", borderRadius:8, padding:"9px 14px", color:"#E2E8F0", fontSize:12, outline:"none" }}
-                            onKeyDown={e => { if (e.key === "Enter") { const v = (e.target as HTMLInputElement).value.trim(); if (v) { finGerarInsights(v); (e.target as HTMLInputElement).value = ""; } } }}
-                          />
-                          <button
-                            onClick={() => { const el = document.getElementById("fin-pergunta") as HTMLInputElement; const v = el?.value.trim(); if (v) { finGerarInsights(v); el.value = ""; } else finGerarInsights(); }}
-                            disabled={finInsightLoading}
-                            style={{ padding:"9px 16px", borderRadius:8, background:"rgba(245,158,11,.15)", border:"1px solid rgba(245,158,11,.3)", color:"#FCD34D", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                            Perguntar
-                          </button>
-                        </div>
-                        {/* Chips de perguntas rápidas */}
-                        <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const, marginTop:10 }}>
-                          {["Onde posso reduzir despesas?", "Como melhorar a inadimplência?", "Qual a previsão para os próximos 3 meses?", "Compare receitas x despesas por categoria"].map(q => (
-                            <button key={q} onClick={() => finGerarInsights(q)} disabled={finInsightLoading}
-                              style={{ padding:"4px 10px", borderRadius:20, background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.2)", color:"#F59E0B", fontSize:10, cursor:"pointer", transition:"background .15s" }}>
-                              {q}
+                        {/* Toolbar */}
+                        <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" as const }}>
+                          {["todos","receita","despesa"].map(f=>(
+                            <button key={f} onClick={()=>{ (window as any).__gestorLancFiltro=f; setFinTab("lancamentos"); }}
+                              style={{ padding:"7px 16px", borderRadius:20, border:"none", cursor:"pointer", fontFamily:"inherit",
+                                background:(window as any).__gestorLancFiltro===f||(!((window as any).__gestorLancFiltro)&&f==="todos")?"#6366F1":"rgba(255,255,255,.05)",
+                                color:(window as any).__gestorLancFiltro===f||(!((window as any).__gestorLancFiltro)&&f==="todos")?"#fff":"#475569",
+                                fontSize:11, fontWeight:700, textTransform:"capitalize" as const }}>
+                              {f==="todos"?"Todos":f==="receita"?"📈 Receitas":"📉 Despesas"}
                             </button>
                           ))}
+                          <div style={{ flex:1 }}/>
+                          <button onClick={()=>setFinSindicoAddModal(true)}
+                            style={{ padding:"8px 20px", borderRadius:20, background:"linear-gradient(135deg,#6366F1,#A855F7)", border:"none", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                            + Lançamento
+                          </button>
                         </div>
-                      </div>
 
-                      {/* Result */}
-                      {finInsight && (
-                        <>
-                          {/* Score card */}
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10 }}>
-                            {[
-                              { label:"Score", val:`${finInsight.score}/100`, color: finInsight.score>=80?"#10B981":finInsight.score>=60?"#F59E0B":finInsight.score>=40?"#F97316":"#EF4444", icon:"💚" },
-                              { label:"Inadimplência", val:`${finInsight.inadimplencia}%`, color: finInsight.inadimplencia<=5?"#10B981":finInsight.inadimplencia<=15?"#F59E0B":"#EF4444", icon:"⚠️" },
-                              { label:"Saldo", val:fmtBRLFull(finInsight.saldo), color: finInsight.saldo>=0?"#10B981":"#EF4444", icon:"💰" },
-                              { label:"Risco", val:finInsight.risco, color: finInsight.risco==="baixo"?"#10B981":finInsight.risco==="moderado"?"#F59E0B":finInsight.risco==="alto"?"#F97316":"#EF4444", icon:"📊" },
-                            ].map(k => (
-                              <div key={k.label} style={{ background:"#121826", border:`1px solid rgba(255,255,255,.06)`, borderRadius:10, padding:"12px 14px", borderLeft:`3px solid ${k.color}` }}>
-                                <div style={{ fontSize:10, color:"#475569" }}>{k.icon} {k.label.toUpperCase()}</div>
-                                <div style={{ fontSize:18, fontWeight:800, color:k.color, marginTop:4, textTransform:"capitalize" as const }}>{k.val}</div>
-                              </div>
+                        {/* Table */}
+                        <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:14, overflow:"hidden" }}>
+                          {/* Header */}
+                          <div style={{ display:"grid", gridTemplateColumns:"80px 1fr 120px 110px 80px 90px", gap:0, padding:"10px 16px", background:"rgba(255,255,255,.04)", borderBottom:"1px solid rgba(255,255,255,.06)" }}>
+                            {["Tipo","Descrição","Categoria","Valor","Data","Status"].map(h=>(
+                              <div key={h} style={{ fontSize:10, fontWeight:700, color:"#475569", letterSpacing:".05em" }}>{h}</div>
                             ))}
                           </div>
-
-                          {/* Resposta completa do Síndico — exibe seções ou texto corrido */}
-                          {finInsight.reply && !finInsight.riscos && !finInsight.recomendacoes ? (
-                            <div style={{ background:"rgba(245,158,11,.05)", border:"1px solid rgba(245,158,11,.15)", borderRadius:12, padding:"18px 20px" }}>
-                              <div style={{ fontSize:12, fontWeight:700, color:"#FCD34D", marginBottom:10 }}>🤖 SÍNDICO VIRTUAL</div>
-                              <div style={{ fontSize:13, color:"#CBD5E1", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>{finInsight.reply}</div>
+                          {/* Rows */}
+                          {finSindicoLancs.length === 0 ? (
+                            <div style={{ textAlign:"center", padding:32, color:"#334155", fontSize:13 }}>
+                              <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+                              Nenhum lançamento cadastrado
                             </div>
                           ) : (
-                            <>
-                              {/* Análise */}
-                              <div style={{ background:"rgba(245,158,11,.05)", border:"1px solid rgba(245,158,11,.15)", borderRadius:12, padding:"18px 20px" }}>
-                                <div style={{ fontSize:12, fontWeight:700, color:"#FCD34D", marginBottom:10 }}>📋 ANÁLISE GERAL</div>
-                                <div style={{ fontSize:13, color:"#CBD5E1", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>{finInsight.analise}</div>
-                              </div>
-                              {/* Riscos */}
-                              {finInsight.riscos && (
-                                <div style={{ background:"rgba(239,68,68,.05)", border:"1px solid rgba(239,68,68,.15)", borderRadius:12, padding:"18px 20px" }}>
-                                  <div style={{ fontSize:12, fontWeight:700, color:"#FCA5A5", marginBottom:10 }}>🚨 RISCOS IDENTIFICADOS</div>
-                                  <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finInsight.riscos}</div>
+                            finSindicoLancs.map((l,i) => {
+                              const isRec = l.tipo==="receita";
+                              const stC = (s:string)=>s==="pago"?"#10B981":s==="atrasado"?"#EF4444":"#F59E0B";
+                              const stBg = (s:string)=>s==="pago"?"rgba(16,185,129,.12)":s==="atrasado"?"rgba(239,68,68,.12)":"rgba(245,158,11,.12)";
+                              const st = (l as any).status||"previsto";
+                              return (
+                                <div key={l.id||i} style={{ display:"grid", gridTemplateColumns:"80px 1fr 120px 110px 80px 90px", gap:0, padding:"10px 16px", borderBottom:"1px solid rgba(255,255,255,.04)", alignItems:"center" }}>
+                                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                                    <div style={{ width:8, height:8, borderRadius:4, background:isRec?"#10B981":"#EF4444", flexShrink:0 }}/>
+                                    <span style={{ fontSize:10, color:isRec?"#10B981":"#EF4444", fontWeight:700 }}>{isRec?"Rec":"Desp"}</span>
+                                  </div>
+                                  <div style={{ fontSize:12, color:"#CBD5E1", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{l.descricao||"—"}</div>
+                                  <div style={{ fontSize:11, color:"#475569", textTransform:"capitalize" as const }}>{(l as any).categoria||"—"}</div>
+                                  <div style={{ fontSize:13, fontWeight:700, color:isRec?"#10B981":"#EF4444" }}>{fmtK(Number(l.valor))}</div>
+                                  <div style={{ fontSize:10, color:"#475569" }}>{(l as any).data ? new Date((l as any).data).toLocaleDateString("pt-BR",{day:"2-digit",month:"2-digit"}) : "—"}</div>
+                                  <div style={{ padding:"3px 8px", borderRadius:12, background:stBg(st), color:stC(st), fontSize:10, fontWeight:700, textTransform:"capitalize" as const, display:"inline-block" }}>{st}</div>
                                 </div>
-                              )}
-                              {/* Recomendações */}
-                              {finInsight.recomendacoes && (
-                                <div style={{ background:"rgba(16,185,129,.05)", border:"1px solid rgba(16,185,129,.15)", borderRadius:12, padding:"18px 20px" }}>
-                                  <div style={{ fontSize:12, fontWeight:700, color:"#6EE7B7", marginBottom:10 }}>✅ RECOMENDAÇÕES</div>
-                                  <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finInsight.recomendacoes}</div>
-                                </div>
-                              )}
-                            </>
+                              );
+                            })
                           )}
-
-                          <div style={{ fontSize:10, color:"#334155", textAlign:"right" as const }}>
-                            Análise gerada em {new Date(finInsight.gerado_em).toLocaleString("pt-BR")} · Síndico Virtual (Claude)
-                          </div>
-                        </>
-                      )}
-
-                      {!finInsight && !finInsightLoading && (
-                        <div style={{ textAlign:"center", padding:40, color:"#334155", fontSize:13 }}>
-                          <div style={{ fontSize:48, marginBottom:12 }}>🤖</div>
-                          <div>Clique em "Gerar Análise" para que o Síndico Virtual avalie a saúde financeira do condomínio</div>
-                          <div style={{ fontSize:11, color:"#475569", marginTop:8 }}>Baseado nos lançamentos cadastrados · Powered by Claude AI</div>
                         </div>
-                      )}
+                      </div>
+                    )}
+
+                    {/* ══════════ ABA: SIMULADOR ══════════ */}
+                    {finTab === "previsao" && (
+                      <div style={{ display:"flex", flexDirection:"column", gap:16, maxWidth:800 }}>
+                        <div style={{ background:"linear-gradient(135deg,rgba(168,85,247,.1),rgba(139,92,246,.06))", border:"1px solid rgba(168,85,247,.2)", borderRadius:14, padding:"22px 24px" }}>
+                          <div style={{ fontSize:14, fontWeight:800, color:"#C4B5FD", marginBottom:6 }}>🧪 Simulador de Taxa Condominial</div>
+                          <div style={{ fontSize:12, color:"#475569", marginBottom:20 }}>Simule o impacto de um aumento ou redução da taxa mensal no score e no caixa do condomínio.</div>
+
+                          <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:20 }}>
+                            <div style={{ flex:1 }}>
+                              <label style={{ fontSize:11, fontWeight:700, color:"#A78BFA", display:"block", marginBottom:6 }}>
+                                Variação por unidade (R$) — positivo = aumento, negativo = redução
+                              </label>
+                              <input
+                                type="number"
+                                value={finSimAumento}
+                                onChange={e=>setFinSimAumento(Number(e.target.value))}
+                                style={{ width:"100%", padding:"10px 14px", borderRadius:10, background:"rgba(0,0,0,.3)", border:"1px solid rgba(168,85,247,.3)", color:"#E2E8F0", fontSize:16, fontWeight:700, outline:"none" }}
+                              />
+                            </div>
+                            <button onClick={finSindicoSimular} disabled={finSimLoading}
+                              style={{ padding:"12px 28px", borderRadius:10, background: finSimLoading?"rgba(168,85,247,.3)":"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" as const, marginTop:22 }}>
+                              {finSimLoading ? "⏳ Simulando..." : "▶ Simular"}
+                            </button>
+                          </div>
+
+                          {finSimResult && (
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                              {/* Atual */}
+                              <div style={{ background:"rgba(0,0,0,.25)", borderRadius:12, padding:"16px 18px", border:"1px solid rgba(255,255,255,.06)" }}>
+                                <div style={{ fontSize:11, fontWeight:700, color:"#475569", marginBottom:12, letterSpacing:".04em" }}>SITUAÇÃO ATUAL</div>
+                                {[
+                                  {label:"Saldo",val:fmtBRL2(finSimResult.atual.saldo),color:finSimResult.atual.saldo>=0?"#10B981":"#EF4444"},
+                                  {label:"Score",val:String(finSimResult.atual.score),color:"#6366F1"},
+                                  {label:"Risco",val:finSimResult.atual.risco,color:"#94A3B8"},
+                                  {label:"Inadimplência",val:`${finSimResult.atual.inadimplencia}%`,color:"#F59E0B"},
+                                ].map(k=>(
+                                  <div key={k.label} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                                    <span style={{ fontSize:11, color:"#475569" }}>{k.label}</span>
+                                    <span style={{ fontSize:12, fontWeight:700, color:k.color, textTransform:"capitalize" as const }}>{k.val}</span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Simulado */}
+                              <div style={{ background:"rgba(139,92,246,.08)", borderRadius:12, padding:"16px 18px", border:"1px solid rgba(139,92,246,.25)" }}>
+                                <div style={{ fontSize:11, fontWeight:700, color:"#A78BFA", marginBottom:12, letterSpacing:".04em" }}>APÓS SIMULAÇÃO (+{finSimAumento>=0?"+":""}{finSimAumento}/unid)</div>
+                                {[
+                                  {label:"Saldo",val:fmtBRL2(finSimResult.simulado.saldo),color:finSimResult.simulado.saldo>=finSimResult.atual.saldo?"#10B981":"#EF4444"},
+                                  {label:"Score",val:String(finSimResult.simulado.score),color:finSimResult.simulado.score>=finSimResult.atual.score?"#10B981":"#EF4444"},
+                                  {label:"Risco",val:finSimResult.simulado.risco,color:"#A78BFA"},
+                                  {label:"Inadimplência",val:`${finSimResult.simulado.inadimplencia}%`,color:"#F59E0B"},
+                                ].map(k=>(
+                                  <div key={k.label} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                                    <span style={{ fontSize:11, color:"#475569" }}>{k.label}</span>
+                                    <span style={{ fontSize:12, fontWeight:700, color:k.color, textTransform:"capitalize" as const }}>{k.val}</span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Impacto */}
+                              <div style={{ gridColumn:"1 / -1", background:"rgba(99,102,241,.06)", borderRadius:12, padding:"14px 18px", border:"1px solid rgba(99,102,241,.2)" }}>
+                                <div style={{ fontSize:11, fontWeight:700, color:"#818CF8", marginBottom:10 }}>📊 Impacto Projetado</div>
+                                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:12 }}>
+                                  {[
+                                    {label:"Impacto Mensal",val:fmtBRL2(finSimResult.impacto.mensal)},
+                                    {label:"Impacto Anual",val:fmtBRL2(finSimResult.impacto.anual)},
+                                    {label:"Reserva Adicional",val:fmtBRL2(finSimResult.impacto.reserva_adicional)},
+                                  ].map(k=>(
+                                    <div key={k.label} style={{ textAlign:"center" as const }}>
+                                      <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
+                                      <div style={{ fontSize:15, fontWeight:800, color:"#818CF8" }}>{k.val}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.6, fontStyle:"italic" }}>
+                                  💡 {finSimResult.recomendacao}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ══════════ ABA: DI INSIGHTS ══════════ */}
+                    {finTab === "insights" && (
+                      <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+
+                        {/* Trigger card */}
+                        <div style={{ background:"linear-gradient(135deg,rgba(245,158,11,.08),rgba(251,191,36,.05))", border:"1px solid rgba(245,158,11,.2)", borderRadius:14, padding:"20px 22px" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:14 }}>
+                            <div style={{ fontSize:40 }}>🤖</div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:14, fontWeight:800, color:"#FCD34D" }}>Síndica Virtual Di — Análise Financeira Completa</div>
+                              <div style={{ fontSize:11, color:"#475569", marginTop:2 }}>IA com contexto completo dos dados financeiros · Powered by Claude</div>
+                            </div>
+                            <button onClick={()=>finSindicoGerarInsight()} disabled={finSindicoInsightLoading}
+                              style={{ padding:"10px 22px", borderRadius:10, background: finSindicoInsightLoading?"rgba(245,158,11,.2)":"#F59E0B", border:"none", color: finSindicoInsightLoading?"#FCD34D":"#000", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" as const }}>
+                              {finSindicoInsightLoading ? "⏳ Analisando..." : "⚡ Relatório Completo"}
+                            </button>
+                          </div>
+                          {/* Chips de perguntas rápidas */}
+                          <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const }}>
+                            {["Onde posso reduzir despesas?","Como melhorar a inadimplência?","Previsão para os próximos 3 meses","Compare receitas x despesas por categoria","Riscos financeiros do condomínio","Estratégia de reserva de emergência"].map(q=>(
+                              <button key={q} onClick={()=>finSindicoGerarInsight()} disabled={finSindicoInsightLoading}
+                                style={{ padding:"5px 12px", borderRadius:20, background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.2)", color:"#F59E0B", fontSize:10, cursor:"pointer" }}>
+                                {q}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Result */}
+                        {finSindicoInsight && (
+                          <>
+                            {/* Score cards */}
+                            <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10 }}>
+                              {[
+                                {label:"Score",val:String(finSindicoInsight.score),color:"#6366F1",icon:"📊"},
+                                {label:"Saldo",val:fmtBRL2(finSindicoInsight.saldo),color:finSindicoInsight.saldo>=0?"#10B981":"#EF4444",icon:"💰"},
+                                {label:"Risco",val:finSindicoInsight.risco,color:finSindicoInsight.risco==="baixo"?"#10B981":finSindicoInsight.risco==="moderado"?"#F59E0B":"#EF4444",icon:"🚨"},
+                              ].map(k=>(
+                                <div key={k.label} style={{ background:"#121826", border:`1px solid rgba(255,255,255,.06)`, borderRadius:12, padding:"14px 16px", borderLeft:`3px solid ${k.color}` }}>
+                                  <div style={{ fontSize:10, color:"#475569" }}>{k.icon} {k.label.toUpperCase()}</div>
+                                  <div style={{ fontSize:20, fontWeight:800, color:k.color, marginTop:6, textTransform:"capitalize" as const }}>{k.val}</div>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Análise */}
+                            <div style={{ background:"rgba(245,158,11,.05)", border:"1px solid rgba(245,158,11,.15)", borderRadius:12, padding:"18px 20px" }}>
+                              <div style={{ fontSize:12, fontWeight:700, color:"#FCD34D", marginBottom:10 }}>📋 ANÁLISE GERAL</div>
+                              <div style={{ fontSize:13, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finSindicoInsight.analise}</div>
+                            </div>
+
+                            {/* Riscos */}
+                            {finSindicoInsight.riscos && (
+                              <div style={{ background:"rgba(239,68,68,.05)", border:"1px solid rgba(239,68,68,.15)", borderRadius:12, padding:"18px 20px" }}>
+                                <div style={{ fontSize:12, fontWeight:700, color:"#FCA5A5", marginBottom:10 }}>🚨 RISCOS IDENTIFICADOS</div>
+                                <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finSindicoInsight.riscos}</div>
+                              </div>
+                            )}
+
+                            {/* Recomendações */}
+                            {finSindicoInsight.recomendacoes && (
+                              <div style={{ background:"rgba(16,185,129,.05)", border:"1px solid rgba(16,185,129,.15)", borderRadius:12, padding:"18px 20px" }}>
+                                <div style={{ fontSize:12, fontWeight:700, color:"#6EE7B7", marginBottom:10 }}>✅ RECOMENDAÇÕES</div>
+                                <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.8, whiteSpace:"pre-wrap" as const }}>{finSindicoInsight.recomendacoes}</div>
+                              </div>
+                            )}
+
+                            <div style={{ fontSize:10, color:"#334155", textAlign:"right" as const }}>
+                              Análise gerada em {new Date(finSindicoInsight.gerado_em || Date.now()).toLocaleString("pt-BR")} · Síndica Di (Claude)
+                            </div>
+                          </>
+                        )}
+
+                        {!finSindicoInsight && !finSindicoInsightLoading && (
+                          <div style={{ textAlign:"center", padding:48, color:"#334155", fontSize:13 }}>
+                            <div style={{ fontSize:52, marginBottom:14 }}>🤖</div>
+                            <div style={{ fontSize:14, color:"#475569" }}>Clique em "Relatório Completo" para que a Di avalie a saúde financeira do condomínio</div>
+                            <div style={{ fontSize:11, color:"#334155", marginTop:8 }}>Baseado nos lançamentos cadastrados · Powered by Claude AI</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                  </div>
+
+                  {/* ── MODAL: Add Lançamento ── */}
+                  {finSindicoAddModal && (
+                    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:1000 }}>
+                      <div style={{ background:"#1E293B", border:"1px solid rgba(255,255,255,.1)", borderRadius:18, padding:28, width:480, maxWidth:"95vw" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
+                          <div style={{ fontSize:16, fontWeight:800, color:"#E2E8F0" }}>+ Novo Lançamento</div>
+                          <button onClick={()=>setFinSindicoAddModal(false)} style={{ width:32, height:32, borderRadius:16, background:"rgba(255,255,255,.08)", border:"none", color:"#94A3B8", fontSize:16, cursor:"pointer" }}>✕</button>
+                        </div>
+                        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                            <div>
+                              <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>TIPO</label>
+                              <select value={finSindicoForm.tipo} onChange={e=>setFinSindicoForm(p=>({...p,tipo:e.target.value as "receita"|"despesa"}))}
+                                style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none" }}>
+                                <option value="receita">📈 Receita</option>
+                                <option value="despesa">📉 Despesa</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>STATUS</label>
+                              <select value={finSindicoForm.status} onChange={e=>setFinSindicoForm(p=>({...p,status:e.target.value as any}))}
+                                style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none" }}>
+                                <option value="previsto">Previsto</option>
+                                <option value="pago">Pago</option>
+                                <option value="atrasado">Atrasado</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>DESCRIÇÃO</label>
+                            <input value={finSindicoForm.descricao} onChange={e=>setFinSindicoForm(p=>({...p,descricao:e.target.value}))}
+                              placeholder="Ex: Conta de água março"
+                              style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }}/>
+                          </div>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                            <div>
+                              <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>CATEGORIA</label>
+                              <input value={finSindicoForm.categoria} onChange={e=>setFinSindicoForm(p=>({...p,categoria:e.target.value}))}
+                                placeholder="Ex: limpeza, agua, luz"
+                                style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none" }}/>
+                            </div>
+                            <div>
+                              <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>VALOR (R$)</label>
+                              <input type="number" value={finSindicoForm.valor} onChange={e=>setFinSindicoForm(p=>({...p,valor:e.target.value}))}
+                                placeholder="0,00"
+                                style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none" }}/>
+                            </div>
+                          </div>
+                          <div>
+                            <label style={{ fontSize:10, fontWeight:700, color:"#475569", display:"block", marginBottom:4 }}>DATA</label>
+                            <input type="date" value={finSindicoForm.data} onChange={e=>setFinSindicoForm(p=>({...p,data:e.target.value}))}
+                              style={{ width:"100%", padding:"9px 12px", borderRadius:8, background:"rgba(0,0,0,.3)", border:"1px solid rgba(255,255,255,.1)", color:"#E2E8F0", fontSize:13, outline:"none" }}/>
+                          </div>
+                          <button onClick={finSindicoSalvar} disabled={finSindicoSaving}
+                            style={{ padding:"12px", borderRadius:10, background: finSindicoSaving?"rgba(99,102,241,.3)":"linear-gradient(135deg,#6366F1,#A855F7)", border:"none", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", marginTop:4 }}>
+                            {finSindicoSaving ? "⏳ Salvando..." : "💾 Salvar Lançamento"}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
 
