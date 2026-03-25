@@ -7210,16 +7210,6 @@ export default function App() {
               <div className="login-welcome-sub">Seu perfil é reconhecido automaticamente</div>
             </div>
 
-            {/* 3 Access tabs */}
-            <div className="login-tabs">
-              {(["morador","sindico","gestor"] as const).map(m => (
-                <button key={m} className={`login-tab ${loginMode === m ? "active" : ""}`} onClick={() => setLoginMode(m)}>
-                  <span>{modeInfo.icon && m === loginMode ? { morador:"🏠", sindico:"🛡️", gestor:"⚡" }[m] : { morador:"🏠", sindico:"🛡️", gestor:"⚡" }[m]}</span>
-                  <span>{{ morador:"Morador", sindico:"Síndico", gestor:"Gestor" }[m]}</span>
-                </button>
-              ))}
-            </div>
-
             {/* Form card */}
             <form className="login-form-card" onSubmit={e => { e.preventDefault(); handleLogin(); }}>
               <div className="login-field">
