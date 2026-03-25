@@ -2222,7 +2222,7 @@ export default function App() {
   const [insightsLoading, setInsightsLoading] = useState(false);
 
   // Documentos & Licenças
-  type DocItem = { id: string; nome: string; tipo: string; descricao: string | null; conteudo_texto: string | null; arquivo_url: string | null; arquivo_nome: string | null; arquivo_mime: string | null; arquivo_path: string | null; created_at: string };
+  type DocItem = { id: string; nome: string; tipo: string; descricao: string | null; conteudo_texto: string | null; validade: string | null; arquivo_url: string | null; arquivo_nome: string | null; arquivo_mime: string | null; arquivo_path: string | null; created_at: string };
   const docTipos = [
     { value: "avcb",      label: "🔥 AVCB/Bombeiros" },
     { value: "regimento", label: "📋 Regimento Interno" },
@@ -2243,7 +2243,7 @@ export default function App() {
   const [docFilter, setDocFilter] = useState("todos");
   const [docModal, setDocModal] = useState<"add" | "edit" | null>(null);
   const [docEditId, setDocEditId] = useState<string | null>(null);
-  const [docForm, setDocForm] = useState({ nome: "", tipo: "avcb", descricao: "", conteudo_texto: "" });
+  const [docForm, setDocForm] = useState({ nome: "", tipo: "avcb", descricao: "", conteudo_texto: "", validade: "" });
   const [docSaving, setDocSaving] = useState(false);
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docUploadProgress, setDocUploadProgress] = useState(false);
@@ -2305,6 +2305,7 @@ export default function App() {
         fd.append("tipo", docForm.tipo);
         fd.append("descricao", docForm.descricao);
         fd.append("conteudo_texto", docForm.conteudo_texto);
+        fd.append("validade", docForm.validade);
         fd.append("arquivo", docFile);
         r = await fetch("/api/documentos/upload", { method: "POST", body: fd });
         setDocUploadProgress(false); setDocFile(null);
@@ -2325,7 +2326,7 @@ export default function App() {
       else {
         showToast(docEditId ? "Documento atualizado! ✅" : "Documento adicionado! 📄", "success");
         setDocModal(null); setDocEditId(null); setDocFile(null);
-        setDocForm({ nome: "", tipo: "avcb", descricao: "", conteudo_texto: "" });
+        setDocForm({ nome: "", tipo: "avcb", descricao: "", conteudo_texto: "", validade: "" });
         if (condId) await loadDocs(condId);
       }
     } catch { showToast("Erro de conexão", "error"); }
@@ -5664,7 +5665,7 @@ export default function App() {
                         )}
                       </div>
                       <div style={{ display:"flex", flexDirection:"column", gap:4, flexShrink:0 }}>
-                        <button onClick={() => { setDocEditId(doc.id); setDocForm({ nome:doc.nome, tipo:doc.tipo, descricao:doc.descricao||"", conteudo_texto:doc.conteudo_texto||"" }); setDocFile(null); setDocModal("edit"); }}
+                        <button onClick={() => { setDocEditId(doc.id); setDocForm({ nome:doc.nome, tipo:doc.tipo, descricao:doc.descricao||"", conteudo_texto:doc.conteudo_texto||"", validade:doc.validade||"" }); setDocFile(null); setDocModal("edit"); }}
                           style={{ background:"rgba(99,102,241,.12)", border:"1px solid rgba(99,102,241,.2)", color:"#818CF8", borderRadius:8, padding:"4px 8px", fontSize:10, fontWeight:700, cursor:"pointer" }}>✏️</button>
                         <button onClick={() => deleteDoc(doc.id)}
                           style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", color:"#EF4444", borderRadius:8, padding:"4px 8px", fontSize:10, fontWeight:700, cursor:"pointer" }}>🗑</button>
@@ -5687,7 +5688,7 @@ export default function App() {
 
               {/* ── Botão adicionar ── */}
               <div style={{ padding:"10px 14px", borderTop:"1px solid var(--card-border)", flexShrink:0 }}>
-                <button onClick={() => { setDocForm({ nome:"", tipo:"avcb", descricao:"", conteudo_texto:"" }); setDocEditId(null); setDocModal("add"); }}
+                <button onClick={() => { setDocForm({ nome:"", tipo:"avcb", descricao:"", conteudo_texto:"", validade:"" }); setDocEditId(null); setDocModal("add"); }}
                   style={{ width:"100%", padding:"12px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#7C3AED,#A855F7)", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                   + Adicionar Documento / Licença
                 </button>
@@ -5798,13 +5799,22 @@ export default function App() {
                       </div>
 
                       <div>
-                        <label style={{ fontSize:11, fontWeight:700, color:"var(--neu-text-2)" }}>
-                          Conteúdo de Texto <span style={{ color:"#A78BFA" }}>(para Di consultar)</span>
+                        <label style={{ fontSize:11, fontWeight:700, color:"var(--neu-text-2)" }}>Data de Validade <span style={{ color:"#64748B" }}>(opcional)</span></label>
+                        <input type="date" value={docForm.validade} onChange={e => setDocForm(p => ({ ...p, validade: e.target.value }))}
+                          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--card-border)", background:"var(--neu-bg)", color:"var(--neu-text)", fontSize:13, fontFamily:"inherit", marginTop:4, boxSizing:"border-box" }} />
+                      </div>
+
+                      <div style={{ background:"rgba(124,58,237,.08)", border:"1.5px solid rgba(124,58,237,.3)", borderRadius:12, padding:"12px 12px 8px" }}>
+                        <label style={{ fontSize:11, fontWeight:800, color:"#A78BFA", display:"flex", alignItems:"center", gap:6 }}>
+                          🤖 Conteúdo de Texto <span style={{ fontWeight:600, color:"#7C3AED" }}>— Di e Chat IA consultam este texto para responder perguntas</span>
                         </label>
                         <textarea value={docForm.conteudo_texto} onChange={e => setDocForm(p => ({ ...p, conteudo_texto: e.target.value }))}
-                          placeholder="Cole aqui o texto completo do documento: regras, normas, prazos, informações relevantes..."
-                          rows={5}
-                          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid var(--card-border)", background:"var(--neu-bg)", color:"var(--neu-text)", fontSize:12, fontFamily:"inherit", marginTop:4, boxSizing:"border-box", resize:"vertical" }} />
+                          placeholder="Cole aqui o texto completo do documento: regras, normas, prazos, artigos do regimento, convenção, contrato… Quanto mais texto, mais a Di consegue responder sobre ele no Chat IA e gerar cards de dicas."
+                          rows={6}
+                          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid rgba(124,58,237,.2)", background:"rgba(0,0,0,.15)", color:"var(--neu-text)", fontSize:12, fontFamily:"inherit", marginTop:8, boxSizing:"border-box", resize:"vertical", lineHeight:1.5 }} />
+                        <div style={{ fontSize:10, color:"#7C5CFC", marginTop:4, textAlign:"right" }}>
+                          {docForm.conteudo_texto.length} caracteres
+                        </div>
                       </div>
 
                       {/* Upload progress */}
@@ -13182,7 +13192,7 @@ Content-Type: application/json
                   <div style={{ fontSize:18, fontWeight:800, color:"#E2E8F0" }}>📄 Documentos & Licenças</div>
                   <div style={{ fontSize:12, color:"#475569" }}>Gestão de documentos, licenças e certidões do condomínio</div>
                 </div>
-                <button onClick={() => { setDocForm({ nome:"", tipo:"avcb", descricao:"", conteudo_texto:"" }); setDocEditId(null); setDocFile(null); setDocModal("add"); }}
+                <button onClick={() => { setDocForm({ nome:"", tipo:"avcb", descricao:"", conteudo_texto:"", validade:"" }); setDocEditId(null); setDocFile(null); setDocModal("add"); }}
                   style={{ marginLeft:"auto", background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:10, padding:"9px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const }}>
                   + Novo Documento
                 </button>
@@ -13249,7 +13259,7 @@ Content-Type: application/json
                               </div>
                             </div>
                             <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-                              <button onClick={() => { setDocEditId(doc.id); setDocForm({ nome:doc.nome, tipo:doc.tipo, descricao:doc.descricao||"", conteudo_texto:doc.conteudo_texto||"" }); setDocFile(null); setDocModal("edit"); }}
+                              <button onClick={() => { setDocEditId(doc.id); setDocForm({ nome:doc.nome, tipo:doc.tipo, descricao:doc.descricao||"", conteudo_texto:doc.conteudo_texto||"", validade:doc.validade||"" }); setDocFile(null); setDocModal("edit"); }}
                                 style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.2)", color:"#818CF8", borderRadius:8, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>✏️</button>
                               <button onClick={() => deleteDoc(doc.id)}
                                 style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", color:"#EF4444", borderRadius:8, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>🗑</button>
@@ -13270,7 +13280,90 @@ Content-Type: application/json
                 </div>
               )}
 
-              {/* Migrate SQL modal (reutiliza o mesmo modal do Síndico — já está no DOM) */}
+              {/* ── Modal Documento (Gestor) ── */}
+              {docModal && (() => {
+                const isImgG2 = docFile ? docFile.type.startsWith("image/") : false;
+                const previewG2 = docFile && isImgG2 ? URL.createObjectURL(docFile) : null;
+                return (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:9000, display:"flex", alignItems:"center", justifyContent:"center" }}
+                  onClick={e => { if (e.target === e.currentTarget) { setDocModal(null); setDocFile(null); } }}>
+                  <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:20, width:"100%", maxWidth:560, maxHeight:"90vh", overflowY:"auto", padding:"24px 24px 28px", boxShadow:"0 20px 60px rgba(0,0,0,.8)" }}>
+                    <div style={{ fontSize:16, fontWeight:900, color:"#E2E8F0", marginBottom:20, display:"flex", alignItems:"center", gap:10 }}>
+                      {docModal === "edit" ? "✏️ Editar Documento" : "📄 Novo Documento"}
+                      <button onClick={() => { setDocModal(null); setDocFile(null); }} style={{ marginLeft:"auto", background:"rgba(255,255,255,.08)", border:"none", color:"#94A3B8", borderRadius:"50%", width:28, height:28, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center" }}>✕</button>
+                    </div>
+                    <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                      <div>
+                        <label style={{ fontSize:11, fontWeight:700, color:"#94A3B8" }}>Nome do Documento *</label>
+                        <input value={docForm.nome} onChange={e => setDocForm(p => ({ ...p, nome: e.target.value }))}
+                          placeholder="Ex: AVCB 2024 – Validade Jan/2026"
+                          style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"#E2E8F0", fontSize:13, fontFamily:"inherit", marginTop:4, boxSizing:"border-box" }} />
+                      </div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                        <div>
+                          <label style={{ fontSize:11, fontWeight:700, color:"#94A3B8" }}>Tipo</label>
+                          <select value={docForm.tipo} onChange={e => setDocForm(p => ({ ...p, tipo: e.target.value }))}
+                            style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"#E2E8F0", fontSize:13, fontFamily:"inherit", marginTop:4, boxSizing:"border-box" }}>
+                            {docTipos.map(t => <option key={t.value} value={t.value} style={{ background:"#1E293B" }}>{t.label}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label style={{ fontSize:11, fontWeight:700, color:"#94A3B8" }}>Data de Validade</label>
+                          <input type="date" value={docForm.validade} onChange={e => setDocForm(p => ({ ...p, validade: e.target.value }))}
+                            style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"#E2E8F0", fontSize:13, fontFamily:"inherit", marginTop:4, boxSizing:"border-box" }} />
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{ fontSize:11, fontWeight:700, color:"#94A3B8" }}>Descrição / Observações</label>
+                        <input value={docForm.descricao} onChange={e => setDocForm(p => ({ ...p, descricao: e.target.value }))}
+                          placeholder="Ex: Renovado em 2024, vigente até 31/12/2025"
+                          style={{ width:"100%", padding:"10px 14px", borderRadius:10, border:"1px solid rgba(255,255,255,.1)", background:"rgba(255,255,255,.05)", color:"#E2E8F0", fontSize:13, fontFamily:"inherit", marginTop:4, boxSizing:"border-box" }} />
+                      </div>
+                      {/* Arquivo */}
+                      <div>
+                        <label style={{ fontSize:11, fontWeight:700, color:"#94A3B8" }}>Arquivo <span style={{ color:"#A78BFA" }}>PDF, imagem ou foto (até 25 MB)</span></label>
+                        <input id="doc-file-input-g" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,.bmp,.doc,.docx,.txt" style={{ display:"none" }}
+                          onChange={e => { const f = e.target.files?.[0] ?? null; setDocFile(f); }} />
+                        <button type="button" onClick={() => document.getElementById("doc-file-input-g")?.click()}
+                          style={{ width:"100%", marginTop:4, padding:"10px 14px", borderRadius:10, border:"2px dashed rgba(124,58,237,.3)", background:"rgba(124,58,237,.05)", color:"#A78BFA", fontSize:12, fontWeight:700, cursor:"pointer", textAlign:"center", fontFamily:"inherit" }}>
+                          {docFile ? `📎 ${docFile.name}` : "📎 Escolher arquivo…"}
+                        </button>
+                        {previewG2 && <img src={previewG2} alt="preview" style={{ marginTop:8, width:"100%", maxHeight:150, objectFit:"contain", borderRadius:10, border:"1px solid rgba(255,255,255,.1)" }} />}
+                        {docFile && !isImgG2 && <div style={{ marginTop:6, padding:"8px 12px", borderRadius:10, background:"rgba(239,68,68,.08)", border:"1px solid rgba(239,68,68,.2)", fontSize:11, color:"#EF4444" }}>📄 {docFile.name} · {(docFile.size/1024).toFixed(0)} KB</div>}
+                        {docFile && <button type="button" onClick={() => { setDocFile(null); const el = document.getElementById("doc-file-input-g") as HTMLInputElement; if (el) el.value = ""; }}
+                          style={{ marginTop:4, background:"none", border:"none", color:"#64748B", fontSize:11, cursor:"pointer", textDecoration:"underline" }}>Remover arquivo</button>}
+                      </div>
+                      {/* Conteúdo de Texto — bloco destacado */}
+                      <div style={{ background:"rgba(124,58,237,.07)", border:"1.5px solid rgba(124,58,237,.25)", borderRadius:12, padding:"12px 14px 8px" }}>
+                        <label style={{ fontSize:11, fontWeight:800, color:"#A78BFA", display:"flex", alignItems:"center", gap:6 }}>
+                          🤖 Conteúdo de Texto <span style={{ fontWeight:600, color:"#7C5CFC", fontSize:10 }}>— Di e Chat IA consultam este texto para responder perguntas</span>
+                        </label>
+                        <textarea value={docForm.conteudo_texto} onChange={e => setDocForm(p => ({ ...p, conteudo_texto: e.target.value }))}
+                          placeholder="Cole aqui o texto completo do documento: regras, normas, prazos, artigos do regimento, convenção, contrato… Quanto mais texto, mais a Di consegue responder sobre ele no Chat IA e gerar cards de dicas."
+                          rows={6}
+                          style={{ width:"100%", padding:"10px 12px", borderRadius:10, border:"1px solid rgba(124,58,237,.2)", background:"rgba(0,0,0,.2)", color:"#E2E8F0", fontSize:12, fontFamily:"inherit", marginTop:8, boxSizing:"border-box", resize:"vertical", lineHeight:1.5 }} />
+                        <div style={{ fontSize:10, color:"#7C5CFC", marginTop:4, textAlign:"right" }}>{docForm.conteudo_texto.length} caracteres</div>
+                      </div>
+                      {docUploadProgress && (
+                        <div style={{ padding:"10px 14px", borderRadius:10, background:"rgba(124,58,237,.1)", border:"1px solid rgba(124,58,237,.25)", fontSize:12, color:"#A78BFA", display:"flex", alignItems:"center", gap:8 }}>
+                          ⏳ Enviando arquivo… aguarde
+                        </div>
+                      )}
+                      <div style={{ display:"flex", gap:10, marginTop:4 }}>
+                        <button onClick={() => { setDocModal(null); setDocFile(null); }}
+                          style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,.1)", background:"transparent", color:"#94A3B8", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                          Cancelar
+                        </button>
+                        <button onClick={saveDoc} disabled={docSaving || !docForm.nome.trim()}
+                          style={{ flex:2, padding:"12px", borderRadius:12, border:"none", background:"linear-gradient(135deg,#6366F1,#8B5CF6)", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer", opacity: (docSaving || !docForm.nome.trim()) ? 0.6 : 1 }}>
+                          {docSaving ? (docUploadProgress ? "Enviando arquivo…" : "Salvando…") : docModal === "edit" ? "Salvar Alterações" : "Adicionar Documento"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                );
+              })()}
             </div>
             );
           })()}

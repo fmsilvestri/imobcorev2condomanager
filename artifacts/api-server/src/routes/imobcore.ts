@@ -651,7 +651,7 @@ ${(alertas || []).map((a: AlertaRow) =>
       const docsAVencer = docsChatList.filter(d => d.validade && new Date(d.validade) >= hojeDoc && new Date(d.validade) <= em30);
       const docsTxt = docsChatList.slice(0, 20).map(d => {
         const status = !d.validade ? "sem vencimento" : new Date(d.validade) < hojeDoc ? "VENCIDO ⛔" : new Date(d.validade) <= em30 ? `vence em ${Math.ceil((new Date(d.validade).getTime()-hojeDoc.getTime())/86400000)}d ⚠️` : `válido até ${new Date(d.validade).toLocaleDateString("pt-BR")} ✅`;
-        const resumo = d.conteudo_texto ? ` | "${d.conteudo_texto.slice(0, 120).replace(/\n/g," ")}"` : d.descricao ? ` | ${d.descricao.slice(0,80)}` : "";
+        const resumo = d.conteudo_texto ? ` | CONTEÚDO: "${d.conteudo_texto.slice(0, 600).replace(/\n/g," ")}"` : d.descricao ? ` | ${d.descricao.slice(0,120)}` : "";
         return `  - ${d.nome} (${d.tipo}) | ${status}${resumo}`;
       }).join("\n");
       contextSections.push(`📄 DOCUMENTOS DO CONDOMÍNIO (${docsChatList.length} cadastrados | ${docsVencidos.length} vencidos | ${docsAVencer.length} a vencer em 30 dias):
@@ -3595,7 +3595,7 @@ function gerarCardsInteligentes(d: {
   comunicados?: { titulo: string; categoria: string }[];
   medidores?: { id: string; tipo: string; local?: string; ultima_leitura?: number | null; ultima_leitura_em?: string | null; unidade_medida?: string; alerta_consumo_alto?: number | null }[];
   leiturasUtil?: { medidor_id: string; data_leitura: string; consumo?: number | null; custo?: number | null }[];
-  documentos?: { nome: string; tipo: string; validade?: string | null }[];
+  documentos?: { nome: string; tipo: string; validade?: string | null; conteudo_texto?: string | null }[];
 }): DiSmartCard[] {
   const cards: DiSmartCard[] = [];
 
@@ -3802,6 +3802,25 @@ function gerarCardsInteligentes(d: {
         });
       }
     }
+
+    // ── 📜 INSIGHT DE CONTEÚDO DOS DOCUMENTOS ──────────────────────────────
+    const docsComTexto = d.documentos.filter(doc => doc.conteudo_texto && doc.conteudo_texto.trim().length > 30);
+    if (docsComTexto.length > 0) {
+      for (const doc of docsComTexto.slice(0, 3)) {
+        const texto = doc.conteudo_texto!.trim();
+        // Extrai a primeira frase significativa (após cabeçalhos)
+        const linhas = texto.split(/\n+/).map(l => l.trim()).filter(l => l.length > 20 && !/^(CAPÍTULO|ART\.|TÍTULO|SEÇÃO|\d+\.?\s*$)/i.test(l));
+        const preview = linhas[0] ? linhas[0].slice(0, 200) : texto.slice(0, 200);
+        const icone = doc.tipo === "regimento" ? "📜" : doc.tipo === "convencao" ? "🏛️" : doc.tipo === "avcb" ? "🔥" : doc.tipo === "alvara" ? "🏷️" : doc.tipo === "contrato" ? "📑" : "📄";
+        cards.push({
+          tipo: "insight",
+          titulo: `${icone} ${doc.nome}`,
+          mensagem: preview + (texto.length > 200 ? "…" : ""),
+          acao: "Consultar o documento completo para detalhes",
+          badge: doc.tipo.charAt(0).toUpperCase() + doc.tipo.slice(1),
+        });
+      }
+    }
   }
 
   // ── 📦 ENCOMENDAS PENDENTES ──────────────────────────────────────────────────
@@ -3917,8 +3936,8 @@ router.post("/di", async (req: Request, res: Response) => {
         : Promise.resolve({ data: null, error: null }),
       // Documentos
       condominio_id
-        ? supabase.from("documentos_condominio").select("nome,tipo,validade").eq("condominio_id", condominio_id).limit(30)
-        : Promise.resolve({ data: [] as { nome: string; tipo: string; validade?: string | null }[], error: null }),
+        ? supabase.from("documentos_condominio").select("nome,tipo,validade,conteudo_texto").eq("condominio_id", condominio_id).limit(30)
+        : Promise.resolve({ data: [] as { nome: string; tipo: string; validade?: string | null; conteudo_texto?: string | null }[], error: null }),
     ]);
 
     // ── Consolidar sensores de água ────────────────────────────────────────
@@ -3972,7 +3991,7 @@ router.post("/di", async (req: Request, res: Response) => {
       comunicados: (comunicadosRows || []) as { titulo: string; categoria: string }[],
       medidores: (medidoresBriefing || []) as { id: string; tipo: string; local?: string; ultima_leitura?: number | null; ultima_leitura_em?: string | null; unidade_medida?: string; alerta_consumo_alto?: number | null }[],
       leiturasUtil: (leiturasBriefing || []) as { medidor_id: string; data_leitura: string; consumo?: number | null; custo?: number | null }[],
-      documentos: (documentosBriefing || []) as { nome: string; tipo: string; validade?: string | null }[],
+      documentos: (documentosBriefing || []) as { nome: string; tipo: string; validade?: string | null; conteudo_texto?: string | null }[],
     });
 
     // ── Enriquecer com Claude (gera fala personalizada + pode adicionar cards extra) ──
@@ -5920,7 +5939,7 @@ router.get("/documentos", async (req: Request, res: Response) => {
   if (!condId) return res.status(400).json({ error: "condominio_id required" });
   const { data, error } = await supabase
     .from("documentos_condominio")
-    .select("id,nome,tipo,descricao,conteudo_texto,arquivo_url,arquivo_nome,arquivo_mime,arquivo_path,created_at")
+    .select("id,nome,tipo,descricao,conteudo_texto,validade,arquivo_url,arquivo_nome,arquivo_mime,arquivo_path,created_at")
     .eq("condominio_id", condId)
     .order("created_at", { ascending: false });
   if (error) {
@@ -5932,12 +5951,12 @@ router.get("/documentos", async (req: Request, res: Response) => {
 
 // POST /api/documentos — JSON-only (text content, no file)
 router.post("/documentos", async (req: Request, res: Response) => {
-  const { condominio_id, nome, tipo, descricao, conteudo_texto } = req.body as Record<string, string>;
+  const { condominio_id, nome, tipo, descricao, conteudo_texto, validade } = req.body as Record<string, string>;
   if (!condominio_id || !nome || !tipo)
     return res.status(400).json({ error: "condominio_id, nome e tipo são obrigatórios" });
   const { data, error } = await supabase
     .from("documentos_condominio")
-    .insert({ condominio_id, nome, tipo, descricao: descricao || null, conteudo_texto: conteudo_texto || null })
+    .insert({ condominio_id, nome, tipo, descricao: descricao || null, conteudo_texto: conteudo_texto || null, validade: validade || null })
     .select().single();
   if (error) {
     if (isMissingTable(error))
@@ -5949,7 +5968,7 @@ router.post("/documentos", async (req: Request, res: Response) => {
 
 // POST /api/documentos/upload — multipart: create document + upload file
 router.post("/documentos/upload", _docUpload.single("arquivo"), async (req: Request, res: Response) => {
-  const { condominio_id, nome, tipo, descricao, conteudo_texto } = req.body as Record<string, string>;
+  const { condominio_id, nome, tipo, descricao, conteudo_texto, validade } = req.body as Record<string, string>;
   if (!condominio_id || !nome || !tipo)
     return res.status(400).json({ error: "condominio_id, nome e tipo são obrigatórios" });
 
@@ -5972,7 +5991,7 @@ router.post("/documentos/upload", _docUpload.single("arquivo"), async (req: Requ
 
   const { data, error } = await supabase
     .from("documentos_condominio")
-    .insert({ condominio_id, nome, tipo, descricao: descricao || null, conteudo_texto: conteudo_texto || null, arquivo_url, arquivo_nome, arquivo_mime, arquivo_path })
+    .insert({ condominio_id, nome, tipo, descricao: descricao || null, conteudo_texto: conteudo_texto || null, validade: validade || null, arquivo_url, arquivo_nome, arquivo_mime, arquivo_path })
     .select().single();
   if (error) {
     if (isMissingTable(error))
@@ -5985,10 +6004,10 @@ router.post("/documentos/upload", _docUpload.single("arquivo"), async (req: Requ
 // PUT /api/documentos/:id — update text fields
 router.put("/documentos/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { nome, tipo, descricao, conteudo_texto } = req.body as Record<string, string>;
+  const { nome, tipo, descricao, conteudo_texto, validade } = req.body as Record<string, string>;
   const { data, error } = await supabase
     .from("documentos_condominio")
-    .update({ nome, tipo, descricao: descricao || null, conteudo_texto: conteudo_texto || null })
+    .update({ nome, tipo, descricao: descricao || null, conteudo_texto: conteudo_texto || null, validade: validade || null })
     .eq("id", id).select().single();
   if (error) return res.status(500).json({ error: error.message });
   return res.json({ doc: data });
