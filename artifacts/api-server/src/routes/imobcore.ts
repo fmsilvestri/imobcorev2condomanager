@@ -3566,7 +3566,7 @@ router.post("/piscina", async (req: Request, res: Response) => {
     temperatura: tempN ?? null, alcalinidade: alcN ?? null, dureza_calcica: durN ?? null,
     observacoes: observacoes || null, status,
   }).select().single();
-  if (error && isMissingTable(error)) return res.status(503).json({ error: "missing_table", message: "Tabela piscina_leituras não existe. Execute o SQL de migração em /api/admin/migration-sql" });
+  if (error && isMissingTable(error)) return res.status(503).json({ error: "missing_table", message: "Tabela piscina_leituras não existe. Execute o SQL de migração em /api/admin/manutencao/migration-sql" });
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true, leitura: data });
 });
