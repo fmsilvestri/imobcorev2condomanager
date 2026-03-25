@@ -5252,25 +5252,40 @@ export default function App() {
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#F87171" }}>🚨 NÍVEL CRÍTICO – Solicitar recarga urgente!</div>
                 </div>
               )}
-              {/* Level indicator */}
-              <div className="ph-os-item" style={{ textAlign: "center", padding: 20, marginBottom: 14 }}>
-                <div style={{ fontSize: 11, color: "#475569", marginBottom: 8 }}>NÍVEL ATUAL</div>
-                <div style={{ fontSize: 42, fontWeight: 800, color: barColor }}>{nivelAtual}%</div>
-                <div style={{ margin: "12px auto", width: "100%", height: 12, background: "rgba(255,255,255,.06)", borderRadius: 6, overflow: "hidden" }}>
-                  <div style={{ width: `${nivelAtual}%`, height: "100%", background: barColor, borderRadius: 6, transition: "width .5s" }} />
-                </div>
-                <div style={{ fontSize: 11, color: "#475569" }}>Fornecedora: Ultragaz · Próxima leitura: 15 dias</div>
-              </div>
-              {/* KPIs */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+              {/* Level indicator — card 3D */}
+              {(() => {
+                const top  = nivelAtual > 50 ? "#6EE7B7" : nivelAtual > 20 ? "#FDE68A" : "#FCA5A5";
+                const bot  = nivelAtual > 50 ? "#059669" : nivelAtual > 20 ? "#D97706" : "#DC2626";
+                const edge = nivelAtual > 50 ? "#047857" : nivelAtual > 20 ? "#B45309" : "#991B1B";
+                const glow = nivelAtual > 50 ? "rgba(16,185,129,.55)" : nivelAtual > 20 ? "rgba(245,158,11,.55)" : "rgba(239,68,68,.55)";
+                return (
+                  <div style={{ borderRadius:18, padding:"20px 18px 18px", marginBottom:14, textAlign:"center", position:"relative", overflow:"hidden", background:`linear-gradient(160deg,${top} 0%,${bot} 100%)`, boxShadow:`0 4px 0 ${edge}, 0 8px 28px ${glow}, inset 0 1px 0 rgba(255,255,255,.35)`, border:"1px solid rgba(255,255,255,.18)" }}>
+                    {/* Shine */}
+                    <div style={{ position:"absolute",top:0,left:0,right:0,height:"50%",background:"linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,0))",borderRadius:"18px 18px 0 0",pointerEvents:"none" }} />
+                    {/* Decorative bg icon */}
+                    <div style={{ position:"absolute",bottom:-10,right:8,fontSize:64,opacity:.1,lineHeight:1,pointerEvents:"none" }}>🔥</div>
+                    <div style={{ fontSize:10, fontWeight:800, color:"rgba(255,255,255,.75)", letterSpacing:".1em", textTransform:"uppercase", marginBottom:8, position:"relative" }}>NÍVEL ATUAL</div>
+                    <div style={{ fontSize:52, fontWeight:900, color:"#fff", lineHeight:1, letterSpacing:"-2px", textShadow:"0 4px 12px rgba(0,0,0,.35)", position:"relative" }}>{nivelAtual}%</div>
+                    {/* Progress bar */}
+                    <div style={{ margin:"14px 0 10px", width:"100%", height:14, background:"rgba(0,0,0,.25)", borderRadius:8, overflow:"hidden", position:"relative" }}>
+                      <div style={{ width:`${nivelAtual}%`, height:"100%", background:"rgba(255,255,255,.85)", borderRadius:8, transition:"width .6s ease", boxShadow:"0 0 8px rgba(255,255,255,.6)" }} />
+                    </div>
+                    <div style={{ fontSize:11, color:"rgba(255,255,255,.8)", fontWeight:600, position:"relative" }}>🏭 Fornecedora: Ultragaz &nbsp;·&nbsp; 📅 Próxima leitura: 15 dias</div>
+                  </div>
+                );
+              })()}
+              {/* KPIs — 3 cards 3D */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
                 {[
-                  { label: "Mín", val: Math.min(...gasLeituras.map(l=>l.nivel)) + "%", color: "#EF4444" },
-                  { label: "Médio", val: Math.round(gasLeituras.reduce((s,l)=>s+l.nivel,0)/gasLeituras.length) + "%", color: "#F59E0B" },
-                  { label: "Máx", val: Math.max(...gasLeituras.map(l=>l.nivel)) + "%", color: "#10B981" },
+                  { label:"Mín",   icon:"📉", val: gasLeituras.length ? Math.min(...gasLeituras.map(l=>l.nivel))+"%" : "—", top:"#FCA5A5", bot:"#DC2626", edge:"#991B1B", glow:"rgba(239,68,68,.55)" },
+                  { label:"Médio", icon:"📊", val: gasLeituras.length ? Math.round(gasLeituras.reduce((s,l)=>s+l.nivel,0)/gasLeituras.length)+"%" : "—", top:"#FDE68A", bot:"#D97706", edge:"#B45309", glow:"rgba(245,158,11,.55)" },
+                  { label:"Máx",   icon:"📈", val: gasLeituras.length ? Math.max(...gasLeituras.map(l=>l.nivel))+"%" : "—", top:"#6EE7B7", bot:"#059669", edge:"#047857", glow:"rgba(16,185,129,.55)" },
                 ].map(k => (
-                  <div key={k.label} style={{ background: "rgba(255,255,255,.04)", border: "1px solid rgba(255,255,255,.06)", borderRadius: 10, padding: "10px 8px", textAlign: "center" }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: k.color }}>{k.val}</div>
-                    <div style={{ fontSize: 10, color: "#475569" }}>{k.label}</div>
+                  <div key={k.label} style={{ borderRadius:14, padding:"12px 8px 10px", textAlign:"center", position:"relative", overflow:"hidden", background:`linear-gradient(160deg,${k.top} 0%,${k.bot} 100%)`, boxShadow:`0 3px 0 ${k.edge}, 0 6px 18px ${k.glow}, inset 0 1px 0 rgba(255,255,255,.35)`, border:"1px solid rgba(255,255,255,.15)" }}>
+                    <div style={{ position:"absolute",top:0,left:0,right:0,height:"50%",background:"linear-gradient(180deg,rgba(255,255,255,.28),rgba(255,255,255,0))",borderRadius:"14px 14px 0 0",pointerEvents:"none" }} />
+                    <div style={{ position:"absolute",bottom:-5,right:2,fontSize:28,opacity:.15,lineHeight:1,pointerEvents:"none" }}>{k.icon}</div>
+                    <div style={{ fontSize:16, fontWeight:900, color:"#fff", lineHeight:1.1, textShadow:"0 2px 6px rgba(0,0,0,.35)", position:"relative", letterSpacing:"-0.5px" }}>{k.val}</div>
+                    <div style={{ fontSize:9, color:"rgba(255,255,255,.82)", fontWeight:800, textTransform:"uppercase", letterSpacing:".06em", marginTop:4, position:"relative" }}>{k.label}</div>
                   </div>
                 ))}
               </div>
