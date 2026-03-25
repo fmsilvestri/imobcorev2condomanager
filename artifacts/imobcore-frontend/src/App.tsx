@@ -1459,6 +1459,107 @@ export default function App() {
     w.onload = () => { w.focus(); w.print(); };
   };
 
+  const equipExportPDF = () => {
+    if (!equipList.length) { showToast("Nenhum equipamento para exportar", "error"); return; }
+    const condNome = dash?.condominios?.find(c => c.id === condId)?.nome || "Condomínio";
+    const now = new Date().toLocaleString("pt-BR");
+    const statusColor: Record<string,{bg:string;c:string}> = {
+      operacional: { bg:"#D1FAE5", c:"#059669" },
+      atencao:     { bg:"#FEF3C7", c:"#D97706" },
+      manutencao:  { bg:"#FEE2E2", c:"#DC2626" },
+      inativo:     { bg:"#F1F5F9", c:"#64748B" },
+    };
+    const statusLabel: Record<string,string> = {
+      operacional:"Operacional", atencao:"Atenção", manutencao:"Em Manutenção", inativo:"Inativo"
+    };
+    const fmtBRL = (v: number) => v.toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+    const fmtDate = (d: string) => d ? new Date(d).toLocaleDateString("pt-BR") : "—";
+
+    const rows = equipList.map((eq, i) => {
+      const sc = statusColor[eq.status] || statusColor["inativo"];
+      return `<tr style="background:${i%2===0?"#fff":"#f8fafc"};">
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;font-weight:600;color:#1e293b;">${eq.nome}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;color:#475569;">${eq.categoria||"—"}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;color:#475569;">${eq.local||"—"}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;color:#475569;">${eq.fabricante||"—"}${eq.modelo?" / "+eq.modelo:""}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;color:#475569;">${eq.serie||"—"}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;color:#475569;">${fmtDate(eq.dataInstalacao)}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;color:#475569;">${eq.proxManutencao?fmtDate(eq.proxManutencao):"—"}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;color:#475569;">${eq.ultimaManutencao?fmtDate(eq.ultimaManutencao):"—"}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;text-align:right;color:${eq.custoManutencao>0?"#D97706":"#94A3B8"};font-weight:${eq.custoManutencao>0?"700":"400"};">${eq.custoManutencao>0?fmtBRL(eq.custoManutencao):"—"}</td>
+        <td style="padding:8px 10px;border-bottom:1px solid #f1f5f9;text-align:center;">
+          <span style="font-size:11px;font-weight:700;color:${sc.c};background:${sc.bg};border-radius:20px;padding:3px 10px;white-space:nowrap;">${statusLabel[eq.status]||eq.status}</span>
+        </td>
+      </tr>`;
+    }).join("");
+
+    const totais = {
+      operacional: equipList.filter(e=>e.status==="operacional").length,
+      atencao:     equipList.filter(e=>e.status==="atencao").length,
+      manutencao:  equipList.filter(e=>e.status==="manutencao").length,
+      inativo:     equipList.filter(e=>e.status==="inativo").length,
+      custoTotal:  equipList.reduce((s,e)=>s+(Number(e.custoManutencao)||0),0),
+    };
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Equipamentos – ${condNome}</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin:0; padding:0; background:#fff; color:#1e293b; }
+        .page { max-width:1100px; margin:0 auto; padding:32px 40px; }
+        table { width:100%; border-collapse:collapse; font-size:12px; }
+        th { text-align:left; padding:9px 10px; background:#f1f5f9; border-bottom:2px solid #e2e8f0; font-size:11px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:.04em; }
+        tr:hover { background:#f8fafc !important; }
+        @media print { body { padding:0; } .page { padding:20px 24px; } }
+      </style>
+    </head><body><div class="page">
+      <!-- HEADER -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:18px;border-bottom:3px solid #7C3AED;">
+        <div>
+          <div style="font-size:22px;font-weight:900;color:#7C3AED;">⚙️ Relação de Equipamentos</div>
+          <div style="font-size:16px;font-weight:700;color:#1e293b;margin-top:4px;">${condNome}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px;">Gerado em ${now}</div>
+        </div>
+        <div style="text-align:right;font-size:11px;color:#64748B;"><div>ImobCore v2</div><div>Módulo Manutenção</div></div>
+      </div>
+      <!-- RESUMO -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:28px;">
+        ${[
+          { label:"Total", val:String(equipList.length), color:"#7C3AED" },
+          { label:"Operacionais", val:String(totais.operacional), color:"#059669" },
+          { label:"Atenção", val:String(totais.atencao), color:"#D97706" },
+          { label:"Em Manutenção", val:String(totais.manutencao), color:"#DC2626" },
+          { label:"Custo Total", val:fmtBRL(totais.custoTotal), color:"#0284C7" },
+        ].map(k=>`<div style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;text-align:center;">
+          <div style="font-size:9px;color:#64748B;font-weight:700;text-transform:uppercase;letter-spacing:.05em;">${k.label}</div>
+          <div style="font-size:18px;font-weight:900;color:${k.color};margin-top:5px;">${k.val}</div>
+        </div>`).join("")}
+      </div>
+      <!-- TABELA -->
+      <div style="font-size:12px;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Equipamentos (${equipList.length})</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Nome</th><th>Categoria</th><th>Local</th><th>Fabricante / Modelo</th>
+            <th>Série</th><th>Instalação</th><th>Próx. Manut.</th><th>Última Manut.</th>
+            <th style="text-align:right;">Custo</th><th style="text-align:center;">Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <!-- FOOTER -->
+      <div style="margin-top:28px;padding-top:14px;border-top:1px solid #e2e8f0;font-size:10px;color:#94A3B8;display:flex;justify-content:space-between;">
+        <span>ImobCore v2 — Gestão de Condomínios com IA</span>
+        <span>${now}</span>
+      </div>
+    </div></body></html>`;
+
+    const w = window.open("", "_blank");
+    if (!w) { showToast("Popup bloqueado — libere popups para exportar PDF", "error"); return; }
+    w.document.write(html);
+    w.document.close();
+    w.onload = () => { w.focus(); w.print(); };
+  };
+
   const planoToggleEquip = (eq: { id: string; nome: string }) => {
     const exists = planoForm.equipamentos_itens.find(e => e.equipId === eq.id);
     const newItens = exists
@@ -5737,8 +5838,18 @@ export default function App() {
               )}
 
               {/* ── Equipamentos Resumo ── */}
-              <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, fontWeight:800, color:"#94A3B8", margin:"16px 0 10px", textTransform:"uppercase" as const, letterSpacing:".05em" }}>
-                <span style={{ fontSize:14 }}>⚙️</span> Equipamentos ({equipList.length})
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", margin:"16px 0 10px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:6, fontSize:11, fontWeight:800, color:"#94A3B8", textTransform:"uppercase" as const, letterSpacing:".05em" }}>
+                  <span style={{ fontSize:14 }}>⚙️</span> Equipamentos ({equipList.length})
+                </div>
+                {equipList.length > 0 && (
+                  <button
+                    onClick={equipExportPDF}
+                    style={{ display:"flex", alignItems:"center", gap:5, padding:"5px 12px", background:"linear-gradient(135deg,#7C3AED,#6D28D9)", border:"none", borderRadius:8, color:"#fff", fontSize:10, fontWeight:700, cursor:"pointer", boxShadow:"0 2px 8px rgba(124,58,237,.35)", letterSpacing:".03em" }}
+                  >
+                    📄 Exportar PDF
+                  </button>
+                )}
               </div>
               {equipList.map(eq => {
                 const st = mEqStatusColor[eq.status] || mEqStatusColor["inativo"];
