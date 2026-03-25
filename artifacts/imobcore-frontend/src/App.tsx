@@ -2037,7 +2037,24 @@ export default function App() {
   const [diData, setDiData] = useState<{ fala: string; cards: DiCard[] } | null>(null);
   const [diLoading, setDiLoading] = useState(false);
   const [diFalando, setDiFalando] = useState(false);
-  const [diView, setDiView] = useState<"briefing" | "relatorio">("briefing");
+  const [diView, setDiView] = useState<"briefing" | "relatorio" | "documentos">("briefing");
+  type DiDocCard = { id: string; nome: string; tipo: string; status: "vencido"|"a_vencer"|"vigente"|"sem_validade"; validade?: string|null; resumo_ia: string; pontos_chave: string[]; badge?: string; cor: "critico"|"atencao"|"info"|"insight" };
+  const [diDocCards, setDiDocCards] = useState<DiDocCard[]>([]);
+  const [diDocFala, setDiDocFala] = useState("");
+  const [diDocLoading, setDiDocLoading] = useState(false);
+  const [diDocLoaded, setDiDocLoaded] = useState(false);
+  const loadDiDocResumo = async (cid: string) => {
+    if (diDocLoading) return;
+    setDiDocLoading(true);
+    try {
+      const r = await fetch("/api/di/resumo-documentos", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ condominio_id: cid }) });
+      const j = await r.json();
+      setDiDocCards(j.cards || []);
+      setDiDocFala(j.fala || "");
+      setDiDocLoaded(true);
+    } catch { setDiDocFala("Erro ao carregar resumo de documentos."); }
+    finally { setDiDocLoading(false); }
+  };
 
   // ── Di Briefing por Módulo ─────────────────────────────────────────────────
   type BriefModData = { total?:number; urgentes?:number; altas?:number; lista?:unknown[]; score:number; nivel_medio?:number; sensores?:{nome:string;nivel:number|null;status:string}[]; criticos?:number; pendentes?:number; antigas?:number; saldo?:number; totalRec?:number; totalDesp?:number; txInadimplencia?:number; em_manutencao?:number; atencao?:number; ultima_leitura?:Record<string,unknown>|null };
@@ -4714,10 +4731,10 @@ export default function App() {
 
           {/* ── Tabs Di ── */}
           <div style={{ display:"flex", borderBottom:"1px solid rgba(255,255,255,.07)", background:"#0A0818", flexShrink:0 }}>
-            {(["briefing","relatorio"] as const).map(v => (
-              <button key={v} onClick={() => setDiView(v)}
-                style={{ flex:1, padding:"10px 4px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:11, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit" }}>
-                {v==="briefing" ? "💡 Dicas da Di" : "📊 Relatório"}
+            {(["briefing","relatorio","documentos"] as const).map(v => (
+              <button key={v} onClick={() => { setDiView(v); if (v==="documentos" && !diDocLoaded && condId) loadDiDocResumo(condId); }}
+                style={{ flex:1, padding:"10px 4px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:10, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit" }}>
+                {v==="briefing" ? "💡 Dicas" : v==="relatorio" ? "📊 Relatório" : "📄 Docs IA"}
               </button>
             ))}
           </div>
@@ -4731,6 +4748,65 @@ export default function App() {
                 sindNome={dash?.condominios?.find((c: {id:string;sindico_nome?:string}) => c.id === condId)?.sindico_nome || "Síndico"}
                 view="mobile"
               />
+            </div>
+          ) : diView === "documentos" ? (
+            <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 100px" }}>
+              {/* Fala Da Di sobre documentos */}
+              {diDocFala && (
+                <div style={{ background:"rgba(139,92,246,.1)", border:"1px solid rgba(139,92,246,.25)", borderRadius:14, padding:"14px 16px", marginBottom:14 }}>
+                  <div style={{ fontSize:12, color:"#E9D5FF", lineHeight:1.6 }}>{diDocFala}</div>
+                </div>
+              )}
+              {/* Botão carregar/recarregar */}
+              {!diDocLoaded && !diDocLoading && (
+                <button onClick={() => condId && loadDiDocResumo(condId)}
+                  style={{ width:"100%", padding:"12px 16px", background:"linear-gradient(135deg,#7C3AED,#6D28D9)", border:"none", borderRadius:12, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:14 }}>
+                  📄 Gerar Resumo IA dos Documentos
+                </button>
+              )}
+              {diDocLoading && (
+                <div style={{ textAlign:"center", padding:"40px 20px", color:"#C4B5FD", fontSize:13 }}>
+                  <div style={{ fontSize:32, marginBottom:10 }}>🤖</div>
+                  Di analisando documentos com IA...
+                </div>
+              )}
+              {diDocLoaded && !diDocLoading && diDocCards.length === 0 && (
+                <div style={{ textAlign:"center", padding:"40px 20px", color:"#64748B", fontSize:13 }}>
+                  <div style={{ fontSize:32, marginBottom:10 }}>📭</div>
+                  Nenhum documento cadastrado ainda.
+                </div>
+              )}
+              {diDocCards.map((doc, i) => {
+                const corConfig = {
+                  critico: { bg:"rgba(239,68,68,.12)", border:"rgba(239,68,68,.4)", accent:"#EF4444" },
+                  atencao: { bg:"rgba(234,179,8,.09)", border:"rgba(234,179,8,.4)", accent:"#EAB308" },
+                  info:    { bg:"rgba(16,185,129,.09)", border:"rgba(16,185,129,.35)", accent:"#10B981" },
+                  insight: { bg:"rgba(168,85,247,.12)", border:"rgba(168,85,247,.4)", accent:"#A855F7" },
+                }[doc.cor];
+                return (
+                  <div key={i} style={{ background:corConfig.bg, border:`1px solid ${corConfig.border}`, borderRadius:14, padding:"14px 16px", marginBottom:10 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:"#F3E8FF" }}>{doc.nome}</div>
+                      {doc.badge && <span style={{ fontSize:9, fontWeight:700, color:corConfig.accent, border:`1px solid ${corConfig.accent}`, borderRadius:20, padding:"2px 8px", whiteSpace:"nowrap", marginLeft:8, flexShrink:0 }}>{doc.badge}</span>}
+                    </div>
+                    <div style={{ fontSize:10, color:"#94A3B8", marginBottom:8 }}>{doc.tipo}</div>
+                    <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.55, marginBottom:doc.pontos_chave.length > 0 ? 8 : 0 }}>{doc.resumo_ia}</div>
+                    {doc.pontos_chave.length > 0 && (
+                      <ul style={{ margin:0, padding:"0 0 0 14px" }}>
+                        {doc.pontos_chave.map((p, pi) => (
+                          <li key={pi} style={{ fontSize:11, color:"#A5B4FC", lineHeight:1.5 }}>{p}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+              {diDocLoaded && diDocCards.length > 0 && (
+                <button onClick={() => { setDiDocLoaded(false); setDiDocCards([]); if (condId) loadDiDocResumo(condId); }}
+                  style={{ width:"100%", padding:"10px", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, color:"#94A3B8", fontSize:11, cursor:"pointer", marginTop:4 }}>
+                  🔄 Atualizar Resumo
+                </button>
+              )}
             </div>
           ) : (<>
           <div style={{ flex:1, overflowY:"auto", padding:"16px 16px 100px" }}>
@@ -7064,10 +7140,10 @@ export default function App() {
 
                   {/* ── Tabs ── */}
                   <div style={{ display:"flex", background:"#0A0818", borderBottom:"1px solid rgba(255,255,255,.07)", flexShrink:0 }}>
-                    {(["briefing","relatorio"] as const).map(v => (
-                      <button key={v} onClick={() => setDiView(v)}
-                        style={{ flex:1, padding:"12px 8px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:12.5, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all .2s" }}>
-                        {v==="briefing" ? "💡 Dicas da Di" : "📋 Relatório Executivo"}
+                    {(["briefing","relatorio","documentos"] as const).map(v => (
+                      <button key={v} onClick={() => { setDiView(v); if (v==="documentos" && !diDocLoaded && condId) loadDiDocResumo(condId); }}
+                        style={{ flex:1, padding:"12px 8px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:12, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all .2s" }}>
+                        {v==="briefing" ? "💡 Dicas da Di" : v==="relatorio" ? "📋 Relatório" : "📄 Docs IA"}
                       </button>
                     ))}
                   </div>
@@ -7076,6 +7152,65 @@ export default function App() {
                   {diView === "relatorio" ? (
                     <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
                       <RelatorioExecutivo condId={condId||""} condNome={condNome} sindNome={dash?.condominios?.find((c: {id:string;sindico_nome?:string}) => c.id===condId)?.sindico_nome||"Síndico"} view="desktop" />
+                    </div>
+                  ) : diView === "documentos" ? (
+                    <div style={{ flex:1, overflowY:"auto", padding:"20px 24px" }}>
+                      {diDocFala && (
+                        <div style={{ background:"rgba(139,92,246,.1)", border:"1px solid rgba(139,92,246,.25)", borderRadius:14, padding:"16px 18px", marginBottom:16 }}>
+                          <div style={{ fontSize:13, color:"#E9D5FF", lineHeight:1.6 }}>{diDocFala}</div>
+                        </div>
+                      )}
+                      {!diDocLoaded && !diDocLoading && (
+                        <button onClick={() => condId && loadDiDocResumo(condId)}
+                          style={{ padding:"12px 24px", background:"linear-gradient(135deg,#7C3AED,#6D28D9)", border:"none", borderRadius:12, color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", marginBottom:16 }}>
+                          📄 Gerar Resumo IA dos Documentos
+                        </button>
+                      )}
+                      {diDocLoading && (
+                        <div style={{ textAlign:"center", padding:"60px 20px", color:"#C4B5FD", fontSize:14 }}>
+                          <div style={{ fontSize:40, marginBottom:12 }}>🤖</div>
+                          Di analisando documentos com Claude IA...
+                        </div>
+                      )}
+                      {diDocLoaded && !diDocLoading && diDocCards.length === 0 && (
+                        <div style={{ textAlign:"center", padding:"60px 20px", color:"#64748B", fontSize:14 }}>
+                          <div style={{ fontSize:40, marginBottom:12 }}>📭</div>
+                          Nenhum documento cadastrado. Adicione documentos no módulo Documentos.
+                        </div>
+                      )}
+                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:14 }}>
+                        {diDocCards.map((doc, i) => {
+                          const corConf = {
+                            critico: { bg:"rgba(239,68,68,.12)", border:"rgba(239,68,68,.4)", accent:"#EF4444" },
+                            atencao: { bg:"rgba(234,179,8,.09)", border:"rgba(234,179,8,.4)", accent:"#EAB308" },
+                            info:    { bg:"rgba(16,185,129,.09)", border:"rgba(16,185,129,.35)", accent:"#10B981" },
+                            insight: { bg:"rgba(168,85,247,.12)", border:"rgba(168,85,247,.4)", accent:"#A855F7" },
+                          }[doc.cor];
+                          return (
+                            <div key={i} style={{ background:corConf.bg, border:`1px solid ${corConf.border}`, borderRadius:14, padding:"16px 18px" }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:6 }}>
+                                <div style={{ fontSize:14, fontWeight:700, color:"#F3E8FF" }}>{doc.nome}</div>
+                                {doc.badge && <span style={{ fontSize:10, fontWeight:700, color:corConf.accent, border:`1px solid ${corConf.accent}`, borderRadius:20, padding:"2px 10px", whiteSpace:"nowrap", marginLeft:8, flexShrink:0 }}>{doc.badge}</span>}
+                              </div>
+                              <div style={{ fontSize:11, color:"#94A3B8", marginBottom:10 }}>{doc.tipo}</div>
+                              <div style={{ fontSize:12.5, color:"#CBD5E1", lineHeight:1.6, marginBottom:doc.pontos_chave.length > 0 ? 10 : 0 }}>{doc.resumo_ia}</div>
+                              {doc.pontos_chave.length > 0 && (
+                                <ul style={{ margin:0, padding:"0 0 0 16px" }}>
+                                  {doc.pontos_chave.map((p, pi) => (
+                                    <li key={pi} style={{ fontSize:11.5, color:"#A5B4FC", lineHeight:1.55 }}>{p}</li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {diDocLoaded && diDocCards.length > 0 && (
+                        <button onClick={() => { setDiDocLoaded(false); setDiDocCards([]); if (condId) loadDiDocResumo(condId); }}
+                          style={{ marginTop:16, padding:"8px 20px", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, color:"#94A3B8", fontSize:12, cursor:"pointer" }}>
+                          🔄 Atualizar Resumo
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div style={{ flex:1, overflow:"auto", padding:"20px 24px" }}>

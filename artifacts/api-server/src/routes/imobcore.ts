@@ -189,6 +189,7 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       { data: piscinaLeiturasChat },
       { data: lancamentosFinChat },
       { data: fornecedoresChat },
+      { data: documentosChat },
     ] = await Promise.all([
       condQuery,
       condIdCtx
@@ -241,6 +242,10 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
       // Fornecedores
       condIdCtx
         ? supabase.from("fornecedores").select("id,nome,categoria,icone,telefone,whatsapp,email,endereco,observacoes,status").eq("condominio_id", condIdCtx).order("nome", { ascending: true })
+        : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
+      // Documentos do condomínio
+      condIdCtx
+        ? supabase.from("documentos_condominio").select("id,nome,tipo,descricao,url_arquivo,conteudo_texto,validade,created_at").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(30)
         : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
     ]);
 
@@ -634,6 +639,25 @@ ${listaTxt}`);
 ${(alertas || []).map((a: AlertaRow) =>
   `- ${a.titulo} | ${a.nivel} | ${a.cidade} - ${a.bairro}`
 ).join("\n")}`);
+    }
+
+    // ── Documentos do condomínio ──────────────────────────────────────────────
+    type DocChatRow = { id: string; nome: string; tipo: string; descricao?: string; conteudo_texto?: string; validade?: string | null; url_arquivo?: string; created_at: string };
+    const docsChatList = (documentosChat || []) as DocChatRow[];
+    if (docsChatList.length > 0) {
+      const hojeDoc = new Date();
+      const em30 = new Date(hojeDoc); em30.setDate(hojeDoc.getDate() + 30);
+      const docsVencidos = docsChatList.filter(d => d.validade && new Date(d.validade) < hojeDoc);
+      const docsAVencer = docsChatList.filter(d => d.validade && new Date(d.validade) >= hojeDoc && new Date(d.validade) <= em30);
+      const docsTxt = docsChatList.slice(0, 20).map(d => {
+        const status = !d.validade ? "sem vencimento" : new Date(d.validade) < hojeDoc ? "VENCIDO ⛔" : new Date(d.validade) <= em30 ? `vence em ${Math.ceil((new Date(d.validade).getTime()-hojeDoc.getTime())/86400000)}d ⚠️` : `válido até ${new Date(d.validade).toLocaleDateString("pt-BR")} ✅`;
+        const resumo = d.conteudo_texto ? ` | "${d.conteudo_texto.slice(0, 120).replace(/\n/g," ")}"` : d.descricao ? ` | ${d.descricao.slice(0,80)}` : "";
+        return `  - ${d.nome} (${d.tipo}) | ${status}${resumo}`;
+      }).join("\n");
+      contextSections.push(`📄 DOCUMENTOS DO CONDOMÍNIO (${docsChatList.length} cadastrados | ${docsVencidos.length} vencidos | ${docsAVencer.length} a vencer em 30 dias):
+${docsTxt}
+
+⚠️ ATENÇÃO: Responda perguntas sobre regulamentos, convenções, AVCB, regimentos e demais documentos com base no conteúdo listado acima.`);
     }
 
     // ── Foco no módulo ativo (quando chamado de dentro de um módulo) ─────────
@@ -3571,6 +3595,7 @@ function gerarCardsInteligentes(d: {
   comunicados?: { titulo: string; categoria: string }[];
   medidores?: { id: string; tipo: string; local?: string; ultima_leitura?: number | null; ultima_leitura_em?: string | null; unidade_medida?: string; alerta_consumo_alto?: number | null }[];
   leiturasUtil?: { medidor_id: string; data_leitura: string; consumo?: number | null; custo?: number | null }[];
+  documentos?: { nome: string; tipo: string; validade?: string | null }[];
 }): DiSmartCard[] {
   const cards: DiSmartCard[] = [];
 
@@ -3744,6 +3769,41 @@ function gerarCardsInteligentes(d: {
     }
   }
 
+  // ── 📄 DOCUMENTOS VENCIDOS / A VENCER ────────────────────────────────────────
+  if (d.documentos && d.documentos.length > 0) {
+    const hojeD = new Date();
+    const em30D = new Date(hojeD); em30D.setDate(hojeD.getDate() + 30);
+    const docsVenc = d.documentos.filter(doc => doc.validade && new Date(doc.validade) < hojeD);
+    const docsAVenc = d.documentos.filter(doc => doc.validade && new Date(doc.validade) >= hojeD && new Date(doc.validade) <= em30D);
+    if (docsVenc.length > 0) {
+      cards.push({
+        tipo: "critico",
+        titulo: "📄 Documentos Vencidos",
+        mensagem: `${docsVenc.length} documento${docsVenc.length > 1 ? "s venceram" : " venceu"}: ${docsVenc.slice(0,3).map(d => d.nome).join(", ")}. Regularização necessária.`,
+        acao: "Providenciar renovação dos documentos vencidos com urgência",
+        badge: `${docsVenc.length} vencido${docsVenc.length > 1 ? "s" : ""}`,
+      });
+    } else if (docsAVenc.length > 0) {
+      cards.push({
+        tipo: "atencao",
+        titulo: "📄 Documentos a Vencer",
+        mensagem: `${docsAVenc.length} documento${docsAVenc.length > 1 ? "s vencerão" : " vencerá"} nos próximos 30 dias: ${docsAVenc.slice(0,3).map(d => d.nome).join(", ")}.`,
+        acao: "Iniciar processo de renovação preventiva",
+        badge: `${docsAVenc.length} a vencer`,
+      });
+    } else {
+      const comValidade = d.documentos.filter(doc => doc.validade);
+      if (comValidade.length > 0) {
+        cards.push({
+          tipo: "info",
+          titulo: "📄 Documentos em Dia",
+          mensagem: `${d.documentos.length} documento${d.documentos.length > 1 ? "s cadastrados" : " cadastrado"}, todos com validade regular. Ótima conformidade documental!`,
+          acao: "Manter agenda de renovações preventivas",
+        });
+      }
+    }
+  }
+
   // ── 📦 ENCOMENDAS PENDENTES ──────────────────────────────────────────────────
   if (d.encomendas != null && d.encomendas > 0) {
     cards.push({
@@ -3822,6 +3882,7 @@ router.post("/di", async (req: Request, res: Response) => {
       { data: encomendasRows },
       { data: medidoresBriefing },
       { data: leiturasBriefing },
+      { data: documentosBriefing },
     ] = await Promise.all([
       condominio_id
         ? supabase.from("condominios").select("*").eq("id", condominio_id).single()
@@ -3854,6 +3915,10 @@ router.post("/di", async (req: Request, res: Response) => {
       condominio_id
         ? Promise.resolve(supabase.from("leituras_medidores").select("medidor_id,data_leitura,consumo,custo").eq("condominio_id", condominio_id).order("data_leitura", { ascending: false }).limit(30)).catch(() => ({ data: null, error: null }))
         : Promise.resolve({ data: null, error: null }),
+      // Documentos
+      condominio_id
+        ? supabase.from("documentos_condominio").select("nome,tipo,validade").eq("condominio_id", condominio_id).limit(30)
+        : Promise.resolve({ data: [] as { nome: string; tipo: string; validade?: string | null }[], error: null }),
     ]);
 
     // ── Consolidar sensores de água ────────────────────────────────────────
@@ -3907,6 +3972,7 @@ router.post("/di", async (req: Request, res: Response) => {
       comunicados: (comunicadosRows || []) as { titulo: string; categoria: string }[],
       medidores: (medidoresBriefing || []) as { id: string; tipo: string; local?: string; ultima_leitura?: number | null; ultima_leitura_em?: string | null; unidade_medida?: string; alerta_consumo_alto?: number | null }[],
       leiturasUtil: (leiturasBriefing || []) as { medidor_id: string; data_leitura: string; consumo?: number | null; custo?: number | null }[],
+      documentos: (documentosBriefing || []) as { nome: string; tipo: string; validade?: string | null }[],
     });
 
     // ── Enriquecer com Claude (gera fala personalizada + pode adicionar cards extra) ──
@@ -5695,6 +5761,133 @@ router.patch("/manutencao/alertas/:id/resolver", async (req: Request, res: Respo
 });
 
 // ── SQL MIGRATION HELPER ──────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/di/resumo-documentos
+// Gera resumo inteligente de cada documento via Claude (cards de conteúdo)
+// Body: { condominio_id }
+// Returns: { cards: DiDocCard[], fala: string }
+// ─────────────────────────────────────────────────────────────────────────────
+interface DiDocCard {
+  id: string;
+  nome: string;
+  tipo: string;
+  status: "vencido" | "a_vencer" | "vigente" | "sem_validade";
+  validade?: string | null;
+  resumo_ia: string;
+  pontos_chave: string[];
+  badge?: string;
+  cor: "critico" | "atencao" | "info" | "insight";
+}
+
+router.post("/di/resumo-documentos", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.body as { condominio_id?: string };
+    if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+
+    // Buscar todos os documentos do condomínio
+    const { data: docs, error: docsErr } = await supabase
+      .from("documentos_condominio")
+      .select("id,nome,tipo,descricao,conteudo_texto,validade,url_arquivo,created_at")
+      .eq("condominio_id", condominio_id)
+      .order("tipo", { ascending: true })
+      .limit(50);
+
+    if (docsErr) {
+      if (docsErr.message?.includes("does not exist")) {
+        return res.json({ cards: [], fala: "A tabela de documentos ainda não foi criada. Execute a migração SQL no Supabase para ativar este módulo.", missing_table: true });
+      }
+      return res.status(500).json({ error: docsErr.message });
+    }
+
+    if (!docs || docs.length === 0) {
+      return res.json({ cards: [], fala: "Nenhum documento cadastrado neste condomínio ainda. Adicione documentos no módulo Documentos para eu gerar os resumos." });
+    }
+
+    const hoje = new Date();
+    const em30 = new Date(hoje); em30.setDate(hoje.getDate() + 30);
+
+    // Gerar resumo via Claude para cada documento (em lote, prompt único)
+    const docsParaResumir = docs.slice(0, 20); // Limitar a 20 docs por vez
+    const docsSummaryPrompt = docsParaResumir.map((d, i) => {
+      const conteudo = d.conteudo_texto ? d.conteudo_texto.slice(0, 400) : d.descricao || "";
+      return `DOC ${i+1}: ${d.nome} (${d.tipo})
+${conteudo ? `Conteúdo: ${conteudo}` : "Sem texto disponível — baseie-se no tipo e nome do documento."}`;
+    }).join("\n---\n");
+
+    const promptResumo = `Você é Di, a Síndica Virtual especialista em gestão condominial. Analise os documentos abaixo e gere um JSON com resumos concisos e pontos-chave para gestores de condomínio.
+
+DOCUMENTOS PARA ANALISAR:
+${docsSummaryPrompt}
+
+Retorne APENAS um JSON válido no formato:
+{
+  "resumos": [
+    {
+      "index": 1,
+      "resumo_ia": "Resumo objetivo em 1-2 frases sobre o que é este documento e sua importância para o condomínio.",
+      "pontos_chave": ["ponto 1 conciso", "ponto 2 conciso", "ponto 3 conciso"]
+    }
+  ],
+  "fala_di": "Mensagem motivacional da Di sobre a conformidade documental do condomínio (1-2 frases, tom profissional com emoji moderado)."
+}
+
+Retorne exatamente ${docsParaResumir.length} objetos no array "resumos", na mesma ordem dos documentos.`;
+
+    let resumosIA: { index: number; resumo_ia: string; pontos_chave: string[] }[] = [];
+    let falaDi = `Aqui está o resumo dos ${docs.length} documento${docs.length > 1 ? "s" : ""} do condomínio. Verifique as validades e mantenha tudo em conformidade!`;
+
+    try {
+      const aiRes = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 2000,
+        messages: [{ role: "user", content: promptResumo }],
+      });
+      const raw = (aiRes.content[0] as { type: string; text: string }).text.trim();
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        resumosIA = parsed.resumos || [];
+        if (parsed.fala_di) falaDi = parsed.fala_di;
+      }
+    } catch { /* usa fallback textual */ }
+
+    // Montar cards finais combinando dados do DB + resumo IA
+    const diDocCards: DiDocCard[] = docs.map((d, i) => {
+      const resumoData = resumosIA.find(r => r.index === i + 1) || resumosIA[i];
+      const venc = d.validade ? new Date(d.validade) : null;
+      const status: DiDocCard["status"] =
+        !venc ? "sem_validade" :
+        venc < hoje ? "vencido" :
+        venc <= em30 ? "a_vencer" : "vigente";
+      const cor: DiDocCard["cor"] =
+        status === "vencido" ? "critico" :
+        status === "a_vencer" ? "atencao" :
+        status === "vigente" ? "info" : "insight";
+      const badge =
+        status === "vencido" ? "⛔ VENCIDO" :
+        status === "a_vencer" ? `⚠️ Vence em ${Math.ceil((venc!.getTime()-hoje.getTime())/86400000)}d` :
+        status === "vigente" ? `✅ Válido até ${venc!.toLocaleDateString("pt-BR")}` : undefined;
+      return {
+        id: d.id,
+        nome: d.nome,
+        tipo: d.tipo,
+        status,
+        validade: d.validade,
+        resumo_ia: resumoData?.resumo_ia || d.descricao || `Documento do tipo ${d.tipo} cadastrado no sistema.`,
+        pontos_chave: resumoData?.pontos_chave || [],
+        badge,
+        cor,
+      };
+    });
+
+    return res.json({ cards: diDocCards, fala: falaDi, total: docs.length });
+  } catch (e) {
+    console.error("[di/resumo-documentos]", e);
+    return res.status(500).json({ error: (e as Error).message });
+  }
+});
+
 // ════════════════════════════════════════════════════════════════
 // DOCUMENTOS & LICENÇAS
 // ════════════════════════════════════════════════════════════════
