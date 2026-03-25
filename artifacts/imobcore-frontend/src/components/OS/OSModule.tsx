@@ -837,8 +837,16 @@ function OSDetail({ os, condId, condNome, osList, onClose, onUpdate }: { os: OS;
   }
 
   async function changeStatus(status: string) {
-    const r = await fetch(`/api/os/${os.id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ status }) });
-    const updated = await r.json(); if (updated.id) onUpdate(updated);
+    // Atualização otimista: reflete mudança imediatamente na UI
+    onUpdate({ ...os, status });
+    try {
+      const r = await fetch(`/api/os/${os.id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ status }) });
+      const updated = await r.json();
+      if (updated.id) onUpdate(updated); // Sincroniza com dados reais do servidor
+    } catch {
+      // Em caso de erro, reverte para o status original
+      onUpdate({ ...os });
+    }
   }
 
   async function generateNotif() {
@@ -1168,8 +1176,14 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
     });
 
   async function handleStatusChange(id: string, status: string) {
-    await fetch(`/api/os/${id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ status }) });
-    load();
+    // Atualização otimista: muda status imediatamente nos cards
+    setOsList(prev=>prev.map(o=>o.id===id ? { ...o, status } : o));
+    try {
+      const r = await fetch(`/api/os/${id}`, { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ status }) });
+      const updated = await r.json();
+      if (updated.id) setOsList(prev=>prev.map(o=>o.id===id ? updated : o));
+      else load();
+    } catch { load(); }
   }
 
   function handleOSUpdate(updated: OS) {
