@@ -3634,6 +3634,27 @@ router.delete("/piscina/:id", async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// POST /api/piscina/:id/foto — Upload foto para bucket piscina-fotos
+const PISC_BUCKET = "piscina-fotos";
+const _piscFotoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+router.post("/piscina/:id/foto", _piscFotoUpload.single("foto"), async (req: Request, res: Response) => {
+  if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
+  const { id } = req.params;
+  const ext = req.file.originalname.split(".").pop() || "jpg";
+  const filePath = `${id}/${Date.now()}.${ext}`;
+  let { error: upErr } = await supabase.storage.from(PISC_BUCKET).upload(filePath, req.file.buffer, { contentType: req.file.mimetype, upsert: true });
+  if (upErr) {
+    await supabase.storage.createBucket(PISC_BUCKET, { public: true });
+    const { error: upErr2 } = await supabase.storage.from(PISC_BUCKET).upload(filePath, req.file.buffer, { contentType: req.file.mimetype, upsert: true });
+    if (upErr2) return res.status(500).json({ error: upErr2.message });
+  }
+  const { data: urlData } = supabase.storage.from(PISC_BUCKET).getPublicUrl(filePath);
+  const fotoUrl = urlData.publicUrl;
+  const { data, error } = await supabase.from("piscina_leituras").update({ foto_url: fotoUrl, foto_path: filePath }).eq("id", id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, foto_url: fotoUrl, leitura: data });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/di   body: { condominio_id? }
 // Di — Síndica Virtual executiva com cards inteligentes acionáveis

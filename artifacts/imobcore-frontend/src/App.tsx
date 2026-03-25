@@ -21,7 +21,7 @@ interface OrcamentoEntry { id: string; categoria: string; mes: number; valor_pre
 interface FinanceiroInsight { score: number; inadimplencia: number; saldo: number; risco: string; analise: string; riscos: string; recomendacoes: string; gerado_em: string; reply?: string }
 interface Comunicado { id: string; titulo: string; corpo: string; gerado_por_ia: boolean; created_at: string }
 interface ChatMsg { role: "user" | "ai"; content: string; time: string }
-interface PiscinaLeitura { id: string; condominio_id: string; ph: number; cloro: number; temperatura?: number; alcalinidade?: number; dureza_calcica?: number; status: "ok" | "alerta"; observacoes?: string; created_at: string; }
+interface PiscinaLeitura { id: string; condominio_id: string; ph: number; cloro: number; temperatura?: number; alcalinidade?: number; dureza_calcica?: number; status: "ok" | "alerta"; observacoes?: string; foto_url?: string; foto_path?: string; created_at: string; }
 interface DashTotais { os_abertas: number; os_urgentes: number; saldo: number; total_receitas: number; total_despesas: number; alertas_ativos: number; nivel_medio_agua: number }
 interface CondominioInfo {
   id: string; nome: string; cidade: string; estado?: string;
@@ -1500,6 +1500,8 @@ export default function App() {
   const [piscModal, setPiscModal] = useState(false);
   const [piscEditId, setPiscEditId] = useState<string|null>(null);
   const [piscForm, setPiscForm] = useState(emptyPiscinaForm());
+  const [piscFotoFile, setPiscFotoFile] = useState<File|null>(null);
+  const [piscFotoPreview, setPiscFotoPreview] = useState<string|null>(null);
 
   const loadFornecedores = async (cId: string) => {
     setFornecLoading(true);
@@ -6109,8 +6111,19 @@ export default function App() {
             try {
               const url = piscEditId ? `/api/piscina/${piscEditId}` : `/api/piscina`;
               const r = await fetch(url, { method: piscEditId?"PUT":"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ condominio_id:condId, ph:Number(piscForm.ph), cloro:Number(piscForm.cloro), temperatura:piscForm.temperatura?Number(piscForm.temperatura):null, alcalinidade:piscForm.alcalinidade?Number(piscForm.alcalinidade):null, dureza_calcica:piscForm.dureza_calcica?Number(piscForm.dureza_calcica):null, observacoes:piscForm.observacoes||null }) });
-              if (r.ok) { if (condId) await loadPiscina(condId); setPiscModal(false); setPiscEditId(null); setPiscForm(emptyPiscinaForm()); showToast(piscEditId?"Leitura atualizada!":"Leitura registrada! 🏊","success"); }
-              else {
+              if (r.ok) {
+                const saved = await r.json() as { leitura?: { id: string } };
+                const leituraId = saved.leitura?.id || piscEditId;
+                if (piscFotoFile && leituraId) {
+                  const fd = new FormData();
+                  fd.append("foto", piscFotoFile);
+                  await fetch(`/api/piscina/${leituraId}/foto`, { method:"POST", body: fd });
+                }
+                if (condId) await loadPiscina(condId);
+                setPiscModal(false); setPiscEditId(null); setPiscForm(emptyPiscinaForm());
+                setPiscFotoFile(null); setPiscFotoPreview(null);
+                showToast(piscEditId?"Leitura atualizada!":"Leitura registrada! 🏊","success");
+              } else {
                 const errJson = await r.json().catch(() => ({})) as Record<string,string>;
                 if (errJson.error === "missing_table") showToast("Tabela não criada. Execute o SQL de migração no Supabase Dashboard.","error");
                 else showToast("Erro ao salvar leitura","error");
@@ -6177,18 +6190,26 @@ export default function App() {
                 </div>
               )}
               {!piscinaLoading && piscinaList.slice(0,10).map(l => (
-                <div key={l.id} style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, padding:"10px 12px", display:"flex", flexDirection:"column", gap:4 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                    <span style={{ fontSize:11, color:"var(--neu-text-2)" }}>{fmtDt(l.created_at)}</span>
-                    <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:99, background:l.status==="ok"?"#22C55E22":"#EF444422", color:l.status==="ok"?"#16A34A":"#DC2626" }}>{l.status.toUpperCase()}</span>
+                <div key={l.id} style={{ background:"var(--neu-bg)", boxShadow:"var(--neu-out-sm)", borderRadius:12, overflow:"hidden" }}>
+                  {l.foto_url && (
+                    <img src={l.foto_url} alt="Foto da piscina" style={{ width:"100%", maxHeight:140, objectFit:"cover", display:"block" }} />
+                  )}
+                  <div style={{ padding:"10px 12px", display:"flex", flexDirection:"column", gap:4 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                      <span style={{ fontSize:11, color:"var(--neu-text-2)" }}>{fmtDt(l.created_at)}</span>
+                      <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+                        {l.foto_url && <span style={{ fontSize:9, color:"#0EA5E9" }}>📷</span>}
+                        <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:99, background:l.status==="ok"?"#22C55E22":"#EF444422", color:l.status==="ok"?"#16A34A":"#DC2626" }}>{l.status.toUpperCase()}</span>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                      <span style={{ fontSize:12, fontWeight:700, color:"#0EA5E9" }}>pH {l.ph}</span>
+                      <span style={{ fontSize:12, fontWeight:700, color:"#22C55E" }}>Cl {l.cloro}ppm</span>
+                      {l.temperatura!=null && <span style={{ fontSize:12, fontWeight:700, color:"#F97316" }}>{l.temperatura}°C</span>}
+                      {l.alcalinidade!=null && <span style={{ fontSize:12, fontWeight:700, color:"#6366F1" }}>Alc {l.alcalinidade}ppm</span>}
+                    </div>
+                    {l.observacoes && <div style={{ fontSize:11, color:"var(--neu-text-2)", fontStyle:"italic" }}>{l.observacoes}</div>}
                   </div>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                    <span style={{ fontSize:12, fontWeight:700, color:"#0EA5E9" }}>pH {l.ph}</span>
-                    <span style={{ fontSize:12, fontWeight:700, color:"#22C55E" }}>Cl {l.cloro}ppm</span>
-                    {l.temperatura!=null && <span style={{ fontSize:12, fontWeight:700, color:"#F97316" }}>{l.temperatura}°C</span>}
-                    {l.alcalinidade!=null && <span style={{ fontSize:12, fontWeight:700, color:"#6366F1" }}>Alc {l.alcalinidade}ppm</span>}
-                  </div>
-                  {l.observacoes && <div style={{ fontSize:11, color:"var(--neu-text-2)", fontStyle:"italic" }}>{l.observacoes}</div>}
                 </div>
               ))}
 
@@ -6239,10 +6260,43 @@ export default function App() {
                         />
                       </div>
                     </div>
+
+                    {/* ── Foto da Piscina ── */}
+                    <div style={{ marginBottom:14 }}>
+                      <label style={{ fontSize:10, fontWeight:700, color:"#94A3B8", textTransform:"uppercase", display:"block", marginBottom:8 }}>📷 Foto da Piscina (opcional)</label>
+                      {piscFotoPreview ? (
+                        <div style={{ position:"relative", borderRadius:10, overflow:"hidden", border:"1px solid rgba(14,165,233,.4)" }}>
+                          <img src={piscFotoPreview} alt="Preview" style={{ width:"100%", maxHeight:160, objectFit:"cover", display:"block" }} />
+                          <button
+                            onClick={() => { setPiscFotoFile(null); setPiscFotoPreview(null); }}
+                            style={{ position:"absolute", top:6, right:6, background:"rgba(0,0,0,.7)", border:"none", borderRadius:20, color:"#fff", fontSize:12, padding:"2px 8px", cursor:"pointer" }}>
+                            ✕ Remover
+                          </button>
+                        </div>
+                      ) : (
+                        <label style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8, padding:"14px", borderRadius:10, border:"1px dashed rgba(14,165,233,.4)", background:"rgba(14,165,233,.05)", cursor:"pointer" }}>
+                          <span style={{ fontSize:22 }}>📷</span>
+                          <span style={{ fontSize:12, color:"#64748B" }}>Toque para tirar foto ou selecionar galeria</span>
+                          <input
+                            type="file" accept="image/*" capture="environment"
+                            style={{ display:"none" }}
+                            onChange={e => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setPiscFotoFile(file);
+                              const reader = new FileReader();
+                              reader.onload = ev => setPiscFotoPreview(ev.target?.result as string);
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+
                     {/* Buttons */}
                     <div style={{ display:"flex", gap:10 }}>
                       <button
-                        onClick={() => { setPiscModal(false); setPiscEditId(null); setPiscForm(emptyPiscinaForm()); }}
+                        onClick={() => { setPiscModal(false); setPiscEditId(null); setPiscForm(emptyPiscinaForm()); setPiscFotoFile(null); setPiscFotoPreview(null); }}
                         style={{ flex:1, padding:"13px", borderRadius:12, border:"1px solid rgba(255,255,255,.15)", background:"transparent", color:"#94A3B8", fontSize:13, fontWeight:600, cursor:"pointer" }}>
                         Cancelar
                       </button>

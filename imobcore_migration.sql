@@ -58,8 +58,13 @@ CREATE TABLE IF NOT EXISTS piscina_leituras (
   dureza_calcica  NUMERIC,
   status          TEXT DEFAULT 'ok',
   observacoes     TEXT,
+  foto_url        TEXT,
+  foto_path       TEXT,
   created_at      TIMESTAMPTZ DEFAULT NOW()
 );
+-- Idempotent columns for existing tables (safe to run multiple times)
+ALTER TABLE piscina_leituras ADD COLUMN IF NOT EXISTS foto_url  TEXT;
+ALTER TABLE piscina_leituras ADD COLUMN IF NOT EXISTS foto_path TEXT;
 CREATE INDEX IF NOT EXISTS pisc_condo ON piscina_leituras(condominio_id, created_at DESC);
 
 -- ─────────────────────────────────────────────────────────────────────────────
