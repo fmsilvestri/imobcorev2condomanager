@@ -6596,15 +6596,15 @@ export default function App() {
                   return (
                   <div key={f.id} onClick={()=>setSindFornecDetail(f.id)}
                     style={{ borderRadius:12, padding:"10px 12px", cursor:"pointer", display:"flex", gap:10, alignItems:"center", position:"relative", overflow:"hidden", background:`linear-gradient(135deg,${top} 0%,${bot} 100%)`, boxShadow:`0 3px 0 ${edge}, 0 5px 16px ${glow}`, border:"1px solid rgba(255,255,255,.12)" }}>
-                    <div style={{ position:"absolute",top:0,left:0,right:0,height:"45%",background:"linear-gradient(180deg,rgba(255,255,255,.25),rgba(255,255,255,0))",borderRadius:"12px 12px 0 0",pointerEvents:"none" }} />
-                    <div style={{ background:"rgba(0,0,0,.25)", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, position:"relative" }}>{f.icone||"🏢"}</div>
+                    <div style={{ position:"absolute",top:0,left:0,right:0,height:"45%",background:"linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,0))",borderRadius:"12px 12px 0 0",pointerEvents:"none" }} />
+                    <div style={{ background:"rgba(0,0,0,.3)", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, position:"relative" }}>{f.icone||"🏢"}</div>
                     <div style={{ flex:1, minWidth:0, position:"relative" }}>
-                      <div style={{ fontWeight:700, fontSize:13, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textShadow:"0 1px 4px rgba(0,0,0,.4)" }}>{f.nome}</div>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,.8)" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
+                      <div style={{ fontWeight:800, fontSize:13, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textShadow:"0 1px 6px rgba(0,0,0,.7), 0 0 14px rgba(0,0,0,.35)" }}>{f.nome}</div>
+                      <div style={{ fontSize:11, color:"#fff", fontWeight:600, textShadow:"0 1px 4px rgba(0,0,0,.65)", opacity:0.92 }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
                     </div>
                     <button onClick={e=>{ e.stopPropagation(); fornecWhatsApp(f); }} disabled={!(f.whatsapp||f.telefone)}
-                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"rgba(255,255,255,.15)", border:"none", borderRadius:7, padding:"6px 10px", color:"#fff", fontSize:11, fontWeight:700, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0, position:"relative", boxShadow:f.whatsapp||f.telefone?"0 2px 0 #0a5e32":"none", opacity:f.whatsapp||f.telefone?1:.5 }}>
-                      💬 WA
+                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#22C55E,#16A34A)":"rgba(255,255,255,.15)", border:"none", borderRadius:7, padding:"5px 10px", color:"#fff", fontSize:11, fontWeight:800, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0, position:"relative", boxShadow:f.whatsapp||f.telefone?"0 2px 0 rgba(0,0,0,.25), 0 0 0 1.5px rgba(255,255,255,.25)":"none", opacity:f.whatsapp||f.telefone?1:.45, letterSpacing:".03em" }}>
+                      ● WA
                     </button>
                   </div>
                   );
@@ -6911,15 +6911,15 @@ export default function App() {
                   return (
                   <div key={f.id} onClick={()=>setMorFornecDetail(f.id)}
                     style={{ borderRadius:12, padding:"10px 12px", cursor:"pointer", display:"flex", gap:10, alignItems:"center", position:"relative", overflow:"hidden", background:`linear-gradient(135deg,${top} 0%,${bot} 100%)`, boxShadow:`0 3px 0 ${edge}, 0 5px 16px ${glow}`, border:"1px solid rgba(255,255,255,.12)" }}>
-                    <div style={{ position:"absolute",top:0,left:0,right:0,height:"45%",background:"linear-gradient(180deg,rgba(255,255,255,.25),rgba(255,255,255,0))",borderRadius:"12px 12px 0 0",pointerEvents:"none" }} />
-                    <div style={{ background:"rgba(0,0,0,.25)", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, position:"relative" }}>{f.icone||"🏢"}</div>
+                    <div style={{ position:"absolute",top:0,left:0,right:0,height:"45%",background:"linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,0))",borderRadius:"12px 12px 0 0",pointerEvents:"none" }} />
+                    <div style={{ background:"rgba(0,0,0,.3)", borderRadius:8, width:38, height:38, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, position:"relative" }}>{f.icone||"🏢"}</div>
                     <div style={{ flex:1, minWidth:0, position:"relative" }}>
-                      <div style={{ fontWeight:700, fontSize:13, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textShadow:"0 1px 4px rgba(0,0,0,.4)" }}>{f.nome}</div>
-                      <div style={{ fontSize:10, color:"rgba(255,255,255,.8)" }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
+                      <div style={{ fontWeight:800, fontSize:13, color:"#fff", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", textShadow:"0 1px 6px rgba(0,0,0,.7), 0 0 14px rgba(0,0,0,.35)" }}>{f.nome}</div>
+                      <div style={{ fontSize:11, color:"#fff", fontWeight:600, textShadow:"0 1px 4px rgba(0,0,0,.65)", opacity:0.92 }}>{f.categoria}{f.telefone ? " · "+f.telefone : ""}</div>
                     </div>
                     <button onClick={e=>{ e.stopPropagation(); fornecWhatsApp(f); }} disabled={!(f.whatsapp||f.telefone)}
-                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#25D366,#128C7E)":"rgba(255,255,255,.15)", border:"none", borderRadius:7, padding:"6px 10px", color:"#fff", fontSize:11, fontWeight:700, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0, position:"relative", boxShadow:f.whatsapp||f.telefone?"0 2px 0 #0a5e32":"none", opacity:f.whatsapp||f.telefone?1:.5 }}>
-                      💬 WA
+                      style={{ background:f.whatsapp||f.telefone?"linear-gradient(135deg,#22C55E,#16A34A)":"rgba(255,255,255,.15)", border:"none", borderRadius:7, padding:"5px 10px", color:"#fff", fontSize:11, fontWeight:800, cursor:f.whatsapp||f.telefone?"pointer":"not-allowed", whiteSpace:"nowrap", flexShrink:0, position:"relative", boxShadow:f.whatsapp||f.telefone?"0 2px 0 rgba(0,0,0,.25), 0 0 0 1.5px rgba(255,255,255,.25)":"none", opacity:f.whatsapp||f.telefone?1:.45, letterSpacing:".03em" }}>
+                      ● WA
                     </button>
                   </div>
                   );
