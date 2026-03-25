@@ -282,23 +282,31 @@ export default function PlanosModule({ condId, condNome, equipList, showToast }:
         )}
       </div>
 
-      {/* KPI cards */}
-      {planoList.length > 0 && (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:18 }}>
-          {[
-            { label:"Total Planos", val:String(planoList.length), icon:"📋", color:"#A78BFA", bg:"rgba(167,139,250,.12)", border:"rgba(167,139,250,.25)" },
-            { label:"Orçamento Anual", val:"R$ "+orcamentoAnual.toLocaleString("pt-BR",{maximumFractionDigits:0}), icon:"💰", color:"#34D399", bg:"rgba(52,211,153,.1)", border:"rgba(52,211,153,.25)" },
-            { label:"Equip. Cobertos", val:String(equipCobertos), icon:"⚙️", color:"#FBBF24", bg:"rgba(251,191,36,.1)", border:"rgba(251,191,36,.25)" },
-            { label:"Próxima Execução", val: proxExec ? proxExec.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}) : "—", icon:"📅", color:"#38BDF8", bg:"rgba(56,189,248,.1)", border:"rgba(56,189,248,.25)" },
-          ].map(k => (
-            <div key={k.label} style={{ background:k.bg, border:`1px solid ${k.border}`, borderRadius:12, padding:"12px 14px" }}>
-              <div style={{ fontSize:20, marginBottom:4 }}>{k.icon}</div>
-              <div style={{ fontSize:18, fontWeight:800, color:k.color, lineHeight:1.1 }}>{k.val}</div>
-              <div style={{ fontSize:10, color:"#64748B", fontWeight:600, textTransform:"uppercase", letterSpacing:".04em", marginTop:2 }}>{k.label}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* KPI cards — 3D colorido */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10, marginBottom:18 }}>
+        {[
+          { label:"Total Planos",    val:String(planoList.length),                                                                              icon:"📋", top:"#C4B5FD", bot:"#6D28D9", edge:"#5B21B6", glow:"rgba(139,92,246,.6)"  },
+          { label:"Orçamento Anual", val:"R$\u00A0"+orcamentoAnual.toLocaleString("pt-BR",{maximumFractionDigits:0}),                           icon:"💰", top:"#6EE7B7", bot:"#059669", edge:"#047857", glow:"rgba(16,185,129,.6)" },
+          { label:"Equip. Cobertos", val:String(equipCobertos),                                                                                  icon:"⚙️", top:"#FDE68A", bot:"#D97706", edge:"#B45309", glow:"rgba(245,158,11,.6)" },
+          { label:"Próx. Execução",  val: proxExec ? proxExec.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"}) : "—",                  icon:"📅", top:"#93C5FD", bot:"#1D4ED8", edge:"#1E40AF", glow:"rgba(59,130,246,.6)" },
+        ].map(k => (
+          <div key={k.label} style={{
+            borderRadius:16, padding:"14px 12px 12px", position:"relative", overflow:"hidden",
+            background:`linear-gradient(160deg,${k.top} 0%,${k.bot} 100%)`,
+            boxShadow:`0 3px 0 ${k.edge}, 0 6px 20px ${k.glow}, inset 0 1px 0 rgba(255,255,255,.35)`,
+            border:"1px solid rgba(255,255,255,.15)",
+          }}>
+            {/* Shine */}
+            <div style={{ position:"absolute",top:0,left:0,right:0,height:"50%",background:"linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,0))",borderRadius:"16px 16px 0 0",pointerEvents:"none" }} />
+            {/* Icon decorativo */}
+            <div style={{ position:"absolute",bottom:-6,right:4,fontSize:38,opacity:.18,lineHeight:1,pointerEvents:"none" }}>{k.icon}</div>
+            {/* Icon principal */}
+            <div style={{ fontSize:22,marginBottom:6,position:"relative",filter:"drop-shadow(0 2px 4px rgba(0,0,0,.3))" }}>{k.icon}</div>
+            <div style={{ fontSize:k.val.length>7?15:20,fontWeight:900,color:"#fff",lineHeight:1.1,letterSpacing:"-0.5px",textShadow:"0 2px 6px rgba(0,0,0,.35)",position:"relative" }}>{k.val}</div>
+            <div style={{ fontSize:9,color:"rgba(255,255,255,.85)",fontWeight:800,textTransform:"uppercase",letterSpacing:".06em",marginTop:4,position:"relative",textShadow:"0 1px 2px rgba(0,0,0,.3)" }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
 
       {/* Sub-tab bar */}
       <div style={{ display:"flex", gap:6, marginBottom:20, flexWrap:"wrap" }}>
