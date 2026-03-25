@@ -3657,17 +3657,20 @@ router.post("/piscina/:id/foto", _piscFotoUpload.single("foto"), async (req: Req
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/di   body: { condominio_id? }
-// Di — Síndica Virtual executiva com cards inteligentes acionáveis
-// 4 tipos: critico | atencao | info | insight
+// Di — Central de Risco da Síndica Virtual
+// 3 tipos: critico (🚨) | risco (⚠️) | oportunidade (💡)
 // ─────────────────────────────────────────────────────────────────────────────
 
-type DiCardType = "critico" | "atencao" | "info" | "insight";
+type DiCardType = "critico" | "risco" | "oportunidade";
 interface DiSmartCard {
   tipo: DiCardType;
   titulo: string;
   mensagem: string;
   acao: string;
   badge?: string;
+  impacto?: "alto" | "medio" | "baixo";
+  previsao?: string;
+  ganho_estimado?: string;
 }
 
 // Gerador determinístico de cards a partir dos dados reais
@@ -3703,21 +3706,24 @@ function gerarCardsInteligentes(d: {
       mensagem: `${sensoresCriticos.map(s => `${s.nome}: ${s.nivel}%`).join(", ")}. Risco iminente de desabastecimento.`,
       acao: "Acionar manutenção imediata e alertar moradores",
       badge: `${sensoresCriticos.length} reservatório${sensoresCriticos.length > 1 ? "s" : ""}`,
+      impacto: "alto",
     });
   } else if (sensoresAtencao.length > 0) {
     cards.push({
-      tipo: "atencao",
-      titulo: "💧 Nível de Água Baixo",
-      mensagem: `${sensoresAtencao.map(s => `${s.nome}: ${s.nivel}%`).join(", ")}. Monitorar reposição.`,
+      tipo: "risco",
+      titulo: "💧 Nível de Água em Queda",
+      mensagem: `${sensoresAtencao.map(s => `${s.nome}: ${s.nivel}%`).join(", ")}. Padrão indica queda progressiva.`,
       acao: "Verificar programação do sistema de reposição",
       badge: `${sensoresAtencao.length} alerta${sensoresAtencao.length > 1 ? "s" : ""}`,
+      previsao: "Alta chance de nível crítico em 24–48h se não houver reposição",
     });
   } else if (d.aguaSensores.length > 0 && d.nivelMedioAgua != null) {
     cards.push({
-      tipo: "info",
-      titulo: "💧 Água Normal",
+      tipo: "oportunidade",
+      titulo: "💧 Água em Nível Normal",
       mensagem: `Nível médio em ${d.nivelMedioAgua}%. Todos os reservatórios dentro do padrão operacional.`,
-      acao: "Continuar monitoramento automático",
+      acao: "Configure alertas automáticos para antecipação de queda",
+      ganho_estimado: "Evita emergências de abastecimento",
     });
   }
 
@@ -3725,10 +3731,11 @@ function gerarCardsInteligentes(d: {
   if (sensoresOffline.length > 0) {
     cards.push({
       tipo: "critico",
-      titulo: "🔌 Sensor Offline",
-      mensagem: `${sensoresOffline.map(s => s.nome).join(", ")} sem comunicação. Leitura de nível comprometida.`,
-      acao: "Verificar conectividade e bateria do sensor IoT",
+      titulo: "🔌 Sensor IoT Offline",
+      mensagem: `${sensoresOffline.map(s => s.nome).join(", ")} sem comunicação. Monitoramento de nível comprometido.`,
+      acao: "Verificar conectividade e bateria dos sensores IoT",
       badge: "IoT",
+      impacto: "alto",
     });
   }
 
@@ -3737,32 +3744,36 @@ function gerarCardsInteligentes(d: {
     const urgTitles = d.osAbertas.filter(o => o.prioridade === "urgente" || o.prioridade === "alta").slice(0, 2).map(o => o.titulo).join(", ");
     cards.push({
       tipo: "critico",
-      titulo: "🔧 OSs Urgentes",
+      titulo: "🔧 OS Urgente sem Atendimento",
       mensagem: `${d.osUrgentes} ordem${d.osUrgentes > 1 ? "ns" : ""} urgente${d.osUrgentes > 1 ? "s" : ""}: ${urgTitles || "aguardando triagem"}.`,
       acao: "Atribuir responsável e iniciar atendimento imediato",
       badge: `${d.osUrgentes} urgente${d.osUrgentes > 1 ? "s" : ""}`,
+      impacto: "alto",
     });
   } else if (d.osTotal > 3) {
     cards.push({
-      tipo: "atencao",
-      titulo: "🔧 Backlog de OSs",
-      mensagem: `${d.osTotal} ordens de serviço abertas. Backlog acima do ideal para o porte do condomínio.`,
+      tipo: "risco",
+      titulo: "🔧 Backlog de OSs Crescendo",
+      mensagem: `${d.osTotal} ordens de serviço abertas. Padrão indica acúmulo acima do ideal.`,
       acao: "Priorizar e distribuir para equipe de manutenção",
       badge: `${d.osTotal} abertas`,
+      previsao: "Risco de OS urgente se o backlog continuar sem triagem",
     });
   } else if (d.osTotal > 0) {
     cards.push({
-      tipo: "info",
-      titulo: "🔧 Manutenção",
-      mensagem: `${d.osTotal} OS${d.osTotal > 1 ? "s" : ""} em andamento, sem urgências. Operação dentro do normal.`,
-      acao: "Acompanhar evolução no painel de OSs",
+      tipo: "oportunidade",
+      titulo: "🔧 OSs em Andamento",
+      mensagem: `${d.osTotal} OS${d.osTotal > 1 ? "s" : ""} em andamento, sem urgências. Boa oportunidade para manutenção preventiva.`,
+      acao: "Agendar revisão preventiva enquanto a operação está estável",
+      ganho_estimado: "Redução de até 30% em chamados corretivos",
     });
   } else {
     cards.push({
-      tipo: "info",
-      titulo: "🔧 Manutenção OK",
+      tipo: "oportunidade",
+      titulo: "🔧 Zero OSs Abertas",
       mensagem: "Nenhuma ordem de serviço aberta. Estrutura do condomínio em dia.",
-      acao: "Registrar próxima preventiva no calendário",
+      acao: "Aproveite para registrar próxima preventiva no calendário",
+      ganho_estimado: "Manutenção preventiva reduz emergências em 73%",
     });
   }
 
@@ -3777,26 +3788,29 @@ function gerarCardsInteligentes(d: {
     });
   } else if (d.txInad > 10) {
     cards.push({
-      tipo: "atencao",
-      titulo: "💰 Inadimplência Moderada",
-      mensagem: `${d.txInad}% de inadimplência. Saldo R$ ${d.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Monitorar evolução.`,
+      tipo: "risco",
+      titulo: "💰 Inadimplência em Alta",
+      mensagem: `${d.txInad}% de inadimplência — padrão crescente representa risco ao fluxo de caixa.`,
       acao: "Emitir boletos e enviar lembretes automáticos",
       badge: `${d.txInad}%`,
+      previsao: "Alta chance de impacto no saldo em 30 dias sem cobrança ativa",
     });
   } else if (d.saldo < 0) {
     cards.push({
       tipo: "critico",
       titulo: "💸 Saldo Negativo",
-      mensagem: `Saldo em R$ ${d.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Despesas (R$ ${d.totalDesp.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}) superam receitas.`,
+      mensagem: `Saldo em R$ ${d.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Despesas superam receitas — caixa comprometido.`,
       acao: "Renegociar contratos e revisar orçamento urgente",
       badge: "Saldo negativo",
+      impacto: "alto",
     });
   } else {
     cards.push({
-      tipo: "info",
+      tipo: "oportunidade",
       titulo: "💰 Financeiro Saudável",
       mensagem: `Saldo positivo de R$ ${d.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}. Inadimplência em ${d.txInad}%.`,
-      acao: "Manter reserva de emergência atualizada",
+      acao: "Invista o excedente em fundo de reserva ou manutenção preventiva",
+      ganho_estimado: "Fundo de reserva evita taxa extra em emergências",
     });
   }
 
@@ -3832,31 +3846,43 @@ function gerarCardsInteligentes(d: {
           mensagem: `${alertas.length} medidor${alertas.length > 1 ? "es" : ""} acima do limite: consumo total ${totalConsumo.toFixed(1)} ${unidade}.`,
           acao: `Investigar causa e verificar vazamentos / uso indevido de ${label.toLowerCase()}`,
           badge: `${alertas.length} alerta${alertas.length > 1 ? "s" : ""}`,
+          impacto: "alto",
         });
       } else if (semLeitura.length > 0) {
         cards.push({
-          tipo: "atencao",
+          tipo: "risco",
           titulo: `${emoji} ${label} — Leitura Atrasada`,
-          mensagem: `${semLeitura.length} medidor${semLeitura.length > 1 ? "es" : ""} de ${label.toLowerCase()} sem registro de leitura há mais de 45 dias.`,
+          mensagem: `${semLeitura.length} medidor${semLeitura.length > 1 ? "es" : ""} sem registro de leitura há mais de 45 dias.`,
           acao: "Registrar leitura mensal para manter histórico de consumo",
           badge: "Leitura pendente",
+          previsao: "Sem dados históricos, perdas e vazamentos ficam invisíveis",
         });
       }
     }
   }
 
-  // ── 🔩 EQUIPAMENTOS COM FALHA (MISP) ────────────────────────────────────────
+  // ── 🔩 EQUIPAMENTOS COM FALHA ───────────────────────────────────────────────
   if (d.equipamentos && d.equipamentos.length > 0) {
     const equipFalha = d.equipamentos.filter(e =>
       e.status === "avariado" || e.status === "em_manutencao" || e.status === "inativo"
     );
-    if (equipFalha.length > 0) {
+    if (equipFalha.length >= 3) {
       cards.push({
-        tipo: equipFalha.length >= 3 ? "critico" : "atencao",
-        titulo: "🔩 Equipamentos com Problema",
-        mensagem: `${equipFalha.length} equipamento${equipFalha.length > 1 ? "s" : ""} com status de falha: ${equipFalha.slice(0, 3).map(e => e.nome).join(", ")}.`,
+        tipo: "critico",
+        titulo: "🔩 Equipamentos com Falha",
+        mensagem: `${equipFalha.length} equipamentos com status de falha: ${equipFalha.slice(0, 3).map(e => e.nome).join(", ")}.`,
         acao: "Abrir OS de manutenção para os equipamentos afetados",
         badge: `${equipFalha.length} com falha`,
+        impacto: "medio",
+      });
+    } else if (equipFalha.length > 0) {
+      cards.push({
+        tipo: "risco",
+        titulo: "🔩 Equipamento Necessita Atenção",
+        mensagem: `${equipFalha.length} equipamento${equipFalha.length > 1 ? "s" : ""} com falha: ${equipFalha.map(e => e.nome).join(", ")}. Risco de agravamento.`,
+        acao: "Agendar manutenção preventiva para evitar colapso",
+        badge: `${equipFalha.length} com falha`,
+        previsao: "Falha sem tratamento tende a se agravar em 7–15 dias",
       });
     }
   }
@@ -3877,81 +3903,79 @@ function gerarCardsInteligentes(d: {
       });
     } else if (docsAVenc.length > 0) {
       cards.push({
-        tipo: "atencao",
-        titulo: "📄 Documentos a Vencer",
+        tipo: "risco",
+        titulo: "📄 Documentos a Vencer em Breve",
         mensagem: `${docsAVenc.length} documento${docsAVenc.length > 1 ? "s vencerão" : " vencerá"} nos próximos 30 dias: ${docsAVenc.slice(0,3).map(d => d.nome).join(", ")}.`,
-        acao: "Iniciar processo de renovação preventiva",
+        acao: "Iniciar processo de renovação preventiva agora",
         badge: `${docsAVenc.length} a vencer`,
+        previsao: "Documentos vencidos geram risco legal e de autuação",
       });
     } else {
       const comValidade = d.documentos.filter(doc => doc.validade);
       if (comValidade.length > 0) {
         cards.push({
-          tipo: "info",
+          tipo: "oportunidade",
           titulo: "📄 Documentos em Dia",
-          mensagem: `${d.documentos.length} documento${d.documentos.length > 1 ? "s cadastrados" : " cadastrado"}, todos com validade regular. Ótima conformidade documental!`,
-          acao: "Manter agenda de renovações preventivas",
+          mensagem: `${d.documentos.length} documento${d.documentos.length > 1 ? "s cadastrados" : " cadastrado"}, todos com validade regular. Excelente conformidade!`,
+          acao: "Configure alertas de vencimento para renovações automáticas",
+          ganho_estimado: "Evita multas e autuações por documentação irregular",
         });
       }
     }
 
-    // ── 📜 INSIGHT DE CONTEÚDO DOS DOCUMENTOS ──────────────────────────────
+    // ── 📜 OPORTUNIDADE DE CONTEÚDO DOS DOCUMENTOS ─────────────────────────
     const docsComTexto = d.documentos.filter(doc => doc.conteudo_texto && doc.conteudo_texto.trim().length > 30);
     if (docsComTexto.length > 0) {
-      for (const doc of docsComTexto.slice(0, 3)) {
-        const texto = doc.conteudo_texto!.trim();
-        // Extrai a primeira frase significativa (após cabeçalhos)
-        const linhas = texto.split(/\n+/).map(l => l.trim()).filter(l => l.length > 20 && !/^(CAPÍTULO|ART\.|TÍTULO|SEÇÃO|\d+\.?\s*$)/i.test(l));
-        const preview = linhas[0] ? linhas[0].slice(0, 200) : texto.slice(0, 200);
-        const icone = doc.tipo === "regimento" ? "📜" : doc.tipo === "convencao" ? "🏛️" : doc.tipo === "avcb" ? "🔥" : doc.tipo === "alvara" ? "🏷️" : doc.tipo === "contrato" ? "📑" : "📄";
-        cards.push({
-          tipo: "insight",
-          titulo: `${icone} ${doc.nome}`,
-          mensagem: preview + (texto.length > 200 ? "…" : ""),
-          acao: "Consultar o documento completo para detalhes",
-          badge: doc.tipo.charAt(0).toUpperCase() + doc.tipo.slice(1),
-        });
-      }
+      cards.push({
+        tipo: "oportunidade",
+        titulo: "📜 Documentos com IA Disponível",
+        mensagem: `${docsComTexto.length} documento${docsComTexto.length > 1 ? "s com" : " com"} conteúdo indexado. A Di pode responder perguntas sobre regimento, convenção e contratos.`,
+        acao: "Acesse a aba Docs IA para consultar qualquer regra do condomínio",
+        ganho_estimado: "Resposta instantânea a dúvidas dos moradores",
+      });
     }
   }
 
   // ── 📦 ENCOMENDAS PENDENTES ──────────────────────────────────────────────────
   if (d.encomendas != null && d.encomendas > 0) {
     cards.push({
-      tipo: d.encomendas >= 10 ? "atencao" : "info",
-      titulo: "📦 Encomendas Pendentes",
+      tipo: d.encomendas >= 10 ? "risco" : "oportunidade",
+      titulo: "📦 Encomendas Pendentes na Portaria",
       mensagem: `${d.encomendas} encomenda${d.encomendas > 1 ? "s aguardam" : " aguarda"} retirada na portaria.`,
       acao: d.encomendas >= 10
         ? "Notificar moradores com encomendas há mais de 5 dias"
-        : "Verificar lista de encomendas pendentes",
+        : "Enviar lembrete amigável via comunicado",
       badge: `${d.encomendas} pendente${d.encomendas > 1 ? "s" : ""}`,
+      previsao: d.encomendas >= 10 ? "Acúmulo gera risco de extravio e reclamações" : undefined,
+      ganho_estimado: d.encomendas < 10 ? "Notificação reduz tempo médio de retirada" : undefined,
     });
   }
 
-  // ── 🧠 INSIGHT DA DI (sempre presente) ────────────────────────────────────
+  // ── 💡 OPORTUNIDADE ESTRATÉGICA DA DI (sempre presente) ─────────────────
   const totalProblemas = sensoresCriticos.length + (d.osUrgentes > 0 ? 1 : 0) + (d.txInad > 20 ? 1 : 0);
   if (totalProblemas >= 2) {
     cards.push({
-      tipo: "insight",
-      titulo: "🧠 Análise de Risco",
-      mensagem: `Detectei ${totalProblemas} indicadores críticos simultâneos. Recomendo reunião emergencial com síndico e equipe de manutenção.`,
-      acao: "Agendar reunião de crise nas próximas 24h",
+      tipo: "risco",
+      titulo: "🧠 Múltiplos Indicadores Críticos",
+      mensagem: `Detectei ${totalProblemas} indicadores críticos simultâneos. Situação exige atenção coordenada da gestão.`,
+      acao: "Agendar reunião de crise com equipe nas próximas 24h",
       badge: "Risco elevado",
+      previsao: "Problemas simultâneos aumentam probabilidade de emergência",
     });
   } else if (d.aguaSensores.length === 0) {
     cards.push({
-      tipo: "insight",
-      titulo: "🧠 IoT não configurado",
-      mensagem: "Nenhum sensor de água conectado. O monitoramento em tempo real não está ativo para este condomínio.",
+      tipo: "oportunidade",
+      titulo: "📡 IoT Não Configurado",
+      mensagem: "Nenhum sensor de água conectado. Monitoramento em tempo real não está ativo.",
       acao: "Cadastrar reservatórios e sensores IoT no módulo Água",
-      badge: "Oportunidade",
+      ganho_estimado: "Sensores IoT evitam até 90% das crises de abastecimento",
     });
   } else {
     cards.push({
-      tipo: "insight",
-      titulo: "🧠 Insight da Di",
-      mensagem: `Padrão operacional estável em ${d.condNome}. Boa gestão preventiva evita 73% das emergências condominiais.`,
-      acao: "Agendar próxima vistoria preventiva",
+      tipo: "oportunidade",
+      titulo: "💡 Operação Estável",
+      mensagem: `Padrão operacional positivo em ${d.condNome}. Boa gestão preventiva evita 73% das emergências condominiais.`,
+      acao: "Agende próxima vistoria preventiva enquanto está tudo sob controle",
       badge: "Estável",
     });
   }
@@ -3959,18 +3983,22 @@ function gerarCardsInteligentes(d: {
   return cards;
 }
 
-// Gera o resumo executivo (fala da Di) com base nos cards
+// Gera o resumo executivo (fala da Di) com base nos cards da Central de Risco
 function gerarResumoExecutivo(cards: DiSmartCard[], condNome: string): string {
-  const criticos = cards.filter(c => c.tipo === "critico");
-  const atencoes = cards.filter(c => c.tipo === "atencao");
+  const criticos     = cards.filter(c => c.tipo === "critico");
+  const riscos       = cards.filter(c => c.tipo === "risco");
+  const oportunidades = cards.filter(c => c.tipo === "oportunidade");
 
   if (criticos.length > 0) {
-    return `Oi! Analisei o ${condNome} e encontrei ${criticos.length} situação${criticos.length > 1 ? "ões críticas" : " crítica"} que exige${criticos.length > 1 ? "m" : ""} ação imediata. ${criticos[0].mensagem.split(".")[0]}. Confira os cards abaixo!`;
+    return `Oi! Analisei a Central de Risco do ${condNome} e encontrei ${criticos.length} situação${criticos.length > 1 ? "ões críticas" : " crítica"} que exige${criticos.length > 1 ? "m" : ""} ação imediata. ${criticos[0].mensagem.split(".")[0]}. Confira os cards — críticos primeiro!`;
   }
-  if (atencoes.length > 0) {
-    return `Olá! O ${condNome} está operacional, mas há ${atencoes.length} ponto${atencoes.length > 1 ? "s" : ""} de atenção que ${atencoes.length > 1 ? "precisam" : "precisa"} de acompanhamento. ${atencoes[0].mensagem.split(".")[0]}. Veja os detalhes nos cards!`;
+  if (riscos.length > 0) {
+    return `Olá! O ${condNome} está operacional, mas identifiquei ${riscos.length} risco${riscos.length > 1 ? "s futuros" : " futuro"} com alta probabilidade. ${riscos[0].mensagem.split(".")[0]}. Confira os cards de risco para agir antes que vire problema!`;
   }
-  return `Oi! Boa notícia: o ${condNome} está com todos os sistemas dentro do normal. Nível de água, financeiro e manutenção estão OK. Continue assim!`;
+  if (oportunidades.length > 0) {
+    return `Ótimas notícias para o ${condNome}! Nenhuma crítica, nenhum risco imediato. Mas encontrei ${oportunidades.length} oportunidade${oportunidades.length > 1 ? "s" : ""} de melhoria e economia. Confira os cards de oportunidade!`;
+  }
+  return `Oi! Boa notícia: o ${condNome} está com todos os sistemas dentro do normal. Central de Risco verde — água, financeiro e manutenção estão OK. Continue assim!`;
 }
 
 router.post("/di", async (req: Request, res: Response) => {
@@ -4092,12 +4120,29 @@ router.post("/di", async (req: Request, res: Response) => {
 
     // Declaradas fora do try para ficarem disponíveis no return final
     let diNomeBriefing = "Di";
-    let diSystemBriefing = "Você é Di, a Síndica Virtual do ImobCore. Personalidade: direta e empática, próxima sem ser informal. Português brasileiro com emojis moderados.";
+    let diSystemBriefing = `Você é Di, a Síndica Virtual inteligente do ImobCore — Centro de Risco do condomínio.
+
+Sempre que analisar dados, classifique tudo em 3 categorias:
+
+🚨 CRÍTICO IMEDIATO — Problemas que exigem ação urgente agora (vazamento ativo, falta de água, OS urgente sem atendimento, sensor offline crítico, saldo negativo).
+
+⚠️ RISCO FUTURO — Problemas que ainda não aconteceram, mas têm alta probabilidade (padrão de falhas recorrentes, queda de nível de água, aumento de inadimplência, equipamentos com histórico de falha).
+
+💡 OPORTUNIDADE — Melhorias, economia ou otimização (redução de custo, automatização, melhor uso de recursos, ajustes operacionais).
+
+REGRAS:
+1. Sempre gerar pelo menos 1 item em alguma categoria se houver dados
+2. Priorizar CRÍTICO acima de tudo
+3. Ser objetivo e acionável
+4. Pensar como gestor profissional
+5. Sempre sugerir ação prática
+
+Personalidade: direta e empática, próxima sem ser informal. Português brasileiro com emojis moderados.`;
     let diAtivaBriefing = true;
 
     try {
       const criticos  = cardsBase.filter(c => c.tipo === "critico").length;
-      const atencoes  = cardsBase.filter(c => c.tipo === "atencao").length;
+      const atencoes  = cardsBase.filter(c => c.tipo === "risco").length;
 
       // Carregar nome, tom e status da Di configurados pelo Master
       try {
@@ -4306,29 +4351,32 @@ interface NotifConfig {
 }
 
 interface NotifCard {
-  tipo: "critico" | "atencao" | "info" | "insight";
+  tipo: "critico" | "risco" | "oportunidade";
   titulo: string;
   mensagem: string;
   acao: string;
   badge?: string;
+  impacto?: "alto" | "medio" | "baixo";
+  previsao?: string;
+  ganho_estimado?: string;
 }
 
 function montarMensagem(card: NotifCard): string {
-  const icon = { critico: "🚨", atencao: "⚠️", info: "📊", insight: "🧠" }[card.tipo] || "📩";
-  return `${icon} *Di — ImobCore*\n\n*${card.titulo}*\n${card.mensagem}\n\n👉 _Ação: ${card.acao}_`;
+  const icon = { critico: "🚨", risco: "⚠️", oportunidade: "💡" }[card.tipo] || "📩";
+  const extra = card.previsao ? `\n🔮 _Previsão: ${card.previsao}_` : card.ganho_estimado ? `\n💰 _Ganho: ${card.ganho_estimado}_` : "";
+  return `${icon} *Di — ImobCore*\n\n*${card.titulo}*\n${card.mensagem}${extra}\n\n👉 _Ação: ${card.acao}_`;
 }
 
 function montarMensagemTexto(card: NotifCard): string {
-  const icon = { critico: "🚨", atencao: "⚠️", info: "📊", insight: "🧠" }[card.tipo] || "📩";
+  const icon = { critico: "🚨", risco: "⚠️", oportunidade: "💡" }[card.tipo] || "📩";
   return `${icon} Di — ImobCore\n\n${card.titulo}\n${card.mensagem}\n\n👉 Ação: ${card.acao}`;
 }
 
-// Canais por tipo de card
+// Canais por tipo de card (Central de Risco)
 function canaisPorTipo(tipo: string): ("telegram" | "whatsapp" | "push")[] {
-  if (tipo === "critico")  return ["telegram", "whatsapp", "push"];
-  if (tipo === "atencao")  return ["telegram", "push"];
-  if (tipo === "info")     return ["push"];
-  if (tipo === "insight")  return ["push"];
+  if (tipo === "critico")     return ["telegram", "whatsapp", "push"];
+  if (tipo === "risco")       return ["telegram", "push"];
+  if (tipo === "oportunidade") return ["push"];
   return ["push"];
 }
 
@@ -4449,10 +4497,10 @@ router.post("/notificacoes/disparar", async (req: Request, res: Response) => {
     const { cards } = await diResp.json() as { cards: NotifCard[] };
 
     const resultado: { canal: string; card: string; status: string; erro?: string }[] = [];
-    const cardsParaEnviar = cards.filter(c => c.tipo === "critico" || c.tipo === "atencao");
+    const cardsParaEnviar = cards.filter(c => c.tipo === "critico" || c.tipo === "risco");
 
     if (cardsParaEnviar.length === 0) {
-      return res.json({ ok: true, enviados: 0, resultado: [], mensagem: "Nenhum alerta crítico ou de atenção para disparar." });
+      return res.json({ ok: true, enviados: 0, resultado: [], mensagem: "Nenhum alerta crítico ou de risco para disparar." });
     }
 
     for (const card of cardsParaEnviar) {
@@ -4546,10 +4594,11 @@ router.post("/notificacoes/teste", async (req: Request, res: Response) => {
   };
 
   const cardTeste: NotifCard = {
-    tipo: "info",
+    tipo: "oportunidade",
     titulo: "✅ Teste de Conexão",
     mensagem: "Este é um teste do sistema de notificações ImobCore. Tudo funcionando!",
     acao: "Nenhuma ação necessária — apenas confirmação de conectividade.",
+    ganho_estimado: "Notificações ativas mantêm gestão em tempo real",
   };
   const msgMd   = montarMensagem(cardTeste);
   const msgText = montarMensagemTexto(cardTeste);

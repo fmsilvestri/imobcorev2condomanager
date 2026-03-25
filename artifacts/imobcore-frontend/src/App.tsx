@@ -2063,13 +2063,16 @@ export default function App() {
   const [solarForm, setSolarForm] = useState<PlacaSolarData>({});
   const [solarSaving, setSolarSaving] = useState(false);
 
-  // ── Di — Síndica Virtual state ─────────────────────────────────────────────
+  // ── Di — Central de Risco state ────────────────────────────────────────────
   type DiCard = {
-    tipo: "critico" | "atencao" | "info" | "insight";
+    tipo: "critico" | "risco" | "oportunidade";
     titulo: string;
     mensagem: string;
     acao: string;
     badge?: string;
+    impacto?: "alto" | "medio" | "baixo";
+    previsao?: string;
+    ganho_estimado?: string;
   };
   const [diData, setDiData] = useState<{ fala: string; cards: DiCard[] } | null>(null);
   const [diLoading, setDiLoading] = useState(false);
@@ -4653,7 +4656,7 @@ export default function App() {
           <div style={{ background:"linear-gradient(160deg,#2E1065 0%,#4C1D95 60%,#1E1B4B 100%)", padding:"16px 18px 14px", flexShrink:0 }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
               <button onClick={()=>setSindicoScreen(null)} style={{ height:38,padding:"0 16px",borderRadius:20,background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",color:"#E9D5FF",fontSize:14,fontWeight:800,cursor:"pointer" }}>← Voltar</button>
-              <div style={{ flex:1, fontSize:16, fontWeight:900, color:"#F3E8FF" }}>🟣 Dicas da Di</div>
+              <div style={{ flex:1, fontSize:16, fontWeight:900, color:"#F3E8FF" }}>🚦 Central de Risco</div>
               {briefSnap && (
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontSize:9, color:"#A78BFA", fontWeight:700, letterSpacing:".06em" }}>SCORE GERAL</div>
@@ -4754,19 +4757,20 @@ export default function App() {
 
     if (sindicoScreen === "di") {
       type DiCard = {
-        tipo: "critico" | "atencao" | "info" | "insight";
+        tipo: "critico" | "risco" | "oportunidade";
         titulo: string; mensagem: string; acao: string; badge?: string;
+        impacto?: "alto"|"medio"|"baixo"; previsao?: string; ganho_estimado?: string;
       };
-      const tipoConfig: Record<string, { bg: string; border: string; accent: string; label: string; labelBg: string }> = {
-        critico: { bg:"rgba(239,68,68,.12)",   border:"rgba(239,68,68,.4)",   accent:"#EF4444", label:"🚨 CRÍTICO",    labelBg:"rgba(239,68,68,.22)" },
-        atencao: { bg:"rgba(234,179,8,.09)",   border:"rgba(234,179,8,.4)",   accent:"#EAB308", label:"⚠️ ATENÇÃO",   labelBg:"rgba(234,179,8,.2)" },
-        info:    { bg:"rgba(16,185,129,.09)",  border:"rgba(16,185,129,.35)", accent:"#10B981", label:"📊 NORMAL",    labelBg:"rgba(16,185,129,.2)" },
-        insight: { bg:"rgba(168,85,247,.12)",  border:"rgba(168,85,247,.4)",  accent:"#A855F7", label:"🧠 INSIGHT IA",labelBg:"rgba(168,85,247,.22)" },
+      const tipoConfig: Record<string, { bg: string; border: string; accent: string; label: string; labelBg: string; glow: string }> = {
+        critico:     { bg:"rgba(239,68,68,.13)",   border:"rgba(239,68,68,.5)",   accent:"#EF4444", label:"🚨 CRÍTICO IMEDIATO", labelBg:"rgba(239,68,68,.25)",  glow:"0 0 18px rgba(239,68,68,.2)" },
+        risco:       { bg:"rgba(234,179,8,.1)",    border:"rgba(234,179,8,.45)",  accent:"#F59E0B", label:"⚠️ RISCO FUTURO",    labelBg:"rgba(234,179,8,.22)",   glow:"none" },
+        oportunidade:{ bg:"rgba(16,185,129,.09)",  border:"rgba(16,185,129,.35)", accent:"#10B981", label:"💡 OPORTUNIDADE",    labelBg:"rgba(16,185,129,.2)",   glow:"none" },
       };
 
       const diCards: DiCard[] = (diData?.cards as DiCard[] | undefined) || [];
-      const criticos = diCards.filter(c => c.tipo === "critico").length;
-      const atencoes = diCards.filter(c => c.tipo === "atencao").length;
+      const criticos    = diCards.filter(c => c.tipo === "critico").length;
+      const riscos      = diCards.filter(c => c.tipo === "risco").length;
+      const atencoes    = riscos;
 
       return (
         <div style={{ position:"absolute", inset:0, zIndex:50, display:"flex", flexDirection:"column", background:"#0B0A1A", overflowY:"auto", fontFamily:"'Nunito',sans-serif" }}>
@@ -4829,7 +4833,7 @@ export default function App() {
             {(["briefing","relatorio","documentos"] as const).map(v => (
               <button key={v} onClick={() => { setDiView(v); if (v==="documentos" && !diDocLoaded && condId) loadDiDocResumo(condId); }}
                 style={{ flex:1, padding:"10px 4px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:10, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit" }}>
-                {v==="briefing" ? "💡 Dicas" : v==="relatorio" ? "📊 Relatório" : "📄 Docs IA"}
+                {v==="briefing" ? "🚦 Central de Risco" : v==="relatorio" ? "📊 Relatório" : "📄 Docs IA"}
               </button>
             ))}
           </div>
@@ -4925,37 +4929,62 @@ export default function App() {
               </div>
             )}
 
-            {/* Cards inteligentes */}
+            {/* Central de Risco — Cards */}
             {diCards.length > 0 && (
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-                {diCards.map((card, i) => {
-                  const cfg = tipoConfig[card.tipo] || tipoConfig.info;
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {(["critico","risco","oportunidade"] as const).map(tipo => {
+                  const grupo = diCards.filter(c => c.tipo === tipo);
+                  if (grupo.length === 0) return null;
+                  const cfg = tipoConfig[tipo];
                   return (
-                    <div key={i} style={{
-                      background:cfg.bg, border:`1px solid ${cfg.border}`, borderRadius:14,
-                      padding:"12px 13px", display:"flex", flexDirection:"column", gap:7,
-                      boxShadow: card.tipo === "critico" ? "0 0 14px rgba(239,68,68,.15)" : "none",
-                    }}>
-                      {/* Badge tipo + badge personalizado */}
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:4 }}>
-                        <span style={{ background:cfg.labelBg, color:cfg.accent, borderRadius:5, padding:"2px 7px", fontSize:8, fontWeight:800, letterSpacing:".5px" }}>
-                          {cfg.label}
-                        </span>
-                        {card.badge && (
-                          <span style={{ background:"rgba(255,255,255,.06)", border:`1px solid ${cfg.border}`, color:cfg.accent, borderRadius:20, padding:"1px 6px", fontSize:8, fontWeight:600 }}>
-                            {card.badge}
-                          </span>
-                        )}
-                      </div>
-                      {/* Título */}
-                      <div style={{ fontSize:12, fontWeight:800, color:"#F1F5F9", lineHeight:1.3 }}>{card.titulo}</div>
-                      {/* Mensagem */}
-                      <div style={{ fontSize:11, color:"#94A3B8", lineHeight:1.45 }}>{card.mensagem}</div>
-                      {/* Ação */}
-                      <div style={{ borderTop:`1px solid ${cfg.border}`, paddingTop:7, fontSize:10, color:cfg.accent, fontWeight:600, display:"flex", gap:4, alignItems:"flex-start" }}>
-                        <span style={{ flexShrink:0 }}>👉</span>
-                        <span>{card.acao}</span>
-                      </div>
+                    <div key={tipo}>
+                      {grupo.map((card, i) => (
+                        <div key={i} style={{
+                          background:cfg.bg, border:`1px solid ${cfg.border}`, borderRadius:14,
+                          padding:"13px 14px", display:"flex", flexDirection:"column", gap:8,
+                          boxShadow:cfg.glow, marginBottom: i < grupo.length - 1 ? 8 : 0,
+                        }}>
+                          {/* Badge tipo + badge personalizado */}
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:4 }}>
+                            <span style={{ background:cfg.labelBg, color:cfg.accent, borderRadius:5, padding:"2px 8px", fontSize:8, fontWeight:800, letterSpacing:".6px" }}>
+                              {cfg.label}
+                            </span>
+                            {card.badge && (
+                              <span style={{ background:"rgba(255,255,255,.06)", border:`1px solid ${cfg.border}`, color:cfg.accent, borderRadius:20, padding:"1px 7px", fontSize:8, fontWeight:600 }}>
+                                {card.badge}
+                              </span>
+                            )}
+                          </div>
+                          {/* Título */}
+                          <div style={{ fontSize:13, fontWeight:800, color:"#F1F5F9", lineHeight:1.3 }}>{card.titulo}</div>
+                          {/* Mensagem */}
+                          <div style={{ fontSize:11, color:"#94A3B8", lineHeight:1.5 }}>{card.mensagem}</div>
+                          {/* Previsão (risco) */}
+                          {card.previsao && (
+                            <div style={{ fontSize:10, color:"#FCD34D", background:"rgba(234,179,8,.1)", border:"1px solid rgba(234,179,8,.25)", borderRadius:7, padding:"5px 9px", display:"flex", gap:5, alignItems:"flex-start" }}>
+                              <span>🔮</span><span><strong>Previsão:</strong> {card.previsao}</span>
+                            </div>
+                          )}
+                          {/* Ganho estimado (oportunidade) */}
+                          {card.ganho_estimado && (
+                            <div style={{ fontSize:10, color:"#34D399", background:"rgba(16,185,129,.1)", border:"1px solid rgba(16,185,129,.25)", borderRadius:7, padding:"5px 9px", display:"flex", gap:5, alignItems:"flex-start" }}>
+                              <span>💰</span><span><strong>Ganho:</strong> {card.ganho_estimado}</span>
+                            </div>
+                          )}
+                          {/* Ação + botão Resolver para crítico */}
+                          <div style={{ borderTop:`1px solid ${cfg.border}`, paddingTop:8, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                            <div style={{ fontSize:10, color:cfg.accent, fontWeight:600, display:"flex", gap:4, alignItems:"flex-start", flex:1 }}>
+                              <span style={{ flexShrink:0 }}>👉</span>
+                              <span>{card.acao}</span>
+                            </div>
+                            {card.tipo === "critico" && (
+                              <button style={{ flexShrink:0, background:"#EF4444", border:"none", color:"#fff", borderRadius:8, padding:"5px 10px", fontSize:9, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                Resolver agora
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   );
                 })}
@@ -4988,7 +5017,7 @@ export default function App() {
               }}
               style={{ flex:1, background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", color:"#fff", borderRadius:12, padding:"11px 8px", fontSize:12, fontWeight:800, cursor:diLoading?"not-allowed":"pointer", opacity:diLoading?.6:1 }}
             >
-              {diLoading ? "⏳ Analisando..." : "🔄 Atualizar Dicas"}
+              {diLoading ? "⏳ Analisando..." : "🔄 Atualizar Central de Risco"}
             </button>
 
             {diData?.fala && (
@@ -7512,11 +7541,10 @@ export default function App() {
           <div className={`panel ${panel === "sv-di" ? "active" : ""} card`} style={{ padding: 0, overflow: "hidden" }}>
             {panel === "sv-di" && (() => {
               const condNome = dash?.condominios?.find((c: {id:string}) => c.id === condId)?.nome ?? "Condomínio";
-              const tipoConfig: Record<string, { bg: string; border: string; accent: string; label: string; labelBg: string }> = {
-                critico: { bg:"rgba(239,68,68,.1)",   border:"rgba(239,68,68,.35)",   accent:"#EF4444", label:"🚨 CRÍTICO",  labelBg:"rgba(239,68,68,.2)"   },
-                atencao: { bg:"rgba(234,179,8,.08)",  border:"rgba(234,179,8,.35)",   accent:"#EAB308", label:"⚠️ ATENÇÃO",  labelBg:"rgba(234,179,8,.2)"   },
-                info:    { bg:"rgba(16,185,129,.08)", border:"rgba(16,185,129,.3)",   accent:"#10B981", label:"📊 NORMAL",   labelBg:"rgba(16,185,129,.18)" },
-                insight: { bg:"rgba(168,85,247,.1)",  border:"rgba(168,85,247,.35)",  accent:"#A855F7", label:"🧠 INSIGHT",  labelBg:"rgba(168,85,247,.2)"  },
+              const tipoConfig: Record<string, { bg: string; border: string; accent: string; label: string; labelBg: string; glow: string }> = {
+                critico:      { bg:"rgba(239,68,68,.11)",   border:"rgba(239,68,68,.45)",   accent:"#EF4444", label:"🚨 CRÍTICO IMEDIATO", labelBg:"rgba(239,68,68,.22)",  glow:"0 0 16px rgba(239,68,68,.18)" },
+                risco:        { bg:"rgba(234,179,8,.09)",   border:"rgba(234,179,8,.4)",    accent:"#F59E0B", label:"⚠️ RISCO FUTURO",    labelBg:"rgba(234,179,8,.2)",   glow:"none" },
+                oportunidade: { bg:"rgba(16,185,129,.08)",  border:"rgba(16,185,129,.32)",  accent:"#10B981", label:"💡 OPORTUNIDADE",    labelBg:"rgba(16,185,129,.18)", glow:"none" },
               };
               const mods = [
                 { id:"operacao",   icon:"🔧", label:"OS",          badge: t?.os_abertas || 0 },
@@ -7560,7 +7588,7 @@ export default function App() {
                     {(["briefing","relatorio","documentos"] as const).map(v => (
                       <button key={v} onClick={() => { setDiView(v); if (v==="documentos" && !diDocLoaded && condId) loadDiDocResumo(condId); }}
                         style={{ flex:1, padding:"12px 8px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:12, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all .2s" }}>
-                        {v==="briefing" ? "💡 Dicas da Di" : v==="relatorio" ? "📋 Relatório" : "📄 Docs IA"}
+                        {v==="briefing" ? "🚦 Central de Risco" : v==="relatorio" ? "📋 Relatório" : "📄 Docs IA"}
                       </button>
                     ))}
                   </div>
@@ -7684,24 +7712,43 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Di cards */}
+                      {/* Central de Risco — Cards */}
                       {diData?.cards && diData.cards.length > 0 && (
-                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
-                          {diData.cards.map((card: { tipo:string; badge?:string; titulo:string; mensagem:string; acao:string }, i: number) => {
-                            const cfg = tipoConfig[card.tipo] || tipoConfig.info;
-                            return (
-                              <div key={i} style={{ background:cfg.bg, border:`1px solid ${cfg.border}`, borderRadius:14, padding:"14px 16px", display:"flex", flexDirection:"column", gap:8, boxShadow:card.tipo==="critico"?"0 0 16px rgba(239,68,68,.15)":"none" }}>
+                        <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:16 }}>
+                          {(["critico","risco","oportunidade"] as const).map(tipo => {
+                            const grupo = (diData.cards as Array<{ tipo:string; badge?:string; titulo:string; mensagem:string; acao:string; previsao?:string; ganho_estimado?:string }>).filter(c => c.tipo === tipo);
+                            if (grupo.length === 0) return null;
+                            const cfg = tipoConfig[tipo];
+                            return grupo.map((card, i) => (
+                              <div key={`${tipo}-${i}`} style={{ background:cfg.bg, border:`1px solid ${cfg.border}`, borderRadius:14, padding:"14px 16px", display:"flex", flexDirection:"column", gap:8, boxShadow:cfg.glow }}>
                                 <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:6 }}>
                                   <span style={{ background:cfg.labelBg, color:cfg.accent, borderRadius:6, padding:"2px 8px", fontSize:9, fontWeight:800, letterSpacing:".5px" }}>{cfg.label}</span>
                                   {card.badge && <span style={{ background:"rgba(255,255,255,.06)", border:`1px solid ${cfg.border}`, color:cfg.accent, borderRadius:20, padding:"1px 8px", fontSize:9, fontWeight:600 }}>{card.badge}</span>}
                                 </div>
                                 <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9", lineHeight:1.3 }}>{card.titulo}</div>
                                 <div style={{ fontSize:12, color:"#94A3B8", lineHeight:1.5 }}>{card.mensagem}</div>
-                                <div style={{ marginTop:2, background:"rgba(255,255,255,.04)", borderTop:`1px solid ${cfg.border}`, paddingTop:8, fontSize:11, color:cfg.accent, fontWeight:600, display:"flex", alignItems:"flex-start", gap:5 }}>
-                                  <span style={{ flexShrink:0, marginTop:1 }}>👉</span><span>{card.acao}</span>
+                                {card.previsao && (
+                                  <div style={{ fontSize:11, color:"#FCD34D", background:"rgba(234,179,8,.08)", border:"1px solid rgba(234,179,8,.2)", borderRadius:7, padding:"5px 9px", display:"flex", gap:5 }}>
+                                    <span>🔮</span><span><strong>Previsão:</strong> {card.previsao}</span>
+                                  </div>
+                                )}
+                                {card.ganho_estimado && (
+                                  <div style={{ fontSize:11, color:"#34D399", background:"rgba(16,185,129,.08)", border:"1px solid rgba(16,185,129,.2)", borderRadius:7, padding:"5px 9px", display:"flex", gap:5 }}>
+                                    <span>💰</span><span><strong>Ganho:</strong> {card.ganho_estimado}</span>
+                                  </div>
+                                )}
+                                <div style={{ borderTop:`1px solid ${cfg.border}`, paddingTop:8, display:"flex", alignItems:"center", justifyContent:"space-between", gap:8 }}>
+                                  <div style={{ fontSize:11, color:cfg.accent, fontWeight:600, display:"flex", alignItems:"flex-start", gap:5, flex:1 }}>
+                                    <span style={{ flexShrink:0, marginTop:1 }}>👉</span><span>{card.acao}</span>
+                                  </div>
+                                  {tipo === "critico" && (
+                                    <button style={{ flexShrink:0, background:"#EF4444", border:"none", color:"#fff", borderRadius:8, padding:"5px 12px", fontSize:10, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                      Resolver agora
+                                    </button>
+                                  )}
                                 </div>
                               </div>
-                            );
+                            ));
                           })}
                         </div>
                       )}
@@ -8038,7 +8085,7 @@ export default function App() {
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     {notifLog.slice(0, 20).map((l, i) => {
-                      const tipoColor: Record<string, string> = { critico: "#EF4444", atencao: "#EAB308", info: "#10B981", insight: "#A855F7" };
+                      const tipoColor: Record<string, string> = { critico: "#EF4444", risco: "#F59E0B", oportunidade: "#10B981" };
                       const canalIcon: Record<string, string> = { telegram: "📲", whatsapp: "💬", push: "📱" };
                       return (
                         <div key={i} style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: 8, alignItems: "center", padding: "6px 10px", background: "rgba(255,255,255,.02)", borderRadius: 8, fontSize: 11 }}>
