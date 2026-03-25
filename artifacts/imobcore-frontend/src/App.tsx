@@ -2202,6 +2202,10 @@ export default function App() {
   const [docList, setDocList] = useState<DocItem[]>([]);
   const [docLoading, setDocLoading] = useState(false);
   const [docMissingTable, setDocMissingTable] = useState(false);
+  const [docMigrateModal, setDocMigrateModal] = useState(false);
+  const [docMigrateSql, setDocMigrateSql] = useState("");
+  const [docMigrateSupabaseUrl, setDocMigrateSupabaseUrl] = useState("");
+  const [docAutoMigrating, setDocAutoMigrating] = useState(false);
   const [docFilter, setDocFilter] = useState("todos");
   const [docModal, setDocModal] = useState<"add" | "edit" | null>(null);
   const [docEditId, setDocEditId] = useState<string | null>(null);
@@ -2221,6 +2225,24 @@ export default function App() {
       setDocMissingTable(j.missing_table ?? false);
     } catch { setDocList([]); }
     setDocLoading(false);
+  };
+  const autoMigrate = async () => {
+    setDocAutoMigrating(true);
+    try {
+      const r = await fetch("/api/admin/documentos/auto-migrate", { method: "POST" });
+      const j = await r.json() as { ok: boolean; method: string; message: string; sql?: string; supabase_url?: string };
+      if (j.ok) {
+        showToast("Tabela criada com sucesso! ✅", "success");
+        setDocMigrateModal(false);
+        setDocMissingTable(false);
+        if (condId) await loadDocs(condId);
+      } else {
+        setDocMigrateSql(j.sql ?? "");
+        setDocMigrateSupabaseUrl(j.supabase_url ?? "https://supabase.com/dashboard");
+        setDocMigrateModal(true);
+      }
+    } catch { showToast("Erro de conexão ao tentar criar tabela", "error"); }
+    setDocAutoMigrating(false);
   };
   const saveDoc = async () => {
     if (!docForm.nome.trim() || !condId) { showToast("Nome é obrigatório", "error"); return; }
@@ -2260,7 +2282,11 @@ export default function App() {
         });
       }
       const j = await r.json() as { error?: string };
-      if (j.error === "missing_table") { showToast("Execute o SQL de migração primeiro", "error"); }
+      if (j.error === "missing_table") {
+        setDocSaving(false); setDocUploadProgress(false);
+        await autoMigrate();
+        return;
+      }
       else if (j.error) { showToast(`Erro: ${j.error}`, "error"); }
       else {
         showToast(docEditId ? "Documento atualizado! ✅" : "Documento adicionado! 📄", "success");
@@ -5460,8 +5486,21 @@ export default function App() {
               <div className="ph-sub-body" style={{ padding:"10px 12px", display:"flex", flexDirection:"column", gap:10 }}>
                 {/* ── Alerta tabela ausente ── */}
                 {docMissingTable && (
-                  <div style={{ background:"rgba(245,158,11,.12)", border:"1px solid rgba(245,158,11,.3)", borderRadius:12, padding:"10px 12px", fontSize:12, color:"#D97706" }}>
-                    ⚠️ Tabela ainda não criada. Execute o SQL em <code>/api/admin/manutencao/migration-sql</code> no Supabase Dashboard.
+                  <div style={{ background:"rgba(245,158,11,.10)", border:"1px solid rgba(245,158,11,.35)", borderRadius:14, padding:"14px 16px" }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:"#D97706", marginBottom:6 }}>⚠️ Módulo não configurado</div>
+                    <div style={{ fontSize:12, color:"#92400E", marginBottom:10, lineHeight:1.5 }}>
+                      A tabela de documentos precisa ser criada no banco de dados para este módulo funcionar.
+                    </div>
+                    <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                      <button onClick={autoMigrate} disabled={docAutoMigrating}
+                        style={{ padding:"8px 14px", borderRadius:10, border:"none", background:"#D97706", color:"#fff", fontSize:12, fontWeight:800, cursor:"pointer", opacity: docAutoMigrating ? 0.7 : 1 }}>
+                        {docAutoMigrating ? "⏳ Criando…" : "🔧 Criar Tabela Automaticamente"}
+                      </button>
+                      <button onClick={() => { if (!docMigrateSql) autoMigrate(); else setDocMigrateModal(true); }}
+                        style={{ padding:"8px 14px", borderRadius:10, border:"1px solid rgba(217,119,6,.4)", background:"transparent", color:"#D97706", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        Ver SQL
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -5560,6 +5599,47 @@ export default function App() {
                   + Adicionar Documento / Licença
                 </button>
               </div>
+
+              {/* ── Modal migração SQL ── */}
+              {docMigrateModal && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.7)", zIndex:950, display:"flex", alignItems:"center", justifyContent:"center", padding:"20px" }}
+                  onClick={e => { if (e.target === e.currentTarget) setDocMigrateModal(false); }}>
+                  <div style={{ background:"var(--neu-bg)", borderRadius:20, width:"100%", maxWidth:480, maxHeight:"85vh", overflowY:"auto", padding:"22px 20px 24px", boxShadow:"0 20px 60px rgba(0,0,0,.5)" }}>
+                    <div style={{ fontSize:16, fontWeight:900, color:"#D97706", marginBottom:6 }}>🗄️ Configurar Módulo de Documentos</div>
+                    <div style={{ fontSize:12, color:"var(--neu-text-2)", marginBottom:14, lineHeight:1.6 }}>
+                      A criação automática requer acesso direto ao banco. Execute o SQL abaixo no <strong>Supabase SQL Editor</strong>:
+                    </div>
+                    {docMigrateSql ? (
+                      <pre style={{ background:"rgba(0,0,0,.2)", borderRadius:12, padding:"12px 14px", fontSize:10.5, color:"#86EFAC", overflowX:"auto", whiteSpace:"pre-wrap", wordBreak:"break-all", margin:"0 0 14px", border:"1px solid rgba(34,197,94,.15)", maxHeight:320, overflowY:"auto" }}>
+                        {docMigrateSql}
+                      </pre>
+                    ) : (
+                      <div style={{ padding:"20px", textAlign:"center", color:"var(--neu-text-2)", fontSize:12 }}>⏳ Obtendo SQL…</div>
+                    )}
+                    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                      {docMigrateSql && (
+                        <button onClick={() => { navigator.clipboard.writeText(docMigrateSql); showToast("SQL copiado! 📋", "success"); }}
+                          style={{ padding:"11px", borderRadius:12, border:"none", background:"linear-gradient(135deg,#059669,#10B981)", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>
+                          📋 Copiar SQL
+                        </button>
+                      )}
+                      {docMigrateSupabaseUrl && (
+                        <a href={docMigrateSupabaseUrl} target="_blank" rel="noopener noreferrer"
+                          style={{ padding:"11px", borderRadius:12, border:"1px solid rgba(99,102,241,.3)", background:"rgba(99,102,241,.08)", color:"#818CF8", fontSize:13, fontWeight:700, textAlign:"center", textDecoration:"none", display:"block" }}>
+                          🔗 Abrir Supabase SQL Editor
+                        </a>
+                      )}
+                      <button onClick={() => setDocMigrateModal(false)}
+                        style={{ padding:"10px", borderRadius:12, border:"1px solid var(--card-border)", background:"transparent", color:"var(--neu-text-2)", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        Fechar
+                      </button>
+                    </div>
+                    <div style={{ marginTop:12, fontSize:11, color:"var(--neu-text-2)", lineHeight:1.6, background:"rgba(99,102,241,.06)", padding:"10px 12px", borderRadius:10, border:"1px solid rgba(99,102,241,.12)" }}>
+                      <strong>Como fazer:</strong> Copie o SQL → Abra o Supabase SQL Editor → Cole e execute → Volte aqui e recarregue a página.
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* ── Modal add/edit ── */}
               {docModal && (() => {

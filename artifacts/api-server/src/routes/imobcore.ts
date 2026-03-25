@@ -5892,6 +5892,64 @@ Instruções:
   return res.json({ resposta, docs_count: docs.length });
 });
 
+// POST /api/admin/documentos/auto-migrate — tenta criar a tabela automaticamente via Management API
+router.post("/admin/documentos/auto-migrate", async (_req: Request, res: Response) => {
+  const supabaseUrl = process.env.SUPABASE_URL ?? "";
+  const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const projectRef  = supabaseUrl.replace("https://", "").split(".")[0];
+
+  const docSql = `
+CREATE TABLE IF NOT EXISTS documentos_condominio (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id   UUID NOT NULL,
+  nome            VARCHAR(255) NOT NULL,
+  tipo            VARCHAR(100) NOT NULL,
+  descricao       TEXT,
+  conteudo_texto  TEXT,
+  arquivo_url     TEXT,
+  arquivo_nome    VARCHAR(255),
+  arquivo_mime    VARCHAR(100),
+  arquivo_path    TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS doc_condo ON documentos_condominio(condominio_id, created_at DESC);
+ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_url    TEXT;
+ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_nome   VARCHAR(255);
+ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_mime   VARCHAR(100);
+ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_path   TEXT;
+`.trim();
+
+  // Try Supabase Management API
+  try {
+    const mgmtRes = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/database/query`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${serviceKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query: docSql }),
+    });
+
+    if (mgmtRes.ok) {
+      return res.json({ ok: true, method: "management_api", message: "Tabela criada com sucesso!" });
+    }
+    const errText = await mgmtRes.text();
+    console.log("[auto-migrate] Management API failed:", mgmtRes.status, errText.substring(0, 200));
+  } catch (e) {
+    console.log("[auto-migrate] Management API exception:", (e as Error).message);
+  }
+
+  // Return SQL for manual execution as fallback
+  return res.status(202).json({
+    ok: false,
+    method: "manual",
+    message: "Execute o SQL abaixo no Supabase SQL Editor para criar a tabela.",
+    sql: docSql,
+    supabase_url: `https://supabase.com/dashboard/project/${projectRef}/sql/new`,
+  });
+});
+
 // GET /api/admin/manutencao/migration-sql — retorna o SQL para criar as tabelas
 router.get("/admin/manutencao/migration-sql", (_req: Request, res: Response) => {
   const sql = `-- Execute no Supabase SQL Editor (https://supabase.com/dashboard)
