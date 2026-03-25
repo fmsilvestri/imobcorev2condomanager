@@ -1877,6 +1877,81 @@ export default function App() {
     setFinInsightLoading(false);
   };
 
+  // ── FINANCEIRO INTELIGENTE — Síndico View ─────────────────────────────────
+  type FinSindicoTab = "overview"|"lancamentos"|"simulador";
+  const [finSindicoTab, setFinSindicoTab] = useState<FinSindicoTab>("overview");
+  const [finSindicoLoading, setFinSindicoLoading] = useState(false);
+  const [finSindicoResumo, setFinSindicoResumo] = useState<{totalRec:number;totalDesp:number;saldo:number;txInad:number;vlrInad:number;score:number;risco:string}|null>(null);
+  const [finSindicoPrevisao, setFinSindicoPrevisao] = useState<{avgRec:number;avgDesp:number;projecao:{mes:string;Receitas:number;Despesas:number;SaldoProjetado:number}[]}|null>(null);
+  const [finSindicoFluxo, setFinSindicoFluxo] = useState<{historico:{mes:string;Receitas:number;Despesas:number;Resultado:number}[]}>({ historico: [] });
+  const [finSindicoInad, setFinSindicoInad] = useState<{total:number;pct:number;aging:{ate30:number;de31a60:number;de61a90:number;acima90:number};risco:string;count:number}|null>(null);
+  const [finSindicoLancs, setFinSindicoLancs] = useState<Lancamento[]>([]);
+  const [finSimAumento, setFinSimAumento] = useState<number>(100);
+  const [finSimResult, setFinSimResult] = useState<{atual:{saldo:number;score:number;risco:string;inadimplencia:number};simulado:{saldo:number;score:number;risco:string;inadimplencia:number};impacto:{mensal:number;anual:number;reserva_adicional:number};recomendacao:string}|null>(null);
+  const [finSimLoading, setFinSimLoading] = useState(false);
+  const [finSindicoInsightLoading, setFinSindicoInsightLoading] = useState(false);
+  const [finSindicoInsight, setFinSindicoInsight] = useState<{analise:string;riscos:string;recomendacoes:string;score:number;risco:string;saldo:number}|null>(null);
+  const [finSindicoAddModal, setFinSindicoAddModal] = useState(false);
+  const [finSindicoForm, setFinSindicoForm] = useState<{tipo:"receita"|"despesa";categoria:string;descricao:string;valor:string;data:string;status:"previsto"|"pago"|"atrasado"}>({ tipo:"receita", categoria:"", descricao:"", valor:"", data:new Date().toISOString().slice(0,10), status:"previsto" });
+  const [finSindicoSaving, setFinSindicoSaving] = useState(false);
+
+  const finSindicoLoad = useCallback(async () => {
+    const cid = condId || dash?.condominios?.[0]?.id;
+    if (!cid) return;
+    setFinSindicoLoading(true);
+    try {
+      const qs = `?condominio_id=${cid}`;
+      const [rResumo, rPrev, rFluxo, rInad, rLancs] = await Promise.all([
+        fetch(`/api/financeiro/resumo${qs}`),
+        fetch(`/api/financeiro/previsao${qs}`),
+        fetch(`/api/financeiro/fluxo${qs}`),
+        fetch(`/api/financeiro/inadimplencia${qs}`),
+        fetch(`/api/financeiro/lancamentos${qs}`),
+      ]);
+      if (rResumo.ok) setFinSindicoResumo(await rResumo.json());
+      if (rPrev.ok) setFinSindicoPrevisao(await rPrev.json());
+      if (rFluxo.ok) setFinSindicoFluxo(await rFluxo.json());
+      if (rInad.ok) setFinSindicoInad(await rInad.json());
+      if (rLancs.ok) setFinSindicoLancs(await rLancs.json());
+    } catch {}
+    setFinSindicoLoading(false);
+  }, [condId, dash]);
+
+  // NOTE: useEffect for sindicoScreen === "financeiro" is declared after sindicoScreen is initialized (see below)
+
+  const finSindicoSimular = async () => {
+    const cid = condId || dash?.condominios?.[0]?.id;
+    setFinSimLoading(true);
+    try {
+      const r = await fetch("/api/financeiro/simulador", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:cid, aumento_taxa:finSimAumento }) });
+      if (r.ok) setFinSimResult(await r.json());
+    } catch {}
+    setFinSimLoading(false);
+  };
+
+  const finSindicoGerarInsight = async () => {
+    const cid = condId || dash?.condominios?.[0]?.id;
+    setFinSindicoInsightLoading(true);
+    try {
+      const r = await fetch("/api/financeiro/insights", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:cid }) });
+      if (r.ok) { const d = await r.json(); setFinSindicoInsight(d); }
+      else showToast("Erro ao gerar análise IA", "warn");
+    } catch { showToast("Erro ao gerar análise IA", "warn"); }
+    setFinSindicoInsightLoading(false);
+  };
+
+  const finSindicoSalvar = async () => {
+    if (!finSindicoForm.descricao || !finSindicoForm.valor || !finSindicoForm.data) { showToast("Preencha todos os campos", "warn"); return; }
+    const cid = condId || dash?.condominios?.[0]?.id;
+    setFinSindicoSaving(true);
+    try {
+      const r = await fetch("/api/financeiro/lancamentos", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ ...finSindicoForm, valor:Number(finSindicoForm.valor), condominio_id:cid }) });
+      if (r.ok) { setFinSindicoAddModal(false); setFinSindicoForm({ tipo:"receita", categoria:"", descricao:"", valor:"", data:new Date().toISOString().slice(0,10), status:"previsto" }); finSindicoLoad(); showToast("Lançamento salvo!", "success"); }
+      else showToast("Erro ao salvar", "warn");
+    } catch { showToast("Erro ao salvar", "warn"); }
+    setFinSindicoSaving(false);
+  };
+
   const resTestCFById = async (r: Reservatorio) => {
     setResPerTesting(p => ({ ...p, [r.id]: { cf: true, wh: p[r.id]?.wh ?? false } }));
     try {
@@ -2295,6 +2370,8 @@ export default function App() {
   const [sindicoScreen, setSindicoScreen] = useState<string | null>(null);
   // Reseta badge ao abrir comunicados no síndico ou morador
   useEffect(() => { if (sindicoScreen === "comunicados") setUnreadComunicados(0); }, [sindicoScreen]);
+  // Carrega dados do Financeiro Inteligente ao abrir a tela do síndico
+  useEffect(() => { if (sindicoScreen === "financeiro") { finSindicoLoad(); setFinSindicoTab("overview"); setFinSimResult(null); setFinSindicoInsight(null); } }, [sindicoScreen]);
 
   // Auto-load Dicas da Di — recarrega SEMPRE que a Di é aberta (dados em tempo real)
   const diSessionRef = useRef<string | null>(null);
@@ -5424,37 +5501,358 @@ export default function App() {
           </div>
         )}
 
-        {/* FINANCEIRO */}
-        {sindicoScreen === "financeiro" && (
-          <div className="ph-sub-body">
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 12 }}>
-              {[
-                { label: "Saldo", val: fmtBRL(t?.saldo || 0), color: "var(--green)" },
-                { label: "Receitas", val: fmtBRL(t?.total_receitas || 0), color: "var(--cyan)" },
-                { label: "Despesas", val: fmtBRL(t?.total_despesas || 0), color: "var(--red)" },
-              ].map(k => (
-                <div key={k.label} style={{ background: "rgba(255,255,255,.04)", border: "1px solid var(--card-border)", borderRadius: 10, padding: "8px 6px", textAlign: "center" }}>
-                  <div style={{ fontSize: 9, color: "#64748B", marginBottom: 2 }}>{k.label}</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: k.color }}>{k.val}</div>
+        {/* FINANCEIRO INTELIGENTE */}
+        {sindicoScreen === "financeiro" && (() => {
+          const fr = finSindicoResumo;
+          const fp = finSindicoPrevisao;
+          const fi = finSindicoInad;
+          const scoreColor = !fr ? "#64748B" : fr.score >= 80 ? "#10B981" : fr.score >= 60 ? "#F59E0B" : fr.score >= 40 ? "#F97316" : "#EF4444";
+          const riscoColor = (r: string) => ({ baixo:"#10B981", moderado:"#F59E0B", alto:"#F97316", critico:"#EF4444" }[r] || "#64748B");
+          const riscoLabel = (r: string) => ({ baixo:"✅ Baixo", moderado:"⚠️ Moderado", alto:"🔴 Alto", critico:"🚨 Crítico" }[r] || r);
+          const fmtK = (v: number) => v >= 1000 ? `R$${(v/1000).toFixed(1)}k` : `R$${v.toFixed(0)}`;
+          const fluxoHist = finSindicoFluxo.historico;
+          const maxFluxo = Math.max(...fluxoHist.flatMap(h => [h.Receitas, h.Despesas]), 1);
+          const recatLancs = finSindicoLancs.filter(l => l.tipo === "receita").reduce((s,l)=>s+Number(l.valor),0);
+          const despLancs = finSindicoLancs.filter(l => l.tipo === "despesa").reduce((s,l)=>s+Number(l.valor),0);
+          const despCats: Record<string,number> = {};
+          finSindicoLancs.filter(l=>l.tipo==="despesa").forEach(l => { const c = (l as any).categoria||"outros"; despCats[c]=(despCats[c]||0)+Number(l.valor); });
+          const topCats = Object.entries(despCats).sort((a,b)=>b[1]-a[1]).slice(0,5);
+          const catColors = ["#6366F1","#10B981","#F59E0B","#EF4444","#A855F7"];
+          return (
+            <div style={{ position:"absolute", inset:0, zIndex:50, display:"flex", flexDirection:"column", background:"#0A0F1E", fontFamily:"'Inter',sans-serif", overflowY:"hidden" }}>
+              {/* Header */}
+              <div style={{ background:"linear-gradient(135deg,#064E3B 0%,#059669 50%,#10B981 100%)", padding:"18px 16px 14px", flexShrink:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:10 }}>
+                  <button onClick={() => setSindicoScreen(null)} style={{ height:36, padding:"0 14px", borderRadius:18, background:"rgba(255,255,255,.18)", border:"1px solid rgba(255,255,255,.3)", color:"#fff", fontSize:13, cursor:"pointer", fontWeight:700 }}>← Voltar</button>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontWeight:900, fontSize:16, color:"#fff" }}>💰 Financeiro Inteligente</div>
+                    <div style={{ fontSize:10, color:"rgba(255,255,255,.7)" }}>{dash?.condominios?.find(c=>c.id===condId)?.nome || "Condomínio"}</div>
+                  </div>
+                  <button onClick={finSindicoLoad} disabled={finSindicoLoading} style={{ height:34, width:34, borderRadius:17, background:"rgba(255,255,255,.15)", border:"none", color:"#fff", fontSize:16, cursor:"pointer" }}>
+                    {finSindicoLoading ? "⏳" : "↻"}
+                  </button>
                 </div>
-              ))}
+                {/* Score Bar */}
+                {fr && (
+                  <div style={{ background:"rgba(0,0,0,.25)", borderRadius:12, padding:"10px 14px", display:"flex", alignItems:"center", gap:14 }}>
+                    <div style={{ textAlign:"center" as const }}>
+                      <div style={{ fontSize:26, fontWeight:900, color:scoreColor, lineHeight:1 }}>{fr.score}</div>
+                      <div style={{ fontSize:8, color:"rgba(255,255,255,.6)", textTransform:"uppercase" as const }}>Score</div>
+                    </div>
+                    <div style={{ flex:1 }}>
+                      <div style={{ background:"rgba(255,255,255,.12)", borderRadius:6, height:8, overflow:"hidden" }}>
+                        <div style={{ height:"100%", width:`${fr.score}%`, background:scoreColor, borderRadius:6, transition:"width .6s" }} />
+                      </div>
+                    </div>
+                    <div style={{ background:`${riscoColor(fr.risco)}25`, border:`1px solid ${riscoColor(fr.risco)}60`, borderRadius:8, padding:"4px 10px", textAlign:"center" as const }}>
+                      <div style={{ fontSize:10, fontWeight:800, color:riscoColor(fr.risco) }}>{riscoLabel(fr.risco)}</div>
+                      <div style={{ fontSize:8, color:"rgba(255,255,255,.5)" }}>risco</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Tab bar */}
+              <div style={{ display:"flex", background:"#0F172A", borderBottom:"1px solid rgba(255,255,255,.06)", flexShrink:0 }}>
+                {([["overview","📊 Visão Geral"],["lancamentos","📋 Lançamentos"],["simulador","🧪 Simulador"]] as const).map(([tab, lbl]) => (
+                  <button key={tab} onClick={()=>setFinSindicoTab(tab)} style={{ flex:1, padding:"10px 4px", border:"none", background:"transparent", color:finSindicoTab===tab?"#10B981":"#475569", fontSize:10, fontWeight:800, cursor:"pointer", borderBottom:finSindicoTab===tab?"2px solid #10B981":"2px solid transparent", textTransform:"uppercase" as const, letterSpacing:".04em" }}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              {/* Content */}
+              <div style={{ flex:1, overflowY:"auto", padding:"12px 14px 24px" }}>
+                {finSindicoLoading && !fr && (
+                  <div style={{ textAlign:"center" as const, padding:40, color:"#64748B" }}>⏳ Carregando dados financeiros...</div>
+                )}
+                {/* ── OVERVIEW ── */}
+                {finSindicoTab === "overview" && (
+                  <>
+                    {/* 4 KPI Cards */}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+                      {[
+                        { label:"Saldo", val:fmtK(fr?.saldo??0), icon:"💵", top:"#6EE7B7", bot:"#059669", edge:"#047857", glow:"rgba(5,150,105,.5)", sub: fr && fr.saldo < 0 ? "⚠️ Negativo" : "Em caixa" },
+                        { label:"Receitas", val:fmtK(fr?.totalRec??recatLancs), icon:"📈", top:"#BAE6FD", bot:"#0284C7", edge:"#0369A1", glow:"rgba(2,132,199,.5)", sub:"Entradas" },
+                        { label:"Despesas", val:fmtK(fr?.totalDesp??despLancs), icon:"📉", top:"#FCA5A5", bot:"#DC2626", edge:"#B91C1C", glow:"rgba(220,38,38,.5)", sub:"Saídas" },
+                        { label:"Inadimplência", val:`${fr?.txInad??fi?.pct??0}%`, icon:"⚠️", top:"#FDE68A", bot:"#D97706", edge:"#B45309", glow:"rgba(217,119,6,.5)", sub:`R$${fmtK(fr?.vlrInad??fi?.total??0).replace("R$","").trim()} em aberto` },
+                      ].map(k => (
+                        <div key={k.label} style={{ borderRadius:14, padding:"12px 10px 10px", textAlign:"center" as const, position:"relative", overflow:"hidden", background:`linear-gradient(160deg,${k.top} 0%,${k.bot} 100%)`, boxShadow:`0 4px 0 ${k.edge}, 0 8px 20px ${k.glow}, inset 0 1px 0 rgba(255,255,255,.3)`, border:"1px solid rgba(255,255,255,.15)" }}>
+                          <div style={{ position:"absolute", bottom:-6, right:2, fontSize:36, opacity:.12, pointerEvents:"none" as const }}>{k.icon}</div>
+                          <div style={{ position:"absolute", top:0, left:0, right:0, height:"45%", background:"linear-gradient(180deg,rgba(255,255,255,.25),rgba(255,255,255,0))", borderRadius:"14px 14px 0 0", pointerEvents:"none" as const }} />
+                          <div style={{ fontSize:22, position:"relative", marginBottom:3, filter:"drop-shadow(0 2px 4px rgba(0,0,0,.25))" }}>{k.icon}</div>
+                          <div style={{ fontSize:18, fontWeight:900, color:"#fff", lineHeight:1, position:"relative", letterSpacing:"-.5px", textShadow:"0 2px 6px rgba(0,0,0,.3)" }}>{k.val}</div>
+                          <div style={{ fontSize:8, color:"rgba(255,255,255,.75)", fontWeight:700, textTransform:"uppercase" as const, marginTop:3, position:"relative" }}>{k.label}</div>
+                          <div style={{ fontSize:8, color:"rgba(255,255,255,.55)", position:"relative", marginTop:1 }}>{k.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Previsão 30 dias */}
+                    {fp && (
+                      <div style={{ background:"linear-gradient(135deg,rgba(99,102,241,.15),rgba(139,92,246,.15))", border:"1px solid rgba(99,102,241,.3)", borderRadius:14, padding:"12px 14px", marginBottom:10 }}>
+                        <div style={{ fontSize:11, fontWeight:800, color:"#A5B4FC", marginBottom:8, display:"flex", alignItems:"center", gap:6 }}>🔮 Previsão de Caixa (30 dias)</div>
+                        <div style={{ display:"flex", gap:10 }}>
+                          {fp.projecao.slice(0,1).map(p => (
+                            <div key={p.mes} style={{ flex:1 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                                <span style={{ fontSize:10, color:"#64748B" }}>Entradas previstas</span>
+                                <span style={{ fontSize:10, fontWeight:700, color:"#34D399" }}>+{fmtBRLFull(p.Receitas)}</span>
+                              </div>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                                <span style={{ fontSize:10, color:"#64748B" }}>Saídas previstas</span>
+                                <span style={{ fontSize:10, fontWeight:700, color:"#F87171" }}>-{fmtBRLFull(p.Despesas)}</span>
+                              </div>
+                              <div style={{ display:"flex", justifyContent:"space-between", paddingTop:6, borderTop:"1px solid rgba(99,102,241,.2)" }}>
+                                <span style={{ fontSize:10, fontWeight:700, color:"#A5B4FC" }}>Saldo projetado</span>
+                                <span style={{ fontSize:12, fontWeight:900, color: p.SaldoProjetado >= 0 ? "#34D399" : "#F87171" }}>{fmtBRLFull(p.SaldoProjetado)}</span>
+                              </div>
+                            </div>
+                          ))}
+                          {fp.projecao.length === 0 && <div style={{ fontSize:11, color:"#475569" }}>Dados insuficientes para projeção</div>}
+                        </div>
+                      </div>
+                    )}
+                    {/* Inadimplência Aging */}
+                    {fi && fi.total > 0 && (
+                      <div style={{ background:"rgba(239,68,68,.08)", border:"1px solid rgba(239,68,68,.2)", borderRadius:14, padding:"12px 14px", marginBottom:10 }}>
+                        <div style={{ fontSize:11, fontWeight:800, color:"#F87171", marginBottom:8 }}>⚠️ Inadimplência — Aging ({fi.count} lançamentos)</div>
+                        {[
+                          { label:"Até 30 dias", val:fi.aging.ate30, color:"#F59E0B" },
+                          { label:"31 a 60 dias", val:fi.aging.de31a60, color:"#F97316" },
+                          { label:"61 a 90 dias", val:fi.aging.de61a90, color:"#EF4444" },
+                          { label:"Acima de 90", val:fi.aging.acima90, color:"#DC2626" },
+                        ].filter(a=>a.val>0).map(a => (
+                          <div key={a.label} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5 }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                              <div style={{ width:6, height:6, borderRadius:3, background:a.color }} />
+                              <span style={{ fontSize:10, color:"#94A3B8" }}>{a.label}</span>
+                            </div>
+                            <span style={{ fontSize:10, fontWeight:700, color:a.color }}>{fmtBRLFull(a.val)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Gráfico SVG — Fluxo de Caixa */}
+                    {fluxoHist.length > 0 && (
+                      <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:14, padding:"12px 14px", marginBottom:10 }}>
+                        <div style={{ fontSize:11, fontWeight:800, color:"#94A3B8", marginBottom:10 }}>📊 Fluxo de Caixa — Últimos {fluxoHist.length} meses</div>
+                        <svg viewBox={`0 0 ${fluxoHist.length*52} 80`} style={{ width:"100%", height:80 }}>
+                          {fluxoHist.map((h, i) => {
+                            const x = i * 52 + 4;
+                            const recH = Math.round((h.Receitas / maxFluxo) * 60);
+                            const despH = Math.round((h.Despesas / maxFluxo) * 60);
+                            return (
+                              <g key={i}>
+                                <rect x={x} y={72-recH} width={20} height={recH} rx={3} fill="#10B981" opacity={.8} />
+                                <rect x={x+22} y={72-despH} width={20} height={despH} rx={3} fill="#EF4444" opacity={.8} />
+                                <text x={x+10} y={79} textAnchor="middle" fill="#475569" fontSize={7}>{h.mes}</text>
+                              </g>
+                            );
+                          })}
+                        </svg>
+                        <div style={{ display:"flex", gap:12, justifyContent:"center", marginTop:4 }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:4 }}><div style={{ width:10, height:8, borderRadius:2, background:"#10B981", opacity:.8 }} /><span style={{ fontSize:9, color:"#64748B" }}>Receitas</span></div>
+                          <div style={{ display:"flex", alignItems:"center", gap:4 }}><div style={{ width:10, height:8, borderRadius:2, background:"#EF4444", opacity:.8 }} /><span style={{ fontSize:9, color:"#64748B" }}>Despesas</span></div>
+                        </div>
+                      </div>
+                    )}
+                    {/* Despesas por categoria */}
+                    {topCats.length > 0 && (
+                      <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:14, padding:"12px 14px", marginBottom:10 }}>
+                        <div style={{ fontSize:11, fontWeight:800, color:"#94A3B8", marginBottom:8 }}>🍕 Despesas por Categoria</div>
+                        {topCats.map(([cat, val], i) => {
+                          const pct = despLancs > 0 ? (val / despLancs) * 100 : 0;
+                          return (
+                            <div key={cat} style={{ marginBottom:6 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:2 }}>
+                                <span style={{ fontSize:10, color:"#CBD5E1" }}>{cat}</span>
+                                <span style={{ fontSize:10, fontWeight:700, color:catColors[i] }}>{fmtBRLFull(val)} ({pct.toFixed(0)}%)</span>
+                              </div>
+                              <div style={{ background:"rgba(255,255,255,.06)", borderRadius:4, height:5 }}>
+                                <div style={{ height:"100%", width:`${pct}%`, background:catColors[i], borderRadius:4, transition:"width .5s" }} />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* Insights IA */}
+                    <div style={{ background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.25)", borderRadius:14, padding:"12px 14px", marginBottom:10 }}>
+                      <div style={{ fontSize:11, fontWeight:800, color:"#FBBF24", marginBottom:8 }}>🤖 Análise IA — Síndica Di</div>
+                      {!finSindicoInsight && (
+                        <button onClick={finSindicoGerarInsight} disabled={finSindicoInsightLoading} style={{ width:"100%", padding:"10px", borderRadius:10, background: finSindicoInsightLoading ? "rgba(245,158,11,.2)" : "#F59E0B", border:"none", color: finSindicoInsightLoading ? "#FBBF24" : "#000", fontSize:12, fontWeight:800, cursor:"pointer" }}>
+                          {finSindicoInsightLoading ? "⏳ Analisando dados..." : "⚡ Gerar Análise Completa"}
+                        </button>
+                      )}
+                      {finSindicoInsight && (
+                        <div>
+                          <div style={{ display:"flex", gap:8, marginBottom:10, flexWrap:"wrap" as const }}>
+                            {[
+                              { label:"Score", val:`${finSindicoInsight.score}/100`, color:scoreColor },
+                              { label:"Risco", val:riscoLabel(finSindicoInsight.risco), color:riscoColor(finSindicoInsight.risco) },
+                              { label:"Saldo", val:fmtBRLFull(finSindicoInsight.saldo), color: finSindicoInsight.saldo>=0?"#10B981":"#EF4444" },
+                            ].map(b => (
+                              <div key={b.label} style={{ flex:"1 1 80px", background:"rgba(255,255,255,.04)", borderRadius:8, padding:"6px 8px", textAlign:"center" as const }}>
+                                <div style={{ fontSize:11, fontWeight:800, color:b.color }}>{b.val}</div>
+                                <div style={{ fontSize:8, color:"#64748B", textTransform:"uppercase" as const }}>{b.label}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {finSindicoInsight.analise && <div style={{ fontSize:11, color:"#CBD5E1", lineHeight:1.6, marginBottom:8 }}>{finSindicoInsight.analise}</div>}
+                          {finSindicoInsight.riscos && (
+                            <div style={{ marginBottom:8 }}>
+                              <div style={{ fontSize:10, fontWeight:800, color:"#F87171", marginBottom:4 }}>🚨 Riscos</div>
+                              <div style={{ fontSize:11, color:"#94A3B8", lineHeight:1.6, whiteSpace:"pre-wrap" as const }}>{finSindicoInsight.riscos}</div>
+                            </div>
+                          )}
+                          {finSindicoInsight.recomendacoes && (
+                            <div>
+                              <div style={{ fontSize:10, fontWeight:800, color:"#34D399", marginBottom:4 }}>✅ Recomendações</div>
+                              <div style={{ fontSize:11, color:"#94A3B8", lineHeight:1.6, whiteSpace:"pre-wrap" as const }}>{finSindicoInsight.recomendacoes}</div>
+                            </div>
+                          )}
+                          <button onClick={()=>setFinSindicoInsight(null)} style={{ marginTop:8, fontSize:10, color:"#475569", background:"transparent", border:"none", cursor:"pointer" }}>↺ Nova análise</button>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+                {/* ── LANÇAMENTOS ── */}
+                {finSindicoTab === "lancamentos" && (
+                  <>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                      <div style={{ fontSize:11, color:"#64748B" }}>{finSindicoLancs.length} lançamentos</div>
+                      <button onClick={()=>setFinSindicoAddModal(true)} style={{ padding:"7px 14px", borderRadius:10, background:"linear-gradient(135deg,#059669,#10B981)", border:"none", color:"#fff", fontSize:11, fontWeight:700, cursor:"pointer" }}>+ Lançamento</button>
+                    </div>
+                    <div style={{ display:"flex", gap:6, marginBottom:10 }}>
+                      {([["", "Todos"], ["receita","📈 Rec."], ["despesa","📉 Desp."]] as [string,string][]).map(([v, lbl]) => (
+                        <button key={v} onClick={()=>setFinLancFilter(f=>({...f,tipo:v as ""| "receita"|"despesa"}))} style={{ padding:"5px 10px", borderRadius:8, border:"none", background: finLancFilter.tipo===v ? "#059669" : "rgba(255,255,255,.06)", color: finLancFilter.tipo===v ? "#fff" : "#64748B", fontSize:10, fontWeight:700, cursor:"pointer" }}>{lbl}</button>
+                      ))}
+                    </div>
+                    {finSindicoLancs.filter(l => !finLancFilter.tipo || l.tipo === finLancFilter.tipo).map(l => {
+                      const isRec = l.tipo === "receita";
+                      const statColor = l.status === "pago" ? "#10B981" : l.status === "atrasado" ? "#EF4444" : "#F59E0B";
+                      return (
+                        <div key={(l as any).id} className="ph-fin-item" style={{ marginBottom:6, borderLeft:`3px solid ${isRec?"#10B981":"#EF4444"}`, borderRadius:8, background:"rgba(255,255,255,.03)", padding:"8px 10px" }}>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:12, fontWeight:600, color:"#F1F5F9" }}>{l.descricao}</div>
+                            <div style={{ fontSize:9, color:"#475569", marginTop:1 }}>{(l as any).categoria||"—"} · {l.data||"—"} · <span style={{ color:statColor }}>{l.status}</span></div>
+                          </div>
+                          <div style={{ fontSize:12, fontWeight:800, color: isRec ? "#34D399" : "#F87171", whiteSpace:"nowrap" as const }}>
+                            {isRec ? "+" : "-"}{fmtBRLFull(Number(l.valor))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {finSindicoLancs.length === 0 && !finSindicoLoading && (
+                      <div style={{ textAlign:"center" as const, padding:30, color:"#475569" }}>
+                        <div style={{ fontSize:28, marginBottom:8 }}>💰</div>
+                        <div style={{ fontSize:12 }}>Nenhum lançamento ainda</div>
+                        <div style={{ fontSize:10, color:"#334155", marginTop:4 }}>Clique em "+ Lançamento" para adicionar</div>
+                      </div>
+                    )}
+                  </>
+                )}
+                {/* ── SIMULADOR ── */}
+                {finSindicoTab === "simulador" && (
+                  <>
+                    <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:14, padding:"14px", marginBottom:12 }}>
+                      <div style={{ fontSize:13, fontWeight:800, color:"#A5B4FC", marginBottom:12 }}>🧪 Simulador de Taxa de Condomínio</div>
+                      <div style={{ marginBottom:10 }}>
+                        <div style={{ fontSize:11, color:"#64748B", marginBottom:6 }}>Aumento por unidade (R$)</div>
+                        <input type="number" value={finSimAumento} onChange={e=>setFinSimAumento(Number(e.target.value))} min={-1000} max={5000} step={10}
+                          style={{ width:"100%", padding:"10px 14px", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, color:"#F1F5F9", fontSize:16, fontWeight:700, fontFamily:"Inter,sans-serif", boxSizing:"border-box" as const }} />
+                        <div style={{ fontSize:10, color:"#334155", marginTop:4 }}>Ex: 100 = +R$100/unidade. Valor negativo = redução.</div>
+                      </div>
+                      <button onClick={finSindicoSimular} disabled={finSimLoading} style={{ width:"100%", padding:"12px", borderRadius:12, background: finSimLoading ? "rgba(99,102,241,.3)" : "linear-gradient(135deg,#4338CA,#6366F1)", border:"none", color:"#fff", fontSize:13, fontWeight:800, cursor:"pointer" }}>
+                        {finSimLoading ? "⏳ Calculando..." : "▶ Simular Impacto"}
+                      </button>
+                    </div>
+                    {finSimResult && (
+                      <div style={{ background:"rgba(99,102,241,.06)", border:"1px solid rgba(99,102,241,.2)", borderRadius:14, padding:"14px" }}>
+                        <div style={{ fontSize:11, fontWeight:800, color:"#A5B4FC", marginBottom:12 }}>📊 Resultado da Simulação</div>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:12 }}>
+                          {[
+                            { label:"Situação Atual", data:finSimResult.atual, color:"#64748B" },
+                            { label:"Após Simulação", data:finSimResult.simulado, color:"#6366F1" },
+                          ].map(col => (
+                            <div key={col.label} style={{ background:"rgba(255,255,255,.04)", borderRadius:10, padding:"10px" }}>
+                              <div style={{ fontSize:9, fontWeight:700, color:col.color, textTransform:"uppercase" as const, marginBottom:8 }}>{col.label}</div>
+                              <div style={{ fontSize:16, fontWeight:900, color: col.data.saldo >= 0 ? "#34D399" : "#F87171" }}>{fmtBRLFull(col.data.saldo)}</div>
+                              <div style={{ fontSize:9, color:"#64748B", marginTop:2 }}>Saldo</div>
+                              <div style={{ marginTop:6 }}>
+                                <span style={{ fontSize:10, fontWeight:700, color: col.data.score>=80?"#10B981":col.data.score>=60?"#F59E0B":"#EF4444" }}>Score: {col.data.score}/100</span>
+                                <span style={{ fontSize:9, color:"#475569", marginLeft:6 }}>Risco: {col.data.risco}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ background:"rgba(255,255,255,.04)", borderRadius:10, padding:"10px", marginBottom:10 }}>
+                          <div style={{ fontSize:10, fontWeight:700, color:"#94A3B8", marginBottom:6 }}>💵 Impacto Financeiro</div>
+                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                            <span style={{ fontSize:11, color:"#64748B" }}>Receita adicional/mês</span>
+                            <span style={{ fontSize:11, fontWeight:700, color:"#34D399" }}>+{fmtBRLFull(finSimResult.impacto.mensal)}</span>
+                          </div>
+                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                            <span style={{ fontSize:11, color:"#64748B" }}>Receita adicional/ano</span>
+                            <span style={{ fontSize:11, fontWeight:700, color:"#34D399" }}>+{fmtBRLFull(finSimResult.impacto.anual)}</span>
+                          </div>
+                          <div style={{ display:"flex", justifyContent:"space-between" }}>
+                            <span style={{ fontSize:11, color:"#64748B" }}>Reforço reserva</span>
+                            <span style={{ fontSize:11, fontWeight:700, color:"#A5B4FC" }}>+{fmtBRLFull(finSimResult.impacto.reserva_adicional)}</span>
+                          </div>
+                        </div>
+                        <div style={{ background:finSimResult.recomendacao.startsWith("✅")?"rgba(16,185,129,.12)":finSimResult.recomendacao.startsWith("⚠️")?"rgba(245,158,11,.12)":"rgba(99,102,241,.12)", border:`1px solid ${finSimResult.recomendacao.startsWith("✅")?"rgba(16,185,129,.3)":finSimResult.recomendacao.startsWith("⚠️")?"rgba(245,158,11,.3)":"rgba(99,102,241,.3)"}`, borderRadius:10, padding:"10px 12px" }}>
+                          <div style={{ fontSize:12, color:"#E2E8F0", lineHeight:1.5 }}>{finSimResult.recomendacao}</div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              {/* Modal Add Lançamento */}
+              {finSindicoAddModal && (
+                <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,.75)", zIndex:200, display:"flex", alignItems:"flex-end", justifyContent:"center" }} onClick={()=>setFinSindicoAddModal(false)}>
+                  <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:"20px 20px 0 0", padding:"20px 18px 32px", width:"100%", maxWidth:480 }} onClick={e=>e.stopPropagation()}>
+                    <div style={{ fontSize:14, fontWeight:800, color:"#10B981", marginBottom:16 }}>➕ Novo Lançamento</div>
+                    {/* Tipo */}
+                    <div style={{ display:"flex", gap:6, marginBottom:12 }}>
+                      {(["receita","despesa"] as const).map(t => (
+                        <button key={t} onClick={()=>setFinSindicoForm(f=>({...f,tipo:t}))} style={{ flex:1, padding:"8px", borderRadius:10, border:`1px solid ${finSindicoForm.tipo===t?"#10B981":"rgba(255,255,255,.08)"}`, background:finSindicoForm.tipo===t?"rgba(16,185,129,.2)":"transparent", color:finSindicoForm.tipo===t?"#10B981":"#64748B", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                          {t === "receita" ? "📈 Receita" : "📉 Despesa"}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Fields */}
+                    {[
+                      { label:"Descrição", key:"descricao", type:"text", placeholder:"Ex: Taxa condominial abril" },
+                      { label:"Categoria", key:"categoria", type:"text", placeholder:"Ex: Manutenção" },
+                      { label:"Valor (R$)", key:"valor", type:"number", placeholder:"0,00" },
+                      { label:"Data", key:"data", type:"date", placeholder:"" },
+                    ].map(f => (
+                      <div key={f.key} style={{ marginBottom:10 }}>
+                        <div style={{ fontSize:10, color:"#64748B", marginBottom:4 }}>{f.label}</div>
+                        <input type={f.type} placeholder={f.placeholder} value={(finSindicoForm as any)[f.key]} onChange={e=>setFinSindicoForm(prev=>({...prev,[f.key]:e.target.value}))}
+                          style={{ width:"100%", padding:"9px 12px", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, color:"#E2E8F0", fontSize:13, fontFamily:"Inter,sans-serif", boxSizing:"border-box" as const }} />
+                      </div>
+                    ))}
+                    {/* Status */}
+                    <div style={{ marginBottom:14 }}>
+                      <div style={{ fontSize:10, color:"#64748B", marginBottom:4 }}>Status</div>
+                      <select value={finSindicoForm.status} onChange={e=>setFinSindicoForm(f=>({...f,status:e.target.value as "previsto"|"pago"|"atrasado"}))}
+                        style={{ width:"100%", padding:"9px 12px", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, color:"#E2E8F0", fontSize:13 }}>
+                        <option value="previsto">Previsto</option>
+                        <option value="pago">Pago</option>
+                        <option value="atrasado">Atrasado</option>
+                      </select>
+                    </div>
+                    <button onClick={finSindicoSalvar} disabled={finSindicoSaving} style={{ width:"100%", padding:"13px", borderRadius:12, background:"linear-gradient(135deg,#047857,#059669)", border:"none", color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer" }}>
+                      {finSindicoSaving ? "Salvando..." : "💾 Salvar Lançamento"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#34D399", marginBottom: 6 }}>📈 Receitas</div>
-            {(dash?.receitas || []).map(r => (
-              <div key={r.id} className="ph-fin-item">
-                <div><div className="ph-fin-label">{r.descricao}</div><div className="ph-fin-sub">{r.categoria}</div></div>
-                <div className="ph-fin-val" style={{ color: "var(--green)" }}>{fmtBRLFull(r.valor)}</div>
-              </div>
-            ))}
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#F87171", marginBottom: 6, marginTop: 12 }}>📉 Despesas</div>
-            {(dash?.despesas || []).map(d => (
-              <div key={d.id} className="ph-fin-item">
-                <div><div className="ph-fin-label">{d.descricao}</div><div className="ph-fin-sub">{d.fornecedor || d.categoria}</div></div>
-                <div className="ph-fin-val" style={{ color: "var(--red)" }}>-{fmtBRLFull(d.valor)}</div>
-              </div>
-            ))}
-          </div>
-        )}
+          );
+        })()}
 
         {/* MISP */}
         {sindicoScreen === "misp" && (

@@ -1,0 +1,332 @@
+# ============================================
+# 🧠 ImobCore V5 — Módulo Financeiro Inteligente
+# IA + Previsão + Rateio + Simulador + Insights
+# ============================================
+
+Crie um módulo completo chamado:
+
+"Financeiro Inteligente"
+
+com arquitetura fullstack (Node.js + Express + Supabase + UI moderna estilo Nubank)
+
+---
+
+# 🎯 OBJETIVO
+
+Transformar o financeiro do condomínio em:
+
+✔ Sistema preditivo
+✔ Motor de decisão
+✔ Automação inteligente
+✔ Base para a Di (IA do sistema)
+
+---
+
+# 🧱 1. BANCO DE DADOS (SUPABASE)
+
+Criar tabelas:
+
+## 📊 financeiro_lancamentos
+- id (uuid)
+- condominio_id (uuid)
+- tipo (receita | despesa)
+- categoria (text)
+- descricao (text)
+- valor (numeric)
+- data (date)
+- recorrente (boolean)
+- centro_custo (text)
+- created_at
+
+---
+
+## 🏢 unidades
+- id
+- condominio_id
+- unidade
+- fracao_ideal (numeric)
+
+---
+
+## 🧾 rateios
+- id
+- condominio_id
+- tipo (fracao | igual | consumo | hibrido)
+- peso_fracao (numeric)
+- peso_igual (numeric)
+- descricao
+
+---
+
+## 📉 inadimplencia
+- id
+- unidade_id
+- valor_devido
+- dias_atraso
+- status
+
+---
+
+## 📅 orcamento
+- id
+- condominio_id
+- categoria
+- valor_previsto
+- mes
+
+---
+
+## 🤖 financeiro_insights
+- id
+- condominio_id
+- tipo (risco | oportunidade | alerta)
+- descricao
+- impacto (1-10)
+- created_at
+
+---
+
+# ⚙️ 2. BACKEND (Express)
+
+Criar rotas:
+
+## 📊 /api/financeiro/dashboard
+Retorna:
+- saldo atual
+- total receitas
+- total despesas
+- inadimplência %
+- score financeiro (0-100)
+- previsão 30/60 dias
+
+---
+
+## ➕ /api/financeiro/lancamento
+POST:
+- cria receita/despesa
+- detecta categoria automaticamente
+
+---
+
+## 🧮 /api/financeiro/rateio/calcular
+
+Entrada:
+{
+  valor: 10000,
+  tipo: "fracao"
+}
+
+Saída:
+Lista por unidade com valor calculado
+
+Regras:
+- fração ideal
+- igualitário
+- híbrido
+
+---
+
+## 🔮 /api/financeiro/previsao
+
+Retorna:
+- saldo futuro
+- tendência
+- risco de déficit
+
+---
+
+## 🧪 /api/financeiro/simulador
+
+Entrada:
+{
+  aumento_taxa: 50
+}
+
+Retorna:
+- impacto no saldo
+- impacto na reserva
+- recomendação
+
+---
+
+## 📉 /api/financeiro/inadimplencia
+
+Retorna:
+- percentual
+- aging (30/60/90)
+- risco
+
+---
+
+## 🤖 /api/financeiro/insights
+
+IA analisa:
+- gastos fora do padrão
+- aumento de custos
+- inadimplência
+
+Retorna:
+[
+  {
+    tipo: "oportunidade",
+    descricao: "Reduzir custo de limpeza pode economizar R$1200",
+    impacto: 7
+  }
+]
+
+---
+
+# 🧠 3. LÓGICA INTELIGENTE
+
+Implementar:
+
+## 📊 Score Financeiro (0-100)
+
+Baseado em:
+- saldo
+- inadimplência
+- estabilidade fluxo
+
+---
+
+## 🚨 Risco Financeiro
+
+- BAIXO
+- MÉDIO
+- ALTO
+- CRÍTICO
+
+---
+
+## 🔮 Previsão
+
+Calcular:
+- média últimos meses
+- tendência crescimento
+- projeção futura
+
+---
+
+## 🧠 IA Financeira
+
+Criar função:
+
+analisarFinanceiro()
+
+Que detecta:
+
+- gasto fora do padrão
+- aumento de custo
+- risco de caixa
+- oportunidade de economia
+
+---
+
+# 🎨 4. FRONTEND (UI)
+
+Criar tela estilo:
+
+🔥 Nubank + BI executivo
+
+---
+
+## 📊 CARDS SUPERIORES
+
+- Saldo total
+- Receitas
+- Despesas
+- Inadimplência
+
+---
+
+## 🧠 NOVOS CARDS (OBRIGATÓRIO)
+
+### 🔮 Previsão de Caixa
+"Saldo projetado em 30 dias: R$ X"
+
+---
+
+### 🚨 Risco Financeiro
+"Baixo | Médio | Alto | Crítico"
+
+---
+
+### 💡 Insights IA
+Lista com recomendações
+
+---
+
+### 🧪 Simulador
+Input:
+- aumento taxa
+
+Output:
+- impacto visual
+
+---
+
+## 📈 GRÁFICOS
+
+- fluxo de caixa (linha)
+- despesas por categoria (pizza)
+- evolução financeira
+
+---
+
+# 🤖 5. INTEGRAÇÃO COM A DI
+
+Criar endpoint:
+
+## /api/financeiro/di-analise
+
+A Di deve responder:
+
+1. Situação atual
+2. Riscos
+3. Recomendações
+
+---
+
+# 🔥 6. DIFERENCIAIS V5
+
+Implementar:
+
+✔ Rateio automático inteligente  
+✔ Previsão de déficit  
+✔ Simulador de taxa  
+✔ Score financeiro  
+✔ Insights automáticos  
+✔ Detecção de anomalias  
+
+---
+
+# 🚀 7. RESULTADO FINAL
+
+O módulo deve:
+
+✔ Funcionar completo  
+✔ Integrar com Supabase  
+✔ Ter UI moderna  
+✔ Ter IA funcional  
+✔ Ser escalável  
+
+---
+
+# ⚠️ REGRAS IMPORTANTES
+
+- Código limpo e modular
+- Tipagem clara
+- Pronto para produção
+- Compatível com sistema existente
+
+---
+
+# 💥 NÍVEL DO SISTEMA
+
+Este módulo deve ser superior aos ERPs condominiais tradicionais.
+
+Foco em:
+
+👉 inteligência  
+👉 automação  
+👉 decisão  

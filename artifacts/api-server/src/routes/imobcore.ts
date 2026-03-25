@@ -1686,6 +1686,65 @@ Seja objetivo, direto e use linguagem de síndico profissional.`;
   } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
 });
 
+// POST /api/financeiro/simulador  — simula impacto de aumento/redução de taxa
+router.post("/financeiro/simulador", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, aumento_taxa, num_unidades } = req.body as {
+      condominio_id?: string; aumento_taxa: number; num_unidades?: number;
+    };
+    const ind = await calcIndicadores(condominio_id);
+    const unidades = Number(num_unidades) || 20;
+    const receitaAdicional = Number(aumento_taxa) * unidades;
+    const novoSaldo = ind.saldo + receitaAdicional;
+    const novaInad = ind.txInad > 0 ? Math.max(0, ind.txInad - Math.round(receitaAdicional / 500)) : 0;
+    const novoScore = Math.min(100, ind.score + Math.round(receitaAdicional / 200));
+    const novoRisco: string = novoScore >= 80 ? "baixo" : novoScore >= 60 ? "moderado" : novoScore >= 40 ? "alto" : "critico";
+    const reservaAtual = Math.max(0, ind.saldo);
+    const novaReserva = reservaAtual + receitaAdicional * 0.3;
+    const impactoMensal = receitaAdicional;
+    const impactoAnual = receitaAdicional * 12;
+    const recomendacao = receitaAdicional > 0
+      ? novoScore >= 80
+        ? `✅ Aumento recomendado — eleva score para ${novoScore}/100 e gera R$${impactoAnual.toFixed(0)} extras anuais.`
+        : `⚠️ Aumento parcialmente benéfico — melhora situação mas atenção ao impacto nos moradores.`
+      : `💡 Redução analisada — saldo projetado: R$${novoSaldo.toFixed(2)}`;
+    res.json({
+      atual: { saldo: ind.saldo, score: ind.score, risco: ind.risco, inadimplencia: ind.txInad },
+      simulado: { saldo: novoSaldo, score: novoScore, risco: novoRisco, inadimplencia: novaInad },
+      impacto: { mensal: impactoMensal, anual: impactoAnual, reserva_adicional: novaReserva - reservaAtual },
+      recomendacao,
+    });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
+// GET /api/financeiro/inadimplencia  — aging 30/60/90 dias
+router.get("/financeiro/inadimplencia", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.query as { condominio_id?: string };
+    const { all, missing } = await fetchLancamentosDB(condominio_id);
+    if (missing) return res.json({ total: 0, pct: 0, aging: { ate30: 0, de31a60: 0, de61a90: 0, acima90: 0 }, risco: "baixo" });
+
+    const hoje = new Date();
+    const inadimplentes = all.filter(l => l.tipo === "receita" && l.status === "atrasado");
+    const totalRec = all.filter(l => l.tipo === "receita").reduce((s, l) => s + Number(l.valor), 0);
+    const totalInad = inadimplentes.reduce((s, l) => s + Number(l.valor), 0);
+    const pct = totalRec > 0 ? Math.round((totalInad / totalRec) * 100) : 0;
+
+    const aging = { ate30: 0, de31a60: 0, de61a90: 0, acima90: 0 };
+    inadimplentes.forEach(l => {
+      const dataLanc = new Date(l.data || "");
+      const dias = Math.max(0, Math.round((hoje.getTime() - dataLanc.getTime()) / 86400000));
+      if (dias <= 30) aging.ate30 += Number(l.valor);
+      else if (dias <= 60) aging.de31a60 += Number(l.valor);
+      else if (dias <= 90) aging.de61a90 += Number(l.valor);
+      else aging.acima90 += Number(l.valor);
+    });
+
+    const risco: string = pct >= 20 ? "critico" : pct >= 15 ? "alto" : pct >= 8 ? "moderado" : "baixo";
+    res.json({ total: totalInad, pct, aging, risco, count: inadimplentes.length });
+  } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
+});
+
 // ─── COMUNICADOS META ENCODING ────────────────────────────────────────────────
 // New columns (canais, categoria, etc.) stored as JSON inside `corpo` until Migration 14 applied
 const COM_META_SEP = "\u001FIMB_COM_META\u001F";
