@@ -2422,11 +2422,11 @@ export default function App() {
     if (sindicoScreen === "piscina" && condId) loadPiscina(condId);
   }, [sindicoScreen, condId]);
 
-  // Load documentos when screen opens
+  // Load documentos when screen opens (Síndico, Morador, or Gestor)
   useEffect(() => {
-    if (sindicoScreen === "documentos" && condId) loadDocs(condId);
+    if ((sindicoScreen === "documentos" || moradorScreen === "documentos" || panel === "documentos") && condId) loadDocs(condId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sindicoScreen, condId]);
+  }, [sindicoScreen, moradorScreen, panel, condId]);
 
   // Auto-greeting / quick-send: Di starts the conversation when the sindico chat screen opens.
   // If the user typed something in the home quick-input (pendingChatMsg), that becomes the
@@ -6112,6 +6112,7 @@ export default function App() {
       misp: "🚨 Alertas Públicos",
       encomendas: "📦 Minhas Encomendas",
       fornecedores: "🏢 Fornecedores e Contatos",
+      documentos: "📄 Documentos do Condomínio",
     };
 
     return (
@@ -6403,6 +6404,89 @@ export default function App() {
                 ))
               )}
             </div>
+          );
+        })()}
+
+        {/* ── DOCUMENTOS (Morador — somente leitura) ── */}
+        {moradorScreen === "documentos" && (() => {
+          const fmtDateM = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"2-digit" });
+          const filteredDocsM = docFilter === "todos" ? docList : docList.filter(d => d.tipo === docFilter);
+          return (
+            <>
+              <div style={{ display:"flex", gap:6, overflowX:"auto", padding:"8px 12px 6px", borderBottom:"1px solid var(--card-border)", flexShrink:0 }}>
+                {[["todos","Todos"],["avcb","Bombeiros"],["regimento","Regimento"],["convencao","Convenção"],["contrato","Contratos"],["alvara","Alvarás"],["manual","Manuais"],["outro","Outros"]].map(([v,l]) => (
+                  <button key={v} onClick={() => setDocFilter(v)}
+                    style={{ whiteSpace:"nowrap", fontSize:11, padding:"5px 10px", borderRadius:20, border:"1px solid var(--card-border)", cursor:"pointer", fontWeight: docFilter===v ? 800 : 500, background: docFilter===v ? "var(--accent)" : "var(--neu-bg)", color: docFilter===v ? "#fff" : "var(--neu-text-2)", fontFamily:"inherit", flexShrink:0 }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+              <div className="ph-sub-body" style={{ padding:"10px 12px", display:"flex", flexDirection:"column", gap:10 }}>
+                {docLoading ? (
+                  <div style={{ textAlign:"center", padding:"20px", color:"var(--neu-text-2)", fontSize:13 }}>Carregando...</div>
+                ) : filteredDocsM.length === 0 ? (
+                  <div style={{ textAlign:"center", padding:"28px 20px", color:"var(--neu-text-2)", fontSize:13 }}>
+                    <div style={{ fontSize:36, marginBottom:8 }}>📄</div>
+                    {docFilter === "todos" ? "Nenhum documento disponível." : `Sem documentos do tipo "${docFilter}".`}
+                  </div>
+                ) : filteredDocsM.map(doc => {
+                  const isDocImgM = doc.arquivo_mime?.startsWith("image/") ?? false;
+                  const isDocPdfM = doc.arquivo_mime === "application/pdf";
+                  return (
+                    <div key={doc.id} style={{ background:"var(--neu-bg)", border:"1px solid var(--card-border)", borderRadius:14, overflow:"hidden" }}>
+                      {isDocImgM && doc.arquivo_url && (
+                        <a href={doc.arquivo_url} target="_blank" rel="noopener noreferrer">
+                          <img src={doc.arquivo_url} alt={doc.arquivo_nome ?? doc.nome} style={{ width:"100%", maxHeight:160, objectFit:"cover", display:"block" }} />
+                        </a>
+                      )}
+                      <div style={{ padding:"12px 14px" }}>
+                        <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                          <div style={{ fontSize:22, flexShrink:0, marginTop:2 }}>{docTipos.find(t => t.value === doc.tipo)?.label.split(" ")[0] ?? "📄"}</div>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontSize:13, fontWeight:800, color:"var(--neu-text)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{doc.nome}</div>
+                            <div style={{ fontSize:11, color:"var(--neu-text-2)", marginTop:2, display:"flex", gap:6, flexWrap:"wrap" }}>
+                              <span style={{ background:"rgba(124,58,237,.12)", color:"#A78BFA", padding:"1px 7px", borderRadius:10, fontWeight:700 }}>{docTipoLabel(doc.tipo).split(" ").slice(1).join(" ")}</span>
+                              <span>{fmtDateM(doc.created_at)}</span>
+                            </div>
+                            {doc.descricao && <div style={{ fontSize:11, color:"var(--neu-text-2)", marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{doc.descricao}</div>}
+                            {doc.conteudo_texto && (
+                              <div style={{ fontSize:11, color:"var(--neu-text-2)", marginTop:6, background:"rgba(0,0,0,.06)", padding:"8px 10px", borderRadius:8, lineHeight:1.6, maxHeight:80, overflow:"hidden" }}>
+                                {doc.conteudo_texto.substring(0, 200)}{doc.conteudo_texto.length > 200 ? "…" : ""}
+                              </div>
+                            )}
+                            {doc.arquivo_url && (
+                              <a href={doc.arquivo_url} target="_blank" rel="noopener noreferrer" download={doc.arquivo_nome ?? undefined}
+                                style={{ display:"inline-flex", alignItems:"center", gap:4, marginTop:8, padding:"5px 12px", borderRadius:10, background: isDocPdfM ? "rgba(239,68,68,.08)" : isDocImgM ? "rgba(34,197,94,.08)" : "rgba(99,102,241,.08)", border:`1px solid ${isDocPdfM ? "rgba(239,68,68,.2)" : isDocImgM ? "rgba(34,197,94,.2)" : "rgba(99,102,241,.2)"}`, color: isDocPdfM ? "#EF4444" : isDocImgM ? "#22C55E" : "#818CF8", fontSize:11, fontWeight:700, textDecoration:"none" }}>
+                                {isDocPdfM ? "📄 Abrir PDF" : isDocImgM ? "🖼️ Ver Imagem" : "📥 Baixar"}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Di consultoria */}
+                <div style={{ background:"linear-gradient(135deg,rgba(124,58,237,.08),rgba(168,85,247,.06))", border:"1px solid rgba(124,58,237,.2)", borderRadius:14, padding:"12px 14px" }}>
+                  <div style={{ fontSize:12, fontWeight:800, color:"#A78BFA", marginBottom:8 }}>🤖 Pergunte à Di sobre os documentos</div>
+                  <div style={{ display:"flex", gap:6 }}>
+                    <input value={docPergunta} onChange={e => setDocPergunta(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") consultarDi(); }}
+                      placeholder="Ex: quando vence o AVCB?"
+                      style={{ flex:1, padding:"9px 12px", borderRadius:20, border:"1px solid rgba(124,58,237,.25)", background:"var(--neu-bg)", color:"var(--neu-text)", fontSize:12, fontFamily:"inherit", outline:"none" }} />
+                    <button onClick={consultarDi} disabled={docConsultaLoading || !docPergunta.trim()}
+                      style={{ padding:"9px 14px", borderRadius:20, border:"none", background:"linear-gradient(135deg,#7C3AED,#A855F7)", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                      {docConsultaLoading ? "..." : "▶"}
+                    </button>
+                  </div>
+                  {docResposta && (
+                    <div style={{ marginTop:10, padding:"10px 12px", borderRadius:10, background:"var(--neu-bg)", border:"1px solid var(--card-border)", fontSize:12, color:"var(--neu-text)", lineHeight:1.6, whiteSpace:"pre-wrap" }}>
+                      {docResposta}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
           );
         })()}
       </div>
@@ -6893,6 +6977,10 @@ export default function App() {
           <div className={`sb-item ${panel === "fornecedores" ? "active" : ""}`} onClick={() => { setPanel("fornecedores"); if(condId) loadFornecedores(condId); }}>
             <span className="sb-icon">🏢</span> Fornecedores
             {fornecList.length > 0 && <span className="sb-badge" style={{ background:"rgba(16,185,129,.2)", color:"#34D399" }}>{fornecList.length}</span>}
+          </div>
+          <div className={`sb-item ${panel === "documentos" ? "active" : ""}`} onClick={() => { setPanel("documentos"); if(condId) loadDocs(condId); }}>
+            <span className="sb-icon">📄</span> Documentos
+            {docList.length > 0 && <span className="sb-badge" style={{ background:"rgba(124,58,237,.2)", color:"#A78BFA" }}>{docList.length}</span>}
           </div>
           <div className={`sb-item ${panel === "condo3dmap" ? "active" : ""}`} onClick={() => setPanel("condo3dmap")} style={{ borderLeft: panel === "condo3dmap" ? "3px solid #7C5CFC" : undefined }}>
             <span className="sb-icon">🗺️</span> Mapa 3D
@@ -12930,6 +13018,111 @@ Content-Type: application/json
             );
           })()}
 
+          {/* PANEL: DOCUMENTOS (Gestor) */}
+          {panel === "documentos" && (() => {
+            const fmtDateG = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day:"2-digit", month:"2-digit", year:"numeric" });
+            const filteredDocsG = docFilter === "todos" ? docList : docList.filter(d => d.tipo === docFilter);
+            return (
+            <div style={{ padding:"24px 28px", height:"100%", overflowY:"auto" }}>
+              {/* Header */}
+              <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16 }}>
+                <div>
+                  <div style={{ fontSize:18, fontWeight:800, color:"#E2E8F0" }}>📄 Documentos & Licenças</div>
+                  <div style={{ fontSize:12, color:"#475569" }}>Gestão de documentos, licenças e certidões do condomínio</div>
+                </div>
+                <button onClick={() => { setDocForm({ nome:"", tipo:"avcb", descricao:"", conteudo_texto:"" }); setDocEditId(null); setDocFile(null); setDocModal("add"); }}
+                  style={{ marginLeft:"auto", background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:10, padding:"9px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const }}>
+                  + Novo Documento
+                </button>
+              </div>
+
+              {/* Missing table banner */}
+              {docMissingTable && (
+                <div style={{ background:"rgba(245,158,11,.1)", border:"1px solid rgba(245,158,11,.35)", borderRadius:12, padding:"14px 18px", marginBottom:16, display:"flex", alignItems:"center", gap:12 }}>
+                  <span style={{ fontSize:20 }}>⚠️</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:800, color:"#D97706" }}>Módulo não configurado</div>
+                    <div style={{ fontSize:12, color:"#92400E" }}>A tabela precisa ser criada no banco de dados.</div>
+                  </div>
+                  <button onClick={autoMigrate} disabled={docAutoMigrating}
+                    style={{ padding:"8px 16px", borderRadius:10, border:"none", background:"#D97706", color:"#fff", fontSize:12, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" as const, opacity: docAutoMigrating ? 0.7 : 1 }}>
+                    {docAutoMigrating ? "⏳ Criando…" : "🔧 Criar Tabela"}
+                  </button>
+                </div>
+              )}
+
+              {/* Filter chips */}
+              <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
+                {[["todos","📋 Todos"],["avcb","🔥 Bombeiros"],["regimento","📜 Regimento"],["convencao","🏛️ Convenção"],["contrato","📑 Contratos"],["alvara","🏷️ Alvarás"],["manual","📘 Manuais"],["outro","📁 Outros"]].map(([v,l]) => (
+                  <button key={v} onClick={() => setDocFilter(v)}
+                    style={{ padding:"6px 14px", borderRadius:20, border:"1px solid rgba(255,255,255,.1)", fontSize:12, fontWeight: docFilter===v ? 800 : 500, background: docFilter===v ? "rgba(124,58,237,.4)" : "rgba(255,255,255,.04)", color: docFilter===v ? "#C4B5FD" : "#64748B", cursor:"pointer", whiteSpace:"nowrap" as const }}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+
+              {/* Loading */}
+              {docLoading && <div style={{ color:"#475569", textAlign:"center", padding:32 }}>Carregando...</div>}
+
+              {/* Empty */}
+              {!docLoading && filteredDocsG.length === 0 && (
+                <div style={{ textAlign:"center", padding:48 }}>
+                  <div style={{ fontSize:40, marginBottom:12 }}>📄</div>
+                  <div style={{ color:"#475569", fontSize:14 }}>{docFilter === "todos" ? "Nenhum documento cadastrado ainda." : `Nenhum documento do tipo "${docFilter}".`}</div>
+                  {docFilter === "todos" && <div style={{ color:"#334155", fontSize:12, marginTop:4 }}>Clique em "+ Novo Documento" para adicionar.</div>}
+                </div>
+              )}
+
+              {/* Grid de cards */}
+              {!docLoading && filteredDocsG.length > 0 && (
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(320px,1fr))", gap:16 }}>
+                  {filteredDocsG.map(doc => {
+                    const isDocImgG = doc.arquivo_mime?.startsWith("image/") ?? false;
+                    const isDocPdfG = doc.arquivo_mime === "application/pdf";
+                    return (
+                      <div key={doc.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, overflow:"hidden" }}>
+                        {isDocImgG && doc.arquivo_url && (
+                          <a href={doc.arquivo_url} target="_blank" rel="noopener noreferrer">
+                            <img src={doc.arquivo_url} alt={doc.arquivo_nome ?? doc.nome} style={{ width:"100%", height:140, objectFit:"cover", display:"block" }} />
+                          </a>
+                        )}
+                        <div style={{ padding:"14px 16px" }}>
+                          <div style={{ display:"flex", alignItems:"flex-start", gap:10, marginBottom:8 }}>
+                            <div style={{ fontSize:22, flexShrink:0 }}>{docTipos.find(t => t.value === doc.tipo)?.label.split(" ")[0] ?? "📄"}</div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:14, fontWeight:800, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{doc.nome}</div>
+                              <div style={{ fontSize:11, color:"#64748B", marginTop:2, display:"flex", gap:6, flexWrap:"wrap" as const }}>
+                                <span style={{ background:"rgba(124,58,237,.2)", color:"#A78BFA", padding:"2px 8px", borderRadius:10, fontWeight:700 }}>{docTipoLabel(doc.tipo)}</span>
+                                <span>{fmtDateG(doc.created_at)}</span>
+                              </div>
+                            </div>
+                            <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                              <button onClick={() => { setDocEditId(doc.id); setDocForm({ nome:doc.nome, tipo:doc.tipo, descricao:doc.descricao||"", conteudo_texto:doc.conteudo_texto||"" }); setDocFile(null); setDocModal("edit"); }}
+                                style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.2)", color:"#818CF8", borderRadius:8, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>✏️</button>
+                              <button onClick={() => deleteDoc(doc.id)}
+                                style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", color:"#EF4444", borderRadius:8, padding:"5px 10px", fontSize:12, cursor:"pointer" }}>🗑</button>
+                            </div>
+                          </div>
+                          {doc.descricao && <div style={{ fontSize:12, color:"#64748B", marginBottom:8, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{doc.descricao}</div>}
+                          {doc.conteudo_texto && <div style={{ fontSize:11, color:"#94A3B8", background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:8, padding:"8px 10px", maxHeight:72, overflow:"hidden", lineHeight:1.5 }}>{doc.conteudo_texto.substring(0,180)}{doc.conteudo_texto.length>180?"…":""}</div>}
+                          {doc.arquivo_url && (
+                            <a href={doc.arquivo_url} target="_blank" rel="noopener noreferrer" download={doc.arquivo_nome ?? undefined}
+                              style={{ display:"inline-flex", alignItems:"center", gap:6, marginTop:8, padding:"5px 12px", borderRadius:10, background: isDocPdfG ? "rgba(239,68,68,.08)" : "rgba(99,102,241,.08)", border:`1px solid ${isDocPdfG ? "rgba(239,68,68,.2)" : "rgba(99,102,241,.2)"}`, color: isDocPdfG ? "#EF4444" : "#818CF8", fontSize:11, fontWeight:700, textDecoration:"none" }}>
+                              {isDocPdfG ? "📄 Abrir PDF" : isDocImgG ? "🖼️ Ver Imagem" : "📥 Baixar"}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Migrate SQL modal (reutiliza o mesmo modal do Síndico — já está no DOM) */}
+            </div>
+            );
+          })()}
+
           {/* PANEL: SSE LOG */}
           <div className={`panel ${panel === "supabase" ? "active" : ""} card`}>
             <div className="card-title">🗄️ SSE Live Log – Eventos em Tempo Real
@@ -13145,8 +13338,9 @@ Content-Type: application/json
                   { icon: "📢", name: "Comunicados", count: String(dash?.comunicados?.length || 0), color: "#7C5CFC", screen: "comunicados" },
                   { icon: "🚨", name: "Alertas MISP", count: String(t?.alertas_ativos || 0), color: "#EF4444", screen: "misp" },
                   { icon: "🏢", name: "Fornecedores", count: String(fornecList.length), color: "#10B981", screen: "fornecedores" },
+                  { icon: "📄", name: "Documentos", count: docList.length > 0 ? String(docList.length) : "—", color: "#A78BFA", screen: "documentos" },
                 ].map(s => (
-                  <div key={s.name} className="service-item" onClick={() => { if (s.screen) { setMoradorScreen(s.screen); setMorFornecDetail(null); } }}>
+                  <div key={s.name} className="service-item" onClick={() => { if (s.screen) { setMoradorScreen(s.screen as string); setMorFornecDetail(null); if (s.screen === "documentos" && condId) loadDocs(condId); } }}>
                     <div className="svc-icon">{s.icon}</div>
                     <div className="svc-name">{s.name}</div>
                     <span className="svc-count" style={{ color: s.color }}>{s.count}</span>
