@@ -245,7 +245,7 @@ router.post("/sindico/chat", async (req: Request, res: Response) => {
         : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
       // Documentos do condomínio
       condIdCtx
-        ? supabase.from("documentos_condominio").select("id,nome,tipo,descricao,url_arquivo,conteudo_texto,validade,created_at").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(30)
+        ? supabase.from("documentos_condominio").select("id,nome,tipo,descricao,arquivo_url,conteudo_texto,validade,created_at").eq("condominio_id", condIdCtx).order("created_at", { ascending: false }).limit(30)
         : Promise.resolve({ data: [] as Record<string,unknown>[], error: null }),
     ]);
 
@@ -642,7 +642,7 @@ ${(alertas || []).map((a: AlertaRow) =>
     }
 
     // ── Documentos do condomínio ──────────────────────────────────────────────
-    type DocChatRow = { id: string; nome: string; tipo: string; descricao?: string; conteudo_texto?: string; validade?: string | null; url_arquivo?: string; created_at: string };
+    type DocChatRow = { id: string; nome: string; tipo: string; descricao?: string; conteudo_texto?: string; validade?: string | null; arquivo_url?: string; created_at: string };
     const docsChatList = (documentosChat || []) as DocChatRow[];
     if (docsChatList.length > 0) {
       const hojeDoc = new Date();
@@ -5839,7 +5839,7 @@ router.post("/di/resumo-documentos", async (req: Request, res: Response) => {
     // Buscar todos os documentos do condomínio
     const { data: docs, error: docsErr } = await supabase
       .from("documentos_condominio")
-      .select("id,nome,tipo,descricao,conteudo_texto,validade,url_arquivo,created_at")
+      .select("id,nome,tipo,descricao,conteudo_texto,validade,arquivo_url,created_at")
       .eq("condominio_id", condominio_id)
       .order("tipo", { ascending: true })
       .limit(50);
@@ -6150,6 +6150,7 @@ CREATE TABLE IF NOT EXISTS documentos_condominio (
   tipo            VARCHAR(100) NOT NULL,
   descricao       TEXT,
   conteudo_texto  TEXT,
+  validade        DATE,
   arquivo_url     TEXT,
   arquivo_nome    VARCHAR(255),
   arquivo_mime    VARCHAR(100),
@@ -6158,6 +6159,7 @@ CREATE TABLE IF NOT EXISTS documentos_condominio (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS doc_condo ON documentos_condominio(condominio_id, created_at DESC);
+ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS validade       DATE;
 ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_url    TEXT;
 ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_nome   VARCHAR(255);
 ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_mime   VARCHAR(100);
@@ -6258,6 +6260,7 @@ CREATE TABLE IF NOT EXISTS documentos_condominio (
   tipo            VARCHAR(100) NOT NULL,
   descricao       TEXT,
   conteudo_texto  TEXT,
+  validade        DATE,
   arquivo_url     TEXT,
   arquivo_nome    VARCHAR(255),
   arquivo_mime    VARCHAR(100),
@@ -6268,7 +6271,8 @@ CREATE TABLE IF NOT EXISTS documentos_condominio (
 
 CREATE INDEX IF NOT EXISTS doc_condo ON documentos_condominio(condominio_id, created_at DESC);
 
--- Se já criou a tabela sem as colunas de arquivo, execute:
+-- Se a tabela já existia sem algumas colunas, execute os ALTERs:
+ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS validade       DATE;
 ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_url    TEXT;
 ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_nome   VARCHAR(255);
 ALTER TABLE documentos_condominio ADD COLUMN IF NOT EXISTS arquivo_mime   VARCHAR(100);
