@@ -271,7 +271,7 @@ export default function SindicoHome({
                   onClick={() => setSindicoScreen("di")}
                   style={{ background:"rgba(255,255,255,0.2)", border:"1px solid rgba(255,255,255,0.25)", borderRadius:20, padding:"5px 12px", fontSize:10, fontWeight:800, color:"#fff", cursor:"pointer", fontFamily:"inherit" }}
                 >
-                  📊 Briefing
+                  💡 Dicas da Di
                 </button>
                 <button
                   onClick={() => setSindicoScreen("sindico")}

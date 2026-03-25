@@ -2094,6 +2094,23 @@ export default function App() {
 
   // Sub-screen navigation
   const [sindicoScreen, setSindicoScreen] = useState<string | null>(null);
+
+  // Auto-load Dicas da Di when entering Di screens (síndico app or gestor panel)
+  useEffect(() => {
+    const isDiOpen = sindicoScreen === "di" || panel === "sv-di";
+    if (!isDiOpen || diData || diLoading || !condId) return;
+    setDiLoading(true);
+    fetch("/api/di", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ condominio_id: condId, perfil: (loggedUser as Record<string,unknown>)?.perfil || loginMode || "gestor", nome_usuario: (loggedUser as Record<string,unknown>)?.nome || "Usuário" }),
+    })
+      .then(r => r.json())
+      .then(json => { if (json.fala) setDiData({ fala: json.fala, cards: json.cards || [] }); })
+      .catch(() => {})
+      .finally(() => setDiLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sindicoScreen, panel, condId]);
   const [moradorScreen, setMoradorScreen] = useState<string | null>(null);
   const [sindicoTheme, setSindicoTheme] = useState<"light" | "dark">(() => (localStorage.getItem("imobcore_sindico_theme") as "light" | "dark" | null) ?? "dark");
 
@@ -4338,7 +4355,7 @@ export default function App() {
           <div style={{ background:"linear-gradient(160deg,#2E1065 0%,#4C1D95 60%,#1E1B4B 100%)", padding:"16px 18px 14px", flexShrink:0 }}>
             <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
               <button onClick={()=>setSindicoScreen(null)} style={{ height:38,padding:"0 16px",borderRadius:20,background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",color:"#E9D5FF",fontSize:14,fontWeight:800,cursor:"pointer" }}>← Voltar</button>
-              <div style={{ flex:1, fontSize:16, fontWeight:900, color:"#F3E8FF" }}>🟣 Briefing da Di</div>
+              <div style={{ flex:1, fontSize:16, fontWeight:900, color:"#F3E8FF" }}>🟣 Dicas da Di</div>
               {briefSnap && (
                 <div style={{ textAlign:"right" }}>
                   <div style={{ fontSize:9, color:"#A78BFA", fontWeight:700, letterSpacing:".06em" }}>SCORE GERAL</div>
@@ -4364,14 +4381,14 @@ export default function App() {
             {/* Botão gerar */}
             <button onClick={loadBriefing} disabled={briefLoading}
               style={{ width:"100%", marginBottom:14, padding:"13px", borderRadius:14, background:"linear-gradient(135deg,#7C3AED,#A855F7,#C084FC)", border:"none", color:"#fff", fontSize:13, fontWeight:900, cursor:briefLoading?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, boxShadow:"0 4px 18px rgba(124,58,237,.55)", opacity:briefLoading?.7:1 }}>
-              {briefLoading ? "⏳ Analisando condomínio..." : "🟣 Gerar Novo Briefing"}
+              {briefLoading ? "⏳ Analisando condomínio..." : "🟣 Atualizar Briefing por Módulo"}
             </button>
 
             {!briefSnap && !briefLoading && (
               <div style={{ textAlign:"center", padding:"32px 20px", color:"#3B2F6E" }}>
                 <div style={{ fontSize:40, marginBottom:10 }}>🟣</div>
                 <div style={{ fontSize:14, fontWeight:700, color:"#7C3AED", marginBottom:6 }}>Di pronta para analisar</div>
-                <div style={{ fontSize:12, color:"#4C1D95" }}>Toque em "Gerar Novo Briefing" para ver o diagnóstico completo por módulo.</div>
+                <div style={{ fontSize:12, color:"#4C1D95" }}>Toque em "Atualizar Briefing por Módulo" para ver o diagnóstico completo por módulo.</div>
               </div>
             )}
 
@@ -4514,7 +4531,7 @@ export default function App() {
             {(["briefing","relatorio"] as const).map(v => (
               <button key={v} onClick={() => setDiView(v)}
                 style={{ flex:1, padding:"10px 4px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:11, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit" }}>
-                {v==="briefing" ? "🟣 Briefing" : "📊 Relatório"}
+                {v==="briefing" ? "💡 Dicas da Di" : "📊 Relatório"}
               </button>
             ))}
           </div>
@@ -4542,7 +4559,7 @@ export default function App() {
             )}
             {!diData && !diLoading && (
               <div style={{ textAlign:"center", padding:"24px 0 16px", color:"#4B3B7D", fontSize:13 }}>
-                Toque em <strong style={{ color:"#A78BFA" }}>"Briefing da Di"</strong> para analisar o condomínio.
+                ⏳ Di está preparando as dicas automaticamente...
               </div>
             )}
             {diLoading && (
@@ -4614,7 +4631,7 @@ export default function App() {
               }}
               style={{ flex:1, background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", color:"#fff", borderRadius:12, padding:"11px 8px", fontSize:12, fontWeight:800, cursor:diLoading?"not-allowed":"pointer", opacity:diLoading?.6:1 }}
             >
-              {diLoading ? "⏳ Analisando..." : "🟣 Briefing da Di"}
+              {diLoading ? "⏳ Analisando..." : "🔄 Atualizar Dicas"}
             </button>
 
             {diData?.fala && (
@@ -6460,7 +6477,7 @@ export default function App() {
                     {(["briefing","relatorio"] as const).map(v => (
                       <button key={v} onClick={() => setDiView(v)}
                         style={{ flex:1, padding:"12px 8px", border:"none", borderBottom:`2px solid ${diView===v?"#7C3AED":"transparent"}`, background:"transparent", color:diView===v?"#C4B5FD":"#475569", fontSize:12.5, fontWeight:diView===v?700:400, cursor:"pointer", fontFamily:"inherit", transition:"all .2s" }}>
-                        {v==="briefing" ? "📊 Briefing da Di" : "📋 Relatório Executivo"}
+                        {v==="briefing" ? "💡 Dicas da Di" : "📋 Relatório Executivo"}
                       </button>
                     ))}
                   </div>
