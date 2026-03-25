@@ -2268,6 +2268,7 @@ export default function App() {
   const [docPergunta, setDocPergunta] = useState("");
   const [docResposta, setDocResposta] = useState("");
   const [docConsultaLoading, setDocConsultaLoading] = useState(false);
+  const [docExtractingId, setDocExtractingId] = useState<string | null>(null);
   const loadDocs = async (cid: string) => {
     setDocLoading(true);
     try {
@@ -2356,6 +2357,21 @@ export default function App() {
     showToast("Documento removido", "warn");
     if (condId) await loadDocs(condId);
   };
+  const extrairTextoDoc = async (id: string) => {
+    setDocExtractingId(id);
+    try {
+      const r = await fetch(`/api/documentos/${id}/extrair-texto`, { method: "POST" });
+      const j = await r.json() as { ok?: boolean; chars_extraidos?: number; preview?: string; error?: string };
+      if (j.ok) {
+        showToast(`✅ ${j.chars_extraidos?.toLocaleString("pt-BR")} caracteres extraídos do PDF!`, "success");
+        if (condId) await loadDocs(condId);
+      } else {
+        showToast(j.error ?? "Não foi possível extrair o texto deste PDF", "error");
+      }
+    } catch { showToast("Erro ao extrair texto do PDF", "error"); }
+    setDocExtractingId(null);
+  };
+
   const consultarDi = async () => {
     if (!docPergunta.trim() || !condId) return;
     setDocConsultaLoading(true); setDocResposta("");
@@ -5691,12 +5707,27 @@ export default function App() {
                           {doc.arquivo_url && !isDocImg && <span style={{ color:"#60A5FA" }}>📎 arquivo</span>}
                         </div>
                         {doc.descricao && <div style={{ fontSize:11, color:"var(--neu-text-2)", marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{doc.descricao}</div>}
-                        {/* PDF / file download */}
+                        {/* PDF / file download + extract button */}
                         {doc.arquivo_url && (isDocPdf || !isDocImg) && (
-                          <a href={doc.arquivo_url} target="_blank" rel="noopener noreferrer" download={doc.arquivo_nome ?? undefined}
-                            style={{ display:"inline-flex", alignItems:"center", gap:4, marginTop:6, padding:"4px 10px", borderRadius:10, background: isDocPdf ? "rgba(239,68,68,.08)" : "rgba(99,102,241,.08)", border:`1px solid ${isDocPdf ? "rgba(239,68,68,.2)" : "rgba(99,102,241,.2)"}`, color: isDocPdf ? "#EF4444" : "#818CF8", fontSize:11, fontWeight:700, textDecoration:"none" }}>
-                            {isDocPdf ? "📄 Abrir PDF" : "📥 Baixar arquivo"}
-                          </a>
+                          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:6 }}>
+                            <a href={doc.arquivo_url} target="_blank" rel="noopener noreferrer" download={doc.arquivo_nome ?? undefined}
+                              style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"4px 10px", borderRadius:10, background: isDocPdf ? "rgba(239,68,68,.08)" : "rgba(99,102,241,.08)", border:`1px solid ${isDocPdf ? "rgba(239,68,68,.2)" : "rgba(99,102,241,.2)"}`, color: isDocPdf ? "#EF4444" : "#818CF8", fontSize:11, fontWeight:700, textDecoration:"none" }}>
+                              {isDocPdf ? "📄 Abrir PDF" : "📥 Baixar arquivo"}
+                            </a>
+                            {isDocPdf && !doc.conteudo_texto && (
+                              <button
+                                onClick={() => extrairTextoDoc(doc.id)}
+                                disabled={docExtractingId === doc.id}
+                                style={{ display:"inline-flex", alignItems:"center", gap:4, padding:"4px 10px", borderRadius:10, background:"rgba(124,58,237,.1)", border:"1px solid rgba(124,58,237,.3)", color:"#A78BFA", fontSize:11, fontWeight:700, cursor: docExtractingId === doc.id ? "not-allowed" : "pointer", opacity: docExtractingId === doc.id ? 0.7 : 1 }}>
+                                {docExtractingId === doc.id ? "⏳ Extraindo…" : "🤖 Extrair texto p/ Di"}
+                              </button>
+                            )}
+                            {isDocPdf && doc.conteudo_texto && (
+                              <span style={{ display:"inline-flex", alignItems:"center", gap:3, padding:"4px 10px", borderRadius:10, background:"rgba(34,197,94,.08)", border:"1px solid rgba(34,197,94,.2)", color:"#22C55E", fontSize:11, fontWeight:700 }}>
+                                ✓ Di pode ler este PDF
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                       <div style={{ display:"flex", flexDirection:"column", gap:4, flexShrink:0 }}>
@@ -5712,11 +5743,12 @@ export default function App() {
 
                 {/* ── Dicas rápidas ── */}
                 <div style={{ background:"rgba(14,165,233,.06)", border:"1px solid rgba(14,165,233,.15)", borderRadius:12, padding:"10px 12px", fontSize:11, color:"#0EA5E9" }}>
-                  <div style={{ fontWeight:800, marginBottom:4 }}>💡 Como usar este módulo:</div>
+                  <div style={{ fontWeight:800, marginBottom:4 }}>💡 Como a Di lê seus documentos:</div>
                   <ul style={{ margin:0, paddingLeft:16, lineHeight:1.8 }}>
-                    <li>Adicione o <strong>texto</strong> de cada documento para que a Di consiga consultá-lo</li>
-                    <li>Cole o conteúdo do AVCB, Regimento, Convenção diretamente no campo de texto</li>
-                    <li>Use o campo "Consultar Di" para tirar dúvidas rapidamente sobre qualquer regra</li>
+                    <li><strong>PDF nativo:</strong> o texto é extraído automaticamente no upload — a Di já pode ler!</li>
+                    <li><strong>PDF digitalizado/escaneado:</strong> é uma imagem; use o botão <strong>🤖 Extrair texto</strong> para tentar extrair. Se não funcionar, cole o texto manualmente.</li>
+                    <li>Use o campo "Consultar Di" para tirar dúvidas sobre regimento, AVCB, convenção e mais.</li>
+                    <li>O badge <strong style={{ color:"#22C55E" }}>✓ Di pode ler</strong> confirma que o texto está disponível para consulta.</li>
                   </ul>
                 </div>
               </div>

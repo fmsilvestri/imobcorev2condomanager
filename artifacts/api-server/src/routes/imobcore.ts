@@ -3,12 +3,28 @@ import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import multer from "multer";
 import bcrypt from "bcryptjs";
+import { createRequire } from "module";
+const _require = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pdfParse = _require("pdf-parse") as (buf: Buffer, opts?: Record<string,unknown>) => Promise<{ text: string; numpages: number; info: Record<string,unknown> }>;
 import {
   type Lancamento,
   calcularIndicadores,
   calcularFluxoMensal,
 } from "../lib/financeiro.service.js";
 import { carregarContextoDi } from "../di-engine/context.js";
+
+// ─── Extração de texto de PDF ────────────────────────────────────────────────
+async function extractPdfText(buffer: Buffer): Promise<string | null> {
+  try {
+    const result = await pdfParse(buffer);
+    const text = result.text?.trim() ?? "";
+    return text.length > 0 ? text : null;
+  } catch (err) {
+    console.warn("[pdf-parse] falha ao extrair texto:", (err as Error).message);
+    return null;
+  }
+}
 
 const router = Router();
 
@@ -5998,9 +6014,10 @@ router.post("/documentos", async (req: Request, res: Response) => {
   return res.status(201).json({ doc: data });
 });
 
-// POST /api/documentos/upload — multipart: create document + upload file
+// POST /api/documentos/upload — multipart: create document + upload file (extrai texto de PDF automaticamente)
 router.post("/documentos/upload", _docUpload.single("arquivo"), async (req: Request, res: Response) => {
-  const { condominio_id, nome, tipo, descricao, conteudo_texto, validade } = req.body as Record<string, string>;
+  const { condominio_id, nome, tipo, descricao, validade } = req.body as Record<string, string>;
+  let { conteudo_texto } = req.body as Record<string, string>;
   if (!condominio_id || !nome || !tipo)
     return res.status(400).json({ error: "condominio_id, nome e tipo são obrigatórios" });
 
@@ -6008,6 +6025,7 @@ router.post("/documentos/upload", _docUpload.single("arquivo"), async (req: Requ
   let arquivo_nome: string | null = null;
   let arquivo_mime: string | null = null;
   let arquivo_path: string | null = null;
+  let texto_extraido = false;
 
   if (req.file) {
     try {
@@ -6016,6 +6034,15 @@ router.post("/documentos/upload", _docUpload.single("arquivo"), async (req: Requ
       arquivo_path = result.path;
       arquivo_nome = req.file.originalname;
       arquivo_mime = req.file.mimetype;
+
+      // Extração automática de texto para PDF (se não enviou conteudo_texto manualmente)
+      if (!conteudo_texto && req.file.mimetype === "application/pdf") {
+        const extracted = await extractPdfText(req.file.buffer);
+        if (extracted) {
+          conteudo_texto = extracted;
+          texto_extraido = true;
+        }
+      }
     } catch (e) {
       return res.status(500).json({ error: `Falha no upload: ${(e as Error).message}` });
     }
@@ -6030,7 +6057,7 @@ router.post("/documentos/upload", _docUpload.single("arquivo"), async (req: Requ
       return res.status(503).json({ error: "missing_table", message: "Execute o SQL de migração no Supabase Dashboard" });
     return res.status(500).json({ error: error.message });
   }
-  return res.status(201).json({ doc: data });
+  return res.status(201).json({ doc: data, texto_extraido, chars_extraidos: texto_extraido ? conteudo_texto?.length ?? 0 : 0 });
 });
 
 // PUT /api/documentos/:id — update text fields
@@ -6045,7 +6072,7 @@ router.put("/documentos/:id", async (req: Request, res: Response) => {
   return res.json({ doc: data });
 });
 
-// POST /api/documentos/:id/arquivo — upload or replace file for existing document
+// POST /api/documentos/:id/arquivo — upload or replace file for existing document (extrai texto de PDF)
 router.post("/documentos/:id/arquivo", _docUpload.single("arquivo"), async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!req.file) return res.status(400).json({ error: "arquivo é obrigatório" });
@@ -6063,15 +6090,70 @@ router.post("/documentos/:id/arquivo", _docUpload.single("arquivo"), async (req:
   try {
     const condId = (doc as Record<string, unknown>).condominio_id as string;
     const result = await uploadDocArquivo(condId, req.file);
+
+    // Extrair texto do PDF automaticamente
+    let conteudo_texto: string | undefined;
+    let texto_extraido = false;
+    if (req.file.mimetype === "application/pdf") {
+      const extracted = await extractPdfText(req.file.buffer);
+      if (extracted) { conteudo_texto = extracted; texto_extraido = true; }
+    }
+
+    const updatePayload: Record<string, unknown> = {
+      arquivo_url: result.url, arquivo_path: result.path,
+      arquivo_nome: req.file.originalname, arquivo_mime: req.file.mimetype,
+    };
+    if (conteudo_texto) updatePayload.conteudo_texto = conteudo_texto;
+
     const { data: updated, error } = await supabase
       .from("documentos_condominio")
-      .update({ arquivo_url: result.url, arquivo_path: result.path, arquivo_nome: req.file.originalname, arquivo_mime: req.file.mimetype })
+      .update(updatePayload)
       .eq("id", id).select().single();
     if (error) return res.status(500).json({ error: error.message });
-    return res.json({ doc: updated });
+    return res.json({ doc: updated, texto_extraido, chars_extraidos: conteudo_texto?.length ?? 0 });
   } catch (e) {
     return res.status(500).json({ error: `Falha no upload: ${(e as Error).message}` });
   }
+});
+
+// POST /api/documentos/:id/extrair-texto — re-extrai texto de PDF já armazenado
+router.post("/documentos/:id/extrair-texto", async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  // Buscar doc
+  const { data: doc, error: docErr } = await supabase
+    .from("documentos_condominio")
+    .select("id,nome,arquivo_url,arquivo_mime,arquivo_path")
+    .eq("id", id).single();
+  if (docErr || !doc) return res.status(404).json({ error: "Documento não encontrado" });
+
+  const d = doc as { id: string; nome: string; arquivo_url: string | null; arquivo_mime: string | null; arquivo_path: string | null };
+
+  if (!d.arquivo_url) return res.status(400).json({ error: "Documento não possui arquivo anexado" });
+  if (d.arquivo_mime !== "application/pdf") return res.status(400).json({ error: "Extração de texto só funciona para arquivos PDF" });
+
+  // Baixar o arquivo do Storage
+  let pdfBuffer: Buffer;
+  try {
+    const resp = await fetch(d.arquivo_url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} ao baixar o PDF`);
+    pdfBuffer = Buffer.from(await resp.arrayBuffer());
+  } catch (e) {
+    return res.status(500).json({ error: `Falha ao baixar PDF: ${(e as Error).message}` });
+  }
+
+  // Extrair texto
+  const texto = await extractPdfText(pdfBuffer);
+  if (!texto) return res.status(422).json({ error: "Não foi possível extrair texto deste PDF (pode ser escaneado/imagem)" });
+
+  // Salvar no banco
+  const { data: updated, error: upErr } = await supabase
+    .from("documentos_condominio")
+    .update({ conteudo_texto: texto, updated_at: new Date().toISOString() })
+    .eq("id", id).select("id,nome,conteudo_texto").single();
+  if (upErr) return res.status(500).json({ error: upErr.message });
+
+  return res.json({ ok: true, doc: updated, chars_extraidos: texto.length, preview: texto.substring(0, 300) });
 });
 
 // DELETE /api/documentos/:id — also removes file from storage
@@ -6088,7 +6170,7 @@ router.delete("/documentos/:id", async (req: Request, res: Response) => {
   return res.json({ ok: true });
 });
 
-// POST /api/documentos/consultar — Di responde perguntas com base nos documentos
+// POST /api/documentos/consultar — Di responde perguntas com base nos documentos (com extração de PDF)
 router.post("/documentos/consultar", async (req: Request, res: Response) => {
   const { condominio_id, pergunta } = req.body as Record<string, string>;
   if (!condominio_id || !pergunta)
@@ -6096,7 +6178,7 @@ router.post("/documentos/consultar", async (req: Request, res: Response) => {
 
   const { data: docs } = await supabase
     .from("documentos_condominio")
-    .select("nome,tipo,descricao,conteudo_texto")
+    .select("id,nome,tipo,descricao,conteudo_texto,validade,arquivo_url,arquivo_mime")
     .eq("condominio_id", condominio_id)
     .order("created_at", { ascending: false });
 
@@ -6107,33 +6189,77 @@ router.post("/documentos/consultar", async (req: Request, res: Response) => {
     });
   }
 
-  type DocRow = { nome: string; tipo: string; descricao?: string; conteudo_texto?: string };
-  const docsContext = (docs as DocRow[]).map(d => {
-    const tipoLabel: Record<string, string> = { avcb:"AVCB/Bombeiros", regimento:"Regimento Interno", convencao:"Convenção Condominial", contrato:"Contrato", alvara:"Alvará/Licença", manual:"Manual Técnico", outro:"Outro" };
-    return `\n--- ${d.nome} (${tipoLabel[d.tipo] ?? d.tipo}) ---\n${d.descricao ? `Descrição: ${d.descricao}\n` : ""}Conteúdo:\n${(d.conteudo_texto || "[sem texto cadastrado]").substring(0, 3500)}`;
-  }).join("\n");
+  type DocRow = { id: string; nome: string; tipo: string; descricao?: string; conteudo_texto?: string; validade?: string | null; arquivo_url?: string | null; arquivo_mime?: string | null };
+  const TIPO_LABEL: Record<string, string> = {
+    avcb: "AVCB/Bombeiros", regimento: "Regimento Interno", convencao: "Convenção Condominial",
+    contrato: "Contrato", alvara: "Alvará/Licença", manual: "Manual Técnico", seguro: "Apólice de Seguro",
+    ata: "Ata de Assembleia", laudo: "Laudo Técnico", certidao: "Certidão", outro: "Outro",
+  };
 
-  const systemPrompt = `Você é Di, a Síndica Virtual IA do ImobCore. Você tem acesso aos documentos oficiais do condomínio listados abaixo e deve responder perguntas com base neles.
+  // Tentar extrair texto on-the-fly para PDFs sem conteudo_texto
+  const docsProcessados = await Promise.all((docs as DocRow[]).map(async (d) => {
+    if (!d.conteudo_texto && d.arquivo_url && d.arquivo_mime === "application/pdf") {
+      try {
+        const resp = await fetch(d.arquivo_url);
+        if (resp.ok) {
+          const buf = Buffer.from(await resp.arrayBuffer());
+          const extracted = await extractPdfText(buf);
+          if (extracted) {
+            // Salvar para próximas consultas
+            await supabase.from("documentos_condominio").update({ conteudo_texto: extracted }).eq("id", d.id);
+            return { ...d, conteudo_texto: extracted };
+          }
+        }
+      } catch { /* ignora falhas de extração */ }
+    }
+    return d;
+  }));
 
-DOCUMENTOS CADASTRADOS (${docs.length} no total):
-${docsContext}
+  const docsComTexto = docsProcessados.filter(d => d.conteudo_texto);
+  const docsSemTexto = docsProcessados.filter(d => !d.conteudo_texto);
 
-Instruções:
-- Responda de forma direta, clara e útil com base nos documentos acima
-- Se a informação não estiver nos documentos, diga isso claramente e sugira onde buscar
-- Use formatação markdown simples quando útil (negrito, listas)
-- Seja concisa e objetiva
-- Se o documento não tiver conteúdo textual, informe ao síndico que é necessário adicionar o texto do documento`;
+  const docsContext = docsProcessados.map((d, i) => {
+    const label = TIPO_LABEL[d.tipo] ?? d.tipo;
+    const validadeInfo = d.validade ? `\nValidade: ${new Date(d.validade).toLocaleDateString("pt-BR")}` : "";
+    const conteudo = d.conteudo_texto
+      ? d.conteudo_texto.substring(0, 6000)
+      : "[Documento sem texto extraído — pode ser PDF digitalizado/imagem]";
+    return `\n=== DOCUMENTO ${i + 1}: ${d.nome} (${label}) ===${validadeInfo}\n${d.descricao ? `Resumo: ${d.descricao}\n` : ""}${conteudo}`;
+  }).join("\n\n");
+
+  const semTextoAviso = docsSemTexto.length > 0
+    ? `\n\nATENÇÃO: ${docsSemTexto.length} documento(s) sem texto extraído: ${docsSemTexto.map(d => d.nome).join(", ")}. Se forem PDFs digitalizados/imagens, o texto não pode ser extraído automaticamente.`
+    : "";
+
+  const systemPrompt = `Você é Di, a Síndica Virtual IA do ImobCore v2. Você tem acesso ao conteúdo completo dos documentos oficiais do condomínio e deve responder perguntas com base neles.
+
+DOCUMENTOS DO CONDOMÍNIO (${docs.length} cadastrados, ${docsComTexto.length} com texto disponível):
+${docsContext}${semTextoAviso}
+
+INSTRUÇÕES:
+- Responda de forma direta e objetiva com base EXCLUSIVAMENTE nos documentos acima
+- Sempre cite qual documento é a fonte da informação (ex: "Conforme o Regimento Interno, ...")
+- Se a informação não estiver em nenhum documento, diga claramente e sugira onde procurar
+- Use formatação markdown: **negrito** para termos importantes, listas quando necessário
+- Para artigos ou cláusulas específicas, cite o número quando disponível no texto
+- Se o documento não tiver texto, informe que é necessário re-extrair (pode ser PDF digitalizado)
+- Responda sempre em português brasileiro`;
 
   const msg = await anthropic.messages.create({
-    model: "claude-haiku-4-5",
-    max_tokens: 1200,
+    model: "claude-sonnet-4-5",
+    max_tokens: 2000,
     system: systemPrompt,
     messages: [{ role: "user", content: pergunta }],
   });
 
   const resposta = (msg.content[0] as { type: string; text: string }).text;
-  return res.json({ resposta, docs_count: docs.length });
+  return res.json({
+    resposta,
+    docs_count: docs.length,
+    docs_com_texto: docsComTexto.length,
+    docs_sem_texto: docsSemTexto.length,
+    fontes: docsProcessados.map(d => ({ nome: d.nome, tipo: TIPO_LABEL[d.tipo] ?? d.tipo, tem_texto: !!d.conteudo_texto })),
+  });
 });
 
 // POST /api/admin/documentos/auto-migrate — tenta criar a tabela automaticamente via Management API
