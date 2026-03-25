@@ -507,11 +507,32 @@ ${allIoT.join("\n") || "  Nenhum sensor cadastrado"}`);
 
     // ── Módulo: Financeiro ───────────────────────────────────────────────────
     if (diModulos.includes("financeiro")) {
-      contextSections.push(`💰 FINANCEIRO:
-- Receitas totais: R$ ${totalReceitas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-- Despesas totais: R$ ${totalDespesas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-- Saldo: R$ ${saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} ${saldo >= 0 ? "✅" : "⚠️ NEGATIVO"}
-- Inadimplência: ${txInadChat}% (R$ ${vlrInadChat.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em aberto) ${txInadChat > 20 ? "🔴 CRÍTICO" : txInadChat > 10 ? "🟡 ATENÇÃO" : "✅"}`);
+      // Score financeiro — usa valor do frontend ou calcula pelo saldo
+      const scoreFinChat = scoreCtx != null ? scoreCtx
+        : saldo > 0 && txInadChat < 10 ? 85
+        : saldo > 0 && txInadChat < 20 ? 65
+        : saldo < 0 ? 35 : 50;
+      const riscoBadgeChat = scoreFinChat >= 80 ? "🟢 BAIXO" : scoreFinChat >= 60 ? "🟡 MODERADO" : scoreFinChat >= 40 ? "🔴 ALTO" : "⛔ CRÍTICO";
+
+      // Categorias de despesa das tabelas legadas
+      const despCatChat: Record<string, number> = {};
+      (despesas || []).forEach((d: { categoria?: string; valor: number }) => {
+        const cat = d.categoria || "outros";
+        despCatChat[cat] = (despCatChat[cat] || 0) + Number(d.valor);
+      });
+      const topCatChatTxt = Object.entries(despCatChat).sort((a, b) => b[1] - a[1]).slice(0, 5)
+        .map(([c, v]) => `  • ${c}: R$ ${v.toLocaleString("pt-BR",{minimumFractionDigits:2})}`)
+        .join("\n") || "  • Sem dados de categorias";
+
+      contextSections.push(`💰 FINANCEIRO — VISÃO EXECUTIVA:
+• Score de Saúde Financeira: ${scoreFinChat}/100 — Risco ${riscoBadgeChat}
+• Saldo em Caixa: R$ ${(saldoCtx ?? saldo).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} ${(saldoCtx ?? saldo) >= 0 ? "✅" : "⚠️ NEGATIVO"}
+• Receitas Totais: R$ ${totalReceitas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+• Despesas Totais: R$ ${totalDespesas.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+• Resultado: R$ ${(totalReceitas - totalDespesas).toLocaleString("pt-BR",{minimumFractionDigits:2})} ${totalReceitas >= totalDespesas ? "✅" : "⚠️ DÉFICIT"}
+• Inadimplência: ${(inadCtx ?? txInadChat)}% (R$ ${vlrInadChat.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} em aberto) ${(inadCtx ?? txInadChat) > 20 ? "🔴 CRÍTICO" : (inadCtx ?? txInadChat) > 10 ? "🟡 ATENÇÃO" : "✅ OK"}
+• Principais despesas por categoria:
+${topCatChatTxt}`);
     }
 
     // ── Módulo: MISP / Manutenção ────────────────────────────────────────────
@@ -1644,54 +1665,145 @@ router.post("/financeiro/orcamento", async (req: Request, res: Response) => {
   } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
 });
 
-// POST /api/financeiro/insights  — chama Síndico Virtual IA
+// POST /api/financeiro/insights  — Di Síndica analisa o módulo financeiro completo
 router.post("/financeiro/insights", async (req: Request, res: Response) => {
   try {
-    const { condominio_id } = req.body as { condominio_id?: string };
+    const {
+      condominio_id,
+      pergunta,
+      // Dados opcionais enviados pelo frontend (evita re-fetch do DB)
+      saldo: saldoFront,
+      score: scoreFront,
+      txInad: txInadFront,
+      vlrInad: vlrInadFront,
+      totalRec: totalRecFront,
+      totalDesp: totalDespFront,
+      risco: riscoFront,
+      categorias,       // Record<string, number> — top despesas por categoria
+      fluxo,            // { mes: string; Receitas: number; Despesas: number; Resultado: number }[]
+      aging,            // { ate30: number; de31a60: number; de61a90: number; acima90: number }
+      lancamentos_recentes, // { tipo: string; descricao: string; valor: number; categoria: string; status: string; data: string }[]
+    } = req.body as {
+      condominio_id?: string;
+      pergunta?: string;
+      saldo?: number; score?: number; txInad?: number; vlrInad?: number;
+      totalRec?: number; totalDesp?: number; risco?: string;
+      categorias?: Record<string, number>;
+      fluxo?: { mes: string; Receitas: number; Despesas: number; Resultado: number }[];
+      aging?: { ate30: number; de31a60: number; de61a90: number; acima90: number };
+      lancamentos_recentes?: { tipo: string; descricao: string; valor: number; categoria: string; status: string; data: string }[];
+    };
+
+    // ── Buscar dados do DB (fallback se frontend não enviou) ─────────────────
     const ind = await calcIndicadores(condominio_id);
 
-    // Compila categorias de despesas
-    const despCat: Record<string, number> = {};
-    ind.all.filter(l => l.tipo === "despesa").forEach((l: { tipo: string; valor: number; data: string; categoria?: string }) => {
-      const cat = (l as unknown as { categoria?: string }).categoria || "outros";
-      despCat[cat] = (despCat[cat] || 0) + Number(l.valor);
+    const saldoFinal   = saldoFront   ?? ind.saldo;
+    const scoreFinal   = scoreFront   ?? ind.score;
+    const txInadFinal  = txInadFront  ?? ind.txInad;
+    const vlrInadFinal = vlrInadFront ?? ind.vlrInad;
+    const totalRecFinal  = totalRecFront  ?? ind.totalRec;
+    const totalDespFinal = totalDespFront ?? ind.totalDesp;
+    const riscoFinal   = riscoFront   ?? ind.risco;
+
+    // ── Buscar nome do condomínio ────────────────────────────────────────────
+    const { data: cond } = await (condominio_id
+      ? supabase.from("condominios").select("nome,cidade,sindico_nome,unidades").eq("id", condominio_id).single()
+      : supabase.from("condominios").select("nome,cidade,sindico_nome,unidades").limit(1).single()
+    );
+    const condNome  = cond?.nome || "condomínio";
+    const sindicoNm = cond?.sindico_nome || "síndico";
+
+    // ── Compilar categorias de despesa ───────────────────────────────────────
+    let despCat: Record<string, number> = categorias || {};
+    if (!Object.keys(despCat).length) {
+      ind.all.filter(l => l.tipo === "despesa").forEach(l => {
+        const cat = (l as any).categoria || "outros";
+        despCat[cat] = (despCat[cat] || 0) + Number(l.valor);
+      });
+    }
+    const topCatsTxt = Object.entries(despCat).sort((a, b) => b[1] - a[1]).slice(0, 6)
+      .map(([c, v]) => `  • ${c}: R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`)
+      .join("\n") || "  • Sem dados de despesas cadastrados";
+
+    // ── Fluxo de caixa ───────────────────────────────────────────────────────
+    const fluxoData = fluxo || [];
+    const fluxoTxt = fluxoData.length
+      ? fluxoData.map(m => `  ${m.mes}: Receitas R$${Number(m.Receitas).toLocaleString("pt-BR")} | Despesas R$${Number(m.Despesas).toLocaleString("pt-BR")} | Resultado R$${Number(m.Resultado).toLocaleString("pt-BR")}`).join("\n")
+      : "  Sem histórico de fluxo de caixa disponível";
+
+    // ── Aging inadimplência ──────────────────────────────────────────────────
+    const agingData = aging || { ate30: 0, de31a60: 0, de61a90: 0, acima90: 0 };
+    const agingTxt = `  • Até 30 dias: R$ ${Number(agingData.ate30).toLocaleString("pt-BR",{minimumFractionDigits:2})}
+  • 31–60 dias: R$ ${Number(agingData.de31a60).toLocaleString("pt-BR",{minimumFractionDigits:2})}
+  • 61–90 dias: R$ ${Number(agingData.de61a90).toLocaleString("pt-BR",{minimumFractionDigits:2})}
+  • Acima de 90 dias: R$ ${Number(agingData.acima90).toLocaleString("pt-BR",{minimumFractionDigits:2})} ${agingData.acima90 > 0 ? "🔴" : ""}`;
+
+    // ── Lançamentos recentes ─────────────────────────────────────────────────
+    const lancsRec = lancamentos_recentes || ind.all.slice(0, 10).map(l => ({
+      tipo: l.tipo, descricao: l.descricao || "", valor: Number(l.valor),
+      categoria: (l as any).categoria || "geral", status: l.status || "previsto", data: l.data || "",
+    }));
+    const lancsTxt = lancsRec.length
+      ? lancsRec.slice(0, 8).map(l => `  [${l.tipo === "receita" ? "📈 Rec" : "📉 Desp"}] ${l.descricao || l.categoria} | R$ ${Number(l.valor).toLocaleString("pt-BR",{minimumFractionDigits:2})} | ${l.status} | ${l.data}`).join("\n")
+      : "  Nenhum lançamento cadastrado ainda.";
+
+    // ── Score badge ──────────────────────────────────────────────────────────
+    const riscoBadge = scoreFinal >= 80 ? "🟢 BAIXO" : scoreFinal >= 60 ? "🟡 MODERADO" : scoreFinal >= 40 ? "🔴 ALTO" : "⛔ CRÍTICO";
+
+    const userMsg = pergunta ||
+      `Gere um relatório executivo completo da saúde financeira do ${condNome}. Inclua: análise dos indicadores, riscos identificados, inadimplência, fluxo de caixa e recomendações prioritárias.`;
+
+    // ── Prompt da Di ────────────────────────────────────────────────────────
+    const systemPrompt = `Você é Di, a Síndica Virtual Inteligente do ${condNome} em ${cond?.cidade || "Brasil"} — especialista em gestão financeira condominial.
+
+Você tem acesso completo ao Módulo Financeiro Inteligente do ImobCore. Sua missão é analisar os dados financeiros e gerar insights estratégicos para o síndico ${sindicoNm}.
+
+ESTILO: Profissional, direta, analítica. Use emojis moderadamente. Cite números concretos. Estruture com seções claras.`;
+
+    const contextoFinanceiro = `📊 MÓDULO FINANCEIRO INTELIGENTE — ${condNome}
+Data: ${new Date().toLocaleDateString("pt-BR")}
+
+━━━ INDICADORES PRINCIPAIS ━━━
+• Score de Saúde Financeira: ${scoreFinal}/100 — Risco ${riscoBadge}
+• Saldo em Caixa: R$ ${saldoFinal.toLocaleString("pt-BR",{minimumFractionDigits:2})} ${saldoFinal >= 0 ? "✅" : "⚠️ NEGATIVO"}
+• Receitas Totais: R$ ${totalRecFinal.toLocaleString("pt-BR",{minimumFractionDigits:2})}
+• Despesas Totais: R$ ${totalDespFinal.toLocaleString("pt-BR",{minimumFractionDigits:2})}
+• Resultado: R$ ${(totalRecFinal - totalDespFinal).toLocaleString("pt-BR",{minimumFractionDigits:2})} ${totalRecFinal >= totalDespFinal ? "✅" : "⚠️ DÉFICIT"}
+• Taxa de Inadimplência: ${txInadFinal}% (R$ ${vlrInadFinal.toLocaleString("pt-BR",{minimumFractionDigits:2})} em aberto) ${txInadFinal > 20 ? "🔴 CRÍTICO" : txInadFinal > 10 ? "🟡 ATENÇÃO" : "✅"}
+
+━━━ AGING INADIMPLÊNCIA ━━━
+${agingTxt}
+
+━━━ TOP CATEGORIAS DE DESPESA ━━━
+${topCatsTxt}
+
+━━━ FLUXO DE CAIXA — HISTÓRICO ━━━
+${fluxoTxt}
+
+━━━ ÚLTIMOS LANÇAMENTOS ━━━
+${lancsTxt}`;
+
+    const Anthropic = (await import("@anthropic-ai/sdk")).default;
+    const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+    const msg = await ai.messages.create({
+      model: "claude-sonnet-4-5",
+      max_tokens: 1200,
+      system: systemPrompt,
+      messages: [{ role: "user", content: `${contextoFinanceiro}\n\n---\nPERGUNTA/SOLICITAÇÃO:\n${userMsg}\n\nResponda com as seções:\n1. ANÁLISE (situação geral e tendências)\n2. RISCOS (riscos identificados, bullet points)\n3. RECOMENDAÇÕES (ações prioritárias concretas, bullet points)` }],
     });
-    const topCats = Object.entries(despCat).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([c, v]) => `${c}: R$${v.toFixed(2)}`).join(", ");
 
-    const prompt = `Você é o Síndico Virtual do ImobCore. Analise os indicadores financeiros do condomínio e gere um relatório completo.
-
-DADOS FINANCEIROS:
-- Score de saúde financeira: ${ind.score}/100 (${ind.risco})
-- Saldo em caixa: R$ ${ind.saldo.toFixed(2)}
-- Total receitas: R$ ${ind.totalRec.toFixed(2)}
-- Total despesas: R$ ${ind.totalDesp.toFixed(2)}
-- Resultado: R$ ${(ind.totalRec - ind.totalDesp).toFixed(2)}
-- Taxa de inadimplência: ${ind.txInad}% (R$ ${ind.vlrInad.toFixed(2)} em aberto)
-- Principais categorias de despesa: ${topCats || "sem dados"}
-
-Responda com:
-1. ANÁLISE: 2-3 frases sobre a situação financeira geral
-2. RISCOS: principais riscos identificados (bullet points)
-3. RECOMENDAÇÕES: ações concretas para melhorar (bullet points)
-
-Seja objetivo, direto e use linguagem de síndico profissional.`;
-
-    const anthropic = (await import("@anthropic-ai/sdk")).default;
-    const client = new anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const msg = await client.messages.create({
-      model: "claude-opus-4-5",
-      max_tokens: 800,
-      messages: [{ role: "user", content: prompt }],
-    });
     const text = msg.content[0].type === "text" ? msg.content[0].text : "";
 
-    // Parse sections
-    const analise = text.match(/ANÁLISE[:\s]+([\s\S]+?)(?=RISCOS|$)/i)?.[1]?.trim() || text.slice(0, 200);
-    const riscos = text.match(/RISCOS[:\s]+([\s\S]+?)(?=RECOMENDAÇÕES|$)/i)?.[1]?.trim() || "";
-    const recomendacoes = text.match(/RECOMENDAÇÕES[:\s]+([\s\S]+)/i)?.[1]?.trim() || "";
+    // Parse seções flexível
+    const analise = text.match(/ANÁLISE[:\s]+([\s\S]+?)(?=\n\s*\d+\.|RISCO|RECOMEND|$)/i)?.[1]?.trim()
+      || text.split(/\n\s*\d+\./)[1]?.split("\n").slice(0,5).join("\n").trim()
+      || text.slice(0, 400);
+    const riscos = text.match(/RISCO[S]?[:\s]+([\s\S]+?)(?=\n\s*\d+\.|RECOMEND|$)/i)?.[1]?.trim() || "";
+    const recomendacoes = text.match(/RECOMEND[AÇÕE]+S?[:\s]+([\s\S]+)/i)?.[1]?.trim() || "";
 
     res.json({
-      score: ind.score, inadimplencia: ind.txInad, saldo: ind.saldo, risco: ind.risco,
+      score: scoreFinal, inadimplencia: txInadFinal, saldo: saldoFinal, risco: riscoFinal,
       analise, riscos, recomendacoes, gerado_em: new Date().toISOString(),
     });
   } catch (e: unknown) { res.status(500).json({ error: String(e) }); }

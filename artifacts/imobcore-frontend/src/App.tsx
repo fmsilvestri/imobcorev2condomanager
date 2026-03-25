@@ -1842,11 +1842,28 @@ export default function App() {
     setFinInsightLoading(true);
     try {
       const cid = condId || dash?.condominios?.[0]?.id;
+
+      // Calcula indicadores dos lançamentos já carregados
+      const totalRecGest  = (lancamentos||[]).filter(l=>l.tipo==="receita").reduce((s,l)=>s+Number(l.valor),0);
+      const totalDespGest = (lancamentos||[]).filter(l=>l.tipo==="despesa").reduce((s,l)=>s+Number(l.valor),0);
+      const saldoGest = totalRecGest - totalDespGest;
+      const atrasadosGest = (lancamentos||[]).filter(l=>l.tipo==="receita"&&l.status==="atrasado");
+      const totalRecCount = (lancamentos||[]).filter(l=>l.tipo==="receita").length;
+      const txInadGest  = totalRecCount > 0 ? Math.round((atrasadosGest.length/totalRecCount)*100) : 0;
+      const vlrInadGest = atrasadosGest.reduce((s,l)=>s+Number(l.valor),0);
+      const scoreGest   = saldoGest > 0 && txInadGest < 10 ? 85 : saldoGest > 0 && txInadGest < 20 ? 65 : saldoGest < 0 ? 35 : 50;
+      const riscoGest   = scoreGest >= 80 ? "baixo" : scoreGest >= 60 ? "moderado" : scoreGest >= 40 ? "alto" : "critico";
+
       const body: Record<string, unknown> = {
         tipo: "financeiro",
         condominio_id: cid,
         perfil: loggedUser?.perfil || loginMode || "gestor",
         nome_usuario: loggedUser?.nome || "Usuário",
+        // Passa dados já calculados para o backend
+        saldo: saldoGest,
+        score: scoreGest,
+        inadimplencia: txInadGest,
+        modulo_contexto: "financeiro",
       };
       if (pergunta) body.message = pergunta;
       const r = await fetch("/api/sindico/chat", {
@@ -1930,11 +1947,49 @@ export default function App() {
     setFinSimLoading(false);
   };
 
-  const finSindicoGerarInsight = async () => {
+  const finSindicoGerarInsight = async (pergunta?: string) => {
     const cid = condId || dash?.condominios?.[0]?.id;
     setFinSindicoInsightLoading(true);
     try {
-      const r = await fetch("/api/financeiro/insights", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:cid }) });
+      // Monta categorias de despesa a partir dos lançamentos já carregados
+      const despCat: Record<string, number> = {};
+      (finSindicoLancs || []).filter(l => l.tipo === "despesa").forEach(l => {
+        const cat = (l as any).categoria || "outros";
+        despCat[cat] = (despCat[cat] || 0) + Number(l.valor);
+      });
+
+      // Lançamentos recentes formatados
+      const lancamentosRecentes = (finSindicoLancs || []).slice(0, 10).map(l => ({
+        tipo: l.tipo,
+        descricao: l.descricao || "",
+        valor: Number(l.valor),
+        categoria: (l as any).categoria || "geral",
+        status: l.status || "previsto",
+        data: l.data || "",
+      }));
+
+      const body: Record<string, unknown> = {
+        condominio_id: cid,
+        pergunta: pergunta || undefined,
+        // Passa dados já carregados no frontend para evitar re-fetch
+        saldo:     finSindicoResumo?.saldo,
+        score:     finSindicoResumo?.score,
+        txInad:    finSindicoResumo?.txInad,
+        vlrInad:   finSindicoResumo?.vlrInad,
+        totalRec:  finSindicoResumo?.totalRec,
+        totalDesp: finSindicoResumo?.totalDesp,
+        risco:     finSindicoResumo?.risco,
+        categorias: Object.keys(despCat).length ? despCat : undefined,
+        fluxo: finSindicoFluxo?.historico?.length ? finSindicoFluxo.historico : undefined,
+        aging: finSindicoInad?.aging ?? undefined,
+        lancamentos_recentes: lancamentosRecentes.length ? lancamentosRecentes : undefined,
+      };
+
+      const r = await fetch("/api/financeiro/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       if (r.ok) { const d = await r.json(); setFinSindicoInsight(d); }
       else showToast("Erro ao gerar análise IA", "warn");
     } catch { showToast("Erro ao gerar análise IA", "warn"); }
@@ -9349,7 +9404,7 @@ export default function App() {
                           {/* Chips de perguntas rápidas */}
                           <div style={{ display:"flex", gap:6, flexWrap:"wrap" as const }}>
                             {["Onde posso reduzir despesas?","Como melhorar a inadimplência?","Previsão para os próximos 3 meses","Compare receitas x despesas por categoria","Riscos financeiros do condomínio","Estratégia de reserva de emergência"].map(q=>(
-                              <button key={q} onClick={()=>finSindicoGerarInsight()} disabled={finSindicoInsightLoading}
+                              <button key={q} onClick={()=>finSindicoGerarInsight(q)} disabled={finSindicoInsightLoading}
                                 style={{ padding:"5px 12px", borderRadius:20, background:"rgba(245,158,11,.08)", border:"1px solid rgba(245,158,11,.2)", color:"#F59E0B", fontSize:10, cursor:"pointer" }}>
                                 {q}
                               </button>
