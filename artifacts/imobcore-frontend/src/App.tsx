@@ -1076,12 +1076,13 @@ export default function App() {
 
   // Ao trocar condomínio: carregar equipamentos e planos do Supabase
   useEffect(() => {
-    if (!condId) { setEquipList([]); setPlanoList([]); setFornecList([]); setPiscinaList([]); setDiagHistorico([]); return; }
+    if (!condId) { setEquipList([]); setPlanoList([]); setFornecList([]); setPiscinaList([]); setDiagHistorico([]); setMantHistList([]); return; }
     loadEquipamentos(condId);
     loadPlanos(condId);
     loadFornecedores(condId);
     loadPiscina(condId);
     loadDiagHistorico(condId);
+    loadMantHistorico(condId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condId]);
 
@@ -1256,6 +1257,38 @@ export default function App() {
   const [qrUrls, setQrUrls] = useState<Record<string,string>>({});
   const [mantAiLoading, setMantAiLoading] = useState(false);
   const [mantAiResult, setMantAiResult] = useState<string>("");
+  const [mantDiResumo, setMantDiResumo] = useState<{total:number;criticos:number;atencao:number;vencidas:number;proximas:number;custo_mes:number;score:number}|null>(null);
+  const [mantDiAlertas, setMantDiAlertas] = useState<string[]>([]);
+  const [mantHistList, setMantHistList] = useState<{id:string;tipo:string;titulo:string;status:string;prioridade:string;tecnico_nome:string|null;custo_real:number|null;concluida_em:string|null;agendada_para:string|null;criada_por_di:boolean;equipamentos:{nome:string;categoria:string;local:string}|null}[]>([]);
+  const [mantHistLoading, setMantHistLoading] = useState(false);
+  const [mantHistModal, setMantHistModal] = useState(false);
+  const [mantHistForm, setMantHistForm] = useState({ equipamento_id:"", tipo:"preventiva", titulo:"", descricao:"", prioridade:"normal", tecnico_nome:"", custo_estimado:"", agendada_para:"" });
+  const [mantHistSaving, setMantHistSaving] = useState(false);
+
+  const loadMantHistorico = async (cid: string) => {
+    setMantHistLoading(true);
+    try {
+      const r = await fetch(`/api/manutencao/historico?condominio_id=${cid}`);
+      if (r.ok) { const d = await r.json(); if (Array.isArray(d)) setMantHistList(d); }
+    } catch { /* silent */ }
+    setMantHistLoading(false);
+  };
+
+  const mantHistSave = async () => {
+    if (!condId || !mantHistForm.titulo.trim()) return;
+    setMantHistSaving(true);
+    try {
+      const r = await fetch("/api/manutencao/historico", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ condominio_id: condId, ...mantHistForm, custo_estimado: mantHistForm.custo_estimado ? Number(mantHistForm.custo_estimado) : null }),
+      });
+      const d = await r.json();
+      if (d.ok) { showToast("Manutenção registrada!", "success"); setMantHistModal(false); setMantHistForm({ equipamento_id:"", tipo:"preventiva", titulo:"", descricao:"", prioridade:"normal", tecnico_nome:"", custo_estimado:"", agendada_para:"" }); if (condId) loadMantHistorico(condId); }
+      else showToast(d.error || "Erro ao salvar", "error");
+    } catch { showToast("Erro ao registrar manutenção", "error"); }
+    setMantHistSaving(false);
+  };
   const [mantMapHover, setMantMapHover] = useState<string|null>(null);
   const [mantPlanMonth, setMantPlanMonth] = useState(5); // index in MANUT_SCHEDULE (current=Mar/26)
 
@@ -9502,6 +9535,134 @@ Content-Type: application/json
                     );
                   })()}
 
+                {/* ── ABA 4: HISTÓRICO OS INTEGRADO ─────────────────────── */}
+                {mantTab === "os" && (
+                  <div>
+                    {/* Action bar */}
+                    <div style={{ display:"flex", gap:10, marginBottom:16, alignItems:"center", justifyContent:"space-between" }}>
+                      <div>
+                        <div style={{ fontSize:14, fontWeight:800, color:"var(--c-text)" }}>🔧 Histórico de Manutenções</div>
+                        <div style={{ fontSize:11, color:"#475569", marginTop:2 }}>{mantHistList.length} registros · dados reais do Supabase</div>
+                      </div>
+                      <div style={{ display:"flex", gap:8 }}>
+                        <button
+                          onClick={() => { if (condId) loadMantHistorico(condId); }}
+                          style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 14px", color:"#94A3B8", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                          🔄 Atualizar
+                        </button>
+                        <button
+                          onClick={() => setMantHistModal(true)}
+                          style={{ background:"linear-gradient(135deg,#312e81,#4338ca)", border:"1.5px solid #6366F1", borderRadius:10, padding:"9px 18px", color:"#fff", fontSize:13, cursor:"pointer", fontWeight:700, boxShadow:"0 4px 14px rgba(99,102,241,.35)" }}>
+                          + Registrar Manutenção
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Setup SQL hint */}
+                    {mantHistList.length === 0 && !mantHistLoading && (
+                      <div style={{ background:"rgba(245,158,11,.06)", border:"1px solid rgba(245,158,11,.2)", borderRadius:12, padding:"14px 18px", marginBottom:16 }}>
+                        <div style={{ fontSize:12, fontWeight:700, color:"#FCD34D", marginBottom:6 }}>⚠️ Tabela de histórico ainda não criada no Supabase</div>
+                        <div style={{ fontSize:11, color:"#94A3B8", lineHeight:1.7 }}>
+                          Execute a migração SQL no seu painel Supabase (SQL Editor):<br/>
+                          <code style={{ background:"rgba(0,0,0,.3)", borderRadius:4, padding:"2px 6px", fontSize:10 }}>
+                            GET /api/admin/manutencao/migration-sql
+                          </code> para obter o SQL completo.
+                        </div>
+                        <button
+                          onClick={async () => { const r = await fetch("/api/admin/manutencao/migration-sql"); const t = await r.text(); const w = window.open("","_blank"); if(w) { w.document.write(`<pre style="font-family:monospace;white-space:pre-wrap;padding:20px;background:#1e293b;color:#e2e8f0;">${t}</pre>`); w.document.title = "Migration SQL"; } }}
+                          style={{ marginTop:10, background:"rgba(245,158,11,.15)", border:"1px solid rgba(245,158,11,.4)", borderRadius:8, padding:"7px 14px", color:"#FCD34D", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                          📋 Ver SQL de Migração
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Lista de manutenções */}
+                    {mantHistLoading ? (
+                      <div style={{ textAlign:"center", padding:40, color:"#475569" }}>⏳ Carregando histórico...</div>
+                    ) : mantHistList.length > 0 ? (
+                      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                        {mantHistList.map(m => {
+                          const priColors: Record<string,string> = { urgente:"#EF4444", alta:"#F59E0B", normal:"#6366F1", baixa:"#64748B" };
+                          const stColors: Record<string,string>  = { agendada:"#6366F1", em_andamento:"#F59E0B", concluida:"#10B981", cancelada:"#64748B" };
+                          const tipIcons: Record<string,string>  = { preventiva:"🔧", corretiva:"🛠️", emergencial:"🚨", inspecao:"🔍" };
+                          const pri = m.prioridade || "normal";
+                          const st  = m.status || "agendada";
+                          return (
+                            <div key={m.id} style={{ background:"rgba(255,255,255,.03)", border:`1px solid ${priColors[pri]}33`, borderLeft:`4px solid ${priColors[pri]}`, borderRadius:12, padding:"14px 18px", display:"flex", gap:12, alignItems:"flex-start" }}>
+                              <div style={{ fontSize:22, lineHeight:1 }}>{tipIcons[m.tipo] || "🔧"}</div>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                                  <span style={{ fontSize:13, fontWeight:700, color:"#E2E8F0" }}>{m.titulo}</span>
+                                  {m.criada_por_di && <span style={{ fontSize:10, background:"rgba(139,92,246,.2)", color:"#C4B5FD", borderRadius:20, padding:"2px 8px", fontWeight:600 }}>🤖 Di</span>}
+                                  <span style={{ fontSize:10, background:`${stColors[st]}22`, color:stColors[st], borderRadius:20, padding:"2px 8px", fontWeight:600 }}>{st.replace("_"," ")}</span>
+                                  <span style={{ fontSize:10, background:`${priColors[pri]}22`, color:priColors[pri], borderRadius:20, padding:"2px 8px", fontWeight:600 }}>{pri}</span>
+                                  <span style={{ fontSize:10, background:"rgba(255,255,255,.06)", color:"#94A3B8", borderRadius:20, padding:"2px 8px" }}>{m.tipo}</span>
+                                </div>
+                                <div style={{ display:"flex", gap:16, marginTop:6, fontSize:11, color:"#64748B", flexWrap:"wrap" }}>
+                                  {m.equipamentos && <span>📦 {m.equipamentos.nome} · {m.equipamentos.local}</span>}
+                                  {m.tecnico_nome && <span>👷 {m.tecnico_nome}</span>}
+                                  {m.agendada_para && <span>📅 {new Date(m.agendada_para).toLocaleDateString("pt-BR")}</span>}
+                                  {m.concluida_em && <span>✅ Concluída {new Date(m.concluida_em).toLocaleDateString("pt-BR")}</span>}
+                                  {m.custo_real != null && <span style={{ color:"#F59E0B" }}>💰 R$ {Number(m.custo_real).toLocaleString("pt-BR",{minimumFractionDigits:2})}</span>}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : !mantHistLoading && (
+                      <div style={{ textAlign:"center", padding:"40px 20px", color:"#334155", fontSize:12 }}>
+                        Nenhuma manutenção registrada ainda. Clique em <strong style={{ color:"#6366F1" }}>+ Registrar Manutenção</strong> para começar.
+                      </div>
+                    )}
+
+                    {/* Modal de nova manutenção */}
+                    {mantHistModal && (
+                      <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", backdropFilter:"blur(6px)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+                        <div style={{ background:"#0F172A", border:"1px solid rgba(99,102,241,.35)", borderRadius:20, padding:"28px 32px", width:"100%", maxWidth:520, boxShadow:"0 24px 80px rgba(0,0,0,.7)" }}>
+                          <div style={{ fontSize:16, fontWeight:800, color:"#E2E8F0", marginBottom:20 }}>🔧 Registrar Manutenção</div>
+                          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+                            <select value={mantHistForm.equipamento_id} onChange={e=>setMantHistForm(f=>({...f,equipamento_id:e.target.value}))} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }}>
+                              <option value="">Equipamento (opcional)</option>
+                              {equipList.map(eq => <option key={eq.id} value={eq.id}>{eq.catIcon} {eq.nome} — {eq.local}</option>)}
+                            </select>
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                              <select value={mantHistForm.tipo} onChange={e=>setMantHistForm(f=>({...f,tipo:e.target.value}))} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }}>
+                                <option value="preventiva">🔧 Preventiva</option>
+                                <option value="corretiva">🛠️ Corretiva</option>
+                                <option value="emergencial">🚨 Emergencial</option>
+                                <option value="inspecao">🔍 Inspeção</option>
+                              </select>
+                              <select value={mantHistForm.prioridade} onChange={e=>setMantHistForm(f=>({...f,prioridade:e.target.value}))} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }}>
+                                <option value="urgente">🔴 Urgente</option>
+                                <option value="alta">🟡 Alta</option>
+                                <option value="normal">🔵 Normal</option>
+                                <option value="baixa">⚫ Baixa</option>
+                              </select>
+                            </div>
+                            <input placeholder="Título da manutenção *" value={mantHistForm.titulo} onChange={e=>setMantHistForm(f=>({...f,titulo:e.target.value}))} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }} />
+                            <textarea placeholder="Descrição / observações" value={mantHistForm.descricao} onChange={e=>setMantHistForm(f=>({...f,descricao:e.target.value}))} rows={3} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13, resize:"vertical" }} />
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                              <input placeholder="Técnico responsável" value={mantHistForm.tecnico_nome} onChange={e=>setMantHistForm(f=>({...f,tecnico_nome:e.target.value}))} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }} />
+                              <input placeholder="Custo estimado (R$)" type="number" value={mantHistForm.custo_estimado} onChange={e=>setMantHistForm(f=>({...f,custo_estimado:e.target.value}))} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:4 }}>Data agendada</label>
+                              <input type="datetime-local" value={mantHistForm.agendada_para} onChange={e=>setMantHistForm(f=>({...f,agendada_para:e.target.value}))} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13, width:"100%" }} />
+                            </div>
+                          </div>
+                          <div style={{ display:"flex", gap:10, marginTop:20, justifyContent:"flex-end" }}>
+                            <button onClick={() => setMantHistModal(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, padding:"10px 20px", color:"#94A3B8", fontSize:13, cursor:"pointer" }}>Cancelar</button>
+                            <button onClick={mantHistSave} disabled={mantHistSaving || !mantHistForm.titulo.trim()} style={{ background:"linear-gradient(135deg,#312e81,#4338ca)", border:"1.5px solid #6366F1", borderRadius:10, padding:"10px 22px", color:"#fff", fontSize:13, cursor:mantHistSaving?"not-allowed":"pointer", fontWeight:700, opacity:mantHistSaving?0.7:1 }}>
+                              {mantHistSaving ? "Salvando..." : "✔ Registrar"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* ── ABA 5: QR CODES / SELOS ───────────────────────────── */}
                 {mantTab === "qr" && (() => {
                   const condNome = dash?.condominios?.find(c => c.id === condId)?.nome ?? "Condomínio";
@@ -9781,38 +9942,90 @@ Content-Type: application/json
                       </ResponsiveContainer>
                     </div>
 
-                    {/* Análise IA */}
-                    <div style={{ background:"rgba(99,102,241,.04)", border:"1px solid rgba(99,102,241,.15)", borderRadius:12, padding:"16px 20px" }}>
-                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-                        <div style={{ fontSize:13, fontWeight:700, color:"#A5B4FC" }}>🤖 Diagnóstico IA – Síndico Virtual</div>
-                        <button
-                          disabled={mantAiLoading}
-                          onClick={async () => {
-                            setMantAiLoading(true);
-                            setMantAiResult("");
-                            const resumo = `Condomínio: ${dash?.condominios?.find(c=>c.id===condId)?.nome || "Condomínio"}. Equipamentos: ${equipList.length} total, ${nOp} operacionais, ${nAt} em atenção, ${nMt} em manutenção, ${nIn} inativos. Score de saúde: ${scoreEquip}/100. Equipamentos críticos: ${equipList.filter(e=>e.status!=="operacional").map(e=>e.nome+" ("+e.status+": "+e.descricao+")").join("; ")}. Custo de manutenção anual estimado: R$ ${equipList.reduce((s,e)=>s+e.custoManutencao*2,0).toLocaleString("pt-BR")}. MTTR: 4.2 dias. MTBF: 38 dias. Disponibilidade: 89%.`;
-                            try {
-                              const r = await fetch("/api/sindico/chat", {
-                                method:"POST",
-                                headers:{"Content-Type":"application/json"},
-                                body:JSON.stringify({ message:`Analise o estado dos equipamentos e manutenção do condomínio. ${resumo} Forneça: 1) diagnóstico dos equipamentos críticos 2) recomendações prioritárias 3) score de saúde explicado 4) previsão de riscos. Seja específico e técnico.`, history:[], condominio_id: condId, perfil: loggedUser?.perfil || loginMode || "gestor", nome_usuario: loggedUser?.nome || "Usuário", modulo_contexto: "Manutenção / MISP" })
-                              });
-                              const d = await r.json();
-                              setMantAiResult(d.reply || d.response || d.error || "Sem resposta");
-                            } catch { setMantAiResult("Erro ao conectar com IA."); }
-                            setMantAiLoading(false);
-                          }}
-                          style={{ background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.4)", borderRadius:8, padding:"8px 16px", color:"#A5B4FC", fontSize:12, cursor:mantAiLoading?"not-allowed":"pointer", fontWeight:600, opacity:mantAiLoading?0.6:1 }}>
-                          {mantAiLoading ? "⏳ Analisando..." : "🔍 Analisar com IA"}
-                        </button>
+                    {/* Análise IA — Di especializada em manutenção */}
+                    <div style={{ background:"rgba(99,102,241,.04)", border:"1px solid rgba(99,102,241,.2)", borderRadius:14, padding:"18px 22px" }}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                        <div>
+                          <div style={{ fontSize:14, fontWeight:800, color:"#A5B4FC" }}>🤖 Di — Diagnóstico de Manutenção</div>
+                          <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>Análise preditiva com dados reais do Supabase</div>
+                        </div>
+                        <div style={{ display:"flex", gap:8 }}>
+                          {mantDiResumo && (
+                            <span style={{ fontSize:11, background:`${mantDiResumo.score >= 70 ? "#10B981" : mantDiResumo.score >= 40 ? "#F59E0B" : "#EF4444"}22`, color: mantDiResumo.score >= 70 ? "#10B981" : mantDiResumo.score >= 40 ? "#F59E0B" : "#EF4444", border:`1px solid ${mantDiResumo.score >= 70 ? "#10B981" : mantDiResumo.score >= 40 ? "#F59E0B" : "#EF4444"}44`, borderRadius:20, padding:"4px 12px", fontWeight:700 }}>
+                              Score Di: {mantDiResumo.score}/100
+                            </span>
+                          )}
+                          <button
+                            disabled={mantAiLoading || !condId}
+                            onClick={async () => {
+                              if (!condId) return;
+                              setMantAiLoading(true);
+                              setMantAiResult("");
+                              setMantDiResumo(null);
+                              setMantDiAlertas([]);
+                              try {
+                                const r = await fetch("/api/manutencao/di/analisar", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ condominio_id: condId, contexto: "dashboard_ia" }),
+                                });
+                                const d = await r.json();
+                                setMantAiResult(d.analise || "Sem resposta da Di.");
+                                if (d.resumo) setMantDiResumo(d.resumo);
+                                if (d.alertas_criados?.length) setMantDiAlertas(d.alertas_criados);
+                                if (!d.ok && d.offline) showToast("Di respondeu em modo offline", "warn");
+                              } catch { setMantAiResult("Erro ao conectar com a Di. Tente novamente."); }
+                              setMantAiLoading(false);
+                            }}
+                            style={{ background:"linear-gradient(135deg,rgba(99,102,241,.3),rgba(139,92,246,.3))", border:"1px solid rgba(99,102,241,.5)", borderRadius:10, padding:"9px 18px", color:"#C4B5FD", fontSize:12, cursor:(mantAiLoading||!condId)?"not-allowed":"pointer", fontWeight:700, opacity:(mantAiLoading||!condId)?0.6:1, transition:"all .15s" }}>
+                            {mantAiLoading ? "⏳ Analisando dados reais..." : "🔍 Analisar com Di"}
+                          </button>
+                        </div>
                       </div>
+
+                      {/* KPI cards do resultado Di */}
+                      {mantDiResumo && (
+                        <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+                          {[
+                            { label:"Equipamentos", val:mantDiResumo.total, col:"#A5B4FC", icon:"🏗️" },
+                            { label:"Críticos", val:mantDiResumo.criticos, col: mantDiResumo.criticos > 0 ? "#EF4444" : "#10B981", icon:"🚨" },
+                            { label:"Em Atenção", val:mantDiResumo.atencao, col: mantDiResumo.atencao > 0 ? "#F59E0B" : "#10B981", icon:"⚠️" },
+                            { label:"Manutenções Vencidas", val:mantDiResumo.vencidas, col: mantDiResumo.vencidas > 0 ? "#EF4444" : "#10B981", icon:"📅" },
+                            { label:"Próximas 7d", val:mantDiResumo.proximas, col:"#06B6D4", icon:"🔔" },
+                            { label:"Custo do Mês", val:`R$ ${mantDiResumo.custo_mes.toLocaleString("pt-BR",{minimumFractionDigits:2})}`, col:"#F59E0B", icon:"💰" },
+                          ].map(k => (
+                            <div key={k.label} style={{ flex:1, minWidth:120, background:`${k.col}11`, border:`1px solid ${k.col}33`, borderRadius:10, padding:"10px 14px", textAlign:"center" }}>
+                              <div style={{ fontSize:16 }}>{k.icon}</div>
+                              <div style={{ fontSize:18, fontWeight:800, color:k.col }}>{k.val}</div>
+                              <div style={{ fontSize:9, color:"#475569", marginTop:2 }}>{k.label.toUpperCase()}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Alertas criados pela Di */}
+                      {mantDiAlertas.length > 0 && (
+                        <div style={{ background:"rgba(239,68,68,.06)", border:"1px solid rgba(239,68,68,.2)", borderRadius:10, padding:"10px 14px", marginBottom:12 }}>
+                          <div style={{ fontSize:11, fontWeight:700, color:"#FCA5A5", marginBottom:6 }}>🚨 Alertas criados automaticamente pela Di ({mantDiAlertas.length})</div>
+                          {mantDiAlertas.map((a,i) => (
+                            <div key={i} style={{ fontSize:11, color:"#E2E8F0", padding:"3px 0", borderBottom: i<mantDiAlertas.length-1?"1px solid rgba(239,68,68,.1)":"none" }}>• {a}</div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Texto da análise */}
                       {mantAiResult && (
-                        <div style={{ background:"rgba(255,255,255,.03)", borderRadius:10, padding:"14px 16px", fontSize:12, lineHeight:1.8, color:"#E2E8F0", whiteSpace:"pre-wrap" }}>
+                        <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(99,102,241,.1)", borderRadius:10, padding:"14px 16px", fontSize:12, lineHeight:1.9, color:"#CBD5E1", whiteSpace:"pre-wrap" }}>
                           {mantAiResult}
                         </div>
                       )}
                       {!mantAiResult && !mantAiLoading && (
-                        <div style={{ fontSize:12, color:"#334155" }}>Clique em "Analisar com IA" para receber um diagnóstico completo dos equipamentos com recomendações do Síndico Virtual.</div>
+                        <div style={{ fontSize:12, color:"#334155", lineHeight:1.8 }}>
+                          Clique em <strong style={{ color:"#7C3AED" }}>Analisar com Di</strong> para receber diagnóstico completo com dados reais:<br/>
+                          • Status de todos os equipamentos cadastrados<br/>
+                          • Manutenções vencidas e alertas automáticos<br/>
+                          • 4 ações priorizadas com justificativa
+                        </div>
                       )}
                     </div>
                   </div>

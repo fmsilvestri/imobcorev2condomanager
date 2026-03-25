@@ -5344,5 +5344,404 @@ router.get("/utilities/resumo", async (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MÓDULO DE MANUTENÇÃO — rotas /api/manutencao/*
+// Gerencia manutencoes (histórico), alertas Di e análise IA
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Helper: verifica se erro é de tabela inexistente (Supabase PGRST205)
+function isMissingTable(e: { code?: string; message?: string } | null): boolean {
+  if (!e) return false;
+  return e.code === "PGRST205" || (e.message?.includes("schema cache") ?? false);
+}
+
+// ── Histórico de manutenções ──────────────────────────────────────────────
+
+// GET /api/manutencao/historico?condominio_id=X&equipamento_id=Y&status=Z
+router.get("/manutencao/historico", async (req: Request, res: Response) => {
+  const { condominio_id, equipamento_id, status, tipo } = req.query as Record<string, string>;
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    let q = supabase.from("manutencoes")
+      .select("*, equipamentos(nome,categoria,local)")
+      .eq("condominio_id", condominio_id)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    if (equipamento_id) q = q.eq("equipamento_id", equipamento_id);
+    if (status)         q = q.eq("status", status);
+    if (tipo)           q = q.eq("tipo", tipo);
+    const { data, error } = await q;
+    if (error && isMissingTable(error)) return res.json([]);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(data ?? []);
+  } catch { return res.json([]); }
+});
+
+// POST /api/manutencao/historico — registrar nova manutenção
+router.post("/manutencao/historico", async (req: Request, res: Response) => {
+  const { condominio_id, equipamento_id, tipo, titulo, descricao, status,
+          prioridade, tecnico_nome, tecnico_contato, custo_estimado,
+          agendada_para, criada_por_di, notas_di } = req.body as Record<string, unknown>;
+  if (!condominio_id || !titulo) return res.status(400).json({ error: "condominio_id e titulo são obrigatórios" });
+  try {
+    const payload = {
+      condominio_id, equipamento_id: equipamento_id || null,
+      tipo: tipo ?? "preventiva", titulo, descricao: descricao || null,
+      status: status ?? "agendada", prioridade: prioridade ?? "normal",
+      tecnico_nome: tecnico_nome || null, tecnico_contato: tecnico_contato || null,
+      custo_estimado: custo_estimado ? Number(custo_estimado) : null,
+      agendada_para: agendada_para || null,
+      criada_por_di: Boolean(criada_por_di),
+      notas_di: notas_di || null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const { data, error } = await supabase.from("manutencoes").insert(payload).select().single();
+    if (error && isMissingTable(error)) {
+      return res.status(503).json({ error: "Tabela manutencoes ainda não criada. Execute a migração SQL.", sql_needed: true });
+    }
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ ok: true, data });
+  } catch (e) { return res.status(500).json({ ok: false, error: (e as Error).message }); }
+});
+
+// PATCH /api/manutencao/historico/:id/concluir — concluir manutenção
+router.patch("/manutencao/historico/:id/concluir", async (req: Request, res: Response) => {
+  const { custo_real, notas, proxima_em } = req.body as Record<string, unknown>;
+  try {
+    const { data, error } = await supabase.from("manutencoes").update({
+      status: "concluida",
+      custo_real: custo_real ? Number(custo_real) : null,
+      notas_di: notas || null,
+      concluida_em: new Date().toISOString(),
+      proxima_em: proxima_em || null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", req.params.id).select().single();
+    if (error && isMissingTable(error)) return res.json({ ok: false, error: "Tabela não existe" });
+    if (error) return res.status(500).json({ error: error.message });
+    if ((data as Record<string,unknown>)?.equipamento_id && proxima_em) {
+      await supabase.from("equipamentos").update({
+        prox_manutencao: proxima_em,
+        updated_at: new Date().toISOString(),
+      }).eq("id", (data as Record<string,unknown>).equipamento_id as string);
+    }
+    return res.json({ ok: true, data });
+  } catch (e) { return res.json({ ok: false, error: (e as Error).message }); }
+});
+
+// ── Dashboard da Di ───────────────────────────────────────────────────────
+
+// GET /api/manutencao/dashboard?condominio_id=X
+router.get("/manutencao/dashboard", async (req: Request, res: Response) => {
+  const { condominio_id } = req.query as { condominio_id?: string };
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const [eqRes, manRes] = await Promise.allSettled([
+      supabase.from("equipamentos")
+        .select("id,nome,categoria,status,prox_manutencao,custo_manutencao")
+        .eq("condominio_id", condominio_id),
+      supabase.from("manutencoes")
+        .select("tipo,status,custo_real,concluida_em,criada_por_di")
+        .eq("condominio_id", condominio_id)
+        .gte("created_at", new Date(Date.now() - 30 * 86400000).toISOString()),
+    ]);
+
+    const eq  = eqRes.status === "fulfilled" ? (eqRes.value.data ?? []) : [];
+    const man = manRes.status === "fulfilled" ? (manRes.value.data ?? []) : [];
+
+    const now = new Date();
+    const in7d = new Date(Date.now() + 7 * 86400000);
+    const stats = {
+      total_equipamentos:   eq.length,
+      operacionais:         eq.filter((e: Record<string,unknown>) => e.status === "operacional").length,
+      atencao:              eq.filter((e: Record<string,unknown>) => e.status === "atencao").length,
+      criticos:             eq.filter((e: Record<string,unknown>) => e.status === "critico").length,
+      inativos:             eq.filter((e: Record<string,unknown>) => e.status === "inativo").length,
+      manutencoes_vencidas: eq.filter((e: Record<string,unknown>) => {
+        const d = e.prox_manutencao as string | null;
+        return d && new Date(d) < now;
+      }).length,
+      proximas_7d: eq.filter((e: Record<string,unknown>) => {
+        const d = e.prox_manutencao as string | null;
+        if (!d) return false;
+        const dt = new Date(d);
+        return dt >= now && dt <= in7d;
+      }).length,
+      custo_mes:     man.reduce((s: number, m: Record<string,unknown>) => s + (Number(m.custo_real) || 0), 0),
+      di_criou_mes:  man.filter((m: Record<string,unknown>) => m.criada_por_di).length,
+      score: Math.max(0, 100
+        - eq.filter((e: Record<string,unknown>) => e.status === "critico").length * 20
+        - eq.filter((e: Record<string,unknown>) => e.status === "atencao").length * 8
+        - eq.filter((e: Record<string,unknown>) => {
+            const d = e.prox_manutencao as string | null;
+            return d && new Date(d) < now;
+          }).length * 12
+      ),
+    };
+    return res.json({ stats, ok: true });
+  } catch (err) {
+    return res.json({ stats: { total_equipamentos: 0, operacionais: 0, atencao: 0, criticos: 0, score: 100 }, ok: false });
+  }
+});
+
+// ── Di ANALISA MANUTENÇÃO ─────────────────────────────────────────────────
+
+// POST /api/manutencao/di/analisar
+router.post("/manutencao/di/analisar", async (req: Request, res: Response) => {
+  const { condominio_id, contexto } = req.body as Record<string, string>;
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+
+  try {
+    const [eqRes, manRes] = await Promise.allSettled([
+      supabase.from("equipamentos")
+        .select("nome,categoria,localizacao,status,prox_manutencao,custo_manutencao,vida_util_meses,data_instalacao")
+        .eq("condominio_id", condominio_id),
+      supabase.from("manutencoes")
+        .select("tipo,status,titulo,custo_real,concluida_em,criada_por_di,agendada_para")
+        .eq("condominio_id", condominio_id)
+        .order("created_at", { ascending: false })
+        .limit(10),
+    ]);
+
+    const equipamentos = eqRes.status === "fulfilled" ? (eqRes.value.data ?? []) : [];
+    const manutencoes  = manRes.status === "fulfilled" && !isMissingTable(manRes.value.error) ? (manRes.value.data ?? []) : [];
+
+    const now = new Date();
+    const in7d = new Date(Date.now() + 7 * 86400000);
+    const criticos = equipamentos.filter((e: Record<string,unknown>) => e.status === "critico");
+    const atencao  = equipamentos.filter((e: Record<string,unknown>) => e.status === "atencao");
+    const vencidas = equipamentos.filter((e: Record<string,unknown>) => {
+      const d = e.prox_manutencao as string | null;
+      return d && new Date(d) < now;
+    });
+    const proximas = equipamentos.filter((e: Record<string,unknown>) => {
+      const d = e.prox_manutencao as string | null;
+      if (!d) return false;
+      const dt = new Date(d);
+      return dt >= now && dt <= in7d;
+    });
+    const custoMes = manutencoes.reduce((s: number, m: Record<string,unknown>) => s + (Number(m.custo_real) || 0), 0);
+
+    const systemPrompt = `Você é Di, Síndica Virtual especialista em gestão condominial com IA.
+Analise o módulo de MANUTENÇÃO do condomínio e forneça diagnóstico preciso.
+Responda em português brasileiro, de forma direta e objetiva.
+Máximo 3 parágrafos + lista de 4 ações priorizadas.`;
+
+    const userPrompt = `MÓDULO DE MANUTENÇÃO — DIAGNÓSTICO COMPLETO
+Data: ${new Date().toLocaleDateString("pt-BR")}
+
+Total de equipamentos: ${equipamentos.length}
+• Operacionais: ${equipamentos.filter((e: Record<string,unknown>) => e.status === "operacional").length}
+• Em atenção: ${atencao.length}${atencao.length > 0 ? " (" + atencao.map((e: Record<string,unknown>) => e.nome).join(", ") + ")" : ""}
+• Críticos: ${criticos.length}${criticos.length > 0 ? " (" + criticos.map((e: Record<string,unknown>) => e.nome).join(", ") + ")" : ""}
+
+Manutenções preventivas:
+• Vencidas: ${vencidas.length}${vencidas.length > 0 ? " — " + vencidas.map((e: Record<string,unknown>) => e.nome).join(", ") : ""}
+• Próximas 7 dias: ${proximas.length}${proximas.length > 0 ? " — " + proximas.map((e: Record<string,unknown>) => `${e.nome} (${e.prox_manutencao})`).join(", ") : ""}
+• Custo registrado este mês: R$ ${custoMes.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+
+Últimas manutenções: ${JSON.stringify(manutencoes.slice(0, 5))}
+Contexto: ${contexto ?? "dashboard_geral"}
+
+Forneça:
+1. Status geral em 1 parágrafo claro
+2. Riscos identificados (máximo 3)
+3. Exatamente 4 ações priorizadas no formato: [PRIORIDADE] Ação — justificativa curta`;
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 700,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const analise = (msg.content.find(b => b.type === "text") as Anthropic.TextBlock)?.text ?? "";
+
+    // Di cria alertas automáticos para críticos e vencidas
+    const alertasCriados: string[] = [];
+    if ((criticos.length > 0 || vencidas.length > 0) && !isMissingTable(null)) {
+      const alertas = [
+        ...criticos.map((e: Record<string,unknown>) => ({
+          condominio_id,
+          equipamento_id: null,
+          tipo: "status_critico" as const,
+          mensagem: `Equipamento crítico: ${e.nome} em ${(e as Record<string,unknown>).localizacao || ""}`,
+          severidade: "urgente",
+          created_at: new Date().toISOString(),
+        })),
+        ...vencidas.slice(0, 2).filter((e: Record<string,unknown>) => !criticos.includes(e)).map((e: Record<string,unknown>) => ({
+          condominio_id,
+          equipamento_id: null,
+          tipo: "vencimento" as const,
+          mensagem: `Manutenção vencida: ${e.nome} (prevista ${e.prox_manutencao})`,
+          severidade: "alta",
+          created_at: new Date().toISOString(),
+        })),
+      ];
+      for (const alerta of alertas) {
+        const { error } = await supabase.from("alertas_manutencao").insert(alerta);
+        if (!error) alertasCriados.push(alerta.mensagem.slice(0, 40));
+      }
+    }
+
+    const resumo = {
+      total:     equipamentos.length,
+      criticos:  criticos.length,
+      atencao:   atencao.length,
+      vencidas:  vencidas.length,
+      proximas:  proximas.length,
+      custo_mes: custoMes,
+      score: Math.max(0, 100 - criticos.length * 20 - atencao.length * 8 - vencidas.length * 12),
+    };
+
+    return res.json({
+      ok: true,
+      analise,
+      resumo,
+      alertas_criados: alertasCriados,
+      tokens: msg.usage.input_tokens + msg.usage.output_tokens,
+    });
+  } catch (err) {
+    return res.json({
+      ok: false,
+      analise: `Análise offline: ${equipamentos.length > 0 ? "verifique equipamentos críticos e manutenções vencidas" : "nenhum equipamento cadastrado ainda"}. Acione o técnico responsável para os itens urgentes.`,
+      resumo: { total: 0, criticos: 0, atencao: 0, vencidas: 0, proximas: 0, custo_mes: 0, score: 100 },
+      offline: true,
+    });
+  }
+});
+
+// ── Di SUGERE PLANO PREVENTIVO ────────────────────────────────────────────
+
+// POST /api/manutencao/di/plano-preventivo
+router.post("/manutencao/di/plano-preventivo", async (req: Request, res: Response) => {
+  const { condominio_id } = req.body as Record<string, string>;
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const { data: equipamentos } = await supabase.from("equipamentos")
+      .select("id,nome,categoria,vida_util_meses,prox_manutencao,data_instalacao,status")
+      .eq("condominio_id", condominio_id)
+      .neq("status", "inativo");
+
+    const eq = equipamentos ?? [];
+    if (eq.length === 0) return res.json({ ok: false, error: "Nenhum equipamento ativo cadastrado" });
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 900,
+      system: `Você é Di, Síndica Virtual. Crie um plano de manutenção preventiva realista para um condomínio.
+Responda APENAS em JSON válido, sem markdown, sem texto extra.`,
+      messages: [{
+        role: "user",
+        content: `Equipamentos: ${JSON.stringify(eq.slice(0, 10))}
+Hoje: ${new Date().toISOString().split("T")[0]}
+
+Gere plano preventivo em JSON:
+{
+  "plano": [
+    {
+      "equipamento_id": "uuid",
+      "equipamento_nome": "string",
+      "proximos_servicos": [
+        { "tipo_servico": "string", "previsto_para": "YYYY-MM-DD", "intervalo_dias": 90, "custo_estimado": 1200, "prioridade": "alta" }
+      ]
+    }
+  ],
+  "resumo": "resumo em 1 frase",
+  "custo_estimado_trimestre": 0
+}`,
+      }],
+    });
+
+    const txt = (msg.content.find(b => b.type === "text") as Anthropic.TextBlock)?.text ?? "{}";
+    try {
+      const plano = JSON.parse(txt.replace(/```json|```/g, "").trim());
+      return res.json({ ok: true, plano, tokens: msg.usage.input_tokens + msg.usage.output_tokens });
+    } catch {
+      return res.json({ ok: false, error: "Formato inválido", raw: txt.slice(0, 200) });
+    }
+  } catch { return res.json({ ok: false, error: "Serviço indisponível", offline: true }); }
+});
+
+// ── ALERTAS DA Di ─────────────────────────────────────────────────────────
+
+// GET /api/manutencao/alertas?condominio_id=X
+router.get("/manutencao/alertas", async (req: Request, res: Response) => {
+  const { condominio_id } = req.query as { condominio_id?: string };
+  if (!condominio_id) return res.status(400).json({ error: "condominio_id obrigatório" });
+  try {
+    const { data, error } = await supabase.from("alertas_manutencao")
+      .select("*")
+      .eq("condominio_id", condominio_id)
+      .eq("resolvido", false)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (error && isMissingTable(error)) return res.json([]);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json(data ?? []);
+  } catch { return res.json([]); }
+});
+
+// PATCH /api/manutencao/alertas/:id/resolver
+router.patch("/manutencao/alertas/:id/resolver", async (req: Request, res: Response) => {
+  try {
+    const { error } = await supabase.from("alertas_manutencao")
+      .update({ resolvido: true }).eq("id", req.params.id);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.json({ ok: true });
+  } catch (e) { return res.json({ ok: false, error: (e as Error).message }); }
+});
+
+// ── SQL MIGRATION HELPER ──────────────────────────────────────────────────
+// GET /api/admin/manutencao/migration-sql — retorna o SQL para criar as tabelas
+router.get("/admin/manutencao/migration-sql", (_req: Request, res: Response) => {
+  const sql = `-- Execute no Supabase SQL Editor (https://supabase.com/dashboard)
+-- Módulo de Manutenção — ImobCore v2
+
+CREATE TABLE IF NOT EXISTS manutencoes (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id   UUID,
+  equipamento_id  UUID,
+  tipo            TEXT NOT NULL DEFAULT 'preventiva',
+  titulo          TEXT NOT NULL,
+  descricao       TEXT,
+  status          TEXT DEFAULT 'agendada',
+  prioridade      TEXT DEFAULT 'normal',
+  tecnico_nome    TEXT,
+  tecnico_contato TEXT,
+  custo_estimado  NUMERIC,
+  custo_real      NUMERIC,
+  agendada_para   TIMESTAMPTZ,
+  concluida_em    TIMESTAMPTZ,
+  proxima_em      TIMESTAMPTZ,
+  criada_por_di   BOOLEAN DEFAULT false,
+  notas_di        TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS man_equip ON manutencoes(equipamento_id, status);
+CREATE INDEX IF NOT EXISTS man_condo ON manutencoes(condominio_id, status, agendada_para);
+
+CREATE TABLE IF NOT EXISTS alertas_manutencao (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id   UUID,
+  equipamento_id  UUID,
+  manutencao_id   UUID,
+  tipo            TEXT NOT NULL DEFAULT 'vencimento',
+  mensagem        TEXT NOT NULL,
+  severidade      TEXT DEFAULT 'normal',
+  resolvido       BOOLEAN DEFAULT false,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Verificar criação:
+SELECT table_name FROM information_schema.tables
+WHERE table_schema = 'public' AND table_name IN ('manutencoes','alertas_manutencao');`;
+
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  return res.send(sql);
+});
+
 export default router;
 export { broadcast };

@@ -8,6 +8,32 @@ Full-stack SaaS for condominium management with an AI "Síndico Virtual" powered
 
 pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
 
+## Maintenance Module (Módulo de Manutenção) — COMPLETED
+
+**Backend routes** (all in `artifacts/api-server/src/routes/imobcore.ts`):
+- `GET /api/manutencao/dashboard?condominio_id=X` — aggregated equipment stats + Di score
+- `GET /api/manutencao/historico?condominio_id=X` — maintenance history (graceful fallback if table missing)
+- `POST /api/manutencao/historico` — register new maintenance
+- `PATCH /api/manutencao/historico/:id/concluir` — complete maintenance record
+- `POST /api/manutencao/di/analisar` — Claude Haiku 4-5 analysis of equipment + alerts (uses `localizacao` column)
+- `POST /api/manutencao/di/plano-preventivo` — Di generates preventive maintenance plan
+- `GET /api/manutencao/alertas?condominio_id=X` — unresolved alerts from Di
+- `PATCH /api/manutencao/alertas/:id/resolver` — resolve alert
+- `GET /api/admin/manutencao/migration-sql` — returns SQL to create missing tables
+
+**Supabase tables needed** (NOT YET CREATED — run SQL from migration-sql endpoint):
+- `manutencoes` (maintenance history records)
+- `alertas_manutencao` (Di-generated alerts)
+- `equipamentos` — EXISTS ✅ (23 cols, uses `prox_manutencao`, `custo_manutencao`, `localizacao`)
+- `planos_manutencao` — EXISTS ✅
+
+**Frontend** (`artifacts/imobcore-frontend/src/App.tsx`):
+- Tab "ia" → calls `/api/manutencao/di/analisar`, shows KPI cards from `resumo`, alerts from Di, Claude text
+- Tab "os" → maintenance history from `/api/manutencao/historico` + modal to register new maintenance
+- State: `mantHistList`, `mantDiResumo`, `mantDiAlertas`, `loadMantHistorico()`, `mantHistSave()`
+
+**Demo data**: 7 equipamentos inserted for condo `aaf09fe0-bf3b-4ccd-b74e-13958916c193` (Copacabana Beach Residence) via Supabase REST API.
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
