@@ -7149,7 +7149,7 @@ export default function App() {
         const r = await fetch("/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: loginEmail.trim(), senha: loginPass.trim() || undefined, perfil: loginMode }),
+          body: JSON.stringify({ email: loginEmail.trim(), senha: loginPass.trim() || undefined }),
         });
         const data = await r.json();
         if (!r.ok) {
@@ -7165,7 +7165,20 @@ export default function App() {
         if ("Notification" in window && Notification.permission === "default") {
           Notification.requestPermission().catch(() => {/* silencia */});
         }
-        setView("selector");
+        // Redireciona automaticamente para a view do perfil cadastrado
+        const perfilView: Record<string, "sindico" | "morador" | "gestor"> = {
+          sindico:  "sindico",
+          zelador:  "sindico",
+          morador:  "morador",
+          gestor:   "gestor",
+          admin:    "gestor",
+        };
+        const destView = perfilView[data.perfil as string] || "selector";
+        // Sincroniza loginMode para que o contexto de perfil fique correto
+        if (data.perfil === "morador") setLoginMode("morador");
+        else if (data.perfil === "sindico" || data.perfil === "zelador") setLoginMode("sindico");
+        else if (data.perfil === "gestor" || data.perfil === "admin") setLoginMode("gestor");
+        setView(destView as typeof view);
         showToast(`Bem-vindo, ${data.nome}!`, "ok");
       } catch {
         showToast("Erro de conexão. Tente novamente.", "error");
@@ -7194,7 +7207,7 @@ export default function App() {
             {/* Welcome */}
             <div className="login-welcome">
               <div className="login-welcome-h">👋 Bem-vindo</div>
-              <div className="login-welcome-sub">Acesse seu condomínio</div>
+              <div className="login-welcome-sub">Seu perfil é reconhecido automaticamente</div>
             </div>
 
             {/* 3 Access tabs */}
@@ -7247,7 +7260,7 @@ export default function App() {
 
             {/* Login button */}
             <button className="login-btn" onClick={handleLogin} disabled={loginLoading} style={{ opacity: loginLoading ? 0.7 : 1, cursor: loginLoading ? "wait" : "pointer" }}>
-              {loginLoading ? "Verificando..." : modeInfo.btnLabel}
+              {loginLoading ? "Verificando..." : "Entrar"}
             </button>
 
             {/* Divider */}
