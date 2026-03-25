@@ -210,31 +210,44 @@ function OSCard({ os, onSelect, onStatusChange, compact }: { os: OS; onSelect: (
 // ── KPI Strip ────────────────────────────────────────────────────────────────
 function KpiStrip({ os, filter, onFilter }: { os: OS[]; filter: string; onFilter:(f:string)=>void }) {
   const urgentesCount = os.filter(o=>o.prioridade==="urgente"&&o.status!=="fechada").length;
+  const concluidasCount = os.filter(o=>o.status==="fechada").length;
   const stats = [
-    { k:"todos",     v:os.length,                                    icon:"📊", label:"Total",      grad:"linear-gradient(135deg,#4338CA,#6366F1,#A5B4FC)", glow:"rgba(99,102,241,.50)", filt:"todos"       },
-    { k:"aberta",    v:os.filter(o=>o.status==="aberta").length,     icon:"📋", label:"Abertas",    grad:"linear-gradient(135deg,#92400E,#F59E0B,#FCD34D)", glow:"rgba(245,158,11,.50)", filt:"aberta"      },
-    { k:"andamento", v:os.filter(o=>o.status==="em_andamento").length,icon:"🔄",label:"Andamento",  grad:"linear-gradient(135deg,#155E75,#06B6D4,#67E8F9)", glow:"rgba(6,182,212,.50)",  filt:"em_andamento"},
-    { k:"urgente",   v:urgentesCount,                                icon:"🚨", label:"Urgentes",   grad:"linear-gradient(135deg,#991B1B,#EF4444,#FCA5A5)", glow:"rgba(239,68,68,.50)",  filt:"urgente"     },
+    { k:"todos",     v:os.length,          icon:"📊", label:"Total",      topColor:"#818CF8", botColor:"#4338CA", edge:"#3730A3", glow:"rgba(99,102,241,.6)",  filt:"todos"       },
+    { k:"aberta",    v:os.filter(o=>o.status==="aberta").length, icon:"📋", label:"Abertas", topColor:"#FCD34D", botColor:"#D97706", edge:"#B45309", glow:"rgba(245,158,11,.6)", filt:"aberta" },
+    { k:"andamento", v:os.filter(o=>o.status==="em_andamento").length, icon:"🔄", label:"Andamento", topColor:"#67E8F9", botColor:"#0891B2", edge:"#0E7490", glow:"rgba(6,182,212,.6)", filt:"em_andamento"},
+    { k:"urgente",   v:urgentesCount,      icon:"🚨", label:"Urgentes",   topColor:"#FCA5A5", botColor:"#DC2626", edge:"#B91C1C", glow:"rgba(239,68,68,.6)",   filt:"urgente"     },
+    { k:"concluidas",v:concluidasCount,    icon:"✅", label:"Concluídas", topColor:"#6EE7B7", botColor:"#059669", edge:"#047857", glow:"rgba(16,185,129,.6)",  filt:"fechada"     },
   ];
   return (
-    <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:16 }}>
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10, marginBottom:18 }}>
       {stats.map(s => {
         const active = filter === s.filt;
         const isUrgent = s.k === "urgente" && s.v > 0;
+        const highlighted = active || isUrgent;
         return (
           <div key={s.k} onClick={()=>onFilter(active?"todos":s.filt)}
             style={{
-              borderRadius:14,
-              background: active || isUrgent ? s.grad : "rgba(255,255,255,.04)",
-              border:`1.5px solid ${active || isUrgent ? "transparent" : "rgba(255,255,255,.08)"}`,
-              padding:"12px 6px 10px", textAlign:"center",
+              borderRadius:16,
+              background: `linear-gradient(160deg, ${s.topColor} 0%, ${s.botColor} 100%)`,
+              border: `1px solid ${highlighted ? "rgba(255,255,255,.35)" : "rgba(255,255,255,.12)"}`,
+              padding:"14px 6px 12px", textAlign:"center",
               cursor:"pointer", position:"relative", overflow:"hidden",
-              boxShadow: active ? `0 4px 18px ${s.glow}` : isUrgent ? `0 4px 14px ${s.glow}` : "none",
-              transition:"all .18s ease",
+              // 3D effect: light top border + deep bottom shadow
+              boxShadow: highlighted
+                ? `0 0 0 2px rgba(255,255,255,.25), 0 4px 0 ${s.edge}, 0 6px 20px ${s.glow}, inset 0 1px 0 rgba(255,255,255,.45)`
+                : `0 3px 0 ${s.edge}99, 0 5px 16px ${s.glow}88, inset 0 1px 0 rgba(255,255,255,.35)`,
+              transform: active ? "translateY(3px)" : "translateY(0)",
+              transition:"all .15s ease",
+              opacity: s.v === 0 && !active ? 0.7 : 1,
             }}>
-            <div style={{ position:"absolute", top:-6, right:-6, fontSize:28, opacity: (active||isUrgent) ? 0.25 : 0.12, lineHeight:1 }}>{s.icon}</div>
-            <div style={{ fontSize:24, fontWeight:900, color: active||isUrgent?"#fff":"rgba(255,255,255,.85)", lineHeight:1, letterSpacing:"-1px" }}>{s.v}</div>
-            <div style={{ fontSize:9, color: active||isUrgent?"rgba(255,255,255,.85)":"rgba(255,255,255,.45)", marginTop:4, fontWeight:800, letterSpacing:".04em", textTransform:"uppercase" }}>{s.label}</div>
+            {/* Shine overlay */}
+            <div style={{ position:"absolute", top:0, left:0, right:0, height:"50%", background:"linear-gradient(180deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,0) 100%)", borderRadius:"16px 16px 0 0", pointerEvents:"none" }} />
+            {/* Big icon background */}
+            <div style={{ position:"absolute", bottom:-4, right:2, fontSize:34, opacity:0.18, lineHeight:1, pointerEvents:"none" }}>{s.icon}</div>
+            {/* Active indicator dot */}
+            {active && <div style={{ position:"absolute", top:6, left:"50%", transform:"translateX(-50%)", width:6, height:6, borderRadius:"50%", background:"rgba(255,255,255,.9)", boxShadow:"0 0 6px rgba(255,255,255,.8)" }} />}
+            <div style={{ fontSize:28, fontWeight:900, color:"#fff", lineHeight:1, letterSpacing:"-1.5px", textShadow:"0 2px 4px rgba(0,0,0,.35)", position:"relative" }}>{s.v}</div>
+            <div style={{ fontSize:9, color:"rgba(255,255,255,.9)", marginTop:5, fontWeight:800, letterSpacing:".06em", textTransform:"uppercase", position:"relative", textShadow:"0 1px 2px rgba(0,0,0,.3)" }}>{s.label}</div>
           </div>
         );
       })}
@@ -1167,6 +1180,7 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
       if (filter==="urgente") return o.prioridade==="urgente"&&o.status!=="fechada";
       if (filter==="aberta") return o.status==="aberta";
       if (filter==="em_andamento") return o.status==="em_andamento";
+      if (filter==="fechada") return o.status==="fechada";
       return true; // "todos"
     })
     .sort((a,b)=>{
@@ -1224,10 +1238,18 @@ export default function OSModule({ condId, condNome="Condomínio", view, onBack 
         {/* KPI mini strip */}
         <div style={{ padding:"10px 14px 6px",flexShrink:0 }}>
           <div style={{ display:"flex",gap:6 }}>
-            {[{v:osList.filter(o=>o.status==="aberta").length,l:"Abertas",c:"#F59E0B",f:"aberta"},{v:osList.filter(o=>o.status==="em_andamento").length,l:"Andamento",c:"#06B6D4",f:"em_andamento"},{v:osList.filter(o=>o.prioridade==="urgente"&&o.status!=="fechada").length,l:"Urgentes",c:"#EF4444",f:"urgente"}].map(s=>(
-              <div key={s.f} onClick={()=>setFilter(filter===s.f?"todos":s.f)} style={{ flex:1,background:s.c+"15",border:`1px solid ${filter===s.f?s.c:"transparent"}`,borderRadius:10,padding:"8px 6px",textAlign:"center",cursor:"pointer" }}>
-                <div style={{ fontSize:18,fontWeight:900,color:s.c,lineHeight:1 }}>{s.v}</div>
-                <div style={{ fontSize:8,color:s.c,opacity:.8,fontWeight:700 }}>{s.l}</div>
+            {[
+              {v:osList.filter(o=>o.status==="aberta").length,         l:"Abertas",   top:"#FCD34D", bot:"#D97706", edge:"#B45309", glow:"rgba(245,158,11,.5)",  f:"aberta"},
+              {v:osList.filter(o=>o.status==="em_andamento").length,   l:"Andamento", top:"#67E8F9", bot:"#0891B2", edge:"#0E7490", glow:"rgba(6,182,212,.5)",   f:"em_andamento"},
+              {v:osList.filter(o=>o.prioridade==="urgente"&&o.status!=="fechada").length, l:"Urgentes", top:"#FCA5A5", bot:"#DC2626", edge:"#B91C1C", glow:"rgba(239,68,68,.5)", f:"urgente"},
+              {v:osList.filter(o=>o.status==="fechada").length,        l:"Concluídas",top:"#6EE7B7", bot:"#059669", edge:"#047857", glow:"rgba(16,185,129,.5)", f:"fechada"},
+            ].map(s=>(
+              <div key={s.f} onClick={()=>setFilter(filter===s.f?"todos":s.f)} style={{ flex:1,background:`linear-gradient(160deg,${s.top},${s.bot})`,borderRadius:12,padding:"8px 4px 7px",textAlign:"center",cursor:"pointer",position:"relative",overflow:"hidden",
+                boxShadow:filter===s.f?`0 0 0 2px rgba(255,255,255,.3),0 3px 0 ${s.edge},0 5px 12px ${s.glow},inset 0 1px 0 rgba(255,255,255,.4)`:`0 2px 0 ${s.edge}99,0 4px 10px ${s.glow}77,inset 0 1px 0 rgba(255,255,255,.35)`,
+                transform:filter===s.f?"translateY(2px)":"translateY(0)",transition:"all .15s ease" }}>
+                <div style={{ position:"absolute",top:0,left:0,right:0,height:"45%",background:"linear-gradient(180deg,rgba(255,255,255,.25),rgba(255,255,255,0))",pointerEvents:"none" }}/>
+                <div style={{ fontSize:20,fontWeight:900,color:"#fff",lineHeight:1,textShadow:"0 2px 4px rgba(0,0,0,.3)",position:"relative" }}>{s.v}</div>
+                <div style={{ fontSize:8,color:"rgba(255,255,255,.9)",fontWeight:800,marginTop:3,textTransform:"uppercase",letterSpacing:".04em",position:"relative",textShadow:"0 1px 2px rgba(0,0,0,.25)" }}>{s.l}</div>
               </div>
             ))}
           </div>
