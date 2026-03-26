@@ -1,0 +1,252 @@
+# ============================================
+# 🧠 IMOBCORE V6 — IMPORTAÇÃO FINANCEIRA INTELIGENTE
+# OFX + PDF + OCR + IA + Auto Classificação + Aprendizado
+# ============================================
+
+OBJETIVO:
+Criar um sistema inteligente que:
+- Importe arquivos OFX (banco)
+- Leia PDFs (boletos, extratos, notas)
+- Use OCR para documentos escaneados
+- Classifique automaticamente receitas/despesas
+- Detecte erros e inconsistências
+- Aprenda com o uso (machine learning leve)
+- Alimente automaticamente o módulo financeiro
+
+---------------------------------------------
+## 🧱 1. ESTRUTURA BANCO (SUPABASE)
+---------------------------------------------
+
+CREATE TABLE IF NOT EXISTS financeiro_lancamentos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  tipo TEXT, -- receita | despesa
+  categoria TEXT,
+  descricao TEXT,
+  valor NUMERIC,
+  data DATE,
+  origem TEXT, -- ofx | pdf | manual
+  confianca NUMERIC DEFAULT 0.5,
+  criado_em TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS financeiro_aprendizado (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  texto_base TEXT,
+  categoria TEXT,
+  tipo TEXT,
+  confianca NUMERIC DEFAULT 1,
+  vezes_usado INT DEFAULT 1
+);
+
+CREATE INDEX idx_aprendizado_texto ON financeiro_aprendizado(texto_base);
+
+---------------------------------------------
+## ⚙️ 2. BACKEND — IMPORTAÇÃO
+---------------------------------------------
+
+CRIAR:
+src/routes/importacao.ts
+
+FUNCIONALIDADES:
+
+### 🔹 Upload de arquivos
+POST /api/financeiro/importar
+
+Aceita:
+- .ofx
+- .pdf
+- .png / .jpg
+
+---------------------------------------------
+## 📥 3. PROCESSAMENTO OFX
+---------------------------------------------
+
+- Parsear OFX
+- Extrair:
+  - data
+  - descrição
+  - valor
+
+Mapear:
+- valor > 0 → receita
+- valor < 0 → despesa
+
+---------------------------------------------
+## 📄 4. PROCESSAMENTO PDF + OCR
+---------------------------------------------
+
+Se PDF texto:
+- usar pdf-parse
+
+Se PDF imagem:
+- usar Tesseract OCR
+
+Extrair:
+- valor
+- data
+- favorecido
+- linha descritiva
+
+---------------------------------------------
+## 🧠 5. IA DE CLASSIFICAÇÃO
+---------------------------------------------
+
+Criar função:
+
+function classificarLancamento(texto) {
+
+  // 1. Buscar aprendizado anterior
+  // SELECT * FROM financeiro_aprendizado WHERE texto_base parecido
+
+  // 2. Se encontrar:
+  return categoria_aprendida
+
+  // 3. Se não:
+  usar heurística:
+
+  if (texto.includes("energia")) return "Energia";
+  if (texto.includes("agua")) return "Água";
+  if (texto.includes("salario")) return "Folha";
+  if (texto.includes("manutencao")) return "Manutenção";
+
+  return "Outros";
+}
+
+---------------------------------------------
+## 📊 6. SCORE DE CONFIANÇA
+---------------------------------------------
+
+Definir:
+
+- 0.9 → aprendizado existente
+- 0.7 → heurística forte
+- 0.5 → genérico
+
+---------------------------------------------
+## 💾 7. SALVAR NO BANCO
+---------------------------------------------
+
+Inserir em financeiro_lancamentos:
+
+- tipo
+- categoria
+- valor
+- data
+- descricao
+- confianca
+
+---------------------------------------------
+## 🔁 8. APRENDIZADO AUTOMÁTICO
+---------------------------------------------
+
+Quando usuário corrigir categoria:
+
+POST /api/financeiro/aprender
+
+Salvar:
+- texto_base
+- categoria
+- tipo
+
+Incrementar vezes_usado
+
+---------------------------------------------
+## 🔍 9. VALIDAÇÃO INTELIGENTE
+---------------------------------------------
+
+Criar alertas:
+
+- valor duplicado
+- data inconsistente
+- categoria errada provável
+
+Exemplo:
+
+if (valor > 10000 && categoria === "Outros") {
+  gerar alerta IA
+}
+
+---------------------------------------------
+## 📈 10. INTEGRAÇÃO COM DASHBOARD
+---------------------------------------------
+
+Atualizar automaticamente:
+
+- saldo
+- fluxo de caixa
+- inadimplência
+- gráficos
+
+---------------------------------------------
+## 🤖 11. INSIGHTS DA DI
+---------------------------------------------
+
+Após importação:
+
+Gerar:
+
+- resumo financeiro
+- anomalias detectadas
+- sugestão de economia
+- previsão impacto
+
+---------------------------------------------
+## 🖥️ 12. UI — FRONTEND
+---------------------------------------------
+
+Criar tela:
+
+📂 Importar Arquivo
+
+Componentes:
+
+- botão upload
+- lista de lançamentos detectados
+- badge de confiança:
+  🟢 alta
+  🟡 média
+  🔴 baixa
+
+- botão:
+  ✔ confirmar
+  ✏ editar
+  🧠 ensinar IA
+
+---------------------------------------------
+## 🔥 13. DIFERENCIAL V6
+---------------------------------------------
+
+O sistema deve:
+
+✔ Aprender com o gestor
+✔ Melhorar automaticamente com o tempo
+✔ Reduzir trabalho manual em 90%
+✔ Detectar erros antes de impactar o caixa
+✔ Alimentar IA da Di com dados reais
+
+---------------------------------------------
+## 🎯 RESULTADO FINAL
+---------------------------------------------
+
+Um sistema que funciona como:
+
+💡 "Contador automático do condomínio"
+
+- Importa extrato
+- Organiza tudo sozinho
+- Aprende com o uso
+- Gera inteligência financeira
+
+---------------------------------------------
+## EXTRA (OPCIONAL V7 FUTURO)
+---------------------------------------------
+
+- Integração direta com bancos (Open Finance)
+- IA preditiva de despesas
+- Auditoria automática
+- Detecção de fraude
+
+# ============================================
+# FIM DO PROMPT
+# ============================================

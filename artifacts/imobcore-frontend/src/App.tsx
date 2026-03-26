@@ -1776,8 +1776,31 @@ export default function App() {
   const [whTestLog, setWhTestLog] = useState<{id:string; ok:boolean; status:number; ts:string}[]>([]);
 
   // ── FINANCEIRO INTELIGENTE ──────────────────────────────────────────────────
-  type FinTab = "dashboard"|"lancamentos"|"orcamento"|"previsao"|"insights"|"executivo";
+  type FinTab = "dashboard"|"lancamentos"|"orcamento"|"previsao"|"insights"|"executivo"|"importar";
   const [finTab, setFinTab] = useState<FinTab>("dashboard");
+
+  // ── IMPORTAÇÃO FINANCEIRA INTELIGENTE V6 ─────────────────────────────────
+  type ImportLancamento = {
+    idx: number; tipo: "receita"|"despesa"; categoria: string; descricao: string;
+    valor: number; data: string; confianca: number; fonte: string; origem: string;
+    duplicata_provavel: boolean; alerta: string|null;
+    _editando?: boolean; _selecionado?: boolean;
+  };
+  type ImportResult = {
+    ok: boolean; metodo: string; arquivo: string; total: number;
+    estatisticas: { receitas:number; despesas:number; saldo:number; alta_confianca:number; baixa_confianca:number; duplicatas:number };
+    lancamentos: ImportLancamento[];
+  };
+  const [importFile, setImportFile]           = useState<File|null>(null);
+  const [importLoading, setImportLoading]     = useState(false);
+  const [importResult, setImportResult]       = useState<ImportResult|null>(null);
+  const [importItems, setImportItems]         = useState<ImportLancamento[]>([]);
+  const [importConfirming, setImportConfirming] = useState(false);
+  const [importDone, setImportDone]           = useState(false);
+  const [importDiLoading, setImportDiLoading] = useState(false);
+  const [importDiInsight, setImportDiInsight] = useState<{resumo:string;anomalias:string;sugestao:string}|null>(null);
+  const [importDragOver, setImportDragOver]   = useState(false);
+  const [importAprendStats, setImportAprendStats] = useState<{total:number;top:any[]}|null>(null);
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
   const [orcamento, setOrcamento] = useState<OrcamentoEntry[]>([]);
   const [finInsight, setFinInsight] = useState<FinanceiroInsight|null>(null);
@@ -2129,6 +2152,107 @@ export default function App() {
     const r = await fetch(`/api/executivo/metas/${id}`, { method:"DELETE" });
     if (r.ok) { loadExecDash(); showToast("Meta removida", "success"); }
     else showToast("Erro ao remover meta", "warn");
+  };
+
+  // ── IMPORTAÇÃO FINANCEIRA V6 — FUNÇÕES ───────────────────────────────────
+  const importProcessarArquivo = async (file: File) => {
+    setImportFile(file);
+    setImportLoading(true);
+    setImportResult(null);
+    setImportItems([]);
+    setImportDone(false);
+    setImportDiInsight(null);
+    try {
+      const cid = condId || dash?.condominios?.[0]?.id || "";
+      const fd = new FormData();
+      fd.append("arquivo", file);
+      fd.append("condominio_id", cid);
+      const r = await fetch("/api/financeiro/importar", { method:"POST", body: fd });
+      if (!r.ok) { const e = await r.json(); showToast(e.error || "Erro ao processar arquivo", "warn"); return; }
+      const data: ImportResult = await r.json();
+      setImportResult(data);
+      setImportItems(data.lancamentos.map(l => ({ ...l, _selecionado: !l.duplicata_provavel })));
+      showToast(`✅ ${data.total} lançamentos detectados via ${data.metodo}`, "success");
+      // Auto-buscar stats de aprendizado
+      fetch("/api/financeiro/aprendizado/stats").then(r=>r.json()).then(setImportAprendStats).catch(()=>{});
+    } catch (e) {
+      showToast("Erro na importação: " + String(e), "warn");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const importEditarItem = (idx: number, campo: string, valor: string | number) => {
+    setImportItems(prev => prev.map((l, i) => i === idx ? { ...l, [campo]: valor } : l));
+  };
+
+  const importToggleEditar = (idx: number) => {
+    setImportItems(prev => prev.map((l, i) => i === idx ? { ...l, _editando: !l._editando } : l));
+  };
+
+  const importToggleSelecionado = (idx: number) => {
+    setImportItems(prev => prev.map((l, i) => i === idx ? { ...l, _selecionado: !l._selecionado } : l));
+  };
+
+  const importEnsinarIA = async (item: ImportLancamento) => {
+    try {
+      const r = await fetch("/api/financeiro/aprender", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ texto_base: item.descricao, categoria: item.categoria, tipo: item.tipo }),
+      });
+      if (r.ok) showToast(`🧠 IA aprendeu: "${item.categoria}" para "${item.descricao.slice(0,30)}..."`, "success");
+      else showToast("Erro ao ensinar IA", "warn");
+    } catch { showToast("Erro ao ensinar IA", "warn"); }
+  };
+
+  const importConfirmarLote = async () => {
+    const selecionados = importItems.filter(l => l._selecionado);
+    if (!selecionados.length) { showToast("Selecione pelo menos um lançamento", "warn"); return; }
+    setImportConfirming(true);
+    try {
+      const cid = condId || dash?.condominios?.[0]?.id || "";
+      const r = await fetch("/api/financeiro/importacao/confirmar", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          condominio_id: cid,
+          lancamentos: selecionados.map(l => ({
+            tipo: l.tipo, categoria: l.categoria, descricao: l.descricao,
+            valor: l.valor, data: l.data, confianca: l.confianca, origem: l.origem,
+          })),
+        }),
+      });
+      const data = await r.json();
+      if (data.ok) {
+        showToast(`✅ ${data.salvos} lançamentos importados com sucesso!`, "success");
+        setImportDone(true);
+        finGerarInsights(); // atualizar painel financeiro
+        // Ensinar IA automaticamente com os confirmados de alta confiança
+        for (const item of selecionados.filter(l => l.confianca >= 0.8)) {
+          await importEnsinarIA(item);
+        }
+      } else {
+        showToast(data.error || "Erro ao confirmar lote", "warn");
+      }
+    } catch (e) { showToast("Erro: " + String(e), "warn"); }
+    finally { setImportConfirming(false); }
+  };
+
+  const importGerarInsightDi = async () => {
+    if (!importResult) return;
+    setImportDiLoading(true);
+    try {
+      const cid = condId || dash?.condominios?.[0]?.id || "";
+      const r = await fetch("/api/financeiro/importacao/di-insight", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ condominio_id: cid, estatisticas: importResult.estatisticas, lancamentos: importItems }),
+      });
+      if (r.ok) setImportDiInsight(await r.json());
+      else showToast("Erro ao gerar insight da Di", "warn");
+    } catch { showToast("Erro Di insight", "warn"); }
+    finally { setImportDiLoading(false); }
   };
 
   const resTestCFById = async (r: Reservatorio) => {
@@ -9257,6 +9381,7 @@ export default function App() {
                 ["dashboard","📊","Dashboard","#6366F1"],
                 ["executivo","🧠","Executivo","#10B981"],
                 ["lancamentos","📋","Lançamentos","#06B6D4"],
+                ["importar","📂","Importar","#F97316"],
                 ["previsao","🧪","Simulador","#A855F7"],
                 ["insights","🤖","Di — IA","#F59E0B"],
               ];
@@ -10135,6 +10260,348 @@ export default function App() {
                               </div>
                             </div>
                           )}
+
+                        </div>
+                      );
+                    })()}
+
+                    {/* ══════════ ABA: IMPORTAÇÃO FINANCEIRA V6 ══════════ */}
+                    {finTab === "importar" && (() => {
+                      const CATEGORIAS_PADRAO = [
+                        "Taxa Condominial","Multas e Juros","Aluguel","Rendimentos","Outros Recebimentos",
+                        "Energia","Água","Gás","Folha de Pagamento","Manutenção","Limpeza","Segurança",
+                        "Elevador","Telecom","Seguros","Impostos","Contabilidade","Equipamentos","Fundo de Reserva","Outros",
+                      ];
+
+                      const confiancaBadge = (c: number) =>
+                        c >= 0.8 ? { cor:"#10B981", bg:"rgba(16,185,129,.12)", icone:"🟢", label:"Alta" } :
+                        c >= 0.5 ? { cor:"#F59E0B", bg:"rgba(245,158,11,.1)",  icone:"🟡", label:"Média" } :
+                                   { cor:"#EF4444", bg:"rgba(239,68,68,.1)",   icone:"🔴", label:"Baixa" };
+
+                      const fonteLabel = (f: string) =>
+                        f === "aprendizado" ? "🧠 IA Aprendida" : f === "heuristica" ? "📐 Heurística" : "❓ Genérico";
+
+                      const selecionados = importItems.filter(l => l._selecionado);
+                      const totalSel = selecionados.reduce((s, l) => ({
+                        rec: s.rec + (l.tipo === "receita" ? l.valor : 0),
+                        desp: s.desp + (l.tipo === "despesa" ? l.valor : 0),
+                      }), { rec: 0, desp: 0 });
+
+                      return (
+                        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+
+                          {/* HEADER */}
+                          <div style={{ background:"linear-gradient(135deg,rgba(249,115,22,.08),rgba(251,146,60,.05))", border:"1px solid rgba(249,115,22,.2)", borderRadius:18, padding:"20px 24px" }}>
+                            <div style={{ display:"flex", alignItems:"center", gap:14 }}>
+                              <div style={{ fontSize:36 }}>📂</div>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:18, fontWeight:900, color:"#E2E8F0", letterSpacing:"-.02em" }}>Importação Financeira Inteligente</div>
+                                <div style={{ fontSize:11, color:"#64748B", marginTop:3 }}>OFX · PDF · Imagem · OCR com IA · Aprendizado automático</div>
+                              </div>
+                              {importAprendStats && (
+                                <div style={{ textAlign:"right" as const, background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)", borderRadius:10, padding:"8px 14px" }}>
+                                  <div style={{ fontSize:18, fontWeight:900, color:"#818CF8" }}>{importAprendStats.total}</div>
+                                  <div style={{ fontSize:9, color:"#475569", textTransform:"uppercase" as const }}>Padrões Aprendidos</div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* ÁREA DE UPLOAD */}
+                          {!importResult && (
+                            <div
+                              onDragOver={e=>{ e.preventDefault(); setImportDragOver(true); }}
+                              onDragLeave={()=>setImportDragOver(false)}
+                              onDrop={e=>{ e.preventDefault(); setImportDragOver(false); const f=e.dataTransfer.files[0]; if(f) importProcessarArquivo(f); }}
+                              style={{
+                                border:`2px dashed ${importDragOver?"#F97316":"rgba(249,115,22,.3)"}`,
+                                borderRadius:16, padding:"40px 24px", textAlign:"center" as const,
+                                background:importDragOver?"rgba(249,115,22,.08)":"rgba(255,255,255,.02)",
+                                transition:"all .2s", cursor:"pointer",
+                              }}
+                              onClick={()=>{ if(!importLoading) document.getElementById("importFileInput")?.click(); }}
+                            >
+                              <input
+                                id="importFileInput" type="file"
+                                accept=".ofx,.qfx,.pdf,.png,.jpg,.jpeg,.webp"
+                                style={{ display:"none" }}
+                                onChange={e=>{ const f=e.target.files?.[0]; if(f) importProcessarArquivo(f); (e.target as HTMLInputElement).value=""; }}
+                              />
+                              {importLoading ? (
+                                <div>
+                                  <div style={{ fontSize:52, marginBottom:14 }}>⚙️</div>
+                                  <div style={{ fontSize:16, fontWeight:800, color:"#E2E8F0", marginBottom:8 }}>Processando arquivo...</div>
+                                  <div style={{ fontSize:13, color:"#64748B" }}>Extraindo dados · Classificando com IA · Verificando duplicatas</div>
+                                  <div style={{ marginTop:16, background:"rgba(249,115,22,.15)", borderRadius:20, height:6, overflow:"hidden", maxWidth:300, margin:"16px auto 0" }}>
+                                    <div style={{ height:"100%", width:"70%", background:"#F97316", borderRadius:20, animation:"pulse 1.5s infinite" }}/>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>
+                                  <div style={{ fontSize:52, marginBottom:16 }}>📁</div>
+                                  <div style={{ fontSize:17, fontWeight:800, color:"#E2E8F0", marginBottom:8 }}>
+                                    {importDragOver ? "Solte o arquivo aqui" : "Clique ou arraste o arquivo"}
+                                  </div>
+                                  <div style={{ fontSize:12, color:"#64748B", marginBottom:20 }}>Suporta: OFX (banco), PDF (extratos, boletos), PNG/JPG (documentos)</div>
+                                  <div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" as const }}>
+                                    {[
+                                      { ext:"OFX", desc:"Extrato bancário", color:"#06B6D4", icon:"🏦" },
+                                      { ext:"PDF", desc:"Extrato / Boleto", color:"#6366F1", icon:"📄" },
+                                      { ext:"IMG", desc:"Documento escaneado", color:"#10B981", icon:"🖼️" },
+                                    ].map(t=>(
+                                      <div key={t.ext} style={{ background:`${t.color}15`, border:`1px solid ${t.color}30`, borderRadius:10, padding:"10px 16px", minWidth:120 }}>
+                                        <div style={{ fontSize:20, marginBottom:4 }}>{t.icon}</div>
+                                        <div style={{ fontSize:12, fontWeight:800, color:t.color }}>{t.ext}</div>
+                                        <div style={{ fontSize:10, color:"#475569" }}>{t.desc}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* RESULTADO DA IMPORTAÇÃO */}
+                          {importResult && !importDone && (
+                            <>
+                              {/* Stats */}
+                              <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:8 }}>
+                                {[
+                                  { label:"Detectados", val:importResult.total, color:"#E2E8F0", icon:"📋" },
+                                  { label:"Receitas", val:`R$ ${Number(importResult.estatisticas.receitas).toLocaleString("pt-BR",{maximumFractionDigits:0})}`, color:"#10B981", icon:"📈" },
+                                  { label:"Despesas", val:`R$ ${Number(importResult.estatisticas.despesas).toLocaleString("pt-BR",{maximumFractionDigits:0})}`, color:"#EF4444", icon:"📉" },
+                                  { label:"Alta Confiança", val:importResult.estatisticas.alta_confianca, color:"#10B981", icon:"🟢" },
+                                  { label:"Duplicatas", val:importResult.estatisticas.duplicatas, color:importResult.estatisticas.duplicatas>0?"#F59E0B":"#10B981", icon:"⚠️" },
+                                ].map(s=>(
+                                  <div key={s.label} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"12px 14px", textAlign:"center" as const }}>
+                                    <div style={{ fontSize:16, marginBottom:6 }}>{s.icon}</div>
+                                    <div style={{ fontSize:18, fontWeight:900, color:s.color }}>{s.val}</div>
+                                    <div style={{ fontSize:9, color:"#475569", textTransform:"uppercase" as const, marginTop:2 }}>{s.label}</div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Info arquivo */}
+                              <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:10, padding:"10px 16px", display:"flex", alignItems:"center", gap:10, justifyContent:"space-between" as const }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                  <div style={{ fontSize:20 }}>📄</div>
+                                  <div>
+                                    <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0" }}>{importResult.arquivo}</div>
+                                    <div style={{ fontSize:10, color:"#475569" }}>
+                                      Método: <span style={{ color:"#F97316", fontWeight:700 }}>{importResult.metodo}</span>
+                                      {" "}· Selecionados: <span style={{ color:"#818CF8", fontWeight:700 }}>{selecionados.length}/{importResult.total}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div style={{ display:"flex", gap:8 }}>
+                                  <button onClick={()=>setImportItems(prev=>prev.map(l=>({...l,_selecionado:true})))}
+                                    style={{ padding:"5px 12px", borderRadius:8, background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", color:"#34D399", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+                                    ☑ Todos
+                                  </button>
+                                  <button onClick={()=>setImportItems(prev=>prev.map(l=>({...l,_selecionado:false})))}
+                                    style={{ padding:"5px 12px", borderRadius:8, background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", color:"#94A3B8", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+                                    ☐ Nenhum
+                                  </button>
+                                  <button onClick={()=>{ setImportResult(null); setImportItems([]); setImportFile(null); }}
+                                    style={{ padding:"5px 12px", borderRadius:8, background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.3)", color:"#FCA5A5", fontSize:10, fontWeight:700, cursor:"pointer" }}>
+                                    ✕ Reiniciar
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* LISTA DE LANÇAMENTOS */}
+                              <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+                                <div style={{ fontSize:11, fontWeight:800, color:"#64748B", letterSpacing:".08em", textTransform:"uppercase" as const, paddingBottom:4 }}>
+                                  Lançamentos Detectados — Revise e corrija antes de confirmar
+                                </div>
+                                {importItems.map((item, idx) => {
+                                  const badge = confiancaBadge(item.confianca);
+                                  return (
+                                    <div key={idx} style={{
+                                      background: item._selecionado ? "rgba(255,255,255,.04)" : "rgba(255,255,255,.015)",
+                                      border:`1px solid ${item.duplicata_provavel?"rgba(245,158,11,.3)":item._selecionado?"rgba(255,255,255,.1)":"rgba(255,255,255,.04)"}`,
+                                      borderLeft:`3px solid ${item.tipo==="receita"?"#10B981":"#EF4444"}`,
+                                      borderRadius:12, padding:"12px 14px",
+                                      opacity: item._selecionado ? 1 : 0.5,
+                                      transition:"all .15s",
+                                    }}>
+                                      {/* Linha principal */}
+                                      <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                                        {/* Checkbox */}
+                                        <input type="checkbox" checked={!!item._selecionado}
+                                          onChange={()=>importToggleSelecionado(idx)}
+                                          style={{ marginTop:2, accentColor:"#F97316", width:16, height:16, cursor:"pointer" }}
+                                        />
+                                        {/* Tipo ícone */}
+                                        <div style={{ fontSize:16, marginTop:1 }}>{item.tipo==="receita"?"📈":"📉"}</div>
+                                        {/* Info */}
+                                        <div style={{ flex:1, minWidth:0 }}>
+                                          {item._editando ? (
+                                            <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr 1fr", gap:8, marginBottom:8 }}>
+                                              <input value={item.descricao} onChange={e=>importEditarItem(idx,"descricao",e.target.value)}
+                                                style={{ padding:"6px 10px", background:"rgba(0,0,0,.4)", border:"1px solid rgba(255,255,255,.15)", borderRadius:8, color:"#E2E8F0", fontSize:12, fontFamily:"inherit" }}/>
+                                              <select value={item.categoria} onChange={e=>importEditarItem(idx,"categoria",e.target.value)}
+                                                style={{ padding:"6px 10px", background:"rgba(0,0,0,.4)", border:"1px solid rgba(255,255,255,.15)", borderRadius:8, color:"#E2E8F0", fontSize:12 }}>
+                                                {CATEGORIAS_PADRAO.map(c=><option key={c} value={c}>{c}</option>)}
+                                              </select>
+                                              <input type="number" step="0.01" value={item.valor} onChange={e=>importEditarItem(idx,"valor",parseFloat(e.target.value)||0)}
+                                                style={{ padding:"6px 10px", background:"rgba(0,0,0,.4)", border:"1px solid rgba(255,255,255,.15)", borderRadius:8, color:"#E2E8F0", fontSize:12, fontFamily:"inherit" }}/>
+                                              <input type="date" value={item.data} onChange={e=>importEditarItem(idx,"data",e.target.value)}
+                                                style={{ padding:"6px 10px", background:"rgba(0,0,0,.4)", border:"1px solid rgba(255,255,255,.15)", borderRadius:8, color:"#E2E8F0", fontSize:12 }}/>
+                                            </div>
+                                          ) : (
+                                            <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" as const }}>
+                                              <span style={{ fontSize:13, fontWeight:700, color:"#E2E8F0", flex:1 }}>{item.descricao}</span>
+                                              <span style={{ fontSize:11, color:"#94A3B8", background:"rgba(255,255,255,.06)", padding:"2px 8px", borderRadius:20 }}>{item.categoria}</span>
+                                              <span style={{ fontSize:13, fontWeight:800, color:item.tipo==="receita"?"#10B981":"#EF4444" }}>
+                                                {item.tipo==="receita"?"+":"-"}R$ {Number(item.valor).toLocaleString("pt-BR",{minimumFractionDigits:2})}
+                                              </span>
+                                              <span style={{ fontSize:10, color:"#475569" }}>{item.data}</span>
+                                            </div>
+                                          )}
+                                          {/* Meta info */}
+                                          <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:6, flexWrap:"wrap" as const }}>
+                                            <span style={{ fontSize:9, color:badge.cor, background:badge.bg, padding:"2px 8px", borderRadius:20, fontWeight:700 }}>
+                                              {badge.icone} {badge.label} ({Math.round(item.confianca*100)}%)
+                                            </span>
+                                            <span style={{ fontSize:9, color:"#475569" }}>{fonteLabel(item.fonte)}</span>
+                                            {item.duplicata_provavel && (
+                                              <span style={{ fontSize:9, color:"#F59E0B", background:"rgba(245,158,11,.12)", padding:"2px 8px", borderRadius:20, fontWeight:700 }}>⚠️ Possível duplicata</span>
+                                            )}
+                                            {item.alerta && !item.duplicata_provavel && (
+                                              <span style={{ fontSize:9, color:"#F59E0B", background:"rgba(245,158,11,.1)", padding:"2px 8px", borderRadius:20 }}>{item.alerta}</span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {/* Ações */}
+                                        <div style={{ display:"flex", gap:4, flexShrink:0 }}>
+                                          <button onClick={()=>importToggleEditar(idx)}
+                                            title="Editar" style={{ width:30, height:30, borderRadius:8, background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", color:"#818CF8", fontSize:13, cursor:"pointer" }}>
+                                            ✏️
+                                          </button>
+                                          <button onClick={()=>importEnsinarIA(item)}
+                                            title="Ensinar IA" style={{ width:30, height:30, borderRadius:8, background:"rgba(16,185,129,.12)", border:"1px solid rgba(16,185,129,.3)", color:"#34D399", fontSize:13, cursor:"pointer" }}>
+                                            🧠
+                                          </button>
+                                          <button onClick={()=>setImportItems(prev=>prev.filter((_,i)=>i!==idx))}
+                                            title="Remover" style={{ width:30, height:30, borderRadius:8, background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.25)", color:"#FCA5A5", fontSize:13, cursor:"pointer" }}>
+                                            ✕
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {/* BARRA DE AÇÃO — CONFIRMAR LOTE */}
+                              <div style={{ position:"sticky", bottom:0, background:"linear-gradient(to top,#0A0F1E,rgba(10,15,30,.95))", padding:"16px 0 4px", borderTop:"1px solid rgba(255,255,255,.06)", zIndex:10 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+                                  {/* Resumo seleção */}
+                                  <div style={{ flex:1 }}>
+                                    <div style={{ fontSize:12, color:"#94A3B8" }}>
+                                      <span style={{ fontWeight:800, color:"#E2E8F0" }}>{selecionados.length}</span> selecionados ·{" "}
+                                      <span style={{ color:"#10B981" }}>+R$ {totalSel.rec.toLocaleString("pt-BR",{maximumFractionDigits:0})}</span> ·{" "}
+                                      <span style={{ color:"#EF4444" }}>-R$ {totalSel.desp.toLocaleString("pt-BR",{maximumFractionDigits:0})}</span>
+                                    </div>
+                                  </div>
+                                  <button onClick={importGerarInsightDi} disabled={importDiLoading}
+                                    style={{ padding:"10px 18px", borderRadius:12, background:"rgba(245,158,11,.15)", border:"1px solid rgba(245,158,11,.3)", color:"#FCD34D", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                    {importDiLoading ? "⏳ Di..." : "🤖 Análise Di"}
+                                  </button>
+                                  <button onClick={importConfirmarLote} disabled={importConfirming || selecionados.length===0}
+                                    style={{ padding:"12px 28px", borderRadius:14, background:importConfirming||!selecionados.length?"rgba(249,115,22,.3)":"linear-gradient(135deg,#EA580C,#F97316)", border:"none", color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer", boxShadow:"0 4px 20px rgba(249,115,22,.3)" }}>
+                                    {importConfirming ? "⏳ Salvando..." : `✅ Confirmar ${selecionados.length} Lançamentos`}
+                                  </button>
+                                </div>
+
+                                {/* Análise Di */}
+                                {importDiInsight && (
+                                  <div style={{ marginTop:12, background:"rgba(245,158,11,.06)", border:"1px solid rgba(245,158,11,.15)", borderRadius:14, padding:"14px 18px" }}>
+                                    <div style={{ fontSize:11, fontWeight:800, color:"#FCD34D", marginBottom:10 }}>🤖 Di — Análise do Lote</div>
+                                    {[
+                                      {title:"📋 Resumo", text:importDiInsight.resumo, color:"#34D399"},
+                                      {title:"⚠️ Anomalias", text:importDiInsight.anomalias, color:"#FCA5A5"},
+                                      {title:"💡 Sugestão", text:importDiInsight.sugestao, color:"#818CF8"},
+                                    ].filter(s=>s.text).map(s=>(
+                                      <div key={s.title} style={{ marginBottom:8 }}>
+                                        <div style={{ fontSize:10, fontWeight:700, color:s.color, marginBottom:4 }}>{s.title}</div>
+                                        <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>{s.text}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          )}
+
+                          {/* SUCESSO! */}
+                          {importDone && (
+                            <div style={{ textAlign:"center" as const, padding:"40px 24px" }}>
+                              <div style={{ fontSize:56, marginBottom:16 }}>🎉</div>
+                              <div style={{ fontSize:20, fontWeight:900, color:"#10B981", marginBottom:8 }}>Importação Concluída!</div>
+                              <div style={{ fontSize:13, color:"#64748B", marginBottom:24 }}>
+                                {selecionados.length} lançamentos foram salvos e o painel financeiro foi atualizado.
+                              </div>
+                              <div style={{ display:"flex", gap:12, justifyContent:"center", flexWrap:"wrap" as const }}>
+                                <button onClick={()=>{ setImportDone(false); setImportResult(null); setImportItems([]); setImportFile(null); setImportDiInsight(null); }}
+                                  style={{ padding:"12px 28px", borderRadius:14, background:"linear-gradient(135deg,#EA580C,#F97316)", border:"none", color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer" }}>
+                                  📂 Nova Importação
+                                </button>
+                                <button onClick={()=>setFinTab("dashboard")}
+                                  style={{ padding:"12px 28px", borderRadius:14, background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.4)", color:"#818CF8", fontSize:14, fontWeight:800, cursor:"pointer" }}>
+                                  📊 Ver Dashboard
+                                </button>
+                                <button onClick={()=>setFinTab("lancamentos")}
+                                  style={{ padding:"12px 28px", borderRadius:14, background:"rgba(6,182,212,.15)", border:"1px solid rgba(6,182,212,.3)", color:"#67E8F9", fontSize:14, fontWeight:800, cursor:"pointer" }}>
+                                  📋 Ver Lançamentos
+                                </button>
+                              </div>
+
+                              {/* Padrões aprendidos */}
+                              {importAprendStats && importAprendStats.total > 0 && (
+                                <div style={{ marginTop:24, background:"rgba(99,102,241,.06)", border:"1px solid rgba(99,102,241,.15)", borderRadius:14, padding:"16px 20px", textAlign:"left" as const }}>
+                                  <div style={{ fontSize:12, fontWeight:800, color:"#818CF8", marginBottom:10 }}>🧠 Banco de Conhecimento da IA — {importAprendStats.total} padrões aprendidos</div>
+                                  {importAprendStats.top.slice(0,5).map((ap:any, i:number)=>(
+                                    <div key={i} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                                      <span style={{ fontSize:10, color:"#475569", width:20, textAlign:"right" as const }}>{ap.vezes_usado}x</span>
+                                      <span style={{ fontSize:11, color:"#E2E8F0", flex:1 }}>{ap.texto_base?.slice(0,50)}</span>
+                                      <span style={{ fontSize:10, color:"#818CF8", background:"rgba(99,102,241,.15)", padding:"2px 8px", borderRadius:20 }}>{ap.categoria}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* COMO USAR / INSTRUÇÃO INICIAL */}
+                          {!importResult && !importLoading && (
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+                              {[
+                                { icon:"🏦", title:"1. Exporte do banco", desc:"No internet banking, exporte o extrato em formato OFX ou baixe o PDF." },
+                                { icon:"📤", title:"2. Importe aqui", desc:"Arraste o arquivo ou clique na área acima. Suportamos OFX, PDF e imagens." },
+                                { icon:"✅", title:"3. Revise e confirme", desc:"A IA classifica tudo automaticamente. Revise, corrija e confirme com 1 clique." },
+                              ].map(step=>(
+                                <div key={step.title} style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"16px 18px" }}>
+                                  <div style={{ fontSize:28, marginBottom:8 }}>{step.icon}</div>
+                                  <div style={{ fontSize:12, fontWeight:800, color:"#E2E8F0", marginBottom:6 }}>{step.title}</div>
+                                  <div style={{ fontSize:11, color:"#475569", lineHeight:1.6 }}>{step.desc}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Migration SQL hint */}
+                          <div style={{ background:"rgba(99,102,241,.03)", border:"1px dashed rgba(99,102,241,.15)", borderRadius:10, padding:"10px 16px", display:"flex", alignItems:"center", gap:10 }}>
+                            <div style={{ fontSize:14 }}>🔧</div>
+                            <div style={{ fontSize:11, color:"#475569", flex:1 }}>
+                              Para ativar o aprendizado automático, crie a tabela no Supabase:
+                            </div>
+                            <button onClick={async()=>{ const r=await fetch("/api/financeiro/importacao/migration-sql"); if(r.ok){const d=await r.json(); navigator.clipboard.writeText(d.sql); showToast("SQL copiado — cole no Supabase SQL Editor","success");}}}
+                              style={{ padding:"5px 14px", borderRadius:8, background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", color:"#818CF8", fontSize:10, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const }}>
+                              📋 Copiar SQL
+                            </button>
+                          </div>
 
                         </div>
                       );
