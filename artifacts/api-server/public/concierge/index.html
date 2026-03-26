@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#04040c">
+  <title>Di · Concierge</title>
+  <!-- [[TOTEM_CONFIG]] -->
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    :root{
+      --tema:#7c3aed;--tema2:#a855f7;--tema3:#c084fc;
+      --bg:#04040c;--bg2:#0d0d1e;--bg3:#151530;
+      --t:#f0eeff;--t2:#a9a4cf;--t3:#5a5480;
+    }
+    body{font-family:'Nunito',system-ui,sans-serif;background:var(--bg);color:var(--t);
+         min-height:100vh;overflow:hidden;user-select:none;position:relative}
+
+    /* ── TELAS ───────────────────────────────────────── */
+    .tela{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+          justify-content:center;padding:24px;opacity:0;pointer-events:none;
+          transition:opacity .4s ease,transform .4s ease;transform:scale(.97)}
+    .tela.ativa{opacity:1;pointer-events:all;transform:scale(1)}
+
+    /* ── TELA 1: BOAS-VINDAS ────────────────────────── */
+    #t-bv{background:radial-gradient(ellipse at 30% 20%,rgba(124,58,237,.35),transparent 60%),
+          radial-gradient(ellipse at 80% 80%,rgba(99,102,241,.2),transparent 60%),var(--bg)}
+    #t-bv .logo-marca{font-size:13px;font-weight:800;letter-spacing:.15em;color:var(--t3);
+                      text-transform:uppercase;margin-bottom:36px}
+    #avatar-bv{width:140px;height:140px;border-radius:50%;object-fit:cover;
+               border:3px solid rgba(168,85,247,.5);
+               box-shadow:0 0 0 8px rgba(124,58,237,.15),0 0 40px rgba(124,58,237,.4);
+               background:linear-gradient(135deg,#7c3aed,#4f46e5);
+               display:flex;align-items:center;justify-content:center;
+               font-size:64px;overflow:hidden}
+    #avatar-bv img{width:100%;height:100%;object-fit:cover}
+    .wave-ring{position:absolute;border-radius:50%;border:2px solid rgba(168,85,247,.2);animation:wave 3s ease-out infinite}
+    .wave-ring:nth-child(2){animation-delay:.6s}
+    .wave-ring:nth-child(3){animation-delay:1.2s}
+    @keyframes wave{0%{width:140px;height:140px;opacity:.8}100%{width:280px;height:280px;opacity:0}}
+    #nome-di-bv{font-size:28px;font-weight:900;margin:20px 0 6px;text-align:center}
+    #saudacao-bv{font-size:14px;color:var(--t2);text-align:center;max-width:340px;line-height:1.6;margin-bottom:36px}
+    #btn-iniciar{background:linear-gradient(135deg,var(--tema),var(--tema2));border:none;
+                 border-radius:18px;padding:16px 48px;font-size:18px;font-weight:900;
+                 color:#fff;cursor:pointer;letter-spacing:.5px;
+                 box-shadow:0 6px 28px rgba(124,58,237,.5);animation:pulsar 2.5s ease-in-out infinite}
+    @keyframes pulsar{0%,100%{box-shadow:0 6px 28px rgba(124,58,237,.5),0 0 0 0 rgba(124,58,237,.3)}
+                      50%{box-shadow:0 6px 28px rgba(124,58,237,.7),0 0 0 14px rgba(124,58,237,0)}}
+    .or-divider{display:flex;align-items:center;gap:12px;width:100%;max-width:300px;margin:20px 0}
+    .or-divider span{font-size:11px;color:var(--t3);white-space:nowrap}
+    .or-divider::before,.or-divider::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.07)}
+
+    /* ── TELA 2: MÓDULOS ─────────────────────────────── */
+    #t-mod{background:var(--bg);padding:20px 16px}
+    .mod-header{display:flex;align-items:center;gap:12px;width:100%;max-width:420px;margin-bottom:20px}
+    .mod-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--tema),var(--tema2));
+                display:flex;align-items:center;justify-content:center;font-size:22px;
+                border:2px solid rgba(168,85,247,.4);flex-shrink:0}
+    .mod-title{font-size:16px;font-weight:900}
+    .mod-sub{font-size:11px;color:var(--t2)}
+    .mod-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;width:100%;max-width:420px}
+    .mod-btn{background:var(--bg2);border:1.5px solid rgba(255,255,255,.06);border-radius:16px;
+             padding:18px 12px;cursor:pointer;text-align:center;transition:all .18s;
+             display:flex;flex-direction:column;align-items:center;gap:8px}
+    .mod-btn:hover,.mod-btn:active{transform:scale(.97);border-color:rgba(168,85,247,.35)}
+    .mod-btn .ico{font-size:30px;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
+    .mod-btn .lbl{font-size:13px;font-weight:800;color:var(--t)}
+    .mod-btn .desc{font-size:10px;color:var(--t3);line-height:1.3}
+    .mod-btn.destaque{background:linear-gradient(135deg,rgba(239,68,68,.15),rgba(239,68,68,.05));
+                      border-color:rgba(239,68,68,.3)}
+    .mod-btn.destaque .lbl{color:#fca5a5}
+    .mod-row{grid-column:1/-1;flex-direction:row;gap:12px;justify-content:flex-start;padding:14px 16px}
+    .mod-row .lbl{flex:1;text-align:left}
+    .mod-row .ico{font-size:24px}
+    #btn-voltar-mod{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+                    border-radius:10px;padding:8px 18px;color:var(--t2);font-size:12px;
+                    font-weight:700;cursor:pointer;margin-top:12px}
+
+    /* ── TELA 3: CHAT ───────────────────────────────── */
+    #t-chat{background:var(--bg);padding:0;justify-content:flex-start}
+    #chat-header{width:100%;padding:16px;background:var(--bg2);border-bottom:1px solid rgba(255,255,255,.06);
+                 display:flex;align-items:center;gap:12px;flex-shrink:0}
+    #chat-avatar-h{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--tema),var(--tema2));
+                   display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+    #chat-tipo-badge{font-size:10px;background:rgba(168,85,247,.2);color:var(--tema3);
+                     border-radius:6px;padding:2px 8px;font-weight:700;margin-left:auto}
+    #chat-msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;
+               width:100%;scroll-behavior:smooth}
+    .msg{max-width:85%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.55;animation:slideIn .2s ease}
+    @keyframes slideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+    .msg.di{background:var(--bg3);border:1px solid rgba(168,85,247,.15);border-bottom-left-radius:4px;align-self:flex-start}
+    .msg.user{background:linear-gradient(135deg,rgba(124,58,237,.4),rgba(99,102,241,.3));
+              border:1px solid rgba(168,85,247,.25);border-bottom-right-radius:4px;align-self:flex-end}
+    .msg.typing{opacity:.6}
+    .msg.typing::after{content:'...';animation:dot 1.2s infinite}
+    @keyframes dot{0%,100%{content:'...'}33%{content:'.'}66%{content:'..'}};
+    #sugestoes{display:flex;gap:6px;padding:8px 16px;overflow-x:auto;flex-shrink:0;
+               -webkit-overflow-scrolling:touch}
+    .sug{background:var(--bg2);border:1px solid rgba(255,255,255,.08);border-radius:20px;
+         padding:6px 14px;font-size:12px;color:var(--t2);cursor:pointer;white-space:nowrap;
+         font-weight:700;transition:all .15s;flex-shrink:0}
+    .sug:hover,.sug:active{background:rgba(124,58,237,.2);border-color:rgba(168,85,247,.3);color:var(--t)}
+    #chat-input-row{width:100%;padding:12px 16px 16px;display:flex;gap:8px;flex-shrink:0;
+                    background:var(--bg2);border-top:1px solid rgba(255,255,255,.06)}
+    #chat-input{flex:1;background:var(--bg3);border:1.5px solid rgba(255,255,255,.08);
+                border-radius:12px;padding:10px 14px;color:var(--t);font-family:inherit;
+                font-size:14px;outline:none;resize:none;min-height:42px;max-height:90px}
+    #chat-input:focus{border-color:rgba(168,85,247,.4)}
+    #btn-mic{width:42px;height:42px;border-radius:12px;border:none;cursor:pointer;
+             background:rgba(124,58,237,.2);color:var(--tema3);font-size:18px;
+             transition:all .15s;flex-shrink:0}
+    #btn-mic.ouvindo{background:rgba(239,68,68,.3);color:#fca5a5;animation:pulsar 1s infinite}
+    #btn-send{width:42px;height:42px;border-radius:12px;border:none;cursor:pointer;
+              background:linear-gradient(135deg,var(--tema),var(--tema2));color:#fff;font-size:18px;flex-shrink:0}
+    #btn-voltar-chat{background:none;border:none;color:var(--t2);font-size:22px;cursor:pointer;padding:4px}
+
+    /* ── TELA 4: IDLE ───────────────────────────────── */
+    #t-idle{background:var(--bg);padding:0;overflow:hidden}
+    #idle-slides{position:absolute;inset:0}
+    .idle-slide{position:absolute;inset:0;background-size:cover;background-position:center;
+                opacity:0;transition:opacity 1.5s ease}
+    .idle-slide.ativo{opacity:1}
+    #idle-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(4,4,12,.95) 0%,rgba(4,4,12,.4) 60%,transparent 100%)}
+    #idle-di{position:absolute;bottom:60px;left:50%;transform:translateX(-50%);text-align:center;width:90%}
+    #idle-di .avatar{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,var(--tema),var(--tema2));
+                     display:flex;align-items:center;justify-content:center;font-size:36px;
+                     margin:0 auto 12px;border:2px solid rgba(168,85,247,.5);
+                     box-shadow:0 0 30px rgba(124,58,237,.5)}
+    #idle-di .nome{font-size:20px;font-weight:900}
+    #idle-di .chamada{font-size:14px;color:var(--t2);margin:6px 0 20px}
+    #btn-acordar{background:linear-gradient(135deg,var(--tema),var(--tema2));border:none;
+                 border-radius:14px;padding:14px 40px;font-size:16px;font-weight:900;color:#fff;
+                 cursor:pointer;box-shadow:0 4px 20px rgba(124,58,237,.4);animation:pulsar 2s infinite}
+
+    /* ── MISC ───────────────────────────────────────── */
+    #toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
+           background:#1e1e40;border:1px solid rgba(168,85,247,.3);border-radius:10px;
+           padding:10px 20px;font-size:13px;font-weight:700;color:var(--t);
+           opacity:0;pointer-events:none;transition:opacity .3s;z-index:9999;white-space:nowrap}
+    #toast.vis{opacity:1}
+  </style>
+</head>
+<body>
+
+<!-- ══ TELA 1: BOAS-VINDAS ═══════════════════════════════════════════════ -->
+<div class="tela ativa" id="t-bv">
+  <div class="logo-marca">ImobCore · Concierge</div>
+  <div style="position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:8px">
+    <div class="wave-ring"></div>
+    <div class="wave-ring"></div>
+    <div class="wave-ring"></div>
+    <div id="avatar-bv" style="position:relative;z-index:1">🤖</div>
+  </div>
+  <div id="nome-di-bv">Di</div>
+  <div id="saudacao-bv">Olá! Sou Di, sua síndica virtual. Toque em Iniciar para eu te ajudar.</div>
+  <button id="btn-iniciar" onclick="irModulos()">✨ Iniciar Atendimento</button>
+  <div class="or-divider"><span>ou fale diretamente</span></div>
+  <button onclick="iniciarChat('info')" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+    border-radius:12px;padding:10px 24px;color:var(--t2);font-size:13px;font-weight:700;cursor:pointer">
+    💬 Digitar pergunta
+  </button>
+</div>
+
+<!-- ══ TELA 2: MÓDULOS ════════════════════════════════════════════════════ -->
+<div class="tela" id="t-mod">
+  <div class="mod-header">
+    <div class="mod-avatar">🤖</div>
+    <div>
+      <div class="mod-title" id="mod-nome-di">Di — Concierge</div>
+      <div class="mod-sub" id="mod-nome-condo">Selecione o tipo de atendimento</div>
+    </div>
+  </div>
+  <div class="mod-grid">
+    <div class="mod-btn" onclick="iniciarChat('visitante')">
+      <div class="ico">🚶</div>
+      <div class="lbl">Sou Visitante</div>
+      <div class="desc">Registrar entrada no condomínio</div>
+    </div>
+    <div class="mod-btn" onclick="iniciarChat('hospede')">
+      <div class="ico">🛎️</div>
+      <div class="lbl">Sou Hóspede</div>
+      <div class="desc">Guia, áreas e informações</div>
+    </div>
+    <div class="mod-btn" onclick="iniciarChat('entrega')">
+      <div class="ico">📦</div>
+      <div class="lbl">Entrega</div>
+      <div class="desc">Registrar encomenda ou serviço</div>
+    </div>
+    <div class="mod-btn" onclick="iniciarChat('morador')">
+      <div class="ico">🏠</div>
+      <div class="lbl">Sou Morador</div>
+      <div class="desc">Reservas, comunicados e serviços</div>
+    </div>
+    <div class="mod-btn" onclick="iniciarChat('guia')">
+      <div class="ico">🗺️</div>
+      <div class="lbl">Guia do Local</div>
+      <div class="desc">Passeios, comércio e parceiros</div>
+    </div>
+    <div class="mod-btn" onclick="iniciarChat('comunicados')">
+      <div class="ico">📢</div>
+      <div class="lbl">Comunicados</div>
+      <div class="desc">Avisos e informações recentes</div>
+    </div>
+    <div class="mod-btn" onclick="iniciarChat('regras')">
+      <div class="ico">📋</div>
+      <div class="lbl">Regras & Horários</div>
+      <div class="desc">Normas e horários das áreas</div>
+    </div>
+    <div class="mod-btn destaque" onclick="iniciarChat('emergencia')">
+      <div class="ico">🚨</div>
+      <div class="lbl">Emergência</div>
+      <div class="desc">Contatos de socorro imediato</div>
+    </div>
+  </div>
+  <button id="btn-voltar-mod" onclick="irBvs()">← Voltar</button>
+</div>
+
+<!-- ══ TELA 3: CHAT ═══════════════════════════════════════════════════════ -->
+<div class="tela" id="t-chat">
+  <div id="chat-header">
+    <button id="btn-voltar-chat" onclick="irModulos()">‹</button>
+    <div id="chat-avatar-h">🤖</div>
+    <div style="flex:1">
+      <div style="font-size:14px;font-weight:900" id="chat-di-nome">Di</div>
+      <div style="font-size:11px;color:var(--t2)" id="chat-condo-nome">Concierge Virtual</div>
+    </div>
+    <div id="chat-tipo-badge">Info</div>
+  </div>
+  <div id="chat-msgs"></div>
+  <div id="sugestoes"></div>
+  <div id="chat-input-row">
+    <textarea id="chat-input" placeholder="Escreva sua mensagem..." rows="1"
+      oninput="autoResize(this)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();enviar()}"></textarea>
+    <button id="btn-mic" onclick="toggleMic()" title="Falar">🎤</button>
+    <button id="btn-send" onclick="enviar()" title="Enviar">➤</button>
+  </div>
+</div>
+
+<!-- ══ TELA 4: IDLE ═══════════════════════════════════════════════════════ -->
+<div class="tela" id="t-idle">
+  <div id="idle-slides"></div>
+  <div id="idle-overlay"></div>
+  <div id="idle-di">
+    <div class="avatar">🤖</div>
+    <div class="nome" id="idle-di-nome">Di</div>
+    <div class="chamada">Toque para iniciar o atendimento</div>
+    <button id="btn-acordar" onclick="irBvs()">✨ Iniciar</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  // ── Config injetada pelo servidor ──────────────────────────────────────────
+  const T       = window.__TOTEM__ || {};
+  const TOKEN   = T.token   || new URLSearchParams(location.search).get('token') || '';
+  const API     = T.apiBase || '/api/concierge';
+  const TTS_URL = T.ttsUrl  || '/api/di/tts';
+
+  const authH = () => ({
+    'Content-Type':        'application/json',
+    'x-concierge-token':   TOKEN,
+  });
+
+  // ── Estado ────────────────────────────────────────────────────────────────
+  let cfg          = {};
+  let tipoAtual    = 'info';
+  let historico    = [];
+  let idleTimer    = null;
+  let idleSlideInt = null;
+  let slideIdx     = 0;
+  let micRec       = null;
+  let aguardandoDi = false;
+
+  // ── Navegação ─────────────────────────────────────────────────────────────
+  function irTela(id) {
+    document.querySelectorAll('.tela').forEach(t => t.classList.remove('ativa'));
+    document.getElementById(id).classList.add('ativa');
+    resetIdle();
+  }
+  function irBvs()    { irTela('t-bv'); }
+  function irModulos(){ irTela('t-mod'); historico = []; }
+  function irIdle()   {
+    irTela('t-idle');
+    clearTimeout(idleTimer);
+    iniciarIdleSlide();
+  }
+
+  // ── Idle Timer ────────────────────────────────────────────────────────────
+  function resetIdle() {
+    clearTimeout(idleTimer);
+    const seg = cfg.idle_seg || 90;
+    idleTimer = setTimeout(irIdle, seg * 1000);
+  }
+  document.addEventListener('touchstart', resetIdle);
+  document.addEventListener('click', resetIdle);
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  async function init() {
+    try {
+      cfg = await fetch(`${API}/config`, { headers: authH() }).then(r => r.json());
+      aplicarConfig(cfg);
+    } catch(e) {
+      console.warn('Offline:', e);
+      mostrarToast('Modo offline — Di em standby');
+    }
+    resetIdle();
+  }
+
+  function aplicarConfig(c) {
+    if (!c || c.error) return;
+    cfg = c;
+    // Tema
+    if (c.cor_tema) {
+      document.documentElement.style.setProperty('--tema',  c.cor_tema);
+      document.documentElement.style.setProperty('--tema2', c.cor_tema + 'cc');
+      document.documentElement.style.setProperty('--tema3', c.cor_tema + '99');
+    }
+    // Nomes
+    const nomeDi    = c.nome_di    || 'Di';
+    const nomeCondo = c.nome_condo || 'Condomínio';
+    document.getElementById('nome-di-bv').textContent    = nomeDi;
+    document.getElementById('saudacao-bv').textContent   = c.saudacao || `Olá! Sou ${nomeDi}.`;
+    document.getElementById('mod-nome-di').textContent   = `${nomeDi} · Concierge`;
+    document.getElementById('mod-nome-condo').textContent = nomeCondo;
+    document.getElementById('chat-di-nome').textContent  = nomeDi;
+    document.getElementById('chat-condo-nome').textContent = nomeCondo;
+    document.getElementById('idle-di-nome').textContent  = nomeDi;
+    // Avatar
+    if (c.avatar_url) {
+      const img = new Image();
+      img.onload = () => {
+        document.getElementById('avatar-bv').innerHTML = `<img src="${c.avatar_url}" alt="${nomeDi}">`;
+        document.getElementById('chat-avatar-h').innerHTML = `<img src="${c.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%" alt="">`;
+        document.querySelector('#idle-di .avatar').textContent = '';
+        document.querySelector('#idle-di .avatar').style.backgroundImage = `url(${c.avatar_url})`;
+        document.querySelector('#idle-di .avatar').style.backgroundSize = 'cover';
+      };
+      img.src = c.avatar_url;
+    }
+    // Mídia idle
+    if (c.midia && c.midia.length) construirIdleSlides(c.midia);
+  }
+
+  // ── Chat ──────────────────────────────────────────────────────────────────
+  const TIPO_LABEL = { visitante:'🚶 Visitante', hospede:'🛎 Hóspede', entrega:'📦 Entrega',
+    morador:'🏠 Morador', guia:'🗺 Guia', comunicados:'📢 Comunicados',
+    regras:'📋 Regras', emergencia:'🚨 Emergência', info:'💬 Info' };
+
+  const SUGS = {
+    visitante: ['Venho visitar o Apto 101', 'Me chamo João Silva', 'Quero avisar minha chegada'],
+    hospede:   ['Horários da piscina?', 'Tem academia?', 'Wi-Fi do condomínio?'],
+    entrega:   ['Entrega para o Apto 202', 'Sou da Amazon', 'Encomenda perecível'],
+    morador:   ['Fazer reserva', 'Comunicado recente', 'Chamar manutenção'],
+    emergencia:['SAMU 192', 'Bombeiros 193', 'Polícia 190'],
+    info:      ['Horários gerais', 'Regras do condomínio', 'Contato da portaria'],
+  };
+
+  function iniciarChat(tipo) {
+    tipoAtual  = tipo;
+    historico  = [];
+    document.getElementById('chat-msgs').innerHTML = '';
+    document.getElementById('chat-tipo-badge').textContent = TIPO_LABEL[tipo] || tipo;
+    renderSugestoes(tipo);
+    irTela('t-chat');
+    // Saudação inicial da Di
+    const saud = cfg.saudacao || `Olá! Sou ${cfg.nome_di || 'Di'}. Como posso ajudar?`;
+    adicionarMsgDi(saud);
+    tts(saud);
+    // Resposta extra contextual
+    if (tipo === 'emergencia') {
+      const cont = cfg.contatos || {};
+      const msg = `🚨 Emergência: Portaria ${cont.portaria || '—'} | SAMU: 192 | Bombeiros: 193 | Polícia: 190`;
+      setTimeout(() => adicionarMsgDi(msg), 800);
+    }
+  }
+
+  function renderSugestoes(tipo) {
+    const el  = document.getElementById('sugestoes');
+    const list = SUGS[tipo] || SUGS.info;
+    el.innerHTML = list.map(s => `<button class="sug" onclick="enviarTexto('${s.replace(/'/g,"\\'")}')">${s}</button>`).join('');
+  }
+
+  function adicionarMsg(texto, quem) {
+    const el = document.getElementById('chat-msgs');
+    const d  = document.createElement('div');
+    d.className = `msg ${quem}`;
+    d.textContent = texto;
+    el.appendChild(d);
+    el.scrollTop = el.scrollHeight;
+    return d;
+  }
+  function adicionarMsgDi(texto) { adicionarMsg(texto, 'di'); }
+  function adicionarMsgUser(texto){ adicionarMsg(texto, 'user'); }
+
+  async function enviarTexto(txt) {
+    document.getElementById('chat-input').value = '';
+    if (!txt.trim() || aguardandoDi) return;
+    adicionarMsgUser(txt);
+    historico.push({ role: 'user', content: txt });
+    aguardandoDi = true;
+    const typing = adicionarMsg('Di está digitando', 'di typing');
+    try {
+      const r = await fetch(`${API}/chat`, {
+        method:  'POST',
+        headers: authH(),
+        body:    JSON.stringify({ mensagem: txt, historico: historico.slice(-8), tipo: tipoAtual }),
+      });
+      const d = await r.json();
+      typing.remove();
+      const resp = d.resposta || 'Não consegui processar. Tente novamente.';
+      adicionarMsgDi(resp);
+      historico.push({ role: 'assistant', content: resp });
+      tts(resp);
+    } catch {
+      typing.remove();
+      adicionarMsgDi('Sem conexão. Fale com a portaria.');
+    }
+    aguardandoDi = false;
+  }
+
+  function enviar() {
+    const v = document.getElementById('chat-input').value.trim();
+    if (v) { enviarTexto(v); document.getElementById('chat-input').value = ''; autoResize(document.getElementById('chat-input')); }
+  }
+
+  function enviarSug(s) { enviarTexto(s); }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 90) + 'px';
+  }
+
+  // ── TTS ───────────────────────────────────────────────────────────────────
+  async function tts(text) {
+    try {
+      const r = await fetch(TTS_URL, { method:'POST', headers: authH(), body: JSON.stringify({ text: text.slice(0,400), idioma:'pt_BR' }) });
+      if (!r.ok) throw new Error('tts fail');
+      const blob  = await r.blob();
+      const audio = new Audio(URL.createObjectURL(blob));
+      audio.play();
+    } catch { webSpeech(text); }
+  }
+  function webSpeech(text) {
+    if (!('speechSynthesis' in window)) return;
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'pt-BR'; u.rate = 0.95;
+    window.speechSynthesis.speak(u);
+  }
+
+  // ── STT ───────────────────────────────────────────────────────────────────
+  function toggleMic() {
+    if (micRec && micRec.state === 'recording') { micRec.stop(); return; }
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+      mostrarToast('Reconhecimento de voz não suportado neste dispositivo'); return;
+    }
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    micRec = new Rec();
+    micRec.lang = 'pt-BR'; micRec.continuous = false; micRec.interimResults = false;
+    micRec.onresult = e => {
+      const txt = e.results[0][0].transcript;
+      document.getElementById('chat-input').value = txt;
+      autoResize(document.getElementById('chat-input'));
+    };
+    micRec.onend = () => document.getElementById('btn-mic').classList.remove('ouvindo');
+    micRec.onerror = () => document.getElementById('btn-mic').classList.remove('ouvindo');
+    micRec.start();
+    document.getElementById('btn-mic').classList.add('ouvindo');
+  }
+
+  // ── IDLE SLIDESHOW ────────────────────────────────────────────────────────
+  function construirIdleSlides(midia) {
+    const cont = document.getElementById('idle-slides');
+    const slides = midia.filter(m => m.slideshow && m.url);
+    if (!slides.length) return;
+    cont.innerHTML = slides.map((m, i) =>
+      `<div class="idle-slide${i===0?' ativo':''}" style="background-image:url('${m.url}')" title="${m.titulo||''}"></div>`
+    ).join('');
+  }
+
+  function iniciarIdleSlide() {
+    clearInterval(idleSlideInt);
+    const slides = document.querySelectorAll('.idle-slide');
+    if (!slides.length) return;
+    slideIdx = 0;
+    idleSlideInt = setInterval(() => {
+      slides[slideIdx].classList.remove('ativo');
+      slideIdx = (slideIdx + 1) % slides.length;
+      slides[slideIdx].classList.add('ativo');
+    }, 5000);
+  }
+
+  // ── Toast ─────────────────────────────────────────────────────────────────
+  function mostrarToast(msg, ms=2800) {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.classList.add('vis');
+    setTimeout(() => el.classList.remove('vis'), ms);
+  }
+
+  // ── Start ─────────────────────────────────────────────────────────────────
+  init();
+</script>
+</body>
+</html>

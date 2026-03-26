@@ -1,5 +1,34 @@
 # ImobCore v2 — Condominium Management SaaS
 
+## Totem Multi-Condo / Concierge Virtual — COMPLETED (2026-03-26)
+
+**Conceito**: SPA de totem por condomínio (URL única via token). Di atua como concierge na entrada do condomínio (visitantes, hóspedes, entregas, moradores, guia, emergências).
+
+**SQL** — Tabelas/colunas novas:
+- `di_configuracoes`: 10 colunas `concierge_*` + `concierge_token` (único, índice) + trigger `trg_token_totem`
+- `concierge_faq`, `concierge_sessoes`, `guia_hospede`, `totem_midia` (criadas com índices)
+
+**Backend** (`artifacts/api-server/`):
+- `src/services/totem.ts` — `resolveToken(token)`, `carregarCtx()`, `montarSystemPrompt()`, `seedGuiaDemo()`
+- `src/routes/tts.ts` — ElevenLabs TTS streaming + fallback `web_speech`
+- `src/routes/concierge.ts` — API completa: `/config`, `/chat`, `/guia`, `/midia`, `/comunicados`, `/emergencia` + CRUD master `/master/faq`, `/master/guia`, `/master/midia`, `/master/metricas`
+- `src/routes/totemPage.ts` — `GET /totem/:token` → valida token → injeta `window.__TOTEM__` no HTML
+- `src/routes/index.ts` — registra `/concierge` e `/di/tts`
+- `src/app.ts` — `/totem` ANTES do catch-all, `/concierge/assets` estático
+- `src/routes/modulos.ts` — PATCH `/admin/di/configuracoes/:id` inclui campos `concierge_*`
+
+**Totem SPA** (`public/concierge/index.html`):
+- 4 telas: Boas-vindas (wave rings + pulse), Módulos grid 2x4 (8 tipos), Chat (TTS/STT/sugestões), Idle slideshow
+- Aplica cor tema, avatar, saudação, FAQ do banco via `/api/concierge/config`
+- Auto-retorna ao idle após N segundos (configurável)
+
+**Frontend Admin Global** (`App.tsx`):
+- `adminSection` type: `"totem"` adicionado
+- Estado: `totemCondos`, `totemSelCondo`, `totemForm`, `totemFaq`, `totemMetricas`
+- Funções: `loadTotemAdmin`, `totemSelectCondo`, `saveTotemForm`, `saveTotemFaq`
+- Nav: `{ id:"totem", icon:"🖥", label:"Totem Multi-Condo" }`
+- Seção completa: URL display+copiar, toggle ativo, cor tema, TTS, idle, avatar, saudação, regras, horários, contatos, FAQ editor, métricas do dia
+
 ## Overview
 
 Full-stack SaaS for condominium management with an AI "Síndico Virtual" powered by Anthropic Claude. Built on Node.js ESM + Express + Supabase + React.

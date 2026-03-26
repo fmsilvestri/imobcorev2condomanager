@@ -248,7 +248,7 @@ router.patch("/admin/di/configuracoes/:condoId", async (req: Request, res: Respo
   if (!checkAdminToken(req, res)) return;
   try {
     const { condoId } = req.params;
-    const allowed = ["nome_di","tom_comunicacao","modulos_ativos","limite_financeiro","identidade_persona","system_prompt","regras_de_ouro","di_ativa","modo_ciclo","ciclo_minutos","plano_limite_tokens","idioma"];
+    const allowed = ["nome_di","tom_comunicacao","modulos_ativos","limite_financeiro","identidade_persona","system_prompt","regras_de_ouro","di_ativa","modo_ciclo","ciclo_minutos","plano_limite_tokens","idioma","concierge_ativo","concierge_saudacao","concierge_cor_tema","concierge_tts_provider","concierge_idle_seg","concierge_horarios","concierge_contatos","concierge_regras","concierge_avatar_url"];
     const patch: Record<string, unknown> = {};
     for (const k of allowed) {
       if (req.body[k] !== undefined) patch[k] = req.body[k];

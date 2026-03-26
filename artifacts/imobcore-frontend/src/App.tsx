@@ -616,7 +616,7 @@ export default function App() {
 
   // ── Admin Global state ─────────────────────────────────────────────────────
   const [adminToken, setAdminToken]     = useState<string | null>(() => sessionStorage.getItem("adminToken"));
-  const [adminSection, setAdminSection] = useState<"dashboard" | "condominios" | "usuarios" | "planos" | "sistema" | "bi" | "di">("dashboard");
+  const [adminSection, setAdminSection] = useState<"dashboard" | "condominios" | "usuarios" | "planos" | "sistema" | "bi" | "di" | "totem">("dashboard");
   type AdminCondo   = { id: string; nome: string; plano: string; status: string; created_at: string; total_unidades?: number; cidade?: string; estado?: string; sindico_nome?: string; sindico_email?: string };
   type AdminUser    = { id: string; nome: string; email: string; perfil: string; unidade?: string; status?: string; condominio_id?: string; condominio_nome?: string; telefone?: string };
   type AdminPlan    = { id: string; nome: string; color: string; preco: number; limites: Record<string, number>; features: string[] };
@@ -744,6 +744,91 @@ export default function App() {
       else showToast("Erro: " + d.error, "error");
     } catch { showToast("Erro ao salvar bloco", "error"); }
     setDiAdminBlockSaving(s => ({ ...s, [bloco]: false }));
+  };
+
+  // ── Totem Admin state ───────────────────────────────────────────────────────
+  const [totemCondos,      setTotemCondos]      = useState<DiAdminCondo[]>([]);
+  const [totemSelCondo,    setTotemSelCondo]     = useState<string | null>(null);
+  const [totemLoading,     setTotemLoading]      = useState(false);
+  const [totemSaving,      setTotemSaving]       = useState(false);
+  const [totemMetricas,    setTotemMetricas]     = useState<Record<string,number>>({});
+  const [totemFaq,         setTotemFaq]          = useState<Array<{pergunta:string;resposta:string;categoria:string}>>([]);
+  const [totemFaqEdit,     setTotemFaqEdit]      = useState(false);
+  const [totemForm, setTotemForm] = useState<{
+    concierge_ativo: boolean; concierge_saudacao: string; concierge_cor_tema: string;
+    concierge_tts_provider: string; concierge_idle_seg: number;
+    concierge_horarios: Record<string,string>; concierge_contatos: Record<string,string>;
+    concierge_regras: string; concierge_avatar_url: string; concierge_token: string;
+  }>({ concierge_ativo:false, concierge_saudacao:"", concierge_cor_tema:"#7c3aed",
+       concierge_tts_provider:"web_speech", concierge_idle_seg:90,
+       concierge_horarios:{}, concierge_contatos:{}, concierge_regras:"",
+       concierge_avatar_url:"", concierge_token:"" });
+
+  const loadTotemAdmin = async () => {
+    if (!adminToken) return;
+    setTotemLoading(true);
+    try {
+      const r = await adminFetch("/admin/di/configuracoes");
+      const d = await r.json();
+      if (d.ok) setTotemCondos(d.condos || []);
+    } catch { /* silencia */ }
+    setTotemLoading(false);
+  };
+
+  const totemSelectCondo = async (condo: DiAdminCondo) => {
+    setTotemSelCondo(condo.id);
+    const cfg = (condo as any).di_config ?? {};
+    setTotemForm({
+      concierge_ativo:       cfg.concierge_ativo       ?? false,
+      concierge_saudacao:    cfg.concierge_saudacao     ?? "",
+      concierge_cor_tema:    cfg.concierge_cor_tema      ?? "#7c3aed",
+      concierge_tts_provider:cfg.concierge_tts_provider ?? "web_speech",
+      concierge_idle_seg:    cfg.concierge_idle_seg     ?? 90,
+      concierge_horarios:    cfg.concierge_horarios     ?? {},
+      concierge_contatos:    cfg.concierge_contatos     ?? {},
+      concierge_regras:      cfg.concierge_regras       ?? "",
+      concierge_avatar_url:  cfg.concierge_avatar_url   ?? "",
+      concierge_token:       cfg.concierge_token        ?? "",
+    });
+    setTotemFaqEdit(false);
+    try {
+      const [mR, fR] = await Promise.all([
+        adminFetch(`/concierge/master/metricas/${condo.id}`),
+        adminFetch(`/concierge/master/faq/${condo.id}`),
+      ]);
+      const [mD, fD] = await Promise.all([mR.json(), fR.json()]);
+      setTotemMetricas(mD);
+      setTotemFaq(Array.isArray(fD) ? fD : []);
+    } catch { /* silencia */ }
+  };
+
+  const saveTotemForm = async () => {
+    if (!totemSelCondo) return;
+    setTotemSaving(true);
+    try {
+      const { concierge_token, ...payload } = totemForm;
+      const r = await fetch(`/api/admin/di/configuracoes/${totemSelCondo}`, {
+        method: "PATCH",
+        headers: { "Content-Type":"application/json", "X-Admin-Token": adminToken || "" },
+        body: JSON.stringify(payload),
+      });
+      const d = await r.json();
+      if (d.ok) showToast("Totem salvo com sucesso!", "ok");
+      else showToast("Erro: " + (d.error || "falha"), "error");
+    } catch { showToast("Erro ao salvar Totem", "error"); }
+    setTotemSaving(false);
+  };
+
+  const saveTotemFaq = async () => {
+    if (!totemSelCondo) return;
+    try {
+      await adminFetch(`/concierge/master/faq/${totemSelCondo}`, {
+        method: "PUT",
+        body: JSON.stringify({ faq: totemFaq }),
+      });
+      showToast("FAQ salvo!", "ok");
+      setTotemFaqEdit(false);
+    } catch { showToast("Erro ao salvar FAQ", "error"); }
   };
 
   const loadAdminDashboard = async (tok?: string) => {
@@ -17727,9 +17812,10 @@ Content-Type: application/json
                 { id:"usuarios",     icon:"👥", label:"Usuários" },
                 { id:"planos",       icon:"💎", label:"Planos SaaS" },
                 { id:"di",           icon:"🟣", label:"Di — Síndica IA" },
+                { id:"totem",        icon:"🖥", label:"Totem Multi-Condo" },
                 { id:"sistema",      icon:"⚙️", label:"Sistema" },
               ] as const).map(item => (
-                <button key={item.id} onClick={() => { setAdminSection(item.id); if(item.id === "sistema") loadAdminSistema(); if(item.id === "bi") loadBiData(); if(item.id === "di") loadDiAdmin(); }}
+                <button key={item.id} onClick={() => { setAdminSection(item.id); if(item.id === "sistema") loadAdminSistema(); if(item.id === "bi") loadBiData(); if(item.id === "di") loadDiAdmin(); if(item.id === "totem") loadTotemAdmin(); }}
                   style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", borderRadius:9, border:"none", cursor:"pointer", fontSize:13, fontWeight:600, textAlign:"left", transition:"all .15s", background: adminSection === item.id ? "rgba(99,102,241,.2)" : "transparent", color: adminSection === item.id ? "#A5B4FC" : "#64748B", borderLeft: adminSection === item.id ? "3px solid #6366F1" : "3px solid transparent" }}>
                   <span style={{ fontSize:15 }}>{item.icon}</span>{item.label}
                 </button>
@@ -17752,7 +17838,7 @@ Content-Type: application/json
             {/* Topbar */}
             <div style={{ height:56, borderBottom:"1px solid rgba(255,255,255,.06)", display:"flex", alignItems:"center", padding:"0 24px", gap:16, flexShrink:0, background:"rgba(13,17,23,.8)", backdropFilter:"blur(8px)" }}>
               <div style={{ fontSize:16, fontWeight:700, color:"#F1F5F9" }}>
-                {{ dashboard:"📊 Dashboard Global", bi:"📈 BI Executivo", condominios:"🏢 Condomínios", usuarios:"👥 Usuários", planos:"💎 Planos SaaS", di:"🟣 Di — Síndica IA", sistema:"⚙️ Sistema" }[adminSection]}
+                {{ dashboard:"📊 Dashboard Global", bi:"📈 BI Executivo", condominios:"🏢 Condomínios", usuarios:"👥 Usuários", planos:"💎 Planos SaaS", di:"🟣 Di — Síndica IA", totem:"🖥 Totem Multi-Condo", sistema:"⚙️ Sistema" }[adminSection]}
               </div>
               <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:10 }}>
                 {adminLoading && <div style={{ fontSize:12, color:"#6366F1" }}>⏳ Carregando...</div>}
@@ -18773,6 +18859,260 @@ Content-Type: application/json
                             );
                           })}
                         </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ── TOTEM MULTI-CONDO ─────────────────────────────── */}
+              {adminSection === "totem" && (() => {
+                const selCondo = totemCondos.find(c => c.id === totemSelCondo);
+                const apiBase  = window.location.origin;
+                const totemUrl = totemSelCondo && totemForm.concierge_token
+                  ? `${apiBase}/totem/${totemForm.concierge_token}`
+                  : null;
+
+                return (
+                  <div style={{ display:"grid", gridTemplateColumns:"280px 1fr", gap:20, alignItems:"start" }}>
+                    {/* Lista de condos */}
+                    <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, overflow:"hidden" }}>
+                      <div style={{ padding:"14px 16px", borderBottom:"1px solid rgba(255,255,255,.06)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#F1F5F9" }}>🏢 Condomínios</div>
+                        <div style={{ fontSize:11, color:"#475569" }}>{totemCondos.length} total</div>
+                      </div>
+                      {totemLoading ? (
+                        <div style={{ padding:24, textAlign:"center", color:"#6366F1", fontSize:12 }}>⏳ Carregando...</div>
+                      ) : (
+                        <div style={{ maxHeight:520, overflowY:"auto" }}>
+                          {totemCondos.map(c => {
+                            const ativo = (c as any).di_config?.concierge_ativo ?? false;
+                            const isSel = totemSelCondo === c.id;
+                            return (
+                              <div key={c.id} onClick={() => totemSelectCondo(c)}
+                                style={{ padding:"12px 16px", cursor:"pointer", borderLeft: isSel ? "3px solid #7C3AED" : "3px solid transparent", background: isSel ? "rgba(124,58,237,.12)" : "transparent", transition:"all .15s", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                                <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:2 }}>
+                                  <div style={{ fontSize:13, fontWeight:600, color: isSel ? "#C4B5FD" : "#CBD5E1" }}>{c.nome}</div>
+                                  <div style={{ width:8, height:8, borderRadius:"50%", background: ativo ? "#10B981" : "#475569", flexShrink:0 }} title={ativo ? "Totem ativo" : "Totem inativo"} />
+                                </div>
+                                <div style={{ fontSize:11, color:"#475569" }}>{ativo ? "🖥 Ativo" : "○ Inativo"}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Painel direito */}
+                    {selCondo ? (
+                      <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                        {/* Header */}
+                        <div style={{ background:"linear-gradient(135deg,rgba(124,58,237,.15),rgba(99,102,241,.08))", border:"1px solid rgba(124,58,237,.25)", borderRadius:14, padding:"16px 20px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:10 }}>
+                          <div>
+                            <div style={{ fontSize:16, fontWeight:700, color:"#C4B5FD" }}>🖥 {selCondo.nome}</div>
+                            <div style={{ fontSize:12, color:"#6D28D9", marginTop:3 }}>Concierge Virtual · Totem</div>
+                          </div>
+                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                            <label style={{ display:"flex", alignItems:"center", gap:6, fontSize:13, color:"#94A3B8", cursor:"pointer" }}>
+                              <input type="checkbox" checked={totemForm.concierge_ativo}
+                                onChange={e => setTotemForm(f => ({ ...f, concierge_ativo: e.target.checked }))} />
+                              Totem {totemForm.concierge_ativo ? "🟢 Ativo" : "⚪ Inativo"}
+                            </label>
+                            <button onClick={saveTotemForm} disabled={totemSaving}
+                              style={{ background:"linear-gradient(135deg,#7C3AED,#6366F1)", border:"none", borderRadius:9, padding:"9px 20px", color:"#fff", fontSize:13, fontWeight:700, cursor:totemSaving?"not-allowed":"pointer", opacity:totemSaving?.6:1 }}>
+                              {totemSaving ? "⏳..." : "💾 Salvar"}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* URL do Totem */}
+                        {totemUrl && (
+                          <div style={{ background:"#0D1117", border:"1px solid rgba(99,102,241,.25)", borderRadius:12, padding:"12px 16px" }}>
+                            <div style={{ fontSize:12, fontWeight:700, color:"#818CF8", marginBottom:6 }}>🔗 URL do Totem (única por condomínio)</div>
+                            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                              <div style={{ flex:1, background:"#161B22", borderRadius:8, padding:"8px 12px", fontSize:12, color:"#64748B", wordBreak:"break-all", fontFamily:"monospace" }}>{totemUrl}</div>
+                              <button onClick={() => { navigator.clipboard.writeText(totemUrl); showToast("URL copiada!", "ok"); }}
+                                style={{ background:"rgba(99,102,241,.2)", border:"1px solid rgba(99,102,241,.3)", borderRadius:8, padding:"8px 14px", color:"#818CF8", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                                📋 Copiar
+                              </button>
+                              <a href={totemUrl} target="_blank" rel="noreferrer"
+                                style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"8px 14px", color:"#34D399", fontSize:12, fontWeight:700, cursor:"pointer", textDecoration:"none", whiteSpace:"nowrap" }}>
+                                👁 Abrir
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Métricas hoje */}
+                        {Object.keys(totemMetricas).length > 0 && (
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10 }}>
+                            {([["total","Total","#7C3AED"],["visitantes","Visitantes","#3B82F6"],["hospedes","Hóspedes","#F59E0B"],["entregas","Entregas","#10B981"],["info","Informações","#6B7280"]] as const).map(([k, label, cor]) => (
+                              <div key={k} style={{ background:"#0D1117", border:`1px solid ${cor}44`, borderRadius:10, padding:"12px", textAlign:"center" }}>
+                                <div style={{ fontSize:22, fontWeight:900, color:cor }}>{(totemMetricas as any)[k] ?? 0}</div>
+                                <div style={{ fontSize:10, color:"#475569", marginTop:2 }}>{label}</div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Config Di */}
+                        <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:18 }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:"#C4B5FD", marginBottom:14 }}>🤖 Personalização da Di</div>
+                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                            <div>
+                              <label style={{ fontSize:11, color:"#475569", display:"block", marginBottom:4 }}>Cor do Tema</label>
+                              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                                <input type="color" value={totemForm.concierge_cor_tema}
+                                  onChange={e => setTotemForm(f => ({ ...f, concierge_cor_tema: e.target.value }))}
+                                  style={{ width:36, height:36, borderRadius:8, border:"none", cursor:"pointer", padding:2 }} />
+                                <div style={{ fontSize:12, color:"#64748B", fontFamily:"monospace" }}>{totemForm.concierge_cor_tema}</div>
+                              </div>
+                            </div>
+                            <div>
+                              <label style={{ fontSize:11, color:"#475569", display:"block", marginBottom:4 }}>TTS / Voz</label>
+                              <select value={totemForm.concierge_tts_provider}
+                                onChange={e => setTotemForm(f => ({ ...f, concierge_tts_provider: e.target.value }))}
+                                style={{ width:"100%", background:"#161B22", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"8px 10px", color:"#CBD5E1", fontSize:12 }}>
+                                <option value="web_speech">Navegador (gratuito)</option>
+                                <option value="elevenlabs">ElevenLabs (premium)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label style={{ fontSize:11, color:"#475569", display:"block", marginBottom:4 }}>Idle / Sleep (segundos)</label>
+                              <input type="number" min={30} max={600} value={totemForm.concierge_idle_seg}
+                                onChange={e => setTotemForm(f => ({ ...f, concierge_idle_seg: +e.target.value }))}
+                                style={{ width:"100%", background:"#161B22", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"8px 10px", color:"#CBD5E1", fontSize:12 }} />
+                            </div>
+                            <div>
+                              <label style={{ fontSize:11, color:"#475569", display:"block", marginBottom:4 }}>URL do Avatar (img)</label>
+                              <input type="url" value={totemForm.concierge_avatar_url}
+                                onChange={e => setTotemForm(f => ({ ...f, concierge_avatar_url: e.target.value }))}
+                                placeholder="https://..."
+                                style={{ width:"100%", background:"#161B22", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"8px 10px", color:"#CBD5E1", fontSize:12 }} />
+                            </div>
+                            <div style={{ gridColumn:"1/-1" }}>
+                              <label style={{ fontSize:11, color:"#475569", display:"block", marginBottom:4 }}>Saudação inicial da Di</label>
+                              <input type="text" value={totemForm.concierge_saudacao}
+                                onChange={e => setTotemForm(f => ({ ...f, concierge_saudacao: e.target.value }))}
+                                placeholder="Olá! Sou {nome_di}, síndica virtual de {nome_condo}."
+                                style={{ width:"100%", background:"#161B22", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"8px 10px", color:"#CBD5E1", fontSize:12 }} />
+                              <div style={{ fontSize:10, color:"#334155", marginTop:3 }}>Vars disponíveis: &#123;nome_di&#125; e &#123;nome_condo&#125;</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Regras */}
+                        <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:18 }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:"#C4B5FD", marginBottom:10 }}>📋 Regras Gerais do Condomínio</div>
+                          <textarea value={totemForm.concierge_regras}
+                            onChange={e => setTotemForm(f => ({ ...f, concierge_regras: e.target.value }))}
+                            rows={5} placeholder="Liste as regras principais, uma por linha..."
+                            style={{ width:"100%", background:"#161B22", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"10px 12px", color:"#CBD5E1", fontSize:12, resize:"vertical", fontFamily:"inherit" }} />
+                        </div>
+
+                        {/* Horários */}
+                        <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:18 }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:"#C4B5FD", marginBottom:10 }}>🕐 Horários das Áreas</div>
+                          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                            {Object.entries(totemForm.concierge_horarios).map(([area, hora], i) => (
+                              <div key={i} style={{ display:"flex", gap:8, alignItems:"center" }}>
+                                <input value={area} onChange={e => {
+                                  const h = { ...totemForm.concierge_horarios };
+                                  const old = area;
+                                  const val = h[old]; delete h[old]; h[e.target.value] = val;
+                                  setTotemForm(f => ({ ...f, concierge_horarios: h }));
+                                }} placeholder="Área" style={{ flex:1, background:"#161B22", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"7px 10px", color:"#CBD5E1", fontSize:12 }} />
+                                <input value={hora} onChange={e => setTotemForm(f => ({ ...f, concierge_horarios: { ...f.concierge_horarios, [area]: e.target.value } }))}
+                                  placeholder="07h-22h" style={{ flex:1, background:"#161B22", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"7px 10px", color:"#CBD5E1", fontSize:12 }} />
+                                <button onClick={() => { const h = { ...totemForm.concierge_horarios }; delete h[area]; setTotemForm(f => ({ ...f, concierge_horarios: h })); }}
+                                  style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:6, padding:"6px 10px", color:"#EF4444", fontSize:12, cursor:"pointer" }}>✕</button>
+                              </div>
+                            ))}
+                            <button onClick={() => setTotemForm(f => ({ ...f, concierge_horarios: { ...f.concierge_horarios, "Nova Área": "07h-22h" } }))}
+                              style={{ background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)", borderRadius:8, padding:"8px", color:"#818CF8", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                              + Adicionar Área
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Contatos */}
+                        <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:18 }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:"#C4B5FD", marginBottom:10 }}>📞 Contatos de Emergência</div>
+                          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                            {Object.entries(totemForm.concierge_contatos).map(([nome, num], i) => (
+                              <div key={i} style={{ display:"flex", gap:8, alignItems:"center" }}>
+                                <input value={nome} onChange={e => {
+                                  const c = { ...totemForm.concierge_contatos };
+                                  const val = c[nome]; delete c[nome]; c[e.target.value] = val;
+                                  setTotemForm(f => ({ ...f, concierge_contatos: c }));
+                                }} placeholder="Nome (ex: portaria)" style={{ flex:1, background:"#161B22", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"7px 10px", color:"#CBD5E1", fontSize:12 }} />
+                                <input value={num} onChange={e => setTotemForm(f => ({ ...f, concierge_contatos: { ...f.concierge_contatos, [nome]: e.target.value } }))}
+                                  placeholder="Número" style={{ flex:1, background:"#161B22", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"7px 10px", color:"#CBD5E1", fontSize:12 }} />
+                                <button onClick={() => { const c = { ...totemForm.concierge_contatos }; delete c[nome]; setTotemForm(f => ({ ...f, concierge_contatos: c })); }}
+                                  style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:6, padding:"6px 10px", color:"#EF4444", fontSize:12, cursor:"pointer" }}>✕</button>
+                              </div>
+                            ))}
+                            <button onClick={() => setTotemForm(f => ({ ...f, concierge_contatos: { ...f.concierge_contatos, "novo contato": "" } }))}
+                              style={{ background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)", borderRadius:8, padding:"8px", color:"#818CF8", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                              + Adicionar Contato
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* FAQ */}
+                        <div style={{ background:"#0D1117", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:18 }}>
+                          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12 }}>
+                            <div style={{ fontSize:13, fontWeight:700, color:"#C4B5FD" }}>❓ FAQ do Totem ({totemFaq.length})</div>
+                            <div style={{ display:"flex", gap:8 }}>
+                              {totemFaqEdit && (
+                                <button onClick={saveTotemFaq}
+                                  style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"6px 14px", color:"#34D399", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                  💾 Salvar FAQ
+                                </button>
+                              )}
+                              <button onClick={() => setTotemFaqEdit(!totemFaqEdit)}
+                                style={{ background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)", borderRadius:8, padding:"6px 14px", color:"#818CF8", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                {totemFaqEdit ? "✕ Cancelar" : "✏️ Editar"}
+                              </button>
+                            </div>
+                          </div>
+                          {totemFaqEdit ? (
+                            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                              {totemFaq.map((f, i) => (
+                                <div key={i} style={{ background:"#161B22", borderRadius:10, padding:12, display:"flex", flexDirection:"column", gap:8 }}>
+                                  <div style={{ display:"flex", gap:8 }}>
+                                    <input value={f.pergunta} onChange={e => setTotemFaq(prev => prev.map((it,j) => j===i ? {...it,pergunta:e.target.value} : it))}
+                                      placeholder="Pergunta" style={{ flex:1, background:"#0D1117", border:"1px solid rgba(255,255,255,.08)", borderRadius:7, padding:"7px 10px", color:"#CBD5E1", fontSize:12 }} />
+                                    <button onClick={() => setTotemFaq(prev => prev.filter((_,j) => j!==i))}
+                                      style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:7, padding:"6px 10px", color:"#EF4444", fontSize:12, cursor:"pointer" }}>✕</button>
+                                  </div>
+                                  <textarea value={f.resposta} onChange={e => setTotemFaq(prev => prev.map((it,j) => j===i ? {...it,resposta:e.target.value} : it))}
+                                    rows={2} placeholder="Resposta"
+                                    style={{ width:"100%", background:"#0D1117", border:"1px solid rgba(255,255,255,.08)", borderRadius:7, padding:"7px 10px", color:"#CBD5E1", fontSize:12, resize:"vertical", fontFamily:"inherit" }} />
+                                </div>
+                              ))}
+                              <button onClick={() => setTotemFaq(prev => [...prev, { pergunta:"", resposta:"", categoria:"geral" }])}
+                                style={{ background:"rgba(99,102,241,.1)", border:"1px solid rgba(99,102,241,.2)", borderRadius:8, padding:"8px", color:"#818CF8", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                + Adicionar Pergunta
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                              {totemFaq.length === 0 ? (
+                                <div style={{ fontSize:12, color:"#334155", textAlign:"center", padding:20 }}>Nenhuma FAQ cadastrada. Clique em Editar para adicionar.</div>
+                              ) : totemFaq.map((f, i) => (
+                                <div key={i} style={{ background:"#161B22", borderRadius:10, padding:"10px 14px" }}>
+                                  <div style={{ fontSize:12, fontWeight:700, color:"#CBD5E1", marginBottom:4 }}>P: {f.pergunta}</div>
+                                  <div style={{ fontSize:12, color:"#64748B" }}>R: {f.resposta}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"center", height:300, color:"#334155", fontSize:14 }}>
+                        ← Selecione um condomínio para configurar o Totem
                       </div>
                     )}
                   </div>

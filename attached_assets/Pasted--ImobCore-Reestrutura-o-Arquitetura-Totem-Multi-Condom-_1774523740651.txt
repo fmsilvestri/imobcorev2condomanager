@@ -1,0 +1,1393 @@
+# ImobCore · Reestruturação Arquitetura Totem Multi-Condomínio
+# Prompt definitivo para Replit Agent
+# Cole no chat do Replit e execute PASSO A PASSO
+
+---
+
+## VISÃO GERAL DA NOVA ARQUITETURA
+
+```
+Master Panel
+  └─ Condo A → Tab "🖥 Totem" → token: a3f9c1... → URL: /totem/a3f9c1...
+  └─ Condo B → Tab "🖥 Totem" → token: b7d2e4... → URL: /totem/b7d2e4...
+  └─ Condo C → Tab "🖥 Totem" → token: c5f8a2... → URL: /totem/c5f8a2...
+
+Tablet portaria Condo A abre: https://app.repl.co/totem/a3f9c1...
+  └─ Backend: resolveToken("a3f9c1...") → condoId_A
+  └─ HTML injetado com window.TOTEM_TOKEN e window.TOTEM_CONDO_ID
+  └─ Todas as chamadas API usam o token → dados EXCLUSIVOS do Condo A
+
+Di no Condo A responde com:
+  • nome e saudação personalizados do Condo A
+  • snapshot real: OSs, alertas, scores, reservatórios do Condo A
+  • FAQ, horários, regras configurados pelo Master para o Condo A
+  • NUNCA acessa dados do Condo B ou C
+
+ISOLAMENTO GARANTIDO:
+  • Token → condoId → todas queries filtram por .eq("condominio_id", condoId)
+  • Token inválido = 403 imediato
+  • Token desativado = 403 imediato
+  • Dados de condos diferentes NUNCA se misturam
+```
+
+---
+
+## PASSO 1 — SQL (rodar no Supabase SQL Editor)
+
+```sql
+-- ═══════════════════════════════════════════════════════════════════
+-- 1. Adicionar colunas de totem em di_configuracoes
+-- ═══════════════════════════════════════════════════════════════════
+ALTER TABLE di_configuracoes
+  ADD COLUMN IF NOT EXISTS concierge_ativo         BOOLEAN DEFAULT false,
+  ADD COLUMN IF NOT EXISTS concierge_token         TEXT    UNIQUE
+                           DEFAULT encode(gen_random_bytes(24),'hex'),
+  ADD COLUMN IF NOT EXISTS concierge_saudacao      TEXT
+                           DEFAULT 'Olá! Sou {nome_di}, síndica virtual de {nome_condo}.',
+  ADD COLUMN IF NOT EXISTS concierge_cor_tema      TEXT    DEFAULT '#7c3aed',
+  ADD COLUMN IF NOT EXISTS concierge_tts_provider  TEXT    DEFAULT 'web_speech',
+  ADD COLUMN IF NOT EXISTS concierge_idle_seg      INTEGER DEFAULT 90,
+  ADD COLUMN IF NOT EXISTS concierge_horarios      JSONB
+                           DEFAULT '{"Portaria":"24h","Piscina":"07h-22h"}',
+  ADD COLUMN IF NOT EXISTS concierge_contatos      JSONB
+                           DEFAULT '{"portaria":"","emergencia":"192"}',
+  ADD COLUMN IF NOT EXISTS concierge_regras        TEXT    DEFAULT '',
+  ADD COLUMN IF NOT EXISTS concierge_avatar_url    TEXT    DEFAULT '';
+
+-- Índice para lookup rápido por token (crítico para performance)
+CREATE INDEX IF NOT EXISTS idx_cfg_token
+  ON di_configuracoes(concierge_token)
+  WHERE concierge_token IS NOT NULL;
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 2. Trigger: garante que todo condo novo receba token automaticamente
+-- ═══════════════════════════════════════════════════════════════════
+CREATE OR REPLACE FUNCTION fn_gerar_token_totem()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO di_configuracoes (condominio_id, concierge_token)
+  VALUES (NEW.id, encode(gen_random_bytes(24), 'hex'))
+  ON CONFLICT (condominio_id) DO UPDATE
+    SET concierge_token = COALESCE(
+      EXCLUDED.concierge_token,
+      encode(gen_random_bytes(24), 'hex')
+    );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_token_totem ON condominios;
+CREATE TRIGGER trg_token_totem
+  AFTER INSERT ON condominios
+  FOR EACH ROW EXECUTE FUNCTION fn_gerar_token_totem();
+
+-- Gerar tokens para condos existentes que não têm
+INSERT INTO di_configuracoes (condominio_id, concierge_token)
+SELECT id, encode(gen_random_bytes(24), 'hex')
+FROM   condominios
+ON CONFLICT (condominio_id) DO UPDATE
+  SET concierge_token = COALESCE(
+    di_configuracoes.concierge_token,
+    encode(gen_random_bytes(24), 'hex')
+  );
+
+-- ═══════════════════════════════════════════════════════════════════
+-- 3. Tabelas de conteúdo do totem (todas com condominio_id)
+-- ═══════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS concierge_faq (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID NOT NULL REFERENCES condominios(id) ON DELETE CASCADE,
+  pergunta      TEXT    NOT NULL,
+  resposta      TEXT    NOT NULL,
+  categoria     TEXT    DEFAULT 'geral',
+  ativo         BOOLEAN DEFAULT true,
+  ordem         INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS concierge_sessoes (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id   UUID NOT NULL REFERENCES condominios(id) ON DELETE CASCADE,
+  tipo            TEXT        NOT NULL,
+  nome_visitante  TEXT,
+  destino_unidade TEXT,
+  iniciada_em     TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS guia_hospede (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID NOT NULL REFERENCES condominios(id) ON DELETE CASCADE,
+  categoria     TEXT    NOT NULL,
+  titulo        TEXT    NOT NULL,
+  descricao     TEXT,
+  icone         TEXT    DEFAULT '◎',
+  conteudo      TEXT,
+  horarios      JSONB   DEFAULT '{}',
+  regras        JSONB   DEFAULT '[]',
+  dicas         JSONB   DEFAULT '[]',
+  telefones     JSONB   DEFAULT '[]',
+  localizacao   JSONB   DEFAULT '{}',
+  pontos        JSONB   DEFAULT '[]',
+  comercios     JSONB   DEFAULT '[]',
+  desconto      TEXT,
+  tipo_parceria TEXT,
+  destaque      BOOLEAN DEFAULT false,
+  ativo         BOOLEAN DEFAULT true,
+  ordem         INTEGER DEFAULT 0,
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS totem_midia (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID NOT NULL REFERENCES condominios(id) ON DELETE CASCADE,
+  titulo        TEXT    NOT NULL,
+  descricao     TEXT,
+  categoria     TEXT    DEFAULT 'geral',
+  tipo          TEXT    DEFAULT 'foto',
+  url           TEXT,
+  thumbnail_url TEXT,
+  slideshow     BOOLEAN DEFAULT true,
+  carousel      BOOLEAN DEFAULT true,
+  ativo         BOOLEAN DEFAULT true,
+  ordem         INTEGER DEFAULT 0,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_faq_condo   ON concierge_faq(condominio_id,ativo,ordem);
+CREATE INDEX IF NOT EXISTS idx_sess_condo  ON concierge_sessoes(condominio_id,iniciada_em);
+CREATE INDEX IF NOT EXISTS idx_guia_condo  ON guia_hospede(condominio_id,ativo,categoria,ordem);
+CREATE INDEX IF NOT EXISTS idx_midia_condo ON totem_midia(condominio_id,ativo,ordem);
+```
+
+---
+
+## PASSO 2 — Criar `src/services/totem.ts`
+
+```typescript
+/**
+ * services/totem.ts
+ * Serviço central de isolamento do Totem.
+ * Toda operação começa com resolveToken() → condoId.
+ * Nenhuma query retorna dados sem filtrar por condoId.
+ */
+import { getDB }         from '../db.js';
+import { gerarSnapshot } from './snapshot.js';
+
+// ─── Tipos ───────────────────────────────────────────────────────────────────
+export interface TotemCtx {
+  condoId:     string;
+  nomeCondo:   string;
+  nomeDi:      string;
+  corTema:     string;
+  ttsProv:     string;
+  idleSeg:     number;
+  saudacao:    string;
+  horarios:    Record<string,string>;
+  contatos:    Record<string,string>;
+  regras:      string;
+  avatarUrl:   string;
+  faq:         Array<{pergunta:string;resposta:string;categoria:string}>;
+  midia:       Array<{id:string;titulo:string;descricao:string;categoria:string;
+                       tipo:string;url:string;slideshow:boolean;carousel:boolean;ordem:number}>;
+}
+
+// ─── resolveToken ─────────────────────────────────────────────────────────────
+// Valida o token e retorna o condoId. Lança erro em qualquer falha.
+export async function resolveToken(token: string): Promise<string> {
+  if (!token?.trim()) throw new Error('Token ausente');
+
+  const { data, error } = await getDB()
+    .from('di_configuracoes')
+    .select('condominio_id, concierge_ativo')
+    .eq('concierge_token', token.trim())
+    .single();
+
+  if (error || !data)        throw new Error('Token inválido');
+  if (!data.concierge_ativo) throw new Error('Totem desativado para este condomínio');
+
+  return data.condominio_id as string;
+}
+
+// ─── carregarCtx ─────────────────────────────────────────────────────────────
+// Carrega TODO o contexto personalizado daquele condo em paralelo.
+export async function carregarCtx(condoId: string): Promise<TotemCtx> {
+  const [cfgR, condoR, faqR, midiaR] = await Promise.allSettled([
+    getDB().from('di_configuracoes')
+      .select('nome_di,concierge_saudacao,concierge_cor_tema,concierge_tts_provider,'+
+              'concierge_idle_seg,concierge_horarios,concierge_contatos,'+
+              'concierge_regras,concierge_avatar_url')
+      .eq('condominio_id', condoId).single(),
+
+    getDB().from('condominios')
+      .select('nome')
+      .eq('id', condoId).single(),
+
+    getDB().from('concierge_faq')
+      .select('pergunta,resposta,categoria')
+      .eq('condominio_id', condoId).eq('ativo', true)
+      .order('ordem').limit(25),
+
+    getDB().from('totem_midia')
+      .select('id,titulo,descricao,categoria,tipo,url,slideshow,carousel,ordem')
+      .eq('condominio_id', condoId).eq('ativo', true)
+      .order('ordem'),
+  ]);
+
+  const cfg   = cfgR.status   === 'fulfilled' ? cfgR.value.data   : null;
+  const condo = condoR.status === 'fulfilled' ? condoR.value.data : null;
+  const faq   = faqR.status   === 'fulfilled' ? faqR.value.data ?? [] : [];
+  const midia = midiaR.status === 'fulfilled' ? midiaR.value.data ?? [] : [];
+
+  const nomeDi    = cfg?.nome_di    ?? 'Di';
+  const nomeCondo = condo?.nome     ?? 'Condomínio';
+
+  const saudacaoBase = cfg?.concierge_saudacao
+    ?? `Olá! Sou ${nomeDi}, síndica virtual de ${nomeCondo}.`;
+
+  return {
+    condoId,
+    nomeCondo,
+    nomeDi,
+    corTema:   cfg?.concierge_cor_tema      ?? '#7c3aed',
+    ttsProv:   cfg?.concierge_tts_provider  ?? 'web_speech',
+    idleSeg:   cfg?.concierge_idle_seg      ?? 90,
+    saudacao:  saudacaoBase
+               .replace('{nome_di}',   nomeDi)
+               .replace('{nome_condo}', nomeCondo),
+    horarios:  (cfg?.concierge_horarios ?? {}) as Record<string,string>,
+    contatos:  (cfg?.concierge_contatos ?? {portaria:'',emergencia:'192'}) as Record<string,string>,
+    regras:    cfg?.concierge_regras   ?? '',
+    avatarUrl: cfg?.concierge_avatar_url ?? '',
+    faq:   faq   as TotemCtx['faq'],
+    midia: midia as TotemCtx['midia'],
+  };
+}
+
+// ─── carregarGuia ─────────────────────────────────────────────────────────────
+export async function carregarGuia(condoId: string): Promise<Record<string,any[]>> {
+  const { data } = await getDB().from('guia_hospede')
+    .select('id,categoria,titulo,descricao,icone,conteudo,horarios,regras,dicas,'+
+            'telefones,localizacao,pontos,comercios,desconto,tipo_parceria,destaque')
+    .eq('condominio_id', condoId).eq('ativo', true).order('ordem');
+
+  return (data ?? []).reduce((acc: Record<string,any[]>, it) => {
+    const c = it.categoria ?? 'info';
+    if (!acc[c]) acc[c] = [];
+    acc[c].push(it);
+    return acc;
+  }, {});
+}
+
+// ─── montarSystemPrompt ───────────────────────────────────────────────────────
+// Constrói o system prompt RICO com dados reais do snapshot + config do condo.
+export async function montarSystemPrompt(ctx: TotemCtx, tipo: string): Promise<string> {
+  // Snapshot real — filtrado pelo condoId do contexto
+  let snap: any = {};
+  try { snap = await gerarSnapshot(ctx.condoId); } catch { /* usa {} */ }
+
+  const os     = snap.os_abertas    ?? [];
+  const misp   = snap.alertas_misp  ?? [];
+  const encom  = snap.encomendas    ?? [];
+  const scores = snap.scores        ?? [];
+  const reserv = snap.reservatorios ?? [];
+  const cInfo  = (snap.condominio   ?? {}) as Record<string,any>;
+
+  const osUrg      = os.filter((o:any)  => o.prioridade === 'urgente').length;
+  const mispUrg    = misp.filter((m:any) => m.severidade === 'urgente').length;
+  const scoreGeral = scores.length
+    ? Math.round(scores.reduce((s:number,p:any) => s+(p.score??0), 0) / scores.length)
+    : null;
+  const nivelAgua  = reserv.length
+    ? Math.round(reserv.reduce((s:number,r:any) => s+(r.ultimo_nivel_pct??0), 0) / reserv.length)
+    : null;
+
+  // Contexto por tipo de atendimento
+  const CTX: Record<string,string> = {
+    visitante:   'VISITANTE na portaria. Colete nome completo e apartamento destino. ' +
+                 'Ao obter ambos, confirme que o morador será notificado.',
+    hospede:     'HÓSPEDE. Responda sobre horários, áreas, regras, passeios e parceiros. ' +
+                 'Nunca revele dados pessoais de moradores.',
+    entrega:     'ENTREGADOR. Colete empresa/remetente e apartamento. Confirme o registro.',
+    morador:     'MORADOR. Ajude com reservas, comunicados e serviços. ' +
+                 'Não exponha dados de outros moradores.',
+    guia:        'CONSULTA AO GUIA. Destaque parceiros com descontos e facilidades próximas.',
+    fotos:       'VISITA ÀS ÁREAS. Descreva as instalações com entusiasmo.',
+    comunicados: 'COMUNICADOS. Apresente os avisos recentes de forma concisa.',
+    regras:      'REGRAS & HORÁRIOS. Apresente as normas e horários com clareza.',
+    emergencia:  'EMERGÊNCIA. Forneça os contatos de socorro IMEDIATAMENTE. Tom calmo.',
+    info:        'INFORMAÇÕES GERAIS. Use horários e FAQ para orientar.',
+  };
+
+  const horStr = Object.keys(ctx.horarios).length
+    ? '\nHORÁRIOS:\n' + Object.entries(ctx.horarios).map(([k,v]) => `• ${k}: ${v}`).join('\n')
+    : '';
+
+  const faqStr = ctx.faq.length
+    ? '\nFAQ DESTE CONDOMÍNIO:\n' +
+      ctx.faq.map(f => `P: ${f.pergunta}\nR: ${f.resposta}`).join('\n\n')
+    : '';
+
+  return `Você é ${ctx.nomeDi}, síndica virtual e concierge do ${ctx.nomeCondo}.
+Está num TOTEM na entrada. PT-BR, cordial, máx 3 frases por resposta.
+
+TIPO DE ATENDIMENTO:
+${CTX[tipo] ?? CTX.info}
+
+━━ DADOS REAIS DO ${ctx.nomeCondo.toUpperCase()} (agora) ━━
+Unidades: ${cInfo.total_unidades ?? '—'} | Moradores: ${cInfo.total_moradores ?? '—'}
+OSs abertas: ${os.length} (${osUrg} urgentes)
+Alertas MISP: ${misp.length} (${mispUrg} urgentes)
+Encomendas aguardando: ${encom.length}
+${scoreGeral !== null ? `Score geral: ${scoreGeral}/100` : ''}
+${nivelAgua  !== null ? `Nível médio reservatórios: ${nivelAgua}%` : ''}
+${scores.length ? 'Pilares: ' + scores.map((p:any) => `${p.pilar}:${p.score}`).join(' | ') : ''}
+
+━━ CONFIG MASTER (personalizada para este condo) ━━
+${horStr}
+${ctx.regras ? '\nREGRAS:\n' + ctx.regras : ''}
+${faqStr}
+
+━━ REGRAS ABSOLUTAS ━━
+• NUNCA revele CPF, e-mail ou dados pessoais de moradores
+• NUNCA informe saldo, inadimplência ou finanças internas
+• Emergência: portaria ${ctx.contatos.portaria || 'ver portaria'} | ${ctx.contatos.emergencia || '192'}
+• Se não souber: oriente a falar com o porteiro`;
+}
+
+// ─── seed demo ────────────────────────────────────────────────────────────────
+export async function seedGuiaDemo(condoId: string): Promise<void> {
+  const { count } = await getDB().from('guia_hospede')
+    .select('id', { count: 'exact', head: true })
+    .eq('condominio_id', condoId);
+  if ((count ?? 0) > 0) return;
+
+  await getDB().from('guia_hospede').insert([
+    { condominio_id:condoId, categoria:'areas',     titulo:'Piscina',        icone:'🏊',
+      descricao:'Aquecida · raia 25m',
+      horarios:{'Seg-Sex':'07h-22h','Sáb-Dom':'07h-23h'},
+      regras:['Touca obrigatória','Chuveiro antes','Crianças com adulto'], ordem:0 },
+    { condominio_id:condoId, categoria:'areas',     titulo:'Academia',       icone:'💪',
+      descricao:'Musculação e cardio',
+      horarios:{'Seg-Sex':'06h-23h','Sáb':'07h-22h','Dom':'08h-20h'},
+      regras:['Toalha obrigatória','Tênis fechado'], ordem:1 },
+    { condominio_id:condoId, categoria:'horarios',  titulo:'Horários Gerais',icone:'🕐',
+      descricao:'Todas as áreas',
+      horarios:{Portaria:'24h',Piscina:'07h-22h',Academia:'06h-23h',Salão:'08h-23h'}, ordem:0 },
+    { condominio_id:condoId, categoria:'regras',    titulo:'Convivência',    icone:'🤝',
+      descricao:'Normas gerais',
+      regras:['Silêncio após 22h','Respeito nas áreas','Proibido fumar em cobertas'], ordem:0 },
+    { condominio_id:condoId, categoria:'emergencia',titulo:'Emergências',    icone:'🚨',
+      descricao:'Contatos 24h',
+      telefones:[{nome:'SAMU',numero:'192',icone:'🚑'},{nome:'Bombeiros',numero:'193',icone:'🚒'},
+                 {nome:'Polícia',numero:'190',icone:'👮'},{nome:'Portaria',numero:'',icone:'🏢'}],
+      ordem:0 },
+    { condominio_id:condoId, categoria:'info',      titulo:'Wi-Fi & Check-in',icone:'📶',
+      descricao:'Infos essenciais',
+      conteudo:'Wi-Fi: rede do condomínio\nSenha: consultar portaria\n\nCheck-in: 14h | Check-out: 12h',
+      ordem:0 },
+  ]);
+}
+```
+
+---
+
+## PASSO 3 — Criar `src/routes/concierge.ts`
+
+```typescript
+/**
+ * routes/concierge.ts
+ * API do Totem — auth por token, isolamento total por condoId.
+ * Nenhum endpoint vaza dados entre condomínios.
+ */
+import { Router, Request, Response } from 'express';
+import { getDB }          from '../db.js';
+import { requireMaster }  from '../middleware/auth.js';
+import {
+  resolveToken, carregarCtx, carregarGuia,
+  montarSystemPrompt, seedGuiaDemo,
+} from '../services/totem.js';
+import Anthropic from '@anthropic-ai/sdk';
+import { CONFIG } from '../config.js';
+
+const r = Router();
+let _cl: Anthropic | null = null;
+const cl = () => _cl ??= new Anthropic({ apiKey: CONFIG.anthropic.apiKey });
+
+// ── auth middleware ────────────────────────────────────────────────────────────
+async function auth(req: Request, res: Response, next: Function) {
+  const token = (req.headers['x-concierge-token'] as string)
+             || (req.query.token as string)
+             || (CONFIG.nodeEnv === 'development' ? process.env.CONCIERGE_TOKEN : undefined);
+
+  if (!token) return res.status(401).json({
+    error: 'Token obrigatório. Configure o tablet com a URL do totem do seu condomínio.',
+  });
+
+  try {
+    (req as any).condoId = await resolveToken(token);
+    (req as any).token   = token;
+    next();
+  } catch (e) {
+    res.status(403).json({ error: (e as Error).message });
+  }
+}
+r.use(auth);
+
+// ═══════════════════════════════════════════════════════════════════
+// GET /api/concierge/config  — inicialização do totem
+// ═══════════════════════════════════════════════════════════════════
+r.get('/config', async (req: Request, res: Response) => {
+  try {
+    const ctx = await carregarCtx((req as any).condoId);
+    res.json({
+      condominio_id: ctx.condoId,
+      nome_condo:    ctx.nomeCondo,
+      nome_di:       ctx.nomeDi,
+      cor_tema:      ctx.corTema,
+      tts_provider:  ctx.ttsProv,
+      idle_seg:      ctx.idleSeg,
+      saudacao:      ctx.saudacao,
+      horarios:      ctx.horarios,
+      contatos:      ctx.contatos,
+      avatar_url:    ctx.avatarUrl,
+      faq:           ctx.faq,
+      midia:         ctx.midia,
+    });
+  } catch (e) { res.status(500).json({ error: (e as Error).message }); }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// POST /api/concierge/chat  — Di com Claude + snapshot real
+// ═══════════════════════════════════════════════════════════════════
+r.post('/chat', async (req: Request, res: Response) => {
+  const { mensagem, historico = [], tipo = 'info' } = req.body ?? {};
+  if (!mensagem?.trim()) return res.status(400).json({ error: 'mensagem obrigatória' });
+
+  const condoId = (req as any).condoId;
+
+  try {
+    const ctx          = await carregarCtx(condoId);
+    const systemPrompt = await montarSystemPrompt(ctx, tipo);
+
+    const messages: Anthropic.MessageParam[] = [
+      ...historico.slice(-8).map((m: any) => ({
+        role: m.role as 'user'|'assistant', content: m.content,
+      })),
+      { role: 'user' as const, content: mensagem },
+    ];
+
+    const msg = await cl().messages.create({
+      model: CONFIG.anthropic.model, max_tokens: 300,
+      system: systemPrompt, messages,
+    });
+
+    const resposta = (msg.content.find(b => b.type === 'text') as Anthropic.TextBlock)?.text ?? '';
+
+    // Ações automáticas — sempre isoladas por condoId
+    let acao = false;
+    if (tipo === 'visitante') acao = await _regVisitante(mensagem, historico, condoId);
+    if (tipo === 'entrega')   acao = await _regEntrega(mensagem, historico, condoId);
+    if (tipo === 'emergencia') _regEmergencia(condoId).catch(() => {});
+
+    // Log (não bloqueia resposta)
+    getDB().from('concierge_sessoes')
+      .insert({ condominio_id: condoId, tipo })
+      .then(() => {}).catch(() => {});
+
+    res.json({ resposta, acao_executada: acao });
+
+  } catch {
+    res.json({ resposta: 'Não foi possível conectar. Fale com a portaria.', offline: true });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Endpoints de conteúdo — todos filtram por condoId do token
+// ═══════════════════════════════════════════════════════════════════
+r.get('/guia', async (req: Request, res: Response) => {
+  const condoId = (req as any).condoId;
+  try {
+    let guia = await carregarGuia(condoId);
+    if (!Object.keys(guia).length) {
+      await seedGuiaDemo(condoId);
+      guia = await carregarGuia(condoId);
+    }
+    res.json(guia);
+  } catch { res.json({}); }
+});
+
+r.get('/midia', async (req: Request, res: Response) => {
+  const condoId = (req as any).condoId;
+  try {
+    const { data } = await getDB().from('totem_midia')
+      .select('id,titulo,descricao,categoria,tipo,url,slideshow,carousel,ordem')
+      .eq('condominio_id', condoId).eq('ativo', true).order('ordem');
+    res.json(data ?? []);
+  } catch { res.json([]); }
+});
+
+r.get('/comunicados', async (req: Request, res: Response) => {
+  const condoId = (req as any).condoId;
+  try {
+    const { data } = await getDB().from('comunicados')
+      .select('titulo,corpo,tipo,created_at')
+      .eq('condominio_id', condoId)
+      .order('created_at', { ascending: false }).limit(5);
+    res.json(data ?? []);
+  } catch { res.json([]); }
+});
+
+r.post('/emergencia', async (req: Request, res: Response) => {
+  _regEmergencia((req as any).condoId).catch(() => {});
+  res.json({ ok: true });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// MASTER CRUD — requireMaster em todos
+// ═══════════════════════════════════════════════════════════════════
+
+// FAQ
+r.get('/master/faq/:cId',  requireMaster, async (req,res) => {
+  const { data } = await getDB().from('concierge_faq').select('*')
+    .eq('condominio_id', req.params.cId).order('ordem');
+  res.json(data ?? []);
+});
+r.put('/master/faq/:cId',  requireMaster, async (req,res) => {
+  const { faq } = req.body;
+  await getDB().from('concierge_faq').delete().eq('condominio_id', req.params.cId);
+  if (faq?.length) await getDB().from('concierge_faq').insert(
+    faq.map((f:any,i:number) => ({
+      condominio_id:req.params.cId, pergunta:f.pergunta, resposta:f.resposta,
+      categoria:f.categoria??'geral', ordem:i, ativo:true,
+    }))
+  );
+  res.json({ ok: true });
+});
+
+// Métricas do dia
+r.get('/master/metricas/:cId', requireMaster, async (req,res) => {
+  const hoje = new Date().toISOString().split('T')[0];
+  const { data } = await getDB().from('concierge_sessoes').select('tipo')
+    .eq('condominio_id', req.params.cId).gte('iniciada_em', hoje);
+  const rows = data ?? [];
+  res.json({
+    total:      rows.length,
+    visitantes: rows.filter((r:any) => r.tipo==='visitante').length,
+    hospedes:   rows.filter((r:any) => r.tipo==='hospede').length,
+    entregas:   rows.filter((r:any) => r.tipo==='entrega').length,
+    info:       rows.filter((r:any) => r.tipo==='info').length,
+  });
+});
+
+// Guia CRUD
+r.get('/master/guia/:cId',         requireMaster, async (req,res) => {
+  const {data}=await getDB().from('guia_hospede').select('*')
+    .eq('condominio_id',req.params.cId).order('categoria').order('ordem');
+  res.json(data??[]);
+});
+r.post('/master/guia/:cId',        requireMaster, async (req,res) => {
+  const {data,error}=await getDB().from('guia_hospede')
+    .insert({condominio_id:req.params.cId,...req.body,updated_at:new Date().toISOString()})
+    .select().single();
+  res.json({ok:!error,data});
+});
+r.put('/master/guia/:cId/:id',     requireMaster, async (req,res) => {
+  const {data}=await getDB().from('guia_hospede')
+    .update({...req.body,updated_at:new Date().toISOString()})
+    .eq('id',req.params.id).eq('condominio_id',req.params.cId).select().single();
+  res.json({ok:true,data});
+});
+r.delete('/master/guia/:cId/:id',  requireMaster, async (req,res) => {
+  await getDB().from('guia_hospede')
+    .delete().eq('id',req.params.id).eq('condominio_id',req.params.cId);
+  res.json({ok:true});
+});
+r.post('/master/guia/:cId/seed',   requireMaster, async (req,res) => {
+  await seedGuiaDemo(req.params.cId); res.json({ok:true});
+});
+
+// Mídia CRUD
+r.get('/master/midia/:cId',        requireMaster, async (req,res) => {
+  const {data}=await getDB().from('totem_midia').select('*')
+    .eq('condominio_id',req.params.cId).order('ordem');
+  res.json(data??[]);
+});
+r.post('/master/midia/:cId',       requireMaster, async (req,res) => {
+  const {data,error}=await getDB().from('totem_midia')
+    .insert({condominio_id:req.params.cId,...req.body}).select().single();
+  res.json({ok:!error,data});
+});
+r.put('/master/midia/:cId/:id',    requireMaster, async (req,res) => {
+  const {data}=await getDB().from('totem_midia')
+    .update(req.body).eq('id',req.params.id).eq('condominio_id',req.params.cId)
+    .select().single();
+  res.json({ok:true,data});
+});
+r.delete('/master/midia/:cId/:id', requireMaster, async (req,res) => {
+  await getDB().from('totem_midia')
+    .delete().eq('id',req.params.id).eq('condominio_id',req.params.cId);
+  res.json({ok:true});
+});
+
+// ─── Helpers internos ─────────────────────────────────────────────────────────
+async function _regVisitante(msg:string, hist:any[], condoId:string): Promise<boolean> {
+  const conv = [...hist.map((m:any) => m.content), msg].join(' ');
+  const apto = conv.match(/\b(?:ap(?:to)?\.?\s*|apartamento\s*)(\d{2,4}[a-z]?)/i)?.[1];
+  const nome = conv.match(/(?:me chamo|meu nome [eé]|sou o?a?\s+)([A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][a-záàâãéêíóôõúç]+(?:\s+[A-Z][a-z]+)*)/i)?.[1];
+  if (!apto || !nome) return false;
+  await getDB().from('visitantes_portaria')
+    .insert({condominio_id:condoId, nome, destino_unidade:apto,
+             tipo:'visita', status:'aguardando_autorizacao'}).catch(()=>{});
+  await getDB().from('notificacoes')
+    .insert({condominio_id:condoId, titulo:`Visitante: ${nome}`,
+             corpo:`${nome} chegou para o Apto ${apto}.`,
+             canal:'push', destino:apto, lida:false}).catch(()=>{});
+  return true;
+}
+async function _regEntrega(msg:string, hist:any[], condoId:string): Promise<boolean> {
+  const conv = [...hist.map((m:any) => m.content), msg].join(' ').toLowerCase();
+  const apto = conv.match(/\b(?:ap(?:to)?\.?\s*|apartamento\s*)(\d{2,4}[a-z]?)/i)?.[1];
+  if (!apto) return false;
+  const rem = ['amazon','correios','ifood','rappi','shein','shopee','mercado livre']
+    .find(x => conv.includes(x)) ?? 'Entregador';
+  const perecivel = ['ifood','rappi','uber'].some(x => conv.includes(x));
+  await getDB().from('encomendas').insert({
+    condominio_id:condoId, remetente:rem,
+    tipo:perecivel?'perecivel':'normal', destinatario_unidade:apto,
+    sla_horas:perecivel?4:168, status:'aguardando_retirada', lembretes_enviados:0,
+  }).catch(()=>{});
+  return true;
+}
+async function _regEmergencia(condoId:string): Promise<void> {
+  await getDB().from('alertas_misp').insert({
+    condominio_id:condoId, tipo:'EMERGENCIA_TOTEM',
+    descricao:'Emergência acionada no Concierge Virtual — entrada do condomínio',
+    local:'Totem entrada', severidade:'urgente', status:'ativo',
+  });
+}
+
+export default r;
+```
+
+---
+
+## PASSO 4 — Criar `src/routes/totemPage.ts`
+
+```typescript
+/**
+ * routes/totemPage.ts
+ * Serve o SPA do totem com o token já validado e injetado no HTML.
+ * GET /totem/:token  →  valida  →  injeta vars  →  retorna HTML personalizado
+ */
+import { Router, Request, Response } from 'express';
+import { resolveToken } from '../services/totem.js';
+import path from 'path';
+import fs   from 'fs';
+import { fileURLToPath } from 'url';
+
+const r = Router();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const HTML_PATH = path.join(__dirname, '../../public/concierge/index.html');
+
+r.get('/:token', async (req: Request, res: Response) => {
+  const { token } = req.params;
+
+  try {
+    const condoId = await resolveToken(token);
+
+    // Lê o HTML e injeta as variáveis de contexto antes de servir
+    const html = fs.readFileSync(HTML_PATH, 'utf-8');
+    const out  = html.replace(
+      '<!-- [[TOTEM_CONFIG]] -->',
+      `<script>
+        window.__TOTEM__ = {
+          token:   "${token}",
+          condoId: "${condoId}",
+          apiBase: "/api/concierge",
+          ttsUrl:  "/api/di/tts",
+        };
+      </script>`
+    );
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store, no-cache'); // sempre fresco
+    res.send(out);
+
+  } catch (e) {
+    const msg = (e as Error).message;
+    res.status(403).send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Totem · Acesso Negado</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Nunito',system-ui,sans-serif;background:#04040c;color:#f0eeff;
+         min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;padding:24px;text-align:center}
+    .ico{font-size:56px}
+    .title{font-size:22px;font-weight:900;color:#fff}
+    .sub{font-size:13px;color:#8884b8;max-width:340px;line-height:1.6}
+    .box{background:#12122a;border:1.5px solid #1e1e40;border-radius:16px;padding:20px 28px;max-width:380px;width:100%}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="ico">🔒</div>
+    <div class="title" style="margin:12px 0 8px">Totem Indisponível</div>
+    <div class="sub">${msg}.<br><br>Verifique o link com o administrador do sistema ImobCore.</div>
+  </div>
+</body>
+</html>`);
+  }
+});
+
+export default r;
+```
+
+---
+
+## PASSO 5 — Criar `src/routes/tts.ts`
+
+```typescript
+/**
+ * routes/tts.ts — ElevenLabs Jenifer com cache em memória
+ */
+import { Router } from 'express';
+const r = Router();
+const cache = new Map<string, Buffer>();
+
+r.post('/', async (req, res) => {
+  const { text, idioma = 'pt_BR' } = req.body ?? {};
+  if (!text) return res.status(400).json({ error: 'text obrigatório' });
+
+  const txt     = String(text).slice(0, 500);
+  const apiKey  = process.env.ELEVENLABS_API_KEY;
+  const voiceId = process.env.ELEVENLABS_VOICE_ID;
+
+  if (!apiKey || !voiceId)
+    return res.status(503).json({ error: 'ElevenLabs não configurado. Adicione ELEVENLABS_API_KEY e ELEVENLABS_VOICE_ID nos Secrets do Replit.' });
+
+  const key = `${idioma}:${txt}`;
+  if (cache.has(key)) {
+    res.setHeader('Content-Type', 'audio/mpeg');
+    return res.end(cache.get(key));
+  }
+
+  try {
+    const resp = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`,
+      {
+        method:  'POST',
+        headers: {
+          'xi-api-key':   apiKey,
+          'Content-Type': 'application/json',
+          'Accept':       'audio/mpeg',
+        },
+        body: JSON.stringify({
+          text: txt,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: { stability:0.45, similarity_boost:0.82, style:0.35, use_speaker_boost:true },
+        }),
+      }
+    );
+    if (!resp.ok) return res.status(502).json({ error: 'ElevenLabs ' + resp.status });
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    const chunks: Buffer[] = [];
+    const reader = resp.body!.getReader();
+    const pump = async (): Promise<void> => {
+      const { done, value } = await reader.read();
+      if (done) {
+        if (cache.size < 60) cache.set(key, Buffer.concat(chunks));
+        res.end(); return;
+      }
+      const c = Buffer.from(value);
+      chunks.push(c); res.write(c);
+      return pump();
+    };
+    await pump();
+  } catch (e) { res.status(502).json({ error: (e as Error).message }); }
+});
+
+export default r;
+```
+
+---
+
+## PASSO 6 — Atualizar `src/index.ts`
+
+Adicionar os imports junto aos outros (linha ~30):
+
+```typescript
+import conciergeRouter from './routes/concierge.js';
+import totemPageRouter from './routes/totemPage.js';
+import ttsRouter       from './routes/tts.js';
+```
+
+Adicionar as rotas após `app.use("/api/iot", iotRouter)`:
+
+```typescript
+// ── TOTEM API ─────────────────────────────────────────────────────────────────
+app.use('/api/concierge', conciergeRouter);   // chat, config, guia, mídia, emergência
+
+// ── MASTER CRUD do totem (requireMaster dentro do router) ─────────────────────
+app.use('/api/concierge', conciergeRouter);   // /api/concierge/master/*
+
+// ── TTS Da Di ─────────────────────────────────────────────────────────────────
+app.use('/api/di/tts', ttsRouter);
+
+// ── TOTEM SPA — URL única por condomínio ─────────────────────────────────────
+// Formato: https://condo-manager-ai.replit.app/totem/TOKEN_DO_CONDO
+app.use('/totem', totemPageRouter);
+
+// Assets estáticos do totem (sem autenticação)
+app.use('/concierge/assets',
+  express.static(path.join(PUBLIC, 'concierge', 'assets'))
+);
+```
+
+---
+
+## PASSO 7 — Criar `public/concierge/index.html`
+
+```bash
+mkdir -p public/concierge/assets
+```
+
+**Estrutura do HTML** (o Replit Agent deve criar o arquivo completo):
+
+```html
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#04040c">
+  <title>Di · Concierge</title>
+  <!-- [[TOTEM_CONFIG]] -->   ← servidor injeta window.__TOTEM__ aqui
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    /* CSS completo das 4 telas:
+       1. boas-vindas (Di em destaque, botão INICIAR pulsante)
+       2. módulos (grid 2x4: visitante/hóspede/entrega/morador/guia/fotos/comunicados/regras + emergência)
+       3. chat (Di responde, STT, sugestões contextuais)
+       4. idle (slideshow das fotos do Master, Di flutuando) */
+  </style>
+</head>
+<body>
+  <!-- TELA 1: boas-vindas -->
+  <!-- TELA 2: módulos -->
+  <!-- TELA 3: chat -->
+  <!-- TELA 4: idle -->
+
+  <script>
+    // Ler config injetada pelo servidor
+    const T = window.__TOTEM__ || {};
+    const TOKEN    = T.token   || new URLSearchParams(location.search).get('token') || '';
+    const API      = T.apiBase || '/api/concierge';
+    const TTS_URL  = T.ttsUrl  || '/api/di/tts';
+
+    // Header padrão com token
+    const authH = () => ({
+      'Content-Type': 'application/json',
+      'x-concierge-token': TOKEN,
+    });
+
+    // Carregar config ao iniciar
+    async function init() {
+      try {
+        const cfg = await fetch(`${API}/config`, { headers: authH() }).then(r => r.json());
+        // Aplica: nome_condo, nome_di, cor_tema, saudacao, horarios, faq, midia
+        aplicarConfig(cfg);
+        construirCarrossel(cfg.midia || []);
+        construirIdleSlides(cfg.midia || []);
+      } catch (e) {
+        console.warn('Totem offline:', e);
+      }
+    }
+
+    // Chat com Di (Claude real)
+    async function chat(mensagem, tipo, historico) {
+      const r = await fetch(`${API}/chat`, {
+        method: 'POST',
+        headers: authH(),
+        body: JSON.stringify({ mensagem, tipo, historico }),
+      });
+      return r.json(); // { resposta, acao_executada }
+    }
+
+    // TTS Jenifer ou Web Speech fallback
+    async function tts(text) {
+      try {
+        const r = await fetch(TTS_URL, {
+          method: 'POST',
+          headers: authH(),
+          body: JSON.stringify({ text: text.slice(0, 400), idioma: 'pt_BR' }),
+        });
+        if (!r.ok) throw new Error('TTS ' + r.status);
+        const blob  = await r.blob();
+        const audio = new Audio(URL.createObjectURL(blob));
+        audio.play();
+      } catch { webSpeechFallback(text); }
+    }
+
+    init();
+  </script>
+</body>
+</html>
+```
+
+**Instrução ao Replit Agent:**
+> "Crie `public/concierge/index.html` com o HTML completo da última simulação do totem
+> (tela boas-vindas com Di em destaque + botão Iniciar → tela de módulos → chat → idle slideshow).
+> Coloque o comentário `<!-- [[TOTEM_CONFIG]] -->` logo após a tag `<title>`.
+> Use `/concierge/assets/di-avatar.png` para a foto da Di (sem base64 no HTML).
+> Toda chamada fetch deve usar as variáveis `TOKEN`, `API` e `TTS_URL` do script de init."
+
+---
+
+## PASSO 8 — Copiar foto Da Di
+
+```bash
+mkdir -p public/concierge/assets
+cp uploads/ChatGPT_Image_20_de_mar__de_2026__07_40_01.png \
+   public/concierge/assets/di-avatar.png
+```
+
+---
+
+## PASSO 9 — Atualizar `public/master/index.html`
+
+### 9a — Adicionar stab button (após "Usuários"):
+```html
+<button class="stab" onclick="showCfgTab('totem',this)">🖥 Totem</button>
+```
+
+### 9b — Atualizar array em showCfgTab:
+```javascript
+// Substituir o array existente por:
+["prompt","settings","regras","modulos","usuarios-condo","totem"].forEach(t => {
+```
+
+### 9c — Adicionar link na sidebar de condo (em selecionarCondo):
+```javascript
+// No innerHTML do condo-nav-items, adicionar:
+`<div class="nav-sub" onclick="showCfgTab('totem',null)">  🖥 Totem</div>`
+```
+
+### 9d — Adicionar ao final de showCfgTab (hook de carregamento):
+```javascript
+// Adicionar ao final da função showCfgTab():
+if (tab === 'totem' && S.selectedCondoId) loadTotemTab(S.selectedCondoId);
+```
+
+### 9e — HTML da tab Totem (inserir após cft-usuarios-condo):
+
+```html
+<div id="cft-totem" style="display:none">
+
+  <!-- URL DO TOTEM — destaque visual -->
+  <div class="card" style="margin-bottom:8px;border:1px solid var(--pu);background:var(--bg2)">
+    <div class="ct" style="color:var(--pu2)">🖥 URL DO TOTEM — EXCLUSIVA DESTE CONDOMÍNIO</div>
+    <div style="font-size:9px;color:var(--t2);margin-bottom:8px">
+      Cole esta URL no navegador do tablet instalado na portaria
+    </div>
+    <div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px">
+      <code id="totem-url"
+        style="flex:1;background:var(--bg3);border:1px solid var(--pu);border-radius:4px;
+               padding:10px;font-size:10px;color:var(--pu3);word-break:break-all;line-height:1.6">
+        —
+      </code>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="btn btn-save" onclick="totemCopyUrl()" style="font-size:10px">📋 Copiar URL</button>
+      <button class="btn btn-save" onclick="totemAbrir()"   style="font-size:10px">↗ Abrir no tablet</button>
+      <button class="btn"          onclick="totemRegenToken()" style="font-size:10px;color:var(--am2)">↻ Gerar novo token</button>
+    </div>
+    <div style="margin-top:8px;font-size:9px;color:var(--t3)">
+      Token: <code id="totem-token" style="color:var(--t2)">—</code>
+    </div>
+  </div>
+
+  <!-- STATUS DO TOTEM -->
+  <div class="card" style="margin-bottom:8px">
+    <div class="ct">STATUS & ACESSO</div>
+    <div class="sf-row">
+      <span class="sf-label">Totem ativo
+        <div class="sf-desc">Habilita o acesso pelo tablet da portaria</div>
+      </span>
+      <div class="toggle" id="tog-totem" onclick="this.classList.toggle('on')"></div>
+    </div>
+  </div>
+
+  <!-- PERSONALIZAÇÃO DA DI -->
+  <div class="card" style="margin-bottom:8px">
+    <div class="ct">PERSONALIZAÇÃO DA DI PARA ESTE CONDO</div>
+    <div class="sf-row">
+      <span class="sf-label">Saudação inicial
+        <div class="sf-desc">Variáveis: {nome_di} {nome_condo}</div>
+      </span>
+      <input class="sf" id="totem-saud" type="text"
+        placeholder="Olá! Sou {nome_di}, síndica virtual de {nome_condo}.">
+    </div>
+    <div class="sf-row">
+      <span class="sf-label">Cor do tema</span>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input class="sf" id="totem-cor" type="text" style="max-width:120px"
+          oninput="document.getElementById('totem-cor-prev').style.background=this.value">
+        <div id="totem-cor-prev"
+          style="width:24px;height:24px;border-radius:5px;border:1px solid var(--b2);background:#7c3aed"></div>
+      </div>
+    </div>
+    <div class="sf-row">
+      <span class="sf-label">Voz da Di</span>
+      <select class="sf" id="totem-tts">
+        <option value="web_speech">Web Speech (gratuito)</option>
+        <option value="elevenlabs">ElevenLabs Jenifer (premium)</option>
+      </select>
+    </div>
+    <div class="sf-row">
+      <span class="sf-label">Idle — tempo até repouso (s)</span>
+      <input class="sf" id="totem-idle" type="number" style="max-width:80px" value="90">
+    </div>
+  </div>
+
+  <!-- HORÁRIOS -->
+  <div class="card" style="margin-bottom:8px">
+    <div class="ct">HORÁRIOS DAS ÁREAS</div>
+    <div id="totem-hor-list"></div>
+    <button class="btn btn-add" onclick="totemAddHor()" style="font-size:10px;margin-top:6px">
+      + Área
+    </button>
+  </div>
+
+  <!-- CONTATOS -->
+  <div class="card" style="margin-bottom:8px">
+    <div class="ct">CONTATOS DE EMERGÊNCIA</div>
+    <div class="sf-row">
+      <span class="sf-label">Portaria</span>
+      <input class="sf" id="totem-port" type="text" placeholder="(xx) 9xxxx-xxxx">
+    </div>
+    <div class="sf-row">
+      <span class="sf-label">Emergência</span>
+      <input class="sf" id="totem-emg"  type="text" placeholder="192 / 193">
+    </div>
+  </div>
+
+  <!-- REGRAS (texto livre para a Di) -->
+  <div class="card" style="margin-bottom:8px">
+    <div class="ct">REGRAS PARA A DI
+      <div class="sf-desc" style="text-transform:none;font-weight:400;margin-top:2px">
+        A Di usa este texto para responder sobre regras no totem
+      </div>
+    </div>
+    <textarea id="totem-regras" rows="4"
+      style="width:100%;background:var(--bg2);border:1px solid var(--b2);border-radius:4px;
+             padding:9px;color:var(--t);font-family:var(--mono);font-size:11px;resize:vertical"
+      placeholder="Visitantes precisam ser autorizados pelo morador. Silêncio após 22h. Pets na coleira...">
+    </textarea>
+  </div>
+
+  <!-- FAQ -->
+  <div class="card" style="margin-bottom:8px">
+    <div class="ct">FAQ — PERGUNTAS FREQUENTES
+      <div class="sf-desc" style="text-transform:none;font-weight:400;margin-top:2px">
+        Respostas que a Di dará a visitantes e hóspedes neste totem
+      </div>
+    </div>
+    <div id="totem-faq-list"></div>
+    <button class="btn btn-add" onclick="totemAddFaq()" style="font-size:10px;margin-top:6px">
+      + Pergunta
+    </button>
+  </div>
+
+  <!-- MÉTRICAS -->
+  <div class="card" style="margin-bottom:8px">
+    <div class="ct">ATENDIMENTOS HOJE</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:5px;margin-top:4px">
+      <div style="background:var(--bg2);border:1px solid var(--b);border-radius:4px;padding:8px;text-align:center">
+        <div id="tm-total" style="font-size:18px;font-weight:800;color:var(--pu2)">—</div>
+        <div style="font-size:7px;color:var(--t3)">TOTAL</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--b);border-radius:4px;padding:8px;text-align:center">
+        <div id="tm-visit" style="font-size:18px;font-weight:800;color:var(--tl2)">—</div>
+        <div style="font-size:7px;color:var(--t3)">VISIT.</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--b);border-radius:4px;padding:8px;text-align:center">
+        <div id="tm-hosp" style="font-size:18px;font-weight:800;color:var(--pu2)">—</div>
+        <div style="font-size:7px;color:var(--t3)">HÓSP.</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--b);border-radius:4px;padding:8px;text-align:center">
+        <div id="tm-entr" style="font-size:18px;font-weight:800;color:var(--am2)">—</div>
+        <div style="font-size:7px;color:var(--t3)">ENTR.</div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--b);border-radius:4px;padding:8px;text-align:center">
+        <div id="tm-info" style="font-size:18px;font-weight:800;color:var(--gr2)">—</div>
+        <div style="font-size:7px;color:var(--t3)">INFO</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-save" onclick="salvarTotem()">Salvar configurações</button>
+    <button class="btn" onclick="totemAbrir()" style="font-size:11px">👁 Preview do totem →</button>
+  </div>
+</div>
+```
+
+### 9f — JavaScript (inserir antes de `</script>` no master):
+
+```javascript
+// ══════════════════════════════════════════════════════════════════
+// TOTEM — Tab do Master (personalização por condomínio)
+// ══════════════════════════════════════════════════════════════════
+let _totemHors = {}, _totemFaq = [];
+
+async function loadTotemTab(condoId) {
+  try {
+    // Carrega settings (já inclui o token)
+    const s = await api(`/master/di/settings/${condoId}`);
+    const token = s.concierge_token || '(sem token)';
+    const url   = `${location.origin}/totem/${token}`;
+
+    document.getElementById('totem-token').textContent = token;
+    document.getElementById('totem-url').textContent   = url;
+
+    s.concierge_ativo
+      ? document.getElementById('tog-totem').classList.add('on')
+      : document.getElementById('tog-totem').classList.remove('on');
+
+    document.getElementById('totem-saud').value  = s.concierge_saudacao   || '';
+    document.getElementById('totem-cor').value   = s.concierge_cor_tema   || '#7c3aed';
+    document.getElementById('totem-tts').value   = s.concierge_tts_provider || 'web_speech';
+    document.getElementById('totem-idle').value  = s.concierge_idle_seg   || 90;
+    document.getElementById('totem-regras').value= s.concierge_regras     || '';
+    document.getElementById('totem-port').value  = (s.concierge_contatos||{}).portaria   || '';
+    document.getElementById('totem-emg').value   = (s.concierge_contatos||{}).emergencia || '192';
+    document.getElementById('totem-cor-prev').style.background = s.concierge_cor_tema || '#7c3aed';
+
+    _totemHors = s.concierge_horarios || {};
+    _renderHors();
+
+    // FAQ
+    const faq = await api(`/api/concierge/master/faq/${condoId}`).catch(() => []);
+    _totemFaq = Array.isArray(faq) ? faq : [];
+    _renderFaq();
+
+    // Métricas
+    const m = await api(`/api/concierge/master/metricas/${condoId}`)
+      .catch(() => ({total:0,visitantes:0,hospedes:0,entregas:0,info:0}));
+    document.getElementById('tm-total').textContent = m.total      ?? 0;
+    document.getElementById('tm-visit').textContent = m.visitantes ?? 0;
+    document.getElementById('tm-hosp').textContent  = m.hospedes   ?? 0;
+    document.getElementById('tm-entr').textContent  = m.entregas   ?? 0;
+    document.getElementById('tm-info').textContent  = m.info       ?? 0;
+
+  } catch(e) { console.error('loadTotemTab:', e); }
+}
+
+function _renderHors() {
+  document.getElementById('totem-hor-list').innerHTML =
+    Object.entries(_totemHors).map(([k,v]) => `
+      <div style="display:flex;gap:5px;margin-bottom:4px">
+        <input style="flex:1;background:var(--bg3);border:1px solid var(--b2);border-radius:3px;
+               padding:5px 7px;color:var(--t);font-family:var(--mono);font-size:11px"
+          value="${k}" onchange="_renHor('${k}',this.value)">
+        <input style="flex:1;background:var(--bg3);border:1px solid var(--b2);border-radius:3px;
+               padding:5px 7px;color:var(--t);font-family:var(--mono);font-size:11px"
+          value="${v}" onchange="_totemHors['${k}']=this.value">
+        <button onclick="delete _totemHors['${k}'];_renderHors()"
+          style="background:none;border:1px solid var(--red3);border-radius:3px;
+                 padding:3px 7px;color:var(--red2);cursor:pointer;font-size:10px">✕</button>
+      </div>`).join('');
+}
+function totemAddHor()      { _totemHors['Nova área']='Horário'; _renderHors(); }
+function _renHor(old, nw)   { const v=_totemHors[old]; delete _totemHors[old]; _totemHors[nw]=v; }
+
+function _renderFaq() {
+  document.getElementById('totem-faq-list').innerHTML =
+    _totemFaq.map((f,i) => `
+      <div style="background:var(--bg2);border:1px solid var(--b2);border-radius:4px;
+                  padding:9px;margin-bottom:5px">
+        <input style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--b2);
+               color:var(--t);font-family:var(--mono);font-size:11px;padding:3px 0;margin-bottom:4px"
+          placeholder="Pergunta..." value="${(f.pergunta||'').replace(/"/g,'&quot;')}"
+          onchange="_totemFaq[${i}].pergunta=this.value">
+        <textarea style="width:100%;background:transparent;border:none;color:var(--t2);
+               font-family:var(--mono);font-size:11px;resize:none;height:38px"
+          placeholder="Resposta..." onchange="_totemFaq[${i}].resposta=this.value"
+          >${f.resposta||''}</textarea>
+        <button onclick="_totemFaq.splice(${i},1);_renderFaq()"
+          style="font-size:9px;color:var(--red2);background:none;border:none;cursor:pointer">
+          Remover
+        </button>
+      </div>`).join('');
+}
+function totemAddFaq() { _totemFaq.push({pergunta:'',resposta:'',categoria:'geral'}); _renderFaq(); }
+
+async function salvarTotem() {
+  const condoId = S.selectedCondoId;
+  await api(`/master/di/settings/${condoId}`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      concierge_ativo:        document.getElementById('tog-totem').classList.contains('on'),
+      concierge_saudacao:     document.getElementById('totem-saud').value,
+      concierge_cor_tema:     document.getElementById('totem-cor').value,
+      concierge_tts_provider: document.getElementById('totem-tts').value,
+      concierge_idle_seg:     Number(document.getElementById('totem-idle').value)||90,
+      concierge_regras:       document.getElementById('totem-regras').value,
+      concierge_horarios:     _totemHors,
+      concierge_contatos: {
+        portaria:   document.getElementById('totem-port').value,
+        emergencia: document.getElementById('totem-emg').value,
+      },
+    }),
+  });
+  await api(`/api/concierge/master/faq/${condoId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ faq: _totemFaq }),
+  });
+  showToast(`✓ Totem de ${S.selectedCondoNm} salvo!`);
+}
+
+async function totemRegenToken() {
+  if (!confirm(
+    'Gerar novo token?\n\n' +
+    'A URL atual deixará de funcionar e o tablet precisará ser reconfigurado.'
+  )) return;
+  const newToken = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+    .map(b => b.toString(16).padStart(2,'0')).join('');
+  await api(`/master/di/settings/${S.selectedCondoId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ concierge_token: newToken }),
+  });
+  showToast('Novo token gerado! Atualize o tablet com a nova URL.');
+  loadTotemTab(S.selectedCondoId);
+}
+
+function totemCopyUrl() {
+  const url = document.getElementById('totem-url').textContent.trim();
+  navigator.clipboard.writeText(url).then(() =>
+    showToast('✓ URL copiada! Cole no navegador do tablet.')
+  );
+}
+
+function totemAbrir() {
+  const url = document.getElementById('totem-url').textContent.trim();
+  if (url && url !== '—') window.open(url, '_blank');
+}
+```
+
+---
+
+## PASSO 10 — Secrets do Replit
+
+Em **Tools → Secrets**:
+
+```
+ELEVENLABS_API_KEY   = sk_...
+ELEVENLABS_VOICE_ID  = voice_id_da_jenifer
+CONCIERGE_TOKEN      = token-dev-local
+```
+
+Para obter o voice_id da Jenifer:
+```bash
+curl https://api.elevenlabs.io/v1/voices \
+  -H "xi-api-key: $ELEVENLABS_API_KEY" | python3 -m json.tool | grep -A2 -i "jenifer"
+```
+
+---
+
+## PASSO 11 — Verificação de isolamento (CRÍTICO)
+
+```bash
+npm run dev
+
+# ── 1. Master: gerar URLs dos 3 condos ───────────────────────────────────────
+# Abrir http://localhost:3000/master
+# Condo A → tab Totem → copiar URL (ex: /totem/abc123...)
+# Condo B → tab Totem → copiar URL (ex: /totem/def456...)
+# URLs DEVEM SER DIFERENTES — cada condo tem seu token único
+
+# ── 2. Verificar token inválido ───────────────────────────────────────────────
+curl http://localhost:3000/totem/token-que-nao-existe
+# → 403 HTML "Totem Indisponível"
+
+# ── 3. Verificar totem desativado ─────────────────────────────────────────────
+# Master → Condo A → Totem → desativar toggle → Salvar
+curl http://localhost:3000/totem/TOKEN_CONDO_A
+# → 403 "Totem desativado para este condomínio"
+
+# ── 4. Verificar isolamento de dados (MAIS IMPORTANTE) ───────────────────────
+# Token do Condo A → deve retornar nome e dados do Condo A
+curl http://localhost:3000/api/concierge/config \
+  -H "x-concierge-token: TOKEN_CONDO_A" | python3 -m json.tool | grep "nome_condo"
+# → "nome_condo": "Copacabana Beach Residence"
+
+# Token do Condo B → deve retornar nome e dados do Condo B
+curl http://localhost:3000/api/concierge/config \
+  -H "x-concierge-token: TOKEN_CONDO_B" | python3 -m json.tool | grep "nome_condo"
+# → "nome_condo": "Jardim Atlântico"
+
+# ── 5. Verificar chat isolado por condo ───────────────────────────────────────
+# Condo A: Di menciona dados do Condo A
+curl -X POST http://localhost:3000/api/concierge/chat \
+  -H "Content-Type: application/json" \
+  -H "x-concierge-token: TOKEN_CONDO_A" \
+  -d '{"mensagem":"Qual é o score do condomínio?","tipo":"info"}'
+# → Di responde com score do Condo A
+
+# Condo B: Di menciona dados do Condo B (NUNCA do Condo A)
+curl -X POST http://localhost:3000/api/concierge/chat \
+  -H "Content-Type: application/json" \
+  -H "x-concierge-token: TOKEN_CONDO_B" \
+  -d '{"mensagem":"Qual é o score do condomínio?","tipo":"info"}'
+# → Di responde com score do Condo B
+
+# ── 6. Verificar visitante registrado no condo certo ─────────────────────────
+# No totem do Condo A: fluxo visitante → "Me chamo João" → "Apto 802"
+# SELECT condominio_id, nome FROM visitantes_portaria ORDER BY created_at DESC LIMIT 1;
+# → condominio_id deve ser o UUID do Condo A, NÃO do Condo B
+
+# ── 7. TTS (se configurado) ───────────────────────────────────────────────────
+curl -X POST http://localhost:3000/api/di/tts \
+  -H "Content-Type: application/json" \
+  -H "x-concierge-token: TOKEN_QUALQUER" \
+  -d '{"text":"Olá! Bem-vindo ao condomínio.","idioma":"pt_BR"}' \
+  --output /tmp/di.mp3 && open /tmp/di.mp3
+```
+
+---
+
+## RESUMO FINAL — FLUXO COMPLETO
+
+```
+1. Master cria/gerencia condos
+   └─ Para cada condo: token gerado automaticamente pelo trigger SQL
+
+2. Master configura o Totem do Condo A
+   └─ Tab "🖥 Totem" → saudação, cor, FAQ, horários, regras, TTS
+   └─ URL exibida: https://app.replit.dev/totem/TOKEN_CONDO_A
+   └─ Clica "Copiar URL" → envia para o instalador do tablet
+
+3. Tablet da portaria do Condo A
+   └─ Abre: https://app.replit.dev/totem/TOKEN_CONDO_A
+   └─ Backend valida token → condoId do Condo A
+   └─ HTML servido com window.__TOTEM__ injetado
+   └─ Di carrega: nome, cor, saudação do Condo A
+
+4. Visitante toca no tablet
+   └─ Tela boas-vindas com Di → INICIAR
+   └─ Módulos → "Sou hóspede"
+   └─ Chat: POST /api/concierge/chat com token_condo_A
+   └─ Backend: gerarSnapshot(condoId_A) → OSs/scores do Condo A
+   └─ Claude: "Olá! Sou Di, síndica do Condo A. Score: 84/100. OSs abertas: 3..."
+
+5. Tablet portaria Condo B (diferente)
+   └─ Abre: https://app.replit.dev/totem/TOKEN_CONDO_B
+   └─ MESMO backend, OUTRO condoId
+   └─ Di do Condo B responde com dados EXCLUSIVOS do Condo B
+   └─ NUNCA acessa dados do Condo A
+```
