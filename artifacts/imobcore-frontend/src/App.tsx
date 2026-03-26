@@ -659,6 +659,10 @@ export default function App() {
     nome_di?: string; tom_comunicacao?: string; modulos_ativos?: string[]; limite_financeiro?: number;
     identidade_persona?: string; system_prompt?: string; regras_de_ouro?: string; di_ativa?: boolean;
     modo_ciclo?: string; ciclo_minutos?: number; idioma?: string;
+    concierge_ativo?: boolean; concierge_saudacao?: string; concierge_cor_tema?: string;
+    concierge_tts_provider?: string; concierge_idle_seg?: number;
+    concierge_horarios?: Record<string,string>; concierge_contatos?: Record<string,string>;
+    concierge_regras?: string; concierge_avatar_url?: string; concierge_token?: string;
   }};
   type DiPromptBlock = { id?: string; bloco: string; titulo: string; conteudo: string; fixo: boolean };
   const [diAdminCondos,   setDiAdminCondos]   = useState<DiAdminCondo[]>([]);
@@ -777,7 +781,7 @@ export default function App() {
 
   const totemSelectCondo = async (condo: DiAdminCondo) => {
     setTotemSelCondo(condo.id);
-    const cfg = (condo as any).di_config ?? {};
+    const cfg = condo.di_config ?? {};
     setTotemForm({
       concierge_ativo:       cfg.concierge_ativo       ?? false,
       concierge_saudacao:    cfg.concierge_saudacao     ?? "",
@@ -813,9 +817,20 @@ export default function App() {
         body: JSON.stringify(payload),
       });
       const d = await r.json();
-      if (d.ok) showToast("Totem salvo com sucesso!", "ok");
-      else showToast("Erro: " + (d.error || "falha"), "error");
-    } catch { showToast("Erro ao salvar Totem", "error"); }
+      if (d.ok) {
+        // Atualiza estado local para refletir os dados recém salvos
+        setTotemCondos(prev => prev.map(c =>
+          c.id === totemSelCondo
+            ? { ...c, di_config: { ...(c as any).di_config, ...payload } }
+            : c
+        ));
+        showToast("Totem salvo no Supabase!", "ok");
+      } else {
+        showToast("Erro ao salvar: " + (d.error || "falha"), "error");
+      }
+    } catch (e) {
+      showToast("Erro de conexão ao salvar", "error");
+    }
     setTotemSaving(false);
   };
 
@@ -18886,7 +18901,7 @@ Content-Type: application/json
                       ) : (
                         <div style={{ maxHeight:520, overflowY:"auto" }}>
                           {totemCondos.map(c => {
-                            const ativo = (c as any).di_config?.concierge_ativo ?? false;
+                            const ativo = c.di_config?.concierge_ativo ?? false;
                             const isSel = totemSelCondo === c.id;
                             return (
                               <div key={c.id} onClick={() => totemSelectCondo(c)}
