@@ -67,6 +67,14 @@ export default defineConfig({
         target: "http://localhost:8080",
         changeOrigin: true,
       },
+      "/totem": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
+      "/concierge": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
     },
     fs: {
       strict: true,
