@@ -1626,12 +1626,15 @@ export default function App() {
   interface Turno { funcionario_id: string; nome: string; cargo: string; turno: string; horario_inicio: string; horario_fim: string; data: string; }
   interface FuncAlerta { tipo: string; funcionario: string; cargo: string; msg: string; impacto: string; valor: number; }
   interface Briefing { funcionario_id: string; nome: string; cargo: string; turno: string; texto: string; tarefas: string[]; pontos_criticos: string[]; prioridade: string; }
-  interface BriefingSalvo { id: string; condominio_id?: string; titulo: string; conteudo: string; tipo: "manual"|"di"; prioridade: "baixa"|"normal"|"alta"|"urgente"; funcionarios_ids: string[]; funcionarios_nomes: string[]; criado_em: string; atualizado_em: string; }
+  interface BriefingSalvo { id: string; condominio_id?: string; titulo: string; conteudo: string; tipo: "manual"|"di"; prioridade: "baixa"|"normal"|"alta"|"urgente"; funcionarios_ids: string[]; funcionarios_nomes: string[]; areas_ids?: string[]; areas_nomes?: string[]; criado_em: string; atualizado_em: string; }
+  type AreaTipo = "bloco"|"area_comum"|"equipamento"|"setor"|"estacionamento"|"area_verde"|"circulacao"|"outro";
+  interface Area { id: string; condominio_id?: string; nome: string; tipo: AreaTipo; descricao?: string; bloco?: string; andar?: string; capacidade?: number; responsavel_id?: string; responsavel_nome?: string; ativa: boolean; created_at: string; }
+  const emptyAreaForm = (): { nome:string; tipo:AreaTipo; descricao:string; bloco:string; andar:string; capacidade:string; responsavel_id:string; responsavel_nome:string; ativa:boolean } => ({ nome:"", tipo:"area_comum", descricao:"", bloco:"", andar:"", capacidade:"0", responsavel_id:"", responsavel_nome:"", ativa:true });
   const emptyFuncForm = () => ({ nome:"", cargo:"porteiro" as FuncCargo, jornada:"5x2" as FuncJornada, salario:"", data_admissao:"", status:"ativo" as FuncStatus, telefone:"", cpf:"", horas_extras_mes:"0", faltas_mes:"0", turno_padrao:"comercial", observacoes:"" });
   const [funcList, setFuncList] = useState<Funcionario[]>([]);
   const [funcLoading, setFuncLoading] = useState(false);
   const [funcSaving, setFuncSaving] = useState(false);
-  const [funcTab, setFuncTab] = useState<"equipe"|"escala"|"briefings"|"di">("equipe");
+  const [funcTab, setFuncTab] = useState<"equipe"|"escala"|"briefings"|"areas"|"di">("equipe");
   const [funcModal, setFuncModal] = useState(false);
   const [funcEditId, setFuncEditId] = useState<string|null>(null);
   const [funcForm, setFuncForm] = useState(emptyFuncForm());
@@ -1650,8 +1653,17 @@ export default function App() {
   const [briefingDiLoading, setBriefingDiLoading] = useState(false);
   const [briefingDiInstrucoes, setBriefingDiInstrucoes] = useState("");
   const [briefingFuncSel, setBriefingFuncSel] = useState<string[]>([]);
-  const [briefingForm, setBriefingForm] = useState({ titulo:"", conteudo:"", prioridade:"normal", funcionarios_ids:[] as string[] });
+  const [briefingForm, setBriefingForm] = useState({ titulo:"", conteudo:"", prioridade:"normal", funcionarios_ids:[] as string[], areas_ids:[] as string[] });
   const [briefingFiltro, setBriefingFiltro] = useState<"todos"|"manual"|"di">("todos");
+  const [areasList, setAreasList] = useState<Area[]>([]);
+  const [areasLoading, setAreasLoading] = useState(false);
+  const [areasMissingTable, setAreasMissingTable] = useState(false);
+  const [areasModal, setAreasModal] = useState(false);
+  const [areaEditando, setAreaEditando] = useState<Area|null>(null);
+  const [areaForm, setAreaForm] = useState(emptyAreaForm());
+  const [areasSaving, setAreasSaving] = useState(false);
+  const [areasSearch, setAreasSearch] = useState("");
+  const [areasFiltroTipo, setAreasFiltroTipo] = useState<AreaTipo|"todos">("todos");
   const [funcDiLoading, setFuncDiLoading] = useState(false);
   const [funcDiResult, setFuncDiResult] = useState<{diagnostico:string;riscos:string;escala:string;recomendacoes:string;dados:any}|null>(null);
   const [funcDiPergunta, setFuncDiPergunta] = useState("");
@@ -1726,14 +1738,15 @@ export default function App() {
     if (!briefingForm.titulo.trim() || !briefingForm.conteudo.trim()) { showToast("Título e conteúdo são obrigatórios","error"); return; }
     try {
       const nomes = funcList.filter(f => briefingForm.funcionarios_ids.includes(f.id)).map(f => f.nome);
+      const areasNomes = areasList.filter(a => briefingForm.areas_ids.includes(a.id)).map(a => a.nome);
       const url = briefingEditando ? `/api/briefings/${briefingEditando.id}` : "/api/briefings";
       const method = briefingEditando ? "PUT" : "POST";
-      const r = await fetch(url, { method, headers:{"Content-Type":"application/json","X-Admin-Token":"imobcore-admin-2026"}, body: JSON.stringify({ ...briefingForm, condominio_id: condId, tipo:"manual", funcionarios_nomes: nomes }) });
+      const r = await fetch(url, { method, headers:{"Content-Type":"application/json","X-Admin-Token":"imobcore-admin-2026"}, body: JSON.stringify({ ...briefingForm, condominio_id: condId, tipo:"manual", funcionarios_nomes: nomes, areas_nomes: areasNomes }) });
       const d = await r.json();
       if (d.error === "TABLE_MISSING") { setBriefingMissingTable(true); showToast("Crie a tabela no Supabase primeiro — use o botão 'Copiar SQL'","error"); return; }
       if (!d.ok) throw new Error(d.error || d.message);
       showToast(briefingEditando ? "Briefing atualizado!" : "Briefing criado!", "success");
-      setBriefingModal(false); setBriefingEditando(null); setBriefingForm({ titulo:"", conteudo:"", prioridade:"normal", funcionarios_ids:[] });
+      setBriefingModal(false); setBriefingEditando(null); setBriefingForm({ titulo:"", conteudo:"", prioridade:"normal", funcionarios_ids:[], areas_ids:[] });
       loadBriefingsSalvos();
     } catch(e){ showToast("Erro ao salvar briefing","error"); }
   };
@@ -1805,6 +1818,44 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
 </body></html>`;
     const win = window.open("", "_blank");
     if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500); }
+  };
+
+  const loadAreas = async () => {
+    if (!condId) return;
+    setAreasLoading(true);
+    try {
+      const r = await fetch(`/api/areas?condominio_id=${condId}`, { headers:{"X-Admin-Token":"imobcore-admin-2026"} });
+      const d = await r.json();
+      if (d.missingTable) { setAreasMissingTable(true); setAreasList([]); }
+      else { setAreasMissingTable(false); setAreasList(d.areas || []); }
+    } catch(e){ console.error("Erro ao carregar áreas:", e); } finally { setAreasLoading(false); }
+  };
+
+  const salvarArea = async () => {
+    if (!areaForm.nome.trim()) { showToast("Nome da área é obrigatório","error"); return; }
+    setAreasSaving(true);
+    try {
+      const funcResp = funcList.find(f => f.id === areaForm.responsavel_id);
+      const payload = { ...areaForm, condominio_id: condId, capacidade: Number(areaForm.capacidade)||0, responsavel_nome: funcResp ? funcResp.nome : areaForm.responsavel_nome };
+      const url = areaEditando ? `/api/areas/${areaEditando.id}` : "/api/areas";
+      const method = areaEditando ? "PUT" : "POST";
+      const r = await fetch(url, { method, headers:{"Content-Type":"application/json","X-Admin-Token":"imobcore-admin-2026"}, body: JSON.stringify(payload) });
+      const d = await r.json();
+      if (d.error === "TABLE_MISSING") { setAreasMissingTable(true); showToast("Execute o SQL de migração no Supabase primeiro","error"); return; }
+      if (!d.ok) throw new Error(d.error);
+      showToast(areaEditando ? "Área atualizada!" : "Área cadastrada!", "success");
+      setAreasModal(false); setAreaEditando(null); setAreaForm(emptyAreaForm());
+      loadAreas();
+    } catch(e){ showToast("Erro ao salvar área","error"); } finally { setAreasSaving(false); }
+  };
+
+  const excluirArea = async (id: string, nome: string) => {
+    if (!confirm(`Excluir a área "${nome}"?`)) return;
+    try {
+      await fetch(`/api/areas/${id}`, { method:"DELETE", headers:{"X-Admin-Token":"imobcore-admin-2026"} });
+      showToast("Área removida","success");
+      setAreasList(prev => prev.filter(a => a.id !== id));
+    } catch(e){ showToast("Erro ao excluir área","error"); }
   };
 
   const analiseDiFuncionarios = async () => {
@@ -15826,8 +15877,8 @@ Content-Type: application/json
 
               {/* TABS */}
               <div style={{ display:"flex", gap:6, marginBottom:20, borderBottom:"1px solid rgba(255,255,255,.08)", paddingBottom:0 }}>
-                {([["equipe","👥 Equipe"],["escala","📅 Escala Inteligente"],["briefings","📋 Briefings"],["di","🤖 Di Analista"]] as const).map(([tab,lbl]) => (
-                  <button key={tab} onClick={()=>{ setFuncTab(tab); if(tab==="briefings") loadBriefingsSalvos(); }}
+                {([["equipe","👥 Equipe"],["escala","📅 Escala"],["briefings","📋 Briefings"],["areas","🏢 Áreas"],["di","🤖 Di Analista"]] as const).map(([tab,lbl]) => (
+                  <button key={tab} onClick={()=>{ setFuncTab(tab as any); if(tab==="briefings") loadBriefingsSalvos(); if(tab==="areas") loadAreas(); }}
                     style={{ background: funcTab===tab ? "linear-gradient(135deg,#7C3AED,#A855F7)" : "transparent", border:"none", borderRadius:"10px 10px 0 0", padding:"9px 18px", color: funcTab===tab ? "#fff" : "#64748B", fontSize:13, fontWeight:700, cursor:"pointer", transition:"all .2s" }}>
                     {lbl}
                   </button>
@@ -15987,7 +16038,7 @@ Content-Type: application/json
                         </button>
                       ))}
                     </div>
-                    <button onClick={()=>{ setBriefingEditando(null); setBriefingForm({ titulo:"", conteudo:"", prioridade:"normal", funcionarios_ids:[] }); setBriefingModal(true); }}
+                    <button onClick={()=>{ setBriefingEditando(null); setBriefingForm({ titulo:"", conteudo:"", prioridade:"normal", funcionarios_ids:[], areas_ids:[] }); setBriefingModal(true); }}
                       style={{ background:"rgba(124,92,252,.2)", border:"1px solid rgba(124,92,252,.4)", borderRadius:10, padding:"8px 16px", color:"#A78BFA", fontSize:13, fontWeight:700, cursor:"pointer" }}>
                       ✍️ Novo Manual
                     </button>
@@ -16080,7 +16131,7 @@ Content-Type: application/json
                               <div style={{ display:"flex", gap:6, flexShrink:0 }} onClick={e=>e.stopPropagation()}>
                                 <button title="Exportar PDF" onClick={()=>exportarBriefingPDF(b)}
                                   style={{ background:"rgba(239,68,68,.15)", border:"1px solid rgba(239,68,68,.3)", borderRadius:8, padding:"6px 10px", color:"#F87171", fontSize:12, cursor:"pointer", fontWeight:700 }}>📄 PDF</button>
-                                <button title="Editar" onClick={()=>{ setBriefingEditando(b); setBriefingForm({ titulo:b.titulo, conteudo:b.conteudo, prioridade:b.prioridade, funcionarios_ids:b.funcionarios_ids||[] }); setBriefingModal(true); }}
+                                <button title="Editar" onClick={()=>{ setBriefingEditando(b); setBriefingForm({ titulo:b.titulo, conteudo:b.conteudo, prioridade:b.prioridade, funcionarios_ids:b.funcionarios_ids||[], areas_ids:b.areas_ids||[] }); setBriefingModal(true); }}
                                   style={{ background:"rgba(124,92,252,.15)", border:"1px solid rgba(124,92,252,.3)", borderRadius:8, padding:"6px 10px", color:"#A78BFA", fontSize:12, cursor:"pointer", fontWeight:700 }}>✏️</button>
                                 <button title="Excluir" onClick={()=>excluirBriefing(b.id, b.titulo)}
                                   style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:8, padding:"6px 10px", color:"#F87171", fontSize:12, cursor:"pointer", fontWeight:700 }}>🗑️</button>
@@ -16171,6 +16222,26 @@ Content-Type: application/json
                           </div>
                         </div>
 
+                        {/* Áreas vinculadas */}
+                        {areasList.length > 0 && (
+                          <div style={{ marginBottom:14 }}>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:8 }}>Áreas Vinculadas</label>
+                            <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
+                              {areasList.filter(a=>a.ativa).map(a=>{
+                                const sel = briefingForm.areas_ids.includes(a.id);
+                                const areaColors: Record<string,string> = { bloco:"#3B82F6", area_comum:"#14B8A6", equipamento:"#F97316", setor:"#A855F7", estacionamento:"#6B7280", area_verde:"#22C55E", circulacao:"#F59E0B", outro:"#64748B" };
+                                const c = areaColors[a.tipo] || "#64748B";
+                                return (
+                                  <button key={a.id} onClick={()=>setBriefingForm(p=>({...p,areas_ids:sel?p.areas_ids.filter(x=>x!==a.id):[...p.areas_ids,a.id]}))}
+                                    style={{ background:sel?`${c}25`:"rgba(255,255,255,.05)", border:`1px solid ${sel?c+"80":"rgba(255,255,255,.1)"}`, borderRadius:8, padding:"5px 12px", color:sel?c:"#64748B", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                                    {sel?"✓ ":""}{a.nome}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
                         {/* Conteúdo */}
                         <div style={{ marginBottom:20 }}>
                           <label style={{ fontSize:11, color:"#64748B", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:6 }}>Conteúdo do Briefing *</label>
@@ -16193,6 +16264,243 @@ Content-Type: application/json
                   )}
                 </div>
               )}
+
+              {/* ─── TAB: ÁREAS ──────────────────────────────── */}
+              {funcTab === "areas" && (() => {
+                const AREA_CFG: Record<string, { icon:string; color:string; g1:string; g2:string; label:string }> = {
+                  bloco:          { icon:"🏗️", color:"#3B82F6", g1:"#60A5FA", g2:"#1D4ED8", label:"Bloco" },
+                  area_comum:     { icon:"🏊", color:"#14B8A6", g1:"#5EEAD4", g2:"#0F766E", label:"Área Comum" },
+                  equipamento:    { icon:"⚙️", color:"#F97316", g1:"#FB923C", g2:"#7C2D12", label:"Equipamento" },
+                  setor:          { icon:"📋", color:"#A855F7", g1:"#D8B4FE", g2:"#4C1D95", label:"Setor Administrativo" },
+                  estacionamento: { icon:"🅿️", color:"#6B7280", g1:"#CBD5E1", g2:"#374151", label:"Estacionamento" },
+                  area_verde:     { icon:"🌿", color:"#22C55E", g1:"#86EFAC", g2:"#15803D", label:"Área Verde" },
+                  circulacao:     { icon:"🛗", color:"#F59E0B", g1:"#FCD34D", g2:"#B45309", label:"Circulação" },
+                  outro:          { icon:"📍", color:"#64748B", g1:"#CBD5E1", g2:"#374151", label:"Outro" },
+                };
+                const tiposOrdem: AreaTipo[] = ["bloco","area_comum","equipamento","setor","estacionamento","area_verde","circulacao","outro"];
+
+                const areasFiltradas = areasList.filter(a => {
+                  const matchTipo = areasFiltroTipo === "todos" || a.tipo === areasFiltroTipo;
+                  const matchSearch = !areasSearch || a.nome.toLowerCase().includes(areasSearch.toLowerCase()) || (a.descricao||"").toLowerCase().includes(areasSearch.toLowerCase()) || (a.bloco||"").toLowerCase().includes(areasSearch.toLowerCase());
+                  return matchTipo && matchSearch;
+                });
+
+                const contsPorTipo = tiposOrdem.reduce((acc, t) => { acc[t] = areasList.filter(a=>a.tipo===t).length; return acc; }, {} as Record<string,number>);
+
+                return (
+                <div>
+                  {/* HEADER */}
+                  <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:16, flexWrap:"wrap" as const }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>Áreas do Condomínio</div>
+                      <div style={{ fontSize:12, color:"#475569" }}>Blocos, áreas comuns, equipamentos e setores — vinculados a briefings e escalas</div>
+                    </div>
+                    <button onClick={()=>{ setAreaEditando(null); setAreaForm(emptyAreaForm()); setAreasModal(true); }}
+                      style={{ background:"linear-gradient(135deg,#14B8A6,#0F766E)", border:"none", borderRadius:10, padding:"9px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                      + Nova Área
+                    </button>
+                  </div>
+
+                  {/* MISSING TABLE */}
+                  {areasMissingTable && (
+                    <div style={{ background:"rgba(245,158,11,.1)", border:"1px solid rgba(245,158,11,.35)", borderRadius:12, padding:"12px 16px", marginBottom:16, display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:18 }}>⚠️</span>
+                      <div style={{ flex:1 }}>
+                        <div style={{ color:"#FCD34D", fontWeight:700, fontSize:13 }}>Tabela areas_condominio não existe no Supabase</div>
+                        <div style={{ color:"#94A3B8", fontSize:11 }}>Copie e execute o SQL abaixo no Supabase SQL Editor</div>
+                      </div>
+                      <button onClick={async()=>{ const r=await fetch("/api/areas/migration-sql",{headers:{"X-Admin-Token":"imobcore-admin-2026"}}); const d=await r.json(); navigator.clipboard.writeText(d.sql); showToast("SQL copiado!","success"); }}
+                        style={{ background:"rgba(245,158,11,.2)", border:"1px solid rgba(245,158,11,.4)", borderRadius:8, padding:"6px 14px", color:"#FCD34D", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        📋 Copiar SQL
+                      </button>
+                    </div>
+                  )}
+
+                  {/* KPI POR TIPO */}
+                  {areasList.length > 0 && (
+                    <div style={{ display:"flex", gap:8, marginBottom:16, flexWrap:"wrap" as const }}>
+                      {tiposOrdem.filter(t=>contsPorTipo[t]>0).map(t=>{
+                        const cfg = AREA_CFG[t];
+                        const sel = areasFiltroTipo === t;
+                        return (
+                          <button key={t} onClick={()=>setAreasFiltroTipo(sel?"todos":t)}
+                            style={{ background:sel?`rgba(${cfg.color === "#3B82F6"?"59,130,246":cfg.color === "#14B8A6"?"20,184,166":cfg.color === "#F97316"?"249,115,22":cfg.color === "#A855F7"?"168,85,247":cfg.color === "#22C55E"?"34,197,94":cfg.color === "#F59E0B"?"245,158,11":"107,114,128"},.2)`:"rgba(255,255,255,.04)", border:`1px solid ${sel?cfg.color+"60":"rgba(255,255,255,.08)"}`, borderRadius:10, padding:"8px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+                            <span style={{ fontSize:16 }}>{cfg.icon}</span>
+                            <div style={{ textAlign:"left" as const }}>
+                              <div style={{ fontSize:11, color:sel?cfg.color:"#64748B", fontWeight:700 }}>{cfg.label}</div>
+                              <div style={{ fontSize:14, color:sel?cfg.color:"#E2E8F0", fontWeight:900 }}>{contsPorTipo[t]}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* SEARCH */}
+                  <div style={{ display:"flex", gap:10, marginBottom:16, alignItems:"center" }}>
+                    <input value={areasSearch} onChange={e=>setAreasSearch(e.target.value)} placeholder="🔍 Buscar área por nome, bloco, descrição..."
+                      style={{ flex:1, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, padding:"9px 14px", color:"#E2E8F0", fontSize:13, outline:"none" }} />
+                    {areasFiltroTipo !== "todos" && (
+                      <button onClick={()=>setAreasFiltroTipo("todos")} style={{ background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 14px", color:"#94A3B8", fontSize:12, cursor:"pointer", fontWeight:700 }}>✕ Limpar filtro</button>
+                    )}
+                  </div>
+
+                  {/* LOADING */}
+                  {areasLoading ? (
+                    <div style={{ textAlign:"center" as const, padding:60, color:"#475569" }}>
+                      <div style={{ fontSize:32, marginBottom:10 }}>⏳</div>
+                      <div style={{ fontSize:13, color:"#64748B" }}>Carregando áreas...</div>
+                    </div>
+                  ) : areasFiltradas.length === 0 ? (
+                    <div style={{ textAlign:"center" as const, padding:60, color:"#475569" }}>
+                      <div style={{ fontSize:36, marginBottom:10 }}>🏢</div>
+                      <div style={{ fontSize:14, fontWeight:700, color:"#64748B", marginBottom:6 }}>
+                        {areasList.length === 0 ? "Nenhuma área cadastrada" : "Nenhuma área encontrada"}
+                      </div>
+                      <div style={{ fontSize:12 }}>
+                        {areasList.length === 0 ? "Clique em \"+ Nova Área\" para começar a mapear o condomínio" : "Tente outro filtro ou busca"}
+                      </div>
+                      {areasMissingTable && <div style={{ fontSize:11, color:"#F59E0B", marginTop:12 }}>Execute o SQL de migração para ativar persistência</div>}
+                    </div>
+                  ) : (
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))", gap:12 }}>
+                      {areasFiltradas.map(a => {
+                        const cfg = AREA_CFG[a.tipo] || AREA_CFG.outro;
+                        return (
+                          <div key={a.id} style={{ background:`linear-gradient(135deg,rgba(${cfg.color==="#3B82F6"?"59,130,246":cfg.color==="#14B8A6"?"20,184,166":cfg.color==="#F97316"?"249,115,22":cfg.color==="#A855F7"?"168,85,247":cfg.color==="#22C55E"?"34,197,94":cfg.color==="#F59E0B"?"245,158,11":cfg.color==="#6B7280"?"107,114,128":"107,114,128"},.07) 0%,rgba(255,255,255,0.02) 100%)`, border:`1px solid rgba(255,255,255,.07)`, borderLeft:`4px solid ${cfg.color}`, borderRadius:14, padding:"16px 18px" }}>
+                            <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
+                              {/* Icon 3D */}
+                              <div style={{ width:44, height:44, borderRadius:12, background:`linear-gradient(135deg,${cfg.g1},${cfg.g2})`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:22, flexShrink:0, boxShadow:`0 4px 12px ${cfg.g2}55` }}>
+                                {cfg.icon}
+                              </div>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                                  <span style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>{a.nome}</span>
+                                  {!a.ativa && <span style={{ fontSize:10, background:"rgba(239,68,68,.15)", color:"#F87171", borderRadius:5, padding:"2px 6px", fontWeight:700 }}>Inativa</span>}
+                                </div>
+                                <span style={{ fontSize:11, background:`rgba(${cfg.color==="#3B82F6"?"59,130,246":cfg.color==="#14B8A6"?"20,184,166":cfg.color==="#F97316"?"249,115,22":cfg.color==="#A855F7"?"168,85,247":cfg.color==="#22C55E"?"34,197,94":cfg.color==="#F59E0B"?"245,158,11":"107,114,128"},.2)`, color:cfg.color, borderRadius:6, padding:"2px 8px", fontWeight:700 }}>{cfg.label}</span>
+                                {(a.bloco || a.andar) && <div style={{ fontSize:11, color:"#475569", marginTop:5 }}>{[a.bloco && `Bloco ${a.bloco}`, a.andar && `${a.andar}º andar`].filter(Boolean).join(" · ")}</div>}
+                                {a.descricao && <div style={{ fontSize:11, color:"#64748B", marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{a.descricao}</div>}
+                                <div style={{ display:"flex", gap:12, marginTop:8, flexWrap:"wrap" as const }}>
+                                  {a.capacidade != null && a.capacidade > 0 && <span style={{ fontSize:11, color:"#475569" }}>👥 Cap.: {a.capacidade}</span>}
+                                  {a.responsavel_nome && <span style={{ fontSize:11, color:"#475569" }}>🔑 {a.responsavel_nome}</span>}
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ display:"flex", gap:6, marginTop:12, justifyContent:"flex-end" }}>
+                              <button onClick={()=>{ setAreaEditando(a); setAreaForm({ nome:a.nome, tipo:a.tipo, descricao:a.descricao||"", bloco:a.bloco||"", andar:a.andar||"", capacidade:String(a.capacidade||0), responsavel_id:a.responsavel_id||"", responsavel_nome:a.responsavel_nome||"", ativa:a.ativa }); setAreasModal(true); }}
+                                style={{ background:"rgba(124,92,252,.15)", border:"1px solid rgba(124,92,252,.3)", borderRadius:8, padding:"5px 12px", color:"#A78BFA", fontSize:12, fontWeight:700, cursor:"pointer" }}>✏️ Editar</button>
+                              <button onClick={()=>excluirArea(a.id, a.nome)}
+                                style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:8, padding:"5px 12px", color:"#F87171", fontSize:12, fontWeight:700, cursor:"pointer" }}>🗑️</button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* MODAL CRIAR / EDITAR ÁREA */}
+                  {areasModal && (
+                    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.78)", zIndex:1300, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+                      <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:18, padding:28, width:"100%", maxWidth:620, maxHeight:"90vh", overflowY:"auto" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:22 }}>
+                          <div style={{ width:42, height:42, borderRadius:12, background:"linear-gradient(135deg,#14B8A6,#0F766E)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>🏢</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:17, fontWeight:900, color:"#E2E8F0" }}>{areaEditando?"Editar Área":"Nova Área"}</div>
+                            <div style={{ fontSize:12, color:"#475569" }}>Cadastre um bloco, área comum, equipamento ou setor</div>
+                          </div>
+                          <button onClick={()=>{ setAreasModal(false); setAreaEditando(null); }} style={{ background:"rgba(255,255,255,.08)", border:"none", borderRadius:8, padding:"6px 10px", color:"#94A3B8", fontSize:18, cursor:"pointer" }}>✕</button>
+                        </div>
+
+                        {/* Tipo */}
+                        <div style={{ marginBottom:14 }}>
+                          <label style={{ fontSize:11, color:"#64748B", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:8 }}>Tipo de Área</label>
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:6 }}>
+                            {tiposOrdem.map(t => {
+                              const cfg = AREA_CFG[t];
+                              const sel = areaForm.tipo === t;
+                              return (
+                                <button key={t} onClick={()=>setAreaForm(p=>({...p,tipo:t}))}
+                                  style={{ background:sel?`${cfg.color}22`:"rgba(255,255,255,.04)", border:`1.5px solid ${sel?cfg.color:"rgba(255,255,255,.1)"}`, borderRadius:10, padding:"10px 6px", cursor:"pointer", display:"flex", flexDirection:"column" as const, alignItems:"center", gap:4 }}>
+                                  <span style={{ fontSize:20 }}>{cfg.icon}</span>
+                                  <span style={{ fontSize:10, color:sel?cfg.color:"#64748B", fontWeight:700, textAlign:"center" as const, lineHeight:1.2 }}>{cfg.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Nome */}
+                        <div style={{ marginBottom:14 }}>
+                          <label style={{ fontSize:11, color:"#64748B", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:6 }}>Nome *</label>
+                          <input value={areaForm.nome} onChange={e=>setAreaForm(p=>({...p,nome:e.target.value}))}
+                            placeholder={`Ex: ${areaForm.tipo==="bloco"?"Bloco A":areaForm.tipo==="area_comum"?"Piscina Principal":areaForm.tipo==="equipamento"?"Casa de Máquinas":areaForm.tipo==="estacionamento"?"Garagem Subsolo":"Recepção"}`}
+                            style={{ width:"100%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"10px 14px", color:"#E2E8F0", fontSize:14, outline:"none", boxSizing:"border-box" as const }} />
+                        </div>
+
+                        {/* Bloco + Andar */}
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+                          <div>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:6 }}>Bloco</label>
+                            <input value={areaForm.bloco} onChange={e=>setAreaForm(p=>({...p,bloco:e.target.value}))} placeholder="Ex: A, B, Torre 1"
+                              style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:6 }}>Andar</label>
+                            <input value={areaForm.andar} onChange={e=>setAreaForm(p=>({...p,andar:e.target.value}))} placeholder="Ex: Térreo, 1, 2"
+                              style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }} />
+                          </div>
+                        </div>
+
+                        {/* Capacidade + Responsável */}
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:12, marginBottom:14 }}>
+                          <div>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:6 }}>Capacidade (pessoas)</label>
+                            <input type="number" min="0" value={areaForm.capacidade} onChange={e=>setAreaForm(p=>({...p,capacidade:e.target.value}))}
+                              style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }} />
+                          </div>
+                          <div>
+                            <label style={{ fontSize:11, color:"#64748B", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:6 }}>Funcionário Responsável</label>
+                            <select value={areaForm.responsavel_id} onChange={e=>setAreaForm(p=>({...p,responsavel_id:e.target.value}))}
+                              style={{ width:"100%", background:"#1E293B", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color: areaForm.responsavel_id?"#E2E8F0":"#475569", fontSize:13, outline:"none", boxSizing:"border-box" as const }}>
+                              <option value="">— Sem responsável —</option>
+                              {funcList.filter(f=>f.status==="ativo").map(f=><option key={f.id} value={f.id}>{f.nome} ({CARGO_LABEL[f.cargo]||f.cargo})</option>)}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Descrição */}
+                        <div style={{ marginBottom:14 }}>
+                          <label style={{ fontSize:11, color:"#64748B", fontWeight:700, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:6 }}>Descrição</label>
+                          <textarea value={areaForm.descricao} onChange={e=>setAreaForm(p=>({...p,descricao:e.target.value}))}
+                            placeholder="Observações, localização, regras de uso, equipamentos instalados..."
+                            style={{ width:"100%", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:13, resize:"vertical" as const, minHeight:80, fontFamily:"inherit", outline:"none", boxSizing:"border-box" as const }} />
+                        </div>
+
+                        {/* Ativa */}
+                        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:22 }}>
+                          <button onClick={()=>setAreaForm(p=>({...p,ativa:!p.ativa}))}
+                            style={{ width:40, height:22, borderRadius:11, background:areaForm.ativa?"#10B981":"#374151", border:"none", cursor:"pointer", position:"relative", flexShrink:0, transition:"background .2s" }}>
+                            <span style={{ position:"absolute", top:3, left:areaForm.ativa?20:3, width:16, height:16, borderRadius:"50%", background:"#fff", transition:"left .2s", display:"block" }}/>
+                          </button>
+                          <span style={{ fontSize:13, color:"#94A3B8" }}>Área {areaForm.ativa ? "ativa" : "inativa"}</span>
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+                          <button onClick={()=>{ setAreasModal(false); setAreaEditando(null); }}
+                            style={{ background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"10px 20px", color:"#94A3B8", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancelar</button>
+                          <button onClick={salvarArea} disabled={areasSaving}
+                            style={{ background:"linear-gradient(135deg,#14B8A6,#0F766E)", border:"none", borderRadius:10, padding:"10px 24px", color:"#fff", fontSize:13, fontWeight:700, cursor:areasSaving?"wait":"pointer", opacity:areasSaving?0.7:1 }}>
+                            {areasSaving?"⏳ Salvando...":(areaEditando?"💾 Atualizar":"🏢 Cadastrar Área")}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                );
+              })()}
 
               {/* ─── TAB: DI ANALISTA ────────────────────────── */}
               {funcTab === "di" && (

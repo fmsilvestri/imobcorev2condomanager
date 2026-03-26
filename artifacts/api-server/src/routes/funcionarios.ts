@@ -542,10 +542,14 @@ router.get("/briefings/migration-sql", (_req: Request, res: Response) => {
   prioridade text DEFAULT 'normal',
   funcionarios_ids uuid[] DEFAULT '{}',
   funcionarios_nomes text[] DEFAULT '{}',
+  areas_ids uuid[] DEFAULT '{}',
+  areas_nomes text[] DEFAULT '{}',
   criado_por text DEFAULT 'sindico',
   criado_em timestamptz DEFAULT now(),
   atualizado_em timestamptz DEFAULT now()
-);` });
+);
+ALTER TABLE briefings_funcionarios ADD COLUMN IF NOT EXISTS areas_ids uuid[] DEFAULT '{}';
+ALTER TABLE briefings_funcionarios ADD COLUMN IF NOT EXISTS areas_nomes text[] DEFAULT '{}';` });
 });
 
 router.get("/briefings", async (req: Request, res: Response) => {
@@ -566,9 +570,9 @@ router.get("/briefings", async (req: Request, res: Response) => {
 
 router.post("/briefings", async (req: Request, res: Response) => {
   try {
-    const { condominio_id, titulo, conteudo, tipo = "manual", prioridade = "normal", funcionarios_ids = [], funcionarios_nomes = [] } = req.body;
+    const { condominio_id, titulo, conteudo, tipo = "manual", prioridade = "normal", funcionarios_ids = [], funcionarios_nomes = [], areas_ids = [], areas_nomes = [] } = req.body;
     const { data, error } = await supabase.from("briefings_funcionarios").insert({
-      condominio_id, titulo, conteudo, tipo, prioridade, funcionarios_ids, funcionarios_nomes,
+      condominio_id, titulo, conteudo, tipo, prioridade, funcionarios_ids, funcionarios_nomes, areas_ids, areas_nomes,
       criado_em: new Date().toISOString(), atualizado_em: new Date().toISOString(),
     }).select().single();
     if (error) {
@@ -634,9 +638,9 @@ Gere um briefing completo, formatado com seções claras (use emojis e estrutura
 router.put("/briefings/:id", async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { titulo, conteudo, prioridade, funcionarios_ids, funcionarios_nomes } = req.body;
+    const { titulo, conteudo, prioridade, funcionarios_ids, funcionarios_nomes, areas_ids = [], areas_nomes = [] } = req.body;
     const { data, error } = await supabase.from("briefings_funcionarios").update({
-      titulo, conteudo, prioridade, funcionarios_ids, funcionarios_nomes,
+      titulo, conteudo, prioridade, funcionarios_ids, funcionarios_nomes, areas_ids, areas_nomes,
       atualizado_em: new Date().toISOString(),
     }).eq("id", id).select().single();
     if (error) throw error;
@@ -765,6 +769,85 @@ Seja objetiva, direta e use dados concretos. Máx 400 palavras.`;
       dados: { total: equipe.length, custo_folha: Math.round(totalFolha), passivo_total: Math.round(totalPassivo), em_risco: emRisco.length, sobrecarregados: sobrecarreg.length },
       gerado_em: new Date().toISOString(),
     });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ROUTES — ÁREAS DO CONDOMÍNIO
+// ══════════════════════════════════════════════════════════════════════════════
+
+router.get("/areas/migration-sql", (_req: Request, res: Response) => {
+  res.json({ sql: `CREATE TABLE IF NOT EXISTS areas_condominio (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id uuid,
+  nome text NOT NULL,
+  tipo text DEFAULT 'area_comum',
+  descricao text DEFAULT '',
+  bloco text DEFAULT '',
+  andar text DEFAULT '',
+  capacidade integer DEFAULT 0,
+  responsavel_id uuid,
+  responsavel_nome text DEFAULT '',
+  ativa boolean DEFAULT true,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);` });
+});
+
+router.get("/areas", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, ativa } = req.query as { condominio_id?: string; ativa?: string };
+    let query = supabase.from("areas_condominio").select("*").order("nome", { ascending: true });
+    if (condominio_id) query = query.eq("condominio_id", condominio_id);
+    if (ativa !== undefined) query = query.eq("ativa", ativa !== "false");
+    const { data, error } = await query;
+    if (error) {
+      const msg = error?.message || JSON.stringify(error);
+      if (msg.includes("Could not find") || msg.includes("PGRST205") || msg.includes("does not exist"))
+        return res.json({ areas: [], missingTable: true });
+      throw new Error(msg);
+    }
+    res.json({ areas: data || [] });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/areas", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, nome, tipo = "area_comum", descricao = "", bloco = "", andar = "", capacidade = 0, responsavel_id, responsavel_nome = "", ativa = true } = req.body;
+    if (!nome?.trim()) return res.status(400).json({ error: "Nome é obrigatório" });
+    const { data, error } = await supabase.from("areas_condominio").insert({
+      condominio_id, nome: nome.trim(), tipo, descricao, bloco, andar, capacidade: Number(capacidade), responsavel_id: responsavel_id || null, responsavel_nome, ativa,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    }).select().single();
+    if (error) {
+      const msg = error?.message || JSON.stringify(error);
+      if (msg.includes("Could not find") || msg.includes("PGRST205"))
+        return res.status(409).json({ error: "TABLE_MISSING" });
+      throw new Error(msg);
+    }
+    res.json({ ok: true, area: data });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.put("/areas/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { nome, tipo, descricao, bloco, andar, capacidade, responsavel_id, responsavel_nome, ativa } = req.body;
+    const { data, error } = await supabase.from("areas_condominio").update({
+      nome: nome?.trim(), tipo, descricao, bloco, andar, capacidade: Number(capacidade ?? 0),
+      responsavel_id: responsavel_id || null, responsavel_nome, ativa,
+      updated_at: new Date().toISOString(),
+    }).eq("id", id).select().single();
+    if (error) throw new Error(error?.message || JSON.stringify(error));
+    res.json({ ok: true, area: data });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/areas/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await supabase.from("areas_condominio").delete().eq("id", id);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
