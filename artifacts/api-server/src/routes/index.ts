@@ -4,6 +4,7 @@ import imobcoreRouter from "./imobcore";
 import modulosRouter from "./modulos";
 import mispRouter from "./misp";
 import importacaoRouter from "./importacao";
+import funcionariosRouter from "./funcionarios";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use("/misp", mispRouter);
 router.use(imobcoreRouter);
 router.use(modulosRouter);
 router.use(importacaoRouter);
+router.use(funcionariosRouter);
 
 export default router;

@@ -1,0 +1,192 @@
+Criar módulo completo chamado:
+
+"Funcionários & Escala Inteligente"
+
+Stack:
+- Node.js + Express
+- Supabase
+- IA (Claude/OpenAI)
+- Front estilo dashboard moderno (tipo Nubank)
+
+-----------------------------------
+🎯 OBJETIVO
+-----------------------------------
+
+Gerenciar totalmente:
+
+- Funcionários
+- Custos trabalhistas
+- Rotinas operacionais
+- Escalas automáticas
+- Briefings inteligentes
+- Risco trabalhista
+
+-----------------------------------
+📡 ENDPOINTS
+-----------------------------------
+
+GET /api/funcionarios
+POST /api/funcionarios
+
+GET /api/escala
+POST /api/escala/gerar
+
+GET /api/briefings/gerar
+
+GET /api/alertas/escala
+
+GET /api/funcionarios/analise-di
+
+-----------------------------------
+🧠 FUNÇÃO: GERAR ESCALA INTELIGENTE
+-----------------------------------
+
+Criar função:
+
+function gerarEscala(funcionarios)
+
+Regras:
+
+1. Respeitar jornada:
+- 12x36
+- 5x2
+
+2. Garantir:
+- Portaria 24h
+- Limpeza diária
+- Zelador ativo
+
+3. Evitar:
+- funcionário sobrecarregado
+- turnos repetidos
+- horas extras excessivas
+
+4. Otimizar:
+- menor custo
+- melhor cobertura
+- menor risco
+
+-----------------------------------
+🤖 IA — ANÁLISE DA ESCALA
+-----------------------------------
+
+Prompt:
+
+"Analise a escala do condomínio.
+
+Identifique:
+
+- falhas de cobertura
+- sobrecarga
+- riscos operacionais
+- oportunidades
+
+Classifique:
+
+CRÍTICO
+RISCO
+OPORTUNIDADE
+
+Sugira melhorias objetivas."
+
+-----------------------------------
+🔮 PREVISÃO DE RISCO TRABALHISTA
+-----------------------------------
+
+Criar função:
+
+function preverRisco(funcionario)
+
+Detectar:
+
+- excesso de horas extras
+- passivo alto
+- acúmulo de função
+
+Retornar:
+
+{
+  risco: "alto",
+  motivo: "...",
+  impacto: "..."
+}
+
+-----------------------------------
+🤖 BRIEFING AUTOMÁTICO
+-----------------------------------
+
+Gerar briefing diário:
+
+"Bom dia [nome]
+
+Hoje você irá:
+
+- tarefa 1
+- tarefa 2
+
+Atenção:
+- ponto crítico
+
+Prioridade:
+- foco principal"
+
+-----------------------------------
+📊 DASHBOARD
+-----------------------------------
+
+Criar UI com:
+
+1. Cards:
+
+- total funcionários
+- custo mensal
+- passivo trabalhista
+- risco operacional
+
+2. Escala visual:
+
+- calendário
+- turnos por funcionário
+
+3. Alertas:
+
+- faltas
+- sobrecarga
+- risco trabalhista
+
+4. Ranking funcionários:
+
+- score desempenho
+
+-----------------------------------
+🔗 INTEGRAÇÕES
+-----------------------------------
+
+- Portaria → escala automática
+- Financeiro → custo pessoal
+- MISP → reforço equipe
+
+-----------------------------------
+⚡ AUTOMAÇÕES
+-----------------------------------
+
+Se falta:
+→ realocar automaticamente
+
+Se risco:
+→ alertar gestor
+
+Se sobrecarga:
+→ redistribuir escala
+
+-----------------------------------
+🎯 RESULTADO
+-----------------------------------
+
+Sistema deve:
+
+- automatizar operação
+- reduzir custo
+- reduzir risco trabalhista
+- melhorar eficiência
+- gerar insights com IA

@@ -1084,6 +1084,7 @@ export default function App() {
     loadPlanos(condId);
     loadFornecedores(condId);
     loadPiscina(condId);
+    loadFuncionarios(condId);
     loadDiagHistorico(condId);
     loadMantHistorico(condId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1610,6 +1611,107 @@ export default function App() {
   const [fornecMsg, setFornecMsg] = useState("");
   const [sindFornecDetail, setSindFornecDetail] = useState<string|null>(null);
   const [morFornecDetail, setMorFornecDetail] = useState<string|null>(null);
+  // ─── Funcionários & Escala ──────────────────────────────────────────────────
+  type FuncCargo = "porteiro"|"porteiro_chefe"|"faxineiro"|"limpeza"|"zelador"|"jardineiro"|"administrador"|"outro";
+  type FuncJornada = "5x2"|"6x1"|"12x36"|"12x36_noturno"|"outro";
+  type FuncStatus = "ativo"|"inativo"|"ferias"|"afastado";
+  type RiscoNivel = "baixo"|"moderado"|"alto"|"critico";
+  interface Funcionario {
+    id: string; condominio_id: string; nome: string; cargo: FuncCargo; jornada: FuncJornada; salario: number;
+    data_admissao: string; status: FuncStatus; telefone?: string; cpf?: string;
+    horas_extras_mes: number; faltas_mes: number; turno_padrao: string; observacoes?: string;
+    meses_ativo?: number; passivo_trabalhista?: number; custo_total?: number;
+    score_desempenho?: number; risco_trabalhista?: { risco: RiscoNivel; motivo: string; impacto: string; valor_estimado: number };
+  }
+  interface Turno { funcionario_id: string; nome: string; cargo: string; turno: string; horario_inicio: string; horario_fim: string; data: string; }
+  interface FuncAlerta { tipo: string; funcionario: string; cargo: string; msg: string; impacto: string; valor: number; }
+  interface Briefing { funcionario_id: string; nome: string; cargo: string; turno: string; texto: string; tarefas: string[]; pontos_criticos: string[]; prioridade: string; }
+  const emptyFuncForm = () => ({ nome:"", cargo:"porteiro" as FuncCargo, jornada:"5x2" as FuncJornada, salario:"", data_admissao:"", status:"ativo" as FuncStatus, telefone:"", cpf:"", horas_extras_mes:"0", faltas_mes:"0", turno_padrao:"comercial", observacoes:"" });
+  const [funcList, setFuncList] = useState<Funcionario[]>([]);
+  const [funcLoading, setFuncLoading] = useState(false);
+  const [funcSaving, setFuncSaving] = useState(false);
+  const [funcTab, setFuncTab] = useState<"equipe"|"escala"|"briefings"|"di">("equipe");
+  const [funcModal, setFuncModal] = useState(false);
+  const [funcEditId, setFuncEditId] = useState<string|null>(null);
+  const [funcForm, setFuncForm] = useState(emptyFuncForm());
+  const [funcTotais, setFuncTotais] = useState<{total:number;ativos:number;custo_folha_total:number;passivo_total:number;risco_alto:number}|null>(null);
+  const [escalaGerada, setEscalaGerada] = useState<Turno[]>([]);
+  const [escalaAlertas, setEscalaAlertas] = useState<FuncAlerta[]>([]);
+  const [escalaLoading, setEscalaLoading] = useState(false);
+  const [escalaSalvar, setEscalaSalvar] = useState(false);
+  const [briefings, setBriefings] = useState<Briefing[]>([]);
+  const [briefingsLoading, setBriefingsLoading] = useState(false);
+  const [briefingAberto, setBriefingAberto] = useState<string|null>(null);
+  const [funcDiLoading, setFuncDiLoading] = useState(false);
+  const [funcDiResult, setFuncDiResult] = useState<{diagnostico:string;riscos:string;escala:string;recomendacoes:string;dados:any}|null>(null);
+  const [funcDiPergunta, setFuncDiPergunta] = useState("");
+  const [funcMissingTable, setFuncMissingTable] = useState(false);
+
+  const loadFuncionarios = async (cid?: string) => {
+    const id = cid || condId; if (!id) return;
+    setFuncLoading(true);
+    try {
+      const r = await fetch(`/api/funcionarios?condominio_id=${id}`, { headers: { "X-Admin-Token":"imobcore-admin-2026" } });
+      const d = await r.json();
+      if (d.missing_table) { setFuncMissingTable(true); setFuncList([]); }
+      else { setFuncMissingTable(false); setFuncList(d.funcionarios || []); setFuncTotais(d.totais || null); }
+    } catch(e){ console.error(e); } finally { setFuncLoading(false); }
+  };
+
+  const saveFuncionario = async () => {
+    setFuncSaving(true);
+    try {
+      const payload = { ...funcForm, condominio_id: condId, salario: Number(funcForm.salario)||0, horas_extras_mes: Number(funcForm.horas_extras_mes)||0, faltas_mes: Number(funcForm.faltas_mes)||0 };
+      const url = funcEditId ? `/api/funcionarios/${funcEditId}` : "/api/funcionarios";
+      const method = funcEditId ? "PUT" : "POST";
+      const r = await fetch(url, { method, headers:{"Content-Type":"application/json","X-Admin-Token":"imobcore-admin-2026"}, body: JSON.stringify(payload) });
+      const d = await r.json();
+      if (d.ok) { setFuncModal(false); loadFuncionarios(); showToast(funcEditId ? "Funcionário atualizado" : "Funcionário cadastrado","success"); }
+      else showToast(d.error || "Erro ao salvar","error");
+    } catch(e){ showToast("Erro de rede","error"); } finally { setFuncSaving(false); }
+  };
+
+  const deleteFuncionario = async (id: string, nome: string) => {
+    if (!confirm(`Remover ${nome}?`)) return;
+    const r = await fetch(`/api/funcionarios/${id}`, { method:"DELETE", headers:{"X-Admin-Token":"imobcore-admin-2026"} });
+    const d = await r.json();
+    if (d.ok) { loadFuncionarios(); showToast("Funcionário removido","success"); }
+    else showToast(d.error || "Erro","error");
+  };
+
+  const gerarEscalaIA = async () => {
+    if (!condId) return;
+    setEscalaLoading(true);
+    try {
+      const r = await fetch("/api/escala/gerar", { method:"POST", headers:{"Content-Type":"application/json","X-Admin-Token":"imobcore-admin-2026"}, body: JSON.stringify({ condominio_id: condId, dias: 7, salvar: escalaSalvar }) });
+      const d = await r.json();
+      setEscalaGerada(d.turnos || []);
+      setEscalaAlertas(d.alertas || []);
+      if (escalaSalvar) showToast("Escala salva no banco!","success");
+    } catch(e){ showToast("Erro ao gerar escala","error"); } finally { setEscalaLoading(false); }
+  };
+
+  const gerarBriefings = async () => {
+    if (!condId) return;
+    setBriefingsLoading(true);
+    try {
+      const r = await fetch(`/api/briefings/gerar?condominio_id=${condId}`, { headers:{"X-Admin-Token":"imobcore-admin-2026"} });
+      const d = await r.json();
+      setBriefings(d.briefings || []);
+    } catch(e){ showToast("Erro ao gerar briefings","error"); } finally { setBriefingsLoading(false); }
+  };
+
+  const analiseDiFuncionarios = async () => {
+    if (!condId) return;
+    setFuncDiLoading(true);
+    try {
+      const qs = new URLSearchParams({ condominio_id: condId, ...(funcDiPergunta ? { pergunta: funcDiPergunta } : {}) });
+      const r = await fetch(`/api/funcionarios/analise-di?${qs}`, { headers:{"X-Admin-Token":"imobcore-admin-2026"} });
+      const d = await r.json();
+      setFuncDiResult(d);
+    } catch(e){ showToast("Erro na análise","error"); } finally { setFuncDiLoading(false); }
+  };
+
   // ─── Piscina ───────────────────────────────────────────────────────────────
   const emptyPiscinaForm = () => ({ ph: "", cloro: "", temperatura: "", alcalinidade: "", dureza_calcica: "", observacoes: "" });
   const [piscinaList, setPiscinaList] = useState<PiscinaLeitura[]>([]);
@@ -8621,6 +8723,12 @@ export default function App() {
             <span className="sb-icon">📦</span> Encomendas
             {encList.filter(e=>e.status==="aguardando_retirada").length > 0 && <span className="sb-badge" style={{ background:"#F59E0B" }}>{encList.filter(e=>e.status==="aguardando_retirada").length}</span>}
           </div>
+          <div className={`sb-item ${panel === "funcionarios" ? "active" : ""}`} onClick={() => { setPanel("funcionarios"); loadFuncionarios(); }}>
+            <span className="sb-icon">👷</span> Funcionários
+            {escalaAlertas.filter(a=>a.tipo==="critico").length > 0
+              ? <span className="sb-badge" style={{ background:"#EF4444" }}>{escalaAlertas.filter(a=>a.tipo==="critico").length}</span>
+              : funcList.length > 0 && <span className="sb-badge" style={{ background:"rgba(16,185,129,.2)", color:"#34D399" }}>{funcList.filter(f=>f.status==="ativo").length}</span>}
+          </div>
           <div className={`sb-item ${panel === "fornecedores" ? "active" : ""}`} onClick={() => { setPanel("fornecedores"); if(condId) loadFornecedores(condId); }}>
             <span className="sb-icon">🏢</span> Fornecedores
             {fornecList.length > 0 && <span className="sb-badge" style={{ background:"rgba(16,185,129,.2)", color:"#34D399" }}>{fornecList.length}</span>}
@@ -15506,6 +15614,468 @@ Content-Type: application/json
                       style={{ width:"100%", background:"linear-gradient(135deg,#25D366,#128C7E)", border:"none", borderRadius:10, padding:"11px", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
                       💬 Abrir WhatsApp
                     </button>
+                  </div>
+                </div>
+              )}
+            </div>
+            );
+          })()}
+
+          {/* PANEL: FUNCIONÁRIOS & ESCALA INTELIGENTE */}
+          {panel === "funcionarios" && (() => {
+            const CARGO_LABEL: Record<string, string> = { porteiro:"Porteiro", porteiro_chefe:"Porteiro-Chefe", faxineiro:"Faxineiro", limpeza:"Limpeza", zelador:"Zelador", jardineiro:"Jardineiro", administrador:"Administrativo", outro:"Outro" };
+            const JORNADA_LABEL: Record<string, string> = { "5x2":"5x2 (8h/dia)", "6x1":"6x1", "12x36":"12x36 Diurno", "12x36_noturno":"12x36 Noturno", "outro":"Outra" };
+            const STATUS_LABEL: Record<string, string> = { ativo:"Ativo", inativo:"Inativo", ferias:"Férias", afastado:"Afastado" };
+            const RISCO_COLOR: Record<string, string> = { baixo:"#10B981", moderado:"#F59E0B", alto:"#EF4444", critico:"#DC2626" };
+            const RISCO_BG: Record<string, string> = { baixo:"rgba(16,185,129,.15)", moderado:"rgba(245,158,11,.15)", alto:"rgba(239,68,68,.15)", critico:"rgba(220,38,38,.2)" };
+            const TURNO_COLOR: Record<string, string> = { diurno:"#FCD34D", noturno:"#818CF8", manha:"#34D399", comercial:"#60A5FA", outro:"#A78BFA" };
+            const CARGO_ICON: Record<string, string> = { porteiro:"🛡️", porteiro_chefe:"🏅", faxineiro:"🧹", limpeza:"🧹", zelador:"🔧", jardineiro:"🌿", administrador:"💼", outro:"👤" };
+
+            // Agrupar escala por dia
+            const escalaByDia: Record<string, Turno[]> = {};
+            for (const t of escalaGerada) { if (!escalaByDia[t.data]) escalaByDia[t.data] = []; escalaByDia[t.data].push(t); }
+            const diasEscala = Object.keys(escalaByDia).sort();
+            const hoje = new Date().toISOString().slice(0,10);
+
+            // Ranking
+            const funcRanking = [...funcList].sort((a,b) => (b.score_desempenho||70) - (a.score_desempenho||70));
+
+            return (
+            <div style={{ padding:"24px 28px", height:"100%", overflowY:"auto", fontFamily:"'Inter', sans-serif" }}>
+              {/* HEADER */}
+              <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:22 }}>
+                <div style={{ width:46, height:46, borderRadius:14, background:"linear-gradient(135deg,#7C3AED,#A855F7)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:22 }}>👷</div>
+                <div>
+                  <div style={{ fontSize:20, fontWeight:900, color:"#E2E8F0", letterSpacing:-0.5 }}>Funcionários & Escala Inteligente</div>
+                  <div style={{ fontSize:12, color:"#64748B" }}>Gestão de equipe · Escalas automáticas · Risco trabalhista · IA Di</div>
+                </div>
+                <div style={{ marginLeft:"auto", display:"flex", gap:8 }}>
+                  <button onClick={()=>{ setFuncEditId(null); setFuncForm(emptyFuncForm()); setFuncModal(true); }}
+                    style={{ background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:10, padding:"9px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                    + Novo Funcionário
+                  </button>
+                </div>
+              </div>
+
+              {/* MISSING TABLE WARNING */}
+              {funcMissingTable && (
+                <div style={{ background:"rgba(245,158,11,.12)", border:"1px solid rgba(245,158,11,.4)", borderRadius:12, padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", gap:12 }}>
+                  <span style={{ fontSize:20 }}>⚠️</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ color:"#FCD34D", fontWeight:700, fontSize:14 }}>Tabelas não encontradas no Supabase</div>
+                    <div style={{ color:"#94A3B8", fontSize:12 }}>Execute o SQL de migração para ativar persistência. O módulo funciona com dados demo até lá.</div>
+                  </div>
+                  <button onClick={async()=>{ const r=await fetch("/api/funcionarios/migration-sql",{headers:{"X-Admin-Token":"imobcore-admin-2026"}}); if(r.ok){const d=await r.json(); navigator.clipboard.writeText(d.sql); showToast("SQL copiado! Cole no Supabase SQL Editor","success");}}}
+                    style={{ background:"rgba(245,158,11,.2)", border:"1px solid rgba(245,158,11,.4)", borderRadius:8, padding:"7px 14px", color:"#FCD34D", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const }}>
+                    📋 Copiar SQL
+                  </button>
+                </div>
+              )}
+
+              {/* KPI CARDS */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:14, marginBottom:22 }}>
+                {[
+                  { icon:"👷", label:"Total Funcionários", val: funcTotais?.total ?? funcList.length, sub:`${funcTotais?.ativos ?? funcList.filter(f=>f.status==="ativo").length} ativos`, color:"#7C5CFC" },
+                  { icon:"💰", label:"Custo Mensal", val:`R$ ${((funcTotais?.custo_folha_total ?? funcList.reduce((s,f)=>s+(f.custo_total||Number(f.salario||0)*1.68),0))/1000).toFixed(1)}k`, sub:"com encargos CLT", color:"#10B981" },
+                  { icon:"📊", label:"Passivo Trabalhista", val:`R$ ${Math.round((funcTotais?.passivo_total ?? funcList.reduce((s,f)=>s+(f.passivo_trabalhista||0),0))/1000)}k`, sub:"estimado total", color:"#F59E0B" },
+                  { icon:"⚠️", label:"Risco Operacional", val: funcTotais?.risco_alto ?? funcList.filter(f=>["alto","critico"].includes(f.risco_trabalhista?.risco||"")).length, sub:"funcionários em risco", color: (funcTotais?.risco_alto??0)>0?"#EF4444":"#10B981" },
+                ].map((c,i) => (
+                  <div key={i} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:14, padding:"16px 18px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                      <span style={{ fontSize:18 }}>{c.icon}</span>
+                      <span style={{ fontSize:11, color:"#64748B", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>{c.label}</span>
+                    </div>
+                    <div style={{ fontSize:24, fontWeight:900, color:c.color, lineHeight:1 }}>{c.val}</div>
+                    <div style={{ fontSize:11, color:"#475569", marginTop:4 }}>{c.sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* TABS */}
+              <div style={{ display:"flex", gap:6, marginBottom:20, borderBottom:"1px solid rgba(255,255,255,.08)", paddingBottom:0 }}>
+                {([["equipe","👥 Equipe"],["escala","📅 Escala Inteligente"],["briefings","📋 Briefings"],["di","🤖 Di Analista"]] as const).map(([tab,lbl]) => (
+                  <button key={tab} onClick={()=>setFuncTab(tab)}
+                    style={{ background: funcTab===tab ? "linear-gradient(135deg,#7C3AED,#A855F7)" : "transparent", border:"none", borderRadius:"10px 10px 0 0", padding:"9px 18px", color: funcTab===tab ? "#fff" : "#64748B", fontSize:13, fontWeight:700, cursor:"pointer", transition:"all .2s" }}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+
+              {/* ─── TAB: EQUIPE ─────────────────────────────── */}
+              {funcTab === "equipe" && (
+                <div>
+                  {funcLoading ? (
+                    <div style={{ textAlign:"center" as const, padding:40, color:"#64748B" }}>⏳ Carregando equipe...</div>
+                  ) : funcList.length === 0 ? (
+                    <div style={{ textAlign:"center" as const, padding:60, color:"#475569" }}>
+                      <div style={{ fontSize:40, marginBottom:12 }}>👷</div>
+                      <div style={{ fontSize:16, fontWeight:700, color:"#94A3B8", marginBottom:8 }}>Nenhum funcionário cadastrado</div>
+                      <div style={{ fontSize:13, color:"#475569", marginBottom:20 }}>Comece adicionando os funcionários do condomínio</div>
+                      <button onClick={()=>{ setFuncEditId(null); setFuncForm(emptyFuncForm()); setFuncModal(true); }}
+                        style={{ background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:10, padding:"10px 22px", color:"#fff", fontSize:14, fontWeight:700, cursor:"pointer" }}>
+                        + Cadastrar Primeiro Funcionário
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      {/* Ranking header */}
+                      <div style={{ fontSize:12, color:"#475569", fontWeight:600, marginBottom:10, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Ranking por Desempenho</div>
+                      <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+                        {funcRanking.map((f, idx) => {
+                          const risco = f.risco_trabalhista;
+                          const riscoNivel = risco?.risco || "baixo";
+                          return (
+                            <div key={f.id} style={{ background:"rgba(255,255,255,.04)", border:`1px solid ${["alto","critico"].includes(riscoNivel) ? "rgba(239,68,68,.3)" : "rgba(255,255,255,.08)"}`, borderRadius:14, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
+                              {/* Rank */}
+                              <div style={{ width:28, height:28, borderRadius:8, background: idx===0?"linear-gradient(135deg,#F59E0B,#D97706)":idx===1?"rgba(148,163,184,.2)":idx===2?"rgba(180,140,80,.2)":"rgba(255,255,255,.05)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:900, color: idx<3?"#fff":"#64748B", flexShrink:0 }}>
+                                {idx<3 ? ["🥇","🥈","🥉"][idx] : idx+1}
+                              </div>
+                              {/* Cargo icon */}
+                              <div style={{ width:38, height:38, borderRadius:10, background:"rgba(124,92,252,.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>
+                                {CARGO_ICON[f.cargo] || "👤"}
+                              </div>
+                              {/* Info */}
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
+                                  <span style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>{f.nome}</span>
+                                  <span style={{ fontSize:10, background:"rgba(124,92,252,.2)", color:"#A78BFA", borderRadius:6, padding:"2px 7px", fontWeight:700 }}>{CARGO_LABEL[f.cargo]||f.cargo}</span>
+                                  <span style={{ fontSize:10, background: f.status==="ativo"?"rgba(16,185,129,.15)":"rgba(100,116,139,.15)", color: f.status==="ativo"?"#34D399":"#94A3B8", borderRadius:6, padding:"2px 7px", fontWeight:700 }}>{STATUS_LABEL[f.status]||f.status}</span>
+                                </div>
+                                <div style={{ fontSize:11, color:"#475569" }}>{JORNADA_LABEL[f.jornada]||f.jornada} · Admissão: {f.data_admissao ? new Date(f.data_admissao).toLocaleDateString("pt-BR") : "–"} ({f.meses_ativo||0} meses)</div>
+                              </div>
+                              {/* Score */}
+                              <div style={{ textAlign:"center" as const, flexShrink:0 }}>
+                                <div style={{ fontSize:10, color:"#475569", marginBottom:2 }}>Score</div>
+                                <div style={{ fontSize:22, fontWeight:900, color: (f.score_desempenho||70)>=80?"#10B981":(f.score_desempenho||70)>=60?"#F59E0B":"#EF4444" }}>{f.score_desempenho||70}</div>
+                              </div>
+                              {/* Financeiro */}
+                              <div style={{ textAlign:"right" as const, flexShrink:0, minWidth:120 }}>
+                                <div style={{ fontSize:13, fontWeight:800, color:"#E2E8F0" }}>R$ {(Number(f.salario)||0).toLocaleString("pt-BR")}</div>
+                                <div style={{ fontSize:10, color:"#475569" }}>Custo: R$ {(f.custo_total||0).toLocaleString("pt-BR")}/mês</div>
+                                <div style={{ fontSize:10, color:"#94A3B8" }}>Passivo: R$ {(f.passivo_trabalhista||0).toLocaleString("pt-BR")}</div>
+                              </div>
+                              {/* Risco badge */}
+                              <div style={{ background: RISCO_BG[riscoNivel], borderRadius:8, padding:"4px 10px", textAlign:"center" as const, flexShrink:0 }}>
+                                <div style={{ fontSize:9, color:"#94A3B8", textTransform:"uppercase" as const, letterSpacing:0.5 }}>Risco</div>
+                                <div style={{ fontSize:12, fontWeight:800, color: RISCO_COLOR[riscoNivel], textTransform:"uppercase" as const }}>{riscoNivel}</div>
+                              </div>
+                              {/* Actions */}
+                              <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                                <button onClick={()=>{ setFuncEditId(f.id); setFuncForm({ nome:f.nome, cargo:f.cargo, jornada:f.jornada, salario:String(f.salario), data_admissao:f.data_admissao||"", status:f.status, telefone:f.telefone||"", cpf:f.cpf||"", horas_extras_mes:String(f.horas_extras_mes||0), faltas_mes:String(f.faltas_mes||0), turno_padrao:f.turno_padrao||"comercial", observacoes:f.observacoes||"" }); setFuncModal(true); }}
+                                  style={{ background:"rgba(124,92,252,.2)", border:"1px solid rgba(124,92,252,.3)", borderRadius:8, padding:"6px 12px", color:"#A78BFA", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                  ✏️ Editar
+                                </button>
+                                <button onClick={()=>deleteFuncionario(f.id, f.nome)}
+                                  style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:8, padding:"6px 12px", color:"#F87171", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ─── TAB: ESCALA ─────────────────────────────── */}
+              {funcTab === "escala" && (
+                <div>
+                  <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18 }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>Escala Inteligente — Próximos 7 dias</div>
+                      <div style={{ fontSize:12, color:"#475569" }}>Geração automática respeitando jornada, cobertura 24h e custos</div>
+                    </div>
+                    <label style={{ display:"flex", alignItems:"center", gap:6, cursor:"pointer" }}>
+                      <input type="checkbox" checked={escalaSalvar} onChange={e=>setEscalaSalvar(e.target.checked)} style={{ width:15, height:15 }} />
+                      <span style={{ fontSize:12, color:"#94A3B8" }}>Salvar no banco</span>
+                    </label>
+                    <button onClick={gerarEscalaIA} disabled={escalaLoading}
+                      style={{ background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:10, padding:"9px 20px", color:"#fff", fontSize:13, fontWeight:700, cursor: escalaLoading?"wait":"pointer", opacity: escalaLoading?0.7:1 }}>
+                      {escalaLoading ? "⏳ Gerando..." : "⚡ Gerar Escala IA"}
+                    </button>
+                  </div>
+
+                  {/* Alertas */}
+                  {escalaAlertas.length > 0 && (
+                    <div style={{ display:"flex", flexDirection:"column" as const, gap:8, marginBottom:18 }}>
+                      {escalaAlertas.map((a, i) => (
+                        <div key={i} style={{ background: a.tipo==="critico"||a.tipo==="sobrecarga" ? "rgba(239,68,68,.1)" : "rgba(245,158,11,.1)", border:`1px solid ${a.tipo==="critico"||a.tipo==="sobrecarga" ? "rgba(239,68,68,.3)" : "rgba(245,158,11,.3)"}`, borderRadius:10, padding:"10px 16px", fontSize:13, color: a.tipo==="critico"||a.tipo==="sobrecarga" ? "#F87171" : "#FCD34D" }}>
+                          {a.msg}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {escalaGerada.length === 0 ? (
+                    <div style={{ textAlign:"center" as const, padding:60, color:"#475569" }}>
+                      <div style={{ fontSize:40, marginBottom:12 }}>📅</div>
+                      <div style={{ fontSize:15, fontWeight:700, color:"#64748B", marginBottom:8 }}>Escala não gerada</div>
+                      <div style={{ fontSize:12, color:"#475569" }}>Clique em "Gerar Escala IA" para criar a programação semanal automaticamente</div>
+                    </div>
+                  ) : (
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:8 }}>
+                      {diasEscala.map(dia => {
+                        const diaFmt = new Date(dia + "T12:00:00").toLocaleDateString("pt-BR",{weekday:"short",day:"numeric",month:"numeric"});
+                        const isHoje = dia === hoje;
+                        const turnos = escalaByDia[dia] || [];
+                        return (
+                          <div key={dia} style={{ background: isHoje ? "rgba(124,92,252,.15)" : "rgba(255,255,255,.03)", border:`1px solid ${isHoje ? "rgba(124,92,252,.5)" : "rgba(255,255,255,.07)"}`, borderRadius:12, padding:10, minHeight:120 }}>
+                            <div style={{ fontSize:11, fontWeight:800, color: isHoje?"#A78BFA":"#64748B", marginBottom:8, textAlign:"center" as const }}>{diaFmt}{isHoje && <span style={{ display:"block", fontSize:9, color:"#7C5CFC" }}>HOJE</span>}</div>
+                            {turnos.map((t,i)=>(
+                              <div key={i} style={{ background: `rgba(${TURNO_COLOR[t.turno]==="#FCD34D"?"252,211,77":TURNO_COLOR[t.turno]==="#818CF8"?"129,140,248":TURNO_COLOR[t.turno]==="#34D399"?"52,211,153":"96,165,250"},.15)`, borderRadius:7, padding:"5px 8px", marginBottom:5, borderLeft:`3px solid ${TURNO_COLOR[t.turno]||"#60A5FA"}` }}>
+                                <div style={{ fontSize:10, fontWeight:700, color:"#E2E8F0" }}>{CARGO_ICON[t.cargo]||"👤"} {t.nome.split(" ")[0]}</div>
+                                <div style={{ fontSize:9, color:"#64748B" }}>{t.horario_inicio}–{t.horario_fim}</div>
+                              </div>
+                            ))}
+                            {turnos.length === 0 && <div style={{ fontSize:10, color:"#334155", textAlign:"center" as const, marginTop:20 }}>–</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ─── TAB: BRIEFINGS ──────────────────────────── */}
+              {funcTab === "briefings" && (
+                <div>
+                  <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18 }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>Briefings Diários Automáticos</div>
+                      <div style={{ fontSize:12, color:"#475569" }}>Instruções personalizadas para cada funcionário geradas pela IA</div>
+                    </div>
+                    <button onClick={gerarBriefings} disabled={briefingsLoading}
+                      style={{ background:"linear-gradient(135deg,#059669,#10B981)", border:"none", borderRadius:10, padding:"9px 20px", color:"#fff", fontSize:13, fontWeight:700, cursor: briefingsLoading?"wait":"pointer", opacity: briefingsLoading?0.7:1 }}>
+                      {briefingsLoading ? "⏳ Gerando..." : "📋 Gerar Briefings"}
+                    </button>
+                  </div>
+
+                  {briefings.length === 0 ? (
+                    <div style={{ textAlign:"center" as const, padding:60, color:"#475569" }}>
+                      <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
+                      <div style={{ fontSize:15, fontWeight:700, color:"#64748B", marginBottom:8 }}>Briefings não gerados</div>
+                      <div style={{ fontSize:12, color:"#475569" }}>Clique em "Gerar Briefings" para criar instruções diárias para cada funcionário</div>
+                    </div>
+                  ) : (
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:14 }}>
+                      {briefings.map(b => (
+                        <div key={b.funcionario_id} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:14, overflow:"hidden" }}>
+                          <div style={{ padding:"14px 16px", background:"rgba(124,92,252,.1)", display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setBriefingAberto(briefingAberto===b.funcionario_id ? null : b.funcionario_id)}>
+                            <span style={{ fontSize:22 }}>{CARGO_ICON[b.cargo]||"👤"}</span>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:14, fontWeight:800, color:"#E2E8F0" }}>{b.nome}</div>
+                              <div style={{ fontSize:11, color:"#7C5CFC" }}>{CARGO_LABEL[b.cargo]||b.cargo} · Turno {b.turno}</div>
+                            </div>
+                            {b.pontos_criticos.length > 0 && <span style={{ background:"rgba(239,68,68,.2)", color:"#F87171", borderRadius:6, padding:"3px 8px", fontSize:11, fontWeight:700 }}>⚠️ {b.pontos_criticos.length}</span>}
+                            <span style={{ color:"#475569", fontSize:16 }}>{briefingAberto===b.funcionario_id ? "▲" : "▼"}</span>
+                          </div>
+                          {briefingAberto === b.funcionario_id && (
+                            <div style={{ padding:"14px 16px" }}>
+                              <pre style={{ fontFamily:"inherit", fontSize:12, color:"#94A3B8", whiteSpace:"pre-wrap" as const, lineHeight:1.6, margin:0 }}>{b.texto}</pre>
+                              <div style={{ marginTop:12, display:"flex", gap:8 }}>
+                                <button onClick={()=>{ navigator.clipboard.writeText(b.texto); showToast("Briefing copiado!","success"); }}
+                                  style={{ background:"rgba(124,92,252,.15)", border:"1px solid rgba(124,92,252,.3)", borderRadius:8, padding:"6px 14px", color:"#A78BFA", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                  📋 Copiar
+                                </button>
+                                <button onClick={()=>{ if(navigator.share){navigator.share({title:`Briefing — ${b.nome}`,text:b.texto}).catch(()=>{});} else { navigator.clipboard.writeText(b.texto); showToast("Copiado para enviar via WhatsApp","success"); }}}
+                                  style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"6px 14px", color:"#34D399", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                                  📱 Compartilhar
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ─── TAB: DI ANALISTA ────────────────────────── */}
+              {funcTab === "di" && (
+                <div>
+                  <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18 }}>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>🤖 Di — Análise da Equipe</div>
+                      <div style={{ fontSize:12, color:"#475569" }}>IA analisa riscos trabalhistas, falhas de cobertura e oportunidades de melhoria</div>
+                    </div>
+                  </div>
+
+                  <div style={{ display:"flex", gap:8, marginBottom:18 }}>
+                    <input value={funcDiPergunta} onChange={e=>setFuncDiPergunta(e.target.value)}
+                      placeholder="Pergunta específica para a Di (ex: como reduzir custo de pessoal?)..."
+                      style={{ flex:1, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, padding:"10px 14px", color:"#E2E8F0", fontSize:13, outline:"none" }} />
+                    <button onClick={analiseDiFuncionarios} disabled={funcDiLoading}
+                      style={{ background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:10, padding:"10px 22px", color:"#fff", fontSize:13, fontWeight:700, cursor: funcDiLoading?"wait":"pointer", opacity: funcDiLoading?0.7:1, whiteSpace:"nowrap" as const }}>
+                      {funcDiLoading ? "⏳ Analisando..." : "🤖 Analisar com Di"}
+                    </button>
+                  </div>
+
+                  {funcDiLoading && (
+                    <div style={{ textAlign:"center" as const, padding:40 }}>
+                      <div style={{ width:50, height:50, borderRadius:"50%", background:"linear-gradient(135deg,#7C3AED,#A855F7)", display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:24, animation:"spin 1s linear infinite" }}>🤖</div>
+                      <div style={{ marginTop:12, color:"#7C5CFC", fontWeight:700 }}>Di está analisando a equipe...</div>
+                    </div>
+                  )}
+
+                  {funcDiResult && !funcDiLoading && (
+                    <div style={{ display:"flex", flexDirection:"column" as const, gap:14 }}>
+                      {/* Dados resumo */}
+                      {funcDiResult.dados && (
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(5,1fr)", gap:10 }}>
+                          {[
+                            { l:"Equipe", v: funcDiResult.dados.total, c:"#7C5CFC" },
+                            { l:"Custo Folha", v:`R$ ${Math.round(funcDiResult.dados.custo_folha/1000)}k`, c:"#10B981" },
+                            { l:"Passivo", v:`R$ ${Math.round(funcDiResult.dados.passivo_total/1000)}k`, c:"#F59E0B" },
+                            { l:"Em Risco", v: funcDiResult.dados.em_risco, c: funcDiResult.dados.em_risco>0?"#EF4444":"#10B981" },
+                            { l:"Sobrecarregados", v: funcDiResult.dados.sobrecarregados, c: funcDiResult.dados.sobrecarregados>0?"#F59E0B":"#10B981" },
+                          ].map((k,i)=>(
+                            <div key={i} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"12px 14px", textAlign:"center" as const }}>
+                              <div style={{ fontSize:10, color:"#64748B", textTransform:"uppercase" as const, letterSpacing:0.5, marginBottom:4 }}>{k.l}</div>
+                              <div style={{ fontSize:20, fontWeight:900, color:k.c }}>{k.v}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Análise Di */}
+                      {[
+                        { titulo:"📊 Diagnóstico", texto: funcDiResult.diagnostico, color:"#7C5CFC", bg:"rgba(124,92,252,.08)" },
+                        { titulo:"⚠️ Riscos Identificados", texto: funcDiResult.riscos, color:"#EF4444", bg:"rgba(239,68,68,.06)" },
+                        { titulo:"📅 Análise da Escala", texto: funcDiResult.escala, color:"#F59E0B", bg:"rgba(245,158,11,.06)" },
+                        { titulo:"✅ Recomendações", texto: funcDiResult.recomendacoes, color:"#10B981", bg:"rgba(16,185,129,.06)" },
+                      ].filter(s=>s.texto).map((s,i)=>(
+                        <div key={i} style={{ background:s.bg, border:`1px solid ${s.color}30`, borderRadius:14, padding:"16px 20px" }}>
+                          <div style={{ fontSize:13, fontWeight:800, color:s.color, marginBottom:10 }}>{s.titulo}</div>
+                          <div style={{ fontSize:13, color:"#94A3B8", lineHeight:1.7, whiteSpace:"pre-wrap" as const }}>{s.texto}</div>
+                        </div>
+                      ))}
+
+                      <div style={{ textAlign:"right" as const, fontSize:11, color:"#334155" }}>
+                        Análise gerada: {new Date(funcDiResult.gerado_em||"").toLocaleString("pt-BR")}
+                      </div>
+                    </div>
+                  )}
+
+                  {!funcDiResult && !funcDiLoading && (
+                    <div style={{ textAlign:"center" as const, padding:60, color:"#475569" }}>
+                      <div style={{ fontSize:40, marginBottom:12 }}>🤖</div>
+                      <div style={{ fontSize:15, fontWeight:700, color:"#64748B", marginBottom:8 }}>Di pronta para analisar</div>
+                      <div style={{ fontSize:12, color:"#475569" }}>Clique em "Analisar com Di" para obter diagnóstico completo da equipe, riscos trabalhistas e recomendações</div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* MODAL: CADASTRO/EDIÇÃO FUNCIONÁRIO */}
+              {funcModal && (
+                <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+                  <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:18, padding:28, width:"100%", maxWidth:560, maxHeight:"90vh", overflowY:"auto" as const }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:22 }}>
+                      <span style={{ fontSize:22 }}>👷</span>
+                      <div style={{ fontSize:18, fontWeight:800, color:"#E2E8F0" }}>{funcEditId ? "Editar Funcionário" : "Novo Funcionário"}</div>
+                      <button onClick={()=>setFuncModal(false)} style={{ marginLeft:"auto", background:"transparent", border:"none", color:"#475569", fontSize:20, cursor:"pointer" }}>✕</button>
+                    </div>
+
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:14 }}>
+                      {/* Nome */}
+                      <div style={{ gridColumn:"1/-1" }}>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Nome Completo *</label>
+                        <input value={funcForm.nome} onChange={e=>setFuncForm(p=>({...p,nome:e.target.value}))}
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" as const }} />
+                      </div>
+                      {/* Cargo */}
+                      <div>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Cargo *</label>
+                        <select value={funcForm.cargo} onChange={e=>setFuncForm(p=>({...p,cargo:e.target.value as FuncCargo}))}
+                          style={{ width:"100%", background:"#1E293B", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }}>
+                          {Object.entries(CARGO_LABEL).map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                        </select>
+                      </div>
+                      {/* Jornada */}
+                      <div>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Jornada</label>
+                        <select value={funcForm.jornada} onChange={e=>setFuncForm(p=>({...p,jornada:e.target.value as FuncJornada}))}
+                          style={{ width:"100%", background:"#1E293B", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }}>
+                          {Object.entries(JORNADA_LABEL).map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                        </select>
+                      </div>
+                      {/* Salário */}
+                      <div>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Salário Base (R$)</label>
+                        <input type="number" value={funcForm.salario} onChange={e=>setFuncForm(p=>({...p,salario:e.target.value}))}
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" as const }} />
+                      </div>
+                      {/* Data admissão */}
+                      <div>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Data de Admissão</label>
+                        <input type="date" value={funcForm.data_admissao} onChange={e=>setFuncForm(p=>({...p,data_admissao:e.target.value}))}
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" as const }} />
+                      </div>
+                      {/* Status */}
+                      <div>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Status</label>
+                        <select value={funcForm.status} onChange={e=>setFuncForm(p=>({...p,status:e.target.value as FuncStatus}))}
+                          style={{ width:"100%", background:"#1E293B", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }}>
+                          {Object.entries(STATUS_LABEL).map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                        </select>
+                      </div>
+                      {/* Turno padrão */}
+                      <div>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Turno Padrão</label>
+                        <select value={funcForm.turno_padrao} onChange={e=>setFuncForm(p=>({...p,turno_padrao:e.target.value}))}
+                          style={{ width:"100%", background:"#1E293B", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13 }}>
+                          <option value="comercial">Comercial (08–17h)</option>
+                          <option value="diurno">Diurno (07–19h)</option>
+                          <option value="noturno">Noturno (19–07h)</option>
+                          <option value="manha">Manhã (06–14h)</option>
+                          <option value="tarde">Tarde (14–22h)</option>
+                        </select>
+                      </div>
+                      {/* Telefone */}
+                      <div>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Telefone</label>
+                        <input value={funcForm.telefone} onChange={e=>setFuncForm(p=>({...p,telefone:e.target.value}))} placeholder="(21) 99999-9999"
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" as const }} />
+                      </div>
+                      {/* CPF */}
+                      <div>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>CPF</label>
+                        <input value={funcForm.cpf} onChange={e=>setFuncForm(p=>({...p,cpf:e.target.value}))} placeholder="000.000.000-00"
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" as const }} />
+                      </div>
+                      {/* Horas extras */}
+                      <div>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>H. Extras/mês</label>
+                        <input type="number" value={funcForm.horas_extras_mes} onChange={e=>setFuncForm(p=>({...p,horas_extras_mes:e.target.value}))}
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" as const }} />
+                      </div>
+                      {/* Faltas */}
+                      <div>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Faltas/mês</label>
+                        <input type="number" value={funcForm.faltas_mes} onChange={e=>setFuncForm(p=>({...p,faltas_mes:e.target.value}))}
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" as const }} />
+                      </div>
+                      {/* Observações */}
+                      <div style={{ gridColumn:"1/-1" }}>
+                        <label style={{ fontSize:11, color:"#64748B", display:"block", marginBottom:5, fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5 }}>Observações</label>
+                        <textarea value={funcForm.observacoes} onChange={e=>setFuncForm(p=>({...p,observacoes:e.target.value}))} rows={2}
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:9, padding:"9px 12px", color:"#E2E8F0", fontSize:13, resize:"none" as const, boxSizing:"border-box" as const }} />
+                      </div>
+                    </div>
+
+                    <div style={{ display:"flex", gap:10, marginTop:22 }}>
+                      <button onClick={()=>setFuncModal(false)}
+                        style={{ flex:1, background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:10, padding:"11px", color:"#94A3B8", fontSize:14, fontWeight:700, cursor:"pointer" }}>
+                        Cancelar
+                      </button>
+                      <button onClick={saveFuncionario} disabled={funcSaving || !funcForm.nome.trim()}
+                        style={{ flex:2, background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:10, padding:"11px", color:"#fff", fontSize:14, fontWeight:700, cursor: funcSaving||!funcForm.nome.trim()?"not-allowed":"pointer", opacity: funcSaving||!funcForm.nome.trim()?0.6:1 }}>
+                        {funcSaving ? "Salvando..." : funcEditId ? "Salvar Alterações" : "Cadastrar Funcionário"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
