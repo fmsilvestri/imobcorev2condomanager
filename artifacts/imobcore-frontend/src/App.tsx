@@ -15630,6 +15630,33 @@ Content-Type: application/json
             const RISCO_BG: Record<string, string> = { baixo:"rgba(16,185,129,.15)", moderado:"rgba(245,158,11,.15)", alto:"rgba(239,68,68,.15)", critico:"rgba(220,38,38,.2)" };
             const TURNO_COLOR: Record<string, string> = { diurno:"#FCD34D", noturno:"#818CF8", manha:"#34D399", comercial:"#60A5FA", outro:"#A78BFA" };
             const CARGO_ICON: Record<string, string> = { porteiro:"🛡️", porteiro_chefe:"🏅", faxineiro:"🧹", limpeza:"🧹", zelador:"🔧", jardineiro:"🌿", administrador:"💼", outro:"👤" };
+            const CARGO_COLOR: Record<string, { g1:string, g2:string, border:string, bg:string, badge:string, badgeTxt:string }> = {
+              porteiro:       { g1:"#60A5FA", g2:"#1D4ED8", border:"#3B82F6", bg:"rgba(59,130,246,0.08)",  badge:"rgba(59,130,246,.25)",  badgeTxt:"#93C5FD" },
+              porteiro_chefe: { g1:"#FCD34D", g2:"#B45309", border:"#F59E0B", bg:"rgba(245,158,11,0.08)",  badge:"rgba(245,158,11,.25)",  badgeTxt:"#FDE68A" },
+              faxineiro:      { g1:"#5EEAD4", g2:"#0F766E", border:"#14B8A6", bg:"rgba(20,184,166,0.08)",  badge:"rgba(20,184,166,.25)",  badgeTxt:"#99F6E4" },
+              limpeza:        { g1:"#5EEAD4", g2:"#0F766E", border:"#14B8A6", bg:"rgba(20,184,166,0.08)",  badge:"rgba(20,184,166,.25)",  badgeTxt:"#99F6E4" },
+              zelador:        { g1:"#FB923C", g2:"#7C2D12", border:"#F97316", bg:"rgba(249,115,22,0.08)",  badge:"rgba(249,115,22,.25)",  badgeTxt:"#FDBA74" },
+              jardineiro:     { g1:"#86EFAC", g2:"#15803D", border:"#22C55E", bg:"rgba(34,197,94,0.08)",   badge:"rgba(34,197,94,.25)",   badgeTxt:"#BBF7D0" },
+              administrador:  { g1:"#D8B4FE", g2:"#4C1D95", border:"#A855F7", bg:"rgba(168,85,247,0.08)",  badge:"rgba(168,85,247,.25)",  badgeTxt:"#E9D5FF" },
+              outro:          { g1:"#CBD5E1", g2:"#374151", border:"#6B7280", bg:"rgba(107,114,128,0.08)", badge:"rgba(107,114,128,.25)", badgeTxt:"#E2E8F0" },
+            };
+            const CARGO_SVG_PATH: Record<string, string> = {
+              porteiro:       `<path d="M12 2L4 6v6c0 5.25 3.5 10.15 8 11.35C16.5 22.15 20 17.25 20 12V6L12 2zm0 4l6 3v5c0 3.48-2.35 6.76-6 7.93-3.65-1.17-6-4.45-6-7.93V9l6-3z" fill="white" opacity=".9"/>`,
+              porteiro_chefe: `<path d="M12 1.5L14.7 8.06 21.75 8.64 16.5 13.15 18.18 20.02 12 16.44 5.82 20.02 7.5 13.15 2.25 8.64 9.3 8.06Z" fill="white" opacity=".9"/>`,
+              faxineiro:      `<path d="M19.36 2.72L20.78 4.14 8.06 16.86C8.69 17.84 9 19 9 20v2H7v-2c0-.5-.12-1-.33-1.42L3.5 21.5 2 20l3-3-.24-.75C4.58 15.38 4.5 14.7 4.5 14c0-2.21.89-4.21 2.34-5.66L8.25 9.8C7.17 10.88 6.5 12.36 6.5 14c0 .54.09 1.07.24 1.57L19.36 2.72zM16 1l4 4-1.5 1.5-4-4L16 1zm-3 3l4 4-1.5 1.5-4-4L13 4z" fill="white" opacity=".9"/>`,
+              limpeza:        `<path d="M19.36 2.72L20.78 4.14 8.06 16.86C8.69 17.84 9 19 9 20v2H7v-2c0-.5-.12-1-.33-1.42L3.5 21.5 2 20l3-3-.24-.75C4.58 15.38 4.5 14.7 4.5 14c0-2.21.89-4.21 2.34-5.66L8.25 9.8C7.17 10.88 6.5 12.36 6.5 14c0 .54.09 1.07.24 1.57L19.36 2.72zM16 1l4 4-1.5 1.5-4-4L16 1zm-3 3l4 4-1.5 1.5-4-4L13 4z" fill="white" opacity=".9"/>`,
+              zelador:        `<path d="M22.61 19.15l-6.07-6.07-1.41 1.41 6.07 6.07c.39.39 1.02.39 1.41 0s.39-1.02 0-1.41zm-9.65-2.27c-.44.44-1.15.45-1.59.01L2.45 8.05C2 7.6 2 6.89 2.44 6.44c.44-.44 1.15-.44 1.59 0l8.92 8.84c.45.44.45 1.17.01 1.6zM9.59 7.41l-3.5 3.5-1.42-1.41 3.5-3.5 1.42 1.41zM16 2l-4 4 6 6 4-4-6-6zm0 2.83L18.17 7 15 10.17l-2.17-2.17L16 4.83z" fill="white" opacity=".9"/>`,
+              jardineiro:     `<path d="M17 8C8 10 5.9 16.17 3.82 19.22L5.71 21c1-1 2-2 3-2 5 0 8-5 8-13zM6 17c.5-3 2.5-6 6-8.5C9.5 15 9.5 19 12 21c-2.5 0-6-4-6-4z" fill="white" opacity=".9"/>`,
+              administrador:  `<path d="M20 6h-2.18c.07-.44.18-.88.18-1.34C18 2.09 15.91 0 13.34 0c-1.3 0-2.48.52-3.34 1.36C9.14.52 7.96 0 6.66 0 4.09 0 2 2.09 2 4.66c0 .46.07.9.18 1.34H0v14h20V6zM13.34 2c1.48 0 2.66 1.19 2.66 2.66 0 1.48-1.18 2.66-2.66 2.66H12V2h1.34zM6.66 2H8v5.32H6.66C5.19 7.32 4 6.14 4 4.66 4 3.19 5.18 2 6.66 2zM2 18V8h8v10H2zm10 0V8h8v10h-8z" fill="white" opacity=".9"/>`,
+              outro:          `<path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" fill="white" opacity=".9"/>`,
+            };
+            const buildIcon3D = (cargo: string, size=44): string => {
+              const cc = CARGO_COLOR[cargo] || CARGO_COLOR.outro;
+              const sp = CARGO_SVG_PATH[cargo] || CARGO_SVG_PATH.outro;
+              const gid = `ci-${cargo}`;
+              const fid = `cf-${cargo}`;
+              return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><defs><radialGradient id="${gid}" cx="38%" cy="30%" r="70%"><stop offset="0%" stop-color="${cc.g1}"/><stop offset="100%" stop-color="${cc.g2}"/></radialGradient><filter id="${fid}" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="${cc.g2}" flood-opacity="0.55"/></filter></defs><circle cx="${size/2}" cy="${size/2}" r="${size/2-1}" fill="url(#${gid})" filter="url(#${fid})"/><circle cx="${size*0.38}" cy="${size*0.3}" r="${size*0.15}" fill="white" opacity="0.18"/><g transform="translate(${size/2-12} ${size/2-12})">${sp}</g></svg>`;
+            };
 
             // Agrupar escala por dia
             const escalaByDia: Record<string, Turno[]> = {};
@@ -15724,21 +15751,20 @@ Content-Type: application/json
                         {funcRanking.map((f, idx) => {
                           const risco = f.risco_trabalhista;
                           const riscoNivel = risco?.risco || "baixo";
+                          const cc = CARGO_COLOR[f.cargo] || CARGO_COLOR.outro;
                           return (
-                            <div key={f.id} style={{ background:"rgba(255,255,255,.04)", border:`1px solid ${["alto","critico"].includes(riscoNivel) ? "rgba(239,68,68,.3)" : "rgba(255,255,255,.08)"}`, borderRadius:14, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
+                            <div key={f.id} style={{ background:`linear-gradient(135deg, ${cc.bg} 0%, rgba(255,255,255,0.025) 100%)`, border:`1px solid ${["alto","critico"].includes(riscoNivel) ? "rgba(239,68,68,.35)" : "rgba(255,255,255,.07)"}`, borderLeft:`4px solid ${cc.border}`, borderRadius:14, padding:"14px 18px", display:"flex", alignItems:"center", gap:14 }}>
                               {/* Rank */}
                               <div style={{ width:28, height:28, borderRadius:8, background: idx===0?"linear-gradient(135deg,#F59E0B,#D97706)":idx===1?"rgba(148,163,184,.2)":idx===2?"rgba(180,140,80,.2)":"rgba(255,255,255,.05)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:900, color: idx<3?"#fff":"#64748B", flexShrink:0 }}>
                                 {idx<3 ? ["🥇","🥈","🥉"][idx] : idx+1}
                               </div>
-                              {/* Cargo icon */}
-                              <div style={{ width:38, height:38, borderRadius:10, background:"rgba(124,92,252,.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>
-                                {CARGO_ICON[f.cargo] || "👤"}
-                              </div>
+                              {/* Cargo icon 3D */}
+                              <div dangerouslySetInnerHTML={{ __html: buildIcon3D(f.cargo, 44) }} style={{ width:44, height:44, flexShrink:0, lineHeight:0 }} />
                               {/* Info */}
                               <div style={{ flex:1, minWidth:0 }}>
                                 <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:2 }}>
                                   <span style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>{f.nome}</span>
-                                  <span style={{ fontSize:10, background:"rgba(124,92,252,.2)", color:"#A78BFA", borderRadius:6, padding:"2px 7px", fontWeight:700 }}>{CARGO_LABEL[f.cargo]||f.cargo}</span>
+                                  <span style={{ fontSize:10, background:cc.badge, color:cc.badgeTxt, borderRadius:6, padding:"2px 7px", fontWeight:700 }}>{CARGO_LABEL[f.cargo]||f.cargo}</span>
                                   <span style={{ fontSize:10, background: f.status==="ativo"?"rgba(16,185,129,.15)":"rgba(100,116,139,.15)", color: f.status==="ativo"?"#34D399":"#94A3B8", borderRadius:6, padding:"2px 7px", fontWeight:700 }}>{STATUS_LABEL[f.status]||f.status}</span>
                                 </div>
                                 <div style={{ fontSize:11, color:"#475569" }}>{JORNADA_LABEL[f.jornada]||f.jornada} · Admissão: {f.data_admissao ? new Date(f.data_admissao).toLocaleDateString("pt-BR") : "–"} ({f.meses_ativo||0} meses)</div>
