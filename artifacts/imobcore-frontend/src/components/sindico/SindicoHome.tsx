@@ -34,6 +34,8 @@ export interface SindicoHomeProps {
   encPendentes: number;
   piscinaAlerta: boolean;
   piscinaLastPh: number | null;
+  funcCount: number;
+  funcAtivos: number;
   onPhotoUpdate: (url: string) => void;
   onQuickSend: (msg: string) => void;
   renderSindicoScreen: () => React.ReactNode;
@@ -71,6 +73,7 @@ export default function SindicoHome({
   saldo, osAbertasCount, equipCount, crmCount,
   fornecCount, nivelMedio, sseCount, comunicadosCount,
   gasNivel, encPendentes, piscinaAlerta, piscinaLastPh,
+  funcCount, funcAtivos,
   onPhotoUpdate, onQuickSend,
   renderSindicoScreen,
 }: SindicoHomeProps) {
@@ -161,6 +164,7 @@ export default function SindicoHome({
     { icon:"⚡", title:"Energia",      screen:"energia",      sub:"Ver consumo",                                                          hasDot:false,           bg:"linear-gradient(145deg,#854d0e,#eab308,#fde047)", glow:"rgba(234,179,8,0.45)",   text:"#fefce8", badge:"rgba(0,0,0,0.15)" },
     { icon:"📦", title:"Encomendas",   screen:"encomendas",   sub:`${encPendentes} aguardando`,                                           hasDot:encPendentes>0,  bg:"linear-gradient(145deg,#5b21b6,#7c3aed,#a78bfa)", glow:"rgba(124,58,237,0.45)",  text:"#f5f3ff", badge:"rgba(255,255,255,0.22)" },
     { icon:"🏊", title:"Piscina",      screen:"piscina",      sub:piscinaLastPh!=null?`pH ${piscinaLastPh}`:"Sem leitura",               hasDot:piscinaAlerta,   bg: piscinaAlerta?"linear-gradient(145deg,#be123c,#f43f5e,#fb7185)":"linear-gradient(145deg,#0c4a6e,#0284c7,#38bdf8)", glow:piscinaAlerta?"rgba(244,63,94,0.45)":"rgba(2,132,199,0.45)", text:"#f0f9ff", badge:"rgba(255,255,255,0.22)" },
+    { icon:"👷", title:"Funcionários", screen:"funcionarios", sub:funcCount>0?`${funcAtivos} ativos · ${funcCount} total`:"Gerir equipe",   hasDot:false,           bg:"linear-gradient(145deg,#0f766e,#14b8a6,#5eead4)", glow:"rgba(20,184,166,0.45)",  text:"#f0fdfa", badge:"rgba(255,255,255,0.22)" },
   ];
 
   const navMeta: Record<string, { clr: string; glow: string; grad: string }> = {

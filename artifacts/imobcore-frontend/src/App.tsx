@@ -2934,6 +2934,8 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
   useEffect(() => { if (sindicoScreen === "comunicados") setUnreadComunicados(0); }, [sindicoScreen]);
   // Carrega dados do Financeiro Inteligente ao abrir a tela do síndico
   useEffect(() => { if (sindicoScreen === "financeiro") { finSindicoLoad(); setFinSindicoTab("overview"); setFinSimResult(null); setFinSindicoInsight(null); } }, [sindicoScreen]);
+  // Carrega Funcionários ao abrir a tela no app Síndico
+  useEffect(() => { if (sindicoScreen === "funcionarios" && condId) { loadFuncionarios(); setFuncTab("equipe"); } }, [sindicoScreen, condId]);
 
   // Auto-load Dicas da Di — recarrega SEMPRE que a Di é aberta (dados em tempo real)
   const diSessionRef = useRef<string | null>(null);
@@ -5375,6 +5377,245 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
   // ── Render Phone Sub-Screen ───────────────────────────────────────────────
   const renderSindicoScreen = () => {
     if (!sindicoScreen) return null;
+
+    // ── FUNCIONÁRIOS — Módulo completo no app Síndico ─────────────────────────
+    if (sindicoScreen === "funcionarios") {
+      return (
+        <div style={{ position:"fixed" as const, inset:0, background:"#0F172A", zIndex:400, display:"flex", flexDirection:"column" as const, overflow:"hidden" }}>
+          {/* Header mobile */}
+          <div style={{ background:"linear-gradient(135deg,#0f766e,#14b8a6)", padding:"14px 16px", display:"flex", alignItems:"center", gap:12, flexShrink:0, paddingTop:"calc(14px + env(safe-area-inset-top, 0px))" }}>
+            <button onClick={()=>setSindicoScreen(null)} style={{ background:"rgba(255,255,255,.2)", border:"none", borderRadius:10, padding:"7px 13px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"inherit" }}>← Voltar</button>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:15, fontWeight:900, color:"#fff" }}>👷 Funcionários</div>
+              <div style={{ fontSize:11, color:"rgba(255,255,255,.7)" }}>
+                {funcList.length > 0 ? `${funcList.filter(f=>f.status==="ativo").length} ativos · ${funcList.length} total` : "Equipe & Escalas"}
+              </div>
+            </div>
+            <button onClick={()=>{ setFuncModal(true); setFuncEditId(null); setFuncForm(emptyFuncForm()); }}
+              style={{ background:"rgba(255,255,255,.2)", border:"none", borderRadius:10, padding:"7px 13px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Func.</button>
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display:"flex", gap:4, padding:"8px 12px", background:"rgba(0,0,0,.2)", flexShrink:0, overflowX:"auto" as const }}>
+            {([["equipe","👥 Equipe"],["escala","📅 Escala"],["briefings","📋 Briefings"],["areas","🏢 Áreas"],["di","🤖 Di"]] as const).map(([tab, lbl]) => (
+              <button key={tab} onClick={()=>{ setFuncTab(tab as any); if(tab==="briefings") loadBriefingsSalvos(); if(tab==="areas") loadAreas(); }}
+                style={{ background: funcTab===tab ? "linear-gradient(135deg,#0f766e,#14b8a6)" : "rgba(255,255,255,.06)", border:"none", borderRadius:8, padding:"6px 12px", color: funcTab===tab ? "#fff" : "#64748B", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const, flexShrink:0 }}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+
+          {/* Content */}
+          <div style={{ flex:1, overflowY:"auto" as const, padding:"12px 12px 80px" }}>
+            {funcLoading ? (
+              <div style={{ textAlign:"center" as const, padding:60, color:"#475569" }}>
+                <div style={{ fontSize:32, marginBottom:10 }}>⏳</div>
+                <div style={{ fontSize:13 }}>Carregando equipe...</div>
+              </div>
+            ) : funcTab === "equipe" ? (
+              <div>
+                {/* KPIs */}
+                {funcTotais && (
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:14 }}>
+                    {[
+                      { label:"Total", value:funcTotais.total, icon:"👥", color:"#7C3AED" },
+                      { label:"Ativos", value:funcTotais.ativos, icon:"✅", color:"#10B981" },
+                      { label:"Custo/Mês", value:`R$${(funcTotais.custo_folha_total||0).toLocaleString("pt-BR",{maximumFractionDigits:0})}`, icon:"💰", color:"#F59E0B" },
+                      { label:"Risco Alto", value:funcTotais.risco_alto, icon:"⚠️", color:"#EF4444" },
+                    ].map(kpi=>(
+                      <div key={kpi.label} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"10px 12px" }}>
+                        <div style={{ fontSize:11, color:"#475569", fontWeight:700, marginBottom:4 }}>{kpi.icon} {kpi.label}</div>
+                        <div style={{ fontSize:18, fontWeight:900, color:kpi.color }}>{kpi.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Lista de funcionários */}
+                {funcList.length === 0 ? (
+                  <div style={{ textAlign:"center" as const, padding:48, color:"#475569" }}>
+                    <div style={{ fontSize:36, marginBottom:10 }}>👷</div>
+                    <div style={{ fontSize:14, fontWeight:700 }}>Nenhum funcionário cadastrado</div>
+                    <div style={{ fontSize:12, marginTop:6 }}>Clique em "+ Func." para adicionar</div>
+                  </div>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+                    {funcList.map(f => {
+                      const cargoColors: Record<string,string> = { porteiro:"#3B82F6", porteiro_chefe:"#F59E0B", faxineiro:"#14B8A6", limpeza:"#14B8A6", zelador:"#F97316", jardineiro:"#22C55E", administrador:"#A855F7", outro:"#6B7280" };
+                      const cargoLabels: Record<string,string> = { porteiro:"Porteiro", porteiro_chefe:"Porteiro-Chefe", faxineiro:"Faxineiro", limpeza:"Limpeza", zelador:"Zelador", jardineiro:"Jardineiro", administrador:"Administrativo", outro:"Outro" };
+                      const statusColors: Record<string,string> = { ativo:"#10B981", inativo:"#6B7280", ferias:"#F59E0B", afastado:"#EF4444" };
+                      const statusLabels: Record<string,string> = { ativo:"Ativo", inativo:"Inativo", ferias:"Férias", afastado:"Afastado" };
+                      const c = cargoColors[f.cargo] || "#6B7280";
+                      const riscoColors: Record<string,string> = { baixo:"#10B981", moderado:"#F59E0B", alto:"#EF4444", critico:"#DC2626" };
+                      return (
+                        <div key={f.id} style={{ background:`rgba(${c==="3B82F6"?"59,130,246":c==="#F59E0B"?"245,158,11":c==="#14B8A6"?"20,184,166":c==="#F97316"?"249,115,22":c==="#22C55E"?"34,197,94":c==="#A855F7"?"168,85,247":"107,114,128"},.06)`, border:`1px solid rgba(255,255,255,.08)`, borderLeft:`4px solid ${c}`, borderRadius:12, padding:"12px 14px" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                            <div style={{ width:38, height:38, borderRadius:10, background:c, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0, color:"#fff", fontWeight:900 }}>
+                              {(f.nome||"?").charAt(0).toUpperCase()}
+                            </div>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ fontSize:14, fontWeight:800, color:"#E2E8F0", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" as const }}>{f.nome}</div>
+                              <div style={{ display:"flex", gap:6, marginTop:3, flexWrap:"wrap" as const }}>
+                                <span style={{ fontSize:10, background:`${c}30`, color:c, borderRadius:5, padding:"1px 7px", fontWeight:700 }}>{cargoLabels[f.cargo]||f.cargo}</span>
+                                <span style={{ fontSize:10, background:`${statusColors[f.status]||"#6B7280"}22`, color:statusColors[f.status]||"#6B7280", borderRadius:5, padding:"1px 7px", fontWeight:700 }}>{statusLabels[f.status]||f.status}</span>
+                                {f.risco && <span style={{ fontSize:10, background:`${riscoColors[f.risco]||"#6B7280"}22`, color:riscoColors[f.risco]||"#6B7280", borderRadius:5, padding:"1px 7px", fontWeight:700 }}>Risco: {f.risco}</span>}
+                              </div>
+                            </div>
+                            <div style={{ fontSize:12, fontWeight:800, color:"#10B981" }}>R${(f.salario||0).toLocaleString("pt-BR",{maximumFractionDigits:0})}</div>
+                          </div>
+                          {(f.telefone || f.turno_padrao) && (
+                            <div style={{ display:"flex", gap:12, marginTop:8, fontSize:11, color:"#475569" }}>
+                              {f.turno_padrao && <span>🕐 {f.turno_padrao}</span>}
+                              {f.telefone && <span>📞 {f.telefone}</span>}
+                            </div>
+                          )}
+                          <div style={{ display:"flex", gap:6, marginTop:10, justifyContent:"flex-end" as const }}>
+                            <button onClick={()=>{ setFuncEditId(f.id); setFuncForm({ nome:f.nome, cargo:f.cargo as any, jornada:f.jornada as any, salario:String(f.salario), data_admissao:f.data_admissao||"", status:f.status as any, telefone:f.telefone||"", cpf:f.cpf||"", horas_extras_mes:String(f.horas_extras||0), faltas_mes:String(f.faltas||0), turno_padrao:f.turno_padrao||"comercial", observacoes:f.observacoes||"" }); setFuncModal(true); }}
+                              style={{ background:"rgba(124,92,252,.15)", border:"1px solid rgba(124,92,252,.3)", borderRadius:8, padding:"5px 12px", color:"#A78BFA", fontSize:12, fontWeight:700, cursor:"pointer" }}>✏️ Editar</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : funcTab === "briefings" ? (
+              <div>
+                {briefingMissingTable && (
+                  <div style={{ background:"rgba(245,158,11,.1)", border:"1px solid rgba(245,158,11,.3)", borderRadius:10, padding:"10px 14px", marginBottom:12, fontSize:12, color:"#FCD34D" }}>
+                    ⚠️ Tabela de briefings não criada. <button onClick={async()=>{ const r=await fetch("/api/briefings/migration-sql",{headers:{"X-Admin-Token":"imobcore-admin-2026"}}); const d=await r.json(); navigator.clipboard.writeText(d.sql); showToast("SQL copiado!","success"); }} style={{ background:"none", border:"none", color:"#F59E0B", textDecoration:"underline", cursor:"pointer", fontWeight:700, padding:0, fontSize:12 }}>Copiar SQL</button>
+                  </div>
+                )}
+                <div style={{ display:"flex", gap:6, marginBottom:12, flexWrap:"wrap" as const }}>
+                  {(["todos","manual","di"] as const).map(f=>(
+                    <button key={f} onClick={()=>setBriefingFiltro(f)}
+                      style={{ background:briefingFiltro===f?"linear-gradient(135deg,#7C3AED,#A855F7)":"rgba(255,255,255,.06)", border:"none", borderRadius:8, padding:"5px 12px", color:briefingFiltro===f?"#fff":"#64748B", fontSize:11, fontWeight:700, cursor:"pointer" }}>
+                      {f==="todos"?"Todos":f==="manual"?"✍️ Manual":"🤖 Di"}
+                    </button>
+                  ))}
+                </div>
+                {briefingsSalvos.filter(b=>briefingFiltro==="todos"||b.tipo===briefingFiltro).length === 0 ? (
+                  <div style={{ textAlign:"center" as const, padding:48, color:"#475569" }}>
+                    <div style={{ fontSize:32, marginBottom:8 }}>📋</div>
+                    <div style={{ fontSize:13, fontWeight:700 }}>Nenhum briefing</div>
+                  </div>
+                ) : briefingsSalvos.filter(b=>briefingFiltro==="todos"||b.tipo===briefingFiltro).map(b=>(
+                  <div key={b.id} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:12, padding:"12px 14px", marginBottom:10 }}>
+                    <div style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:8 }}>
+                      <span style={{ fontSize:18 }}>{b.tipo==="di"?"🤖":"✍️"}</span>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:800, color:"#E2E8F0", marginBottom:2 }}>{b.titulo}</div>
+                        <div style={{ fontSize:10, color:"#475569" }}>{new Date(b.criado_em).toLocaleDateString("pt-BR")}</div>
+                      </div>
+                      <span style={{ fontSize:10, padding:"2px 8px", borderRadius:5, fontWeight:700, background:b.prioridade==="urgente"?"rgba(239,68,68,.2)":b.prioridade==="alta"?"rgba(249,115,22,.2)":"rgba(107,114,128,.15)", color:b.prioridade==="urgente"?"#F87171":b.prioridade==="alta"?"#FB923C":"#94A3B8" }}>{b.prioridade}</span>
+                    </div>
+                    <div style={{ fontSize:12, color:"#64748B", lineHeight:1.6, maxHeight:72, overflow:"hidden" }}>{b.conteudo}</div>
+                  </div>
+                ))}
+              </div>
+            ) : funcTab === "areas" ? (
+              <div>
+                {areasMissingTable && (
+                  <div style={{ background:"rgba(245,158,11,.1)", border:"1px solid rgba(245,158,11,.3)", borderRadius:10, padding:"10px 14px", marginBottom:12, fontSize:12, color:"#FCD34D" }}>
+                    ⚠️ Tabela de áreas não criada. <button onClick={async()=>{ const r=await fetch("/api/areas/migration-sql",{headers:{"X-Admin-Token":"imobcore-admin-2026"}}); const d=await r.json(); navigator.clipboard.writeText(d.sql); showToast("SQL copiado!","success"); }} style={{ background:"none", border:"none", color:"#F59E0B", textDecoration:"underline", cursor:"pointer", fontWeight:700, padding:0, fontSize:12 }}>Copiar SQL</button>
+                  </div>
+                )}
+                {areasList.length === 0 ? (
+                  <div style={{ textAlign:"center" as const, padding:48, color:"#475569" }}>
+                    <div style={{ fontSize:32, marginBottom:8 }}>🏢</div>
+                    <div style={{ fontSize:13, fontWeight:700 }}>Nenhuma área cadastrada</div>
+                    <div style={{ fontSize:11, marginTop:6 }}>Cadastre no módulo Gestor ou via web</div>
+                  </div>
+                ) : (
+                  <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+                    {areasList.map(a=>{
+                      const areaColors: Record<string,string> = { bloco:"#3B82F6", area_comum:"#14B8A6", equipamento:"#F97316", setor:"#A855F7", estacionamento:"#6B7280", area_verde:"#22C55E", circulacao:"#F59E0B", outro:"#64748B" };
+                      const areaIcons: Record<string,string> = { bloco:"🏗️", area_comum:"🏊", equipamento:"⚙️", setor:"📋", estacionamento:"🅿️", area_verde:"🌿", circulacao:"🛗", outro:"📍" };
+                      const areaLabels: Record<string,string> = { bloco:"Bloco", area_comum:"Área Comum", equipamento:"Equipamento", setor:"Setor", estacionamento:"Estacionamento", area_verde:"Área Verde", circulacao:"Circulação", outro:"Outro" };
+                      const c = areaColors[a.tipo]||"#6B7280";
+                      return (
+                        <div key={a.id} style={{ background:"rgba(255,255,255,.04)", border:`1px solid rgba(255,255,255,.08)`, borderLeft:`4px solid ${c}`, borderRadius:12, padding:"12px 14px" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                            <div style={{ width:38, height:38, borderRadius:10, background:`linear-gradient(135deg,${c},${c}99)`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{areaIcons[a.tipo]||"📍"}</div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:14, fontWeight:800, color:"#E2E8F0" }}>{a.nome}</div>
+                              <div style={{ fontSize:11, color:c, fontWeight:700, marginTop:2 }}>{areaLabels[a.tipo]||a.tipo}{a.bloco?` · Bloco ${a.bloco}`:""}{a.andar?` · ${a.andar}º andar`:""}</div>
+                              {a.responsavel_nome && <div style={{ fontSize:11, color:"#475569", marginTop:2 }}>🔑 {a.responsavel_nome}</div>}
+                            </div>
+                            {!a.ativa && <span style={{ fontSize:10, background:"rgba(239,68,68,.15)", color:"#F87171", borderRadius:5, padding:"2px 6px", fontWeight:700 }}>Inativa</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : funcTab === "escala" ? (
+              <div style={{ textAlign:"center" as const, padding:48, color:"#475569" }}>
+                <div style={{ fontSize:36, marginBottom:10 }}>📅</div>
+                <div style={{ fontSize:14, fontWeight:700, color:"#64748B", marginBottom:6 }}>Escala Inteligente</div>
+                <div style={{ fontSize:12 }}>Use o módulo web para gerar escalas completas</div>
+              </div>
+            ) : funcTab === "di" ? (
+              <div style={{ textAlign:"center" as const, padding:48, color:"#475569" }}>
+                <div style={{ fontSize:36, marginBottom:10 }}>🤖</div>
+                <div style={{ fontSize:14, fontWeight:700, color:"#A78BFA", marginBottom:8 }}>Di — Análise da Equipe</div>
+                <div style={{ fontSize:12, marginBottom:16 }}>Análise completa disponível no módulo web Gestor</div>
+                <button onClick={()=>setSindicoScreen("di")}
+                  style={{ background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:12, padding:"10px 20px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                  💬 Consultar a Di
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Modal funcionários (reutiliza) */}
+          {funcModal && (
+            <div style={{ position:"fixed" as const, inset:0, background:"rgba(0,0,0,.8)", zIndex:600, display:"flex", alignItems:"flex-end", justifyContent:"center" }}>
+              <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:"18px 18px 0 0", padding:20, width:"100%", maxWidth:500, maxHeight:"80vh", overflowY:"auto" as const }}>
+                <div style={{ fontSize:16, fontWeight:900, color:"#E2E8F0", marginBottom:16 }}>{funcEditId ? "✏️ Editar Funcionário" : "👷 Novo Funcionário"}</div>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+                  <div style={{ gridColumn:"1/-1" }}>
+                    <label style={{ fontSize:11, color:"#64748B", fontWeight:700, display:"block", marginBottom:4 }}>NOME *</label>
+                    <input value={funcForm.nome} onChange={e=>setFuncForm(p=>({...p,nome:e.target.value}))} placeholder="Nome completo" style={{ width:"100%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, color:"#64748B", fontWeight:700, display:"block", marginBottom:4 }}>CARGO *</label>
+                    <select value={funcForm.cargo} onChange={e=>setFuncForm(p=>({...p,cargo:e.target.value as any}))} style={{ width:"100%", background:"#1E293B", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }}>
+                      {["porteiro","porteiro_chefe","faxineiro","limpeza","zelador","jardineiro","administrador","outro"].map(c=><option key={c} value={c}>{c.charAt(0).toUpperCase()+c.slice(1).replace(/_/g," ")}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, color:"#64748B", fontWeight:700, display:"block", marginBottom:4 }}>SALÁRIO</label>
+                    <input type="number" value={funcForm.salario} onChange={e=>setFuncForm(p=>({...p,salario:e.target.value}))} placeholder="0.00" style={{ width:"100%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, color:"#64748B", fontWeight:700, display:"block", marginBottom:4 }}>STATUS</label>
+                    <select value={funcForm.status} onChange={e=>setFuncForm(p=>({...p,status:e.target.value as any}))} style={{ width:"100%", background:"#1E293B", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }}>
+                      {["ativo","inativo","ferias","afastado"].map(s=><option key={s} value={s}>{s.charAt(0).toUpperCase()+s.slice(1).replace(/_/g," ")}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, color:"#64748B", fontWeight:700, display:"block", marginBottom:4 }}>TELEFONE</label>
+                    <input value={funcForm.telefone} onChange={e=>setFuncForm(p=>({...p,telefone:e.target.value}))} placeholder="(XX) 9XXXX-XXXX" style={{ width:"100%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, color:"#64748B", fontWeight:700, display:"block", marginBottom:4 }}>CPF</label>
+                    <input value={funcForm.cpf} onChange={e=>setFuncForm(p=>({...p,cpf:e.target.value}))} placeholder="000.000.000-00" style={{ width:"100%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:13, outline:"none", boxSizing:"border-box" as const }} />
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:10, justifyContent:"flex-end" as const }}>
+                  <button onClick={()=>setFuncModal(false)} style={{ background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"9px 18px", color:"#94A3B8", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancelar</button>
+                  <button onClick={async()=>{ await salvarFuncionario(); }} disabled={funcSaving}
+                    style={{ background:"linear-gradient(135deg,#0f766e,#14b8a6)", border:"none", borderRadius:10, padding:"9px 20px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer", opacity:funcSaving?0.7:1 }}>
+                    {funcSaving?"⏳ Salvando...":(funcEditId?"💾 Salvar":"👷 Cadastrar")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
 
     // ── Di Síndica Virtual — tela mobile completa ─────────────────────────────
     // ── BRIEFING DA DI — tela completa por módulo ─────────────────────────────
@@ -17020,6 +17261,8 @@ Content-Type: application/json
               encPendentes={encList.filter(e => e.status === "aguardando_retirada").length}
               piscinaAlerta={piscinaList.some(l => l.status === "alerta")}
               piscinaLastPh={piscinaList[0]?.ph ?? null}
+              funcCount={funcList.length}
+              funcAtivos={funcList.filter(f => f.status === "ativo").length}
               onPhotoUpdate={(url) => setDash(prev => prev ? { ...prev, condominios: prev.condominios.map((c, i) => i === 0 ? { ...c, photo_url: url } : c) } : prev)}
               onQuickSend={setPendingChatMsg}
               renderSindicoScreen={renderSindicoScreen}
