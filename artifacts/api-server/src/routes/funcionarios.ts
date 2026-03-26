@@ -530,6 +530,128 @@ router.get("/briefings/gerar", async (req: Request, res: Response) => {
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
+// ── Briefings CRUD (tabela briefings_funcionarios) ───────────────────────────
+
+router.get("/briefings/migration-sql", (_req: Request, res: Response) => {
+  res.json({ sql: `CREATE TABLE IF NOT EXISTS briefings_funcionarios (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id uuid,
+  titulo text NOT NULL,
+  conteudo text NOT NULL DEFAULT '',
+  tipo text DEFAULT 'manual',
+  prioridade text DEFAULT 'normal',
+  funcionarios_ids uuid[] DEFAULT '{}',
+  funcionarios_nomes text[] DEFAULT '{}',
+  criado_por text DEFAULT 'sindico',
+  criado_em timestamptz DEFAULT now(),
+  atualizado_em timestamptz DEFAULT now()
+);` });
+});
+
+router.get("/briefings", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id } = req.query as { condominio_id?: string };
+    let query = supabase.from("briefings_funcionarios").select("*").order("criado_em", { ascending: false });
+    if (condominio_id) query = query.eq("condominio_id", condominio_id);
+    const { data, error } = await query;
+    if (error) {
+      const msg = error?.message || JSON.stringify(error);
+      if (msg.includes("does not exist") || msg.includes("Could not find") || msg.includes("PGRST205"))
+        return res.json({ briefings: [], missingTable: true });
+      throw new Error(msg);
+    }
+    res.json({ briefings: data || [] });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/briefings", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, titulo, conteudo, tipo = "manual", prioridade = "normal", funcionarios_ids = [], funcionarios_nomes = [] } = req.body;
+    const { data, error } = await supabase.from("briefings_funcionarios").insert({
+      condominio_id, titulo, conteudo, tipo, prioridade, funcionarios_ids, funcionarios_nomes,
+      criado_em: new Date().toISOString(), atualizado_em: new Date().toISOString(),
+    }).select().single();
+    if (error) {
+      const msg = error?.message || JSON.stringify(error);
+      if (msg.includes("Could not find") || msg.includes("PGRST205"))
+        return res.status(409).json({ error: "TABLE_MISSING", message: "Execute o SQL de migração no Supabase para criar a tabela briefings_funcionarios" });
+      throw new Error(msg);
+    }
+    res.json({ ok: true, briefing: data });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.post("/briefings/gerar-di", async (req: Request, res: Response) => {
+  try {
+    const { condominio_id, funcionarios_ids = [], funcionarios_nomes = [], instrucoes_extras = "" } = req.body;
+
+    let funcsQuery = supabase.from("funcionarios").select("*").eq("status", "ativo");
+    if (condominio_id) funcsQuery = funcsQuery.or(`condominio_id.eq.${condominio_id},condominium_id.eq.${condominio_id}`);
+    if (funcionarios_ids.length > 0) funcsQuery = funcsQuery.in("id", funcionarios_ids);
+    const { data: funcs } = await funcsQuery;
+
+    const hoje = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+    const listaFuncs = (funcs || []).map(f => {
+      const meta = parseMeta(f.observacoes);
+      return `- ${f.nome_completo} (${f.funcao}) | Turno: ${f.jornada_tipo || "padrão"} | HE: ${meta.he}h | Faltas: ${meta.fa}`;
+    }).join("\n");
+
+    const prompt = `Você é Di, síndica virtual do ImobCore. Hoje é ${hoje}.
+
+Gere um briefing profissional e motivador para a equipe de funcionários abaixo. O briefing deve:
+1. Saudar a equipe pelo nome e função
+2. Destacar as tarefas prioritárias do dia conforme cada função (porteiro: segurança; zelador: manutenção; limpeza: higienização)
+3. Mencionar pontos de atenção se houver horas extras ou faltas
+4. Ser motivador e objetivo
+5. Incluir uma mensagem de fechamento inspiradora
+
+Funcionários:
+${listaFuncs || "Equipe completa do condomínio"}
+
+${instrucoes_extras ? `Instruções especiais: ${instrucoes_extras}` : ""}
+
+Gere um briefing completo, formatado com seções claras (use emojis e estrutura). Máximo 600 palavras.`;
+
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const ai = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const msg = await ai.messages.create({ model: "claude-sonnet-4-5", max_tokens: 1200, messages: [{ role: "user", content: prompt }] });
+    const conteudo = (msg.content[0] as any).text || "";
+
+    const titulo = `Briefing Di — ${hoje}`;
+    const nomes = (funcs || []).map(f => f.nome_completo).filter(Boolean);
+
+    const { data: saved } = await supabase.from("briefings_funcionarios").insert({
+      condominio_id, titulo, conteudo, tipo: "di", prioridade: "alta",
+      funcionarios_ids: funcionarios_ids.length ? funcionarios_ids : (funcs || []).map(f => f.id),
+      funcionarios_nomes: funcionarios_nomes.length ? funcionarios_nomes : nomes,
+      criado_em: new Date().toISOString(), atualizado_em: new Date().toISOString(),
+    }).select().single();
+
+    res.json({ ok: true, briefing: saved, conteudo });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.put("/briefings/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { titulo, conteudo, prioridade, funcionarios_ids, funcionarios_nomes } = req.body;
+    const { data, error } = await supabase.from("briefings_funcionarios").update({
+      titulo, conteudo, prioridade, funcionarios_ids, funcionarios_nomes,
+      atualizado_em: new Date().toISOString(),
+    }).eq("id", id).select().single();
+    if (error) throw error;
+    res.json({ ok: true, briefing: data });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+router.delete("/briefings/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await supabase.from("briefings_funcionarios").delete().eq("id", id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ROUTES — ALERTAS
 // ══════════════════════════════════════════════════════════════════════════════

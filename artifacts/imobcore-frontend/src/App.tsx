@@ -1626,6 +1626,7 @@ export default function App() {
   interface Turno { funcionario_id: string; nome: string; cargo: string; turno: string; horario_inicio: string; horario_fim: string; data: string; }
   interface FuncAlerta { tipo: string; funcionario: string; cargo: string; msg: string; impacto: string; valor: number; }
   interface Briefing { funcionario_id: string; nome: string; cargo: string; turno: string; texto: string; tarefas: string[]; pontos_criticos: string[]; prioridade: string; }
+  interface BriefingSalvo { id: string; condominio_id?: string; titulo: string; conteudo: string; tipo: "manual"|"di"; prioridade: "baixa"|"normal"|"alta"|"urgente"; funcionarios_ids: string[]; funcionarios_nomes: string[]; criado_em: string; atualizado_em: string; }
   const emptyFuncForm = () => ({ nome:"", cargo:"porteiro" as FuncCargo, jornada:"5x2" as FuncJornada, salario:"", data_admissao:"", status:"ativo" as FuncStatus, telefone:"", cpf:"", horas_extras_mes:"0", faltas_mes:"0", turno_padrao:"comercial", observacoes:"" });
   const [funcList, setFuncList] = useState<Funcionario[]>([]);
   const [funcLoading, setFuncLoading] = useState(false);
@@ -1642,6 +1643,15 @@ export default function App() {
   const [briefings, setBriefings] = useState<Briefing[]>([]);
   const [briefingsLoading, setBriefingsLoading] = useState(false);
   const [briefingAberto, setBriefingAberto] = useState<string|null>(null);
+  const [briefingsSalvos, setBriefingsSalvos] = useState<BriefingSalvo[]>([]);
+  const [briefingMissingTable, setBriefingMissingTable] = useState(false);
+  const [briefingModal, setBriefingModal] = useState(false);
+  const [briefingEditando, setBriefingEditando] = useState<BriefingSalvo|null>(null);
+  const [briefingDiLoading, setBriefingDiLoading] = useState(false);
+  const [briefingDiInstrucoes, setBriefingDiInstrucoes] = useState("");
+  const [briefingFuncSel, setBriefingFuncSel] = useState<string[]>([]);
+  const [briefingForm, setBriefingForm] = useState({ titulo:"", conteudo:"", prioridade:"normal", funcionarios_ids:[] as string[] });
+  const [briefingFiltro, setBriefingFiltro] = useState<"todos"|"manual"|"di">("todos");
   const [funcDiLoading, setFuncDiLoading] = useState(false);
   const [funcDiResult, setFuncDiResult] = useState<{diagnostico:string;riscos:string;escala:string;recomendacoes:string;dados:any}|null>(null);
   const [funcDiPergunta, setFuncDiPergunta] = useState("");
@@ -1699,6 +1709,102 @@ export default function App() {
       const d = await r.json();
       setBriefings(d.briefings || []);
     } catch(e){ showToast("Erro ao gerar briefings","error"); } finally { setBriefingsLoading(false); }
+  };
+
+  const loadBriefingsSalvos = async () => {
+    if (!condId) return;
+    try {
+      const r = await fetch(`/api/briefings?condominio_id=${condId}`, { headers:{"X-Admin-Token":"imobcore-admin-2026"} });
+      const d = await r.json();
+      if (d.missingTable) { setBriefingMissingTable(true); setBriefingsSalvos([]); return; }
+      setBriefingMissingTable(false);
+      setBriefingsSalvos(d.briefings || []);
+    } catch(e){ console.error("Erro briefings:", e); }
+  };
+
+  const salvarBriefingManual = async () => {
+    if (!briefingForm.titulo.trim() || !briefingForm.conteudo.trim()) { showToast("Título e conteúdo são obrigatórios","error"); return; }
+    try {
+      const nomes = funcList.filter(f => briefingForm.funcionarios_ids.includes(f.id)).map(f => f.nome);
+      const url = briefingEditando ? `/api/briefings/${briefingEditando.id}` : "/api/briefings";
+      const method = briefingEditando ? "PUT" : "POST";
+      const r = await fetch(url, { method, headers:{"Content-Type":"application/json","X-Admin-Token":"imobcore-admin-2026"}, body: JSON.stringify({ ...briefingForm, condominio_id: condId, tipo:"manual", funcionarios_nomes: nomes }) });
+      const d = await r.json();
+      if (d.error === "TABLE_MISSING") { setBriefingMissingTable(true); showToast("Crie a tabela no Supabase primeiro — use o botão 'Copiar SQL'","error"); return; }
+      if (!d.ok) throw new Error(d.error || d.message);
+      showToast(briefingEditando ? "Briefing atualizado!" : "Briefing criado!", "success");
+      setBriefingModal(false); setBriefingEditando(null); setBriefingForm({ titulo:"", conteudo:"", prioridade:"normal", funcionarios_ids:[] });
+      loadBriefingsSalvos();
+    } catch(e){ showToast("Erro ao salvar briefing","error"); }
+  };
+
+  const gerarBriefingDi = async () => {
+    if (!condId) return;
+    setBriefingDiLoading(true);
+    try {
+      const r = await fetch("/api/briefings/gerar-di", { method:"POST", headers:{"Content-Type":"application/json","X-Admin-Token":"imobcore-admin-2026"}, body: JSON.stringify({ condominio_id: condId, funcionarios_ids: briefingFuncSel, instrucoes_extras: briefingDiInstrucoes }) });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error);
+      showToast("Briefing gerado pela Di e salvo!", "success");
+      setBriefingFuncSel([]); setBriefingDiInstrucoes("");
+      loadBriefingsSalvos();
+    } catch(e){ showToast("Erro ao gerar briefing com Di","error"); } finally { setBriefingDiLoading(false); }
+  };
+
+  const excluirBriefing = async (id: string, titulo: string) => {
+    if (!confirm(`Excluir briefing "${titulo}"?`)) return;
+    try {
+      await fetch(`/api/briefings/${id}`, { method:"DELETE", headers:{"X-Admin-Token":"imobcore-admin-2026"} });
+      showToast("Briefing excluído","success");
+      setBriefingsSalvos(prev => prev.filter(b => b.id !== id));
+    } catch(e){ showToast("Erro ao excluir","error"); }
+  };
+
+  const exportarBriefingPDF = (b: BriefingSalvo) => {
+    const PRIO_COLOR: Record<string, string> = { baixa:"#10B981", normal:"#3B82F6", alta:"#F59E0B", urgente:"#EF4444" };
+    const prioLabel: Record<string, string> = { baixa:"Baixa", normal:"Normal", alta:"Alta", urgente:"Urgente" };
+    const dataFmt = new Date(b.criado_em).toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" });
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${b.titulo}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',sans-serif;background:#fff;color:#1e293b;padding:40px;max-width:800px;margin:0 auto}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;padding-bottom:20px;border-bottom:3px solid #7C3AED}
+  .logo{font-size:22px;font-weight:900;color:#7C3AED;letter-spacing:-0.5px}
+  .logo-sub{font-size:11px;color:#64748b;letter-spacing:1px;text-transform:uppercase}
+  .badge{display:inline-block;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
+  .titulo{font-size:26px;font-weight:900;color:#0f172a;margin-bottom:8px}
+  .meta{font-size:12px;color:#64748b;margin-bottom:24px;display:flex;gap:16px;flex-wrap:wrap}
+  .meta span{display:flex;align-items:center;gap:4px}
+  .conteudo{font-size:14px;line-height:1.8;color:#334155;white-space:pre-wrap;background:#f8fafc;border-radius:12px;padding:24px;border-left:4px solid #7C3AED}
+  .funcs{margin-top:24px}
+  .funcs-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;margin-bottom:10px}
+  .func-tag{display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:600;color:#475569;margin:4px 4px 4px 0}
+  .footer{margin-top:40px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8;display:flex;justify-content:space-between}
+  @media print{body{padding:20px}@page{margin:20mm}}
+</style></head><body>
+<div class="header">
+  <div><div class="logo">ImobCore</div><div class="logo-sub">Gestão Inteligente de Condomínios</div></div>
+  <div>
+    <div class="badge" style="background:${PRIO_COLOR[b.prioridade]}20;color:${PRIO_COLOR[b.prioridade]};border:1px solid ${PRIO_COLOR[b.prioridade]}40">⚑ ${prioLabel[b.prioridade]} Prioridade</div>
+    <div style="margin-top:6px" class="badge" style="background:#f1f5f9;color:#64748b">${b.tipo==="di"?"🤖 Gerado pela Di":"✍️ Manual"}</div>
+  </div>
+</div>
+<div class="titulo">${b.titulo}</div>
+<div class="meta">
+  <span>📅 ${dataFmt}</span>
+  ${b.funcionarios_nomes?.length ? `<span>👥 ${b.funcionarios_nomes.length} funcionário(s) vinculado(s)</span>` : ""}
+  <span>${b.tipo==="di"?"🤖 Gerado pela Di Síndica":"✍️ Criado manualmente"}</span>
+</div>
+<div class="conteudo">${b.conteudo}</div>
+${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Funcionários vinculados</div>${b.funcionarios_nomes.map(n=>`<span class="func-tag">👤 ${n}</span>`).join("")}</div>` : ""}
+<div class="footer">
+  <span>ImobCore v2 — Gestão de Condomínios</span>
+  <span>Gerado em ${new Date().toLocaleString("pt-BR")}</span>
+</div>
+</body></html>`;
+    const win = window.open("", "_blank");
+    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 500); }
   };
 
   const analiseDiFuncionarios = async () => {
@@ -15721,7 +15827,7 @@ Content-Type: application/json
               {/* TABS */}
               <div style={{ display:"flex", gap:6, marginBottom:20, borderBottom:"1px solid rgba(255,255,255,.08)", paddingBottom:0 }}>
                 {([["equipe","👥 Equipe"],["escala","📅 Escala Inteligente"],["briefings","📋 Briefings"],["di","🤖 Di Analista"]] as const).map(([tab,lbl]) => (
-                  <button key={tab} onClick={()=>setFuncTab(tab)}
+                  <button key={tab} onClick={()=>{ setFuncTab(tab); if(tab==="briefings") loadBriefingsSalvos(); }}
                     style={{ background: funcTab===tab ? "linear-gradient(135deg,#7C3AED,#A855F7)" : "transparent", border:"none", borderRadius:"10px 10px 0 0", padding:"9px 18px", color: funcTab===tab ? "#fff" : "#64748B", fontSize:13, fontWeight:700, cursor:"pointer", transition:"all .2s" }}>
                     {lbl}
                   </button>
@@ -15867,53 +15973,222 @@ Content-Type: application/json
               {/* ─── TAB: BRIEFINGS ──────────────────────────── */}
               {funcTab === "briefings" && (
                 <div>
-                  <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:18 }}>
+                  {/* HEADER */}
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16, flexWrap:"wrap" as const }}>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>Briefings Diários Automáticos</div>
-                      <div style={{ fontSize:12, color:"#475569" }}>Instruções personalizadas para cada funcionário geradas pela IA</div>
+                      <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>Briefings da Equipe</div>
+                      <div style={{ fontSize:12, color:"#475569" }}>Crie, edite e exporte briefings manualmente ou gerados pela Di</div>
                     </div>
-                    <button onClick={gerarBriefings} disabled={briefingsLoading}
-                      style={{ background:"linear-gradient(135deg,#059669,#10B981)", border:"none", borderRadius:10, padding:"9px 20px", color:"#fff", fontSize:13, fontWeight:700, cursor: briefingsLoading?"wait":"pointer", opacity: briefingsLoading?0.7:1 }}>
-                      {briefingsLoading ? "⏳ Gerando..." : "📋 Gerar Briefings"}
+                    <div style={{ display:"flex", gap:6 }}>
+                      {(["todos","manual","di"] as const).map(f=>(
+                        <button key={f} onClick={()=>setBriefingFiltro(f)}
+                          style={{ background: briefingFiltro===f?"rgba(124,92,252,.25)":"rgba(255,255,255,.05)", border:`1px solid ${briefingFiltro===f?"rgba(124,92,252,.6)":"rgba(255,255,255,.08)"}`, borderRadius:8, padding:"5px 12px", color: briefingFiltro===f?"#A78BFA":"#64748B", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                          {f==="todos"?"Todos":f==="manual"?"✍️ Manual":"🤖 Di"}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={()=>{ setBriefingEditando(null); setBriefingForm({ titulo:"", conteudo:"", prioridade:"normal", funcionarios_ids:[] }); setBriefingModal(true); }}
+                      style={{ background:"rgba(124,92,252,.2)", border:"1px solid rgba(124,92,252,.4)", borderRadius:10, padding:"8px 16px", color:"#A78BFA", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                      ✍️ Novo Manual
                     </button>
                   </div>
 
-                  {briefings.length === 0 ? (
-                    <div style={{ textAlign:"center" as const, padding:60, color:"#475569" }}>
-                      <div style={{ fontSize:40, marginBottom:12 }}>📋</div>
-                      <div style={{ fontSize:15, fontWeight:700, color:"#64748B", marginBottom:8 }}>Briefings não gerados</div>
-                      <div style={{ fontSize:12, color:"#475569" }}>Clique em "Gerar Briefings" para criar instruções diárias para cada funcionário</div>
+                  {/* MISSING TABLE WARNING */}
+                  {briefingMissingTable && (
+                    <div style={{ background:"rgba(245,158,11,.1)", border:"1px solid rgba(245,158,11,.35)", borderRadius:12, padding:"12px 16px", marginBottom:16, display:"flex", alignItems:"center", gap:10 }}>
+                      <span style={{ fontSize:18 }}>⚠️</span>
+                      <div style={{ flex:1 }}>
+                        <div style={{ color:"#FCD34D", fontWeight:700, fontSize:13 }}>Tabela briefings_funcionarios não existe</div>
+                        <div style={{ color:"#94A3B8", fontSize:11 }}>Execute o SQL abaixo no Supabase SQL Editor para ativar persistência</div>
+                      </div>
+                      <button onClick={async()=>{ const r=await fetch("/api/briefings/migration-sql",{headers:{"X-Admin-Token":"imobcore-admin-2026"}}); const d=await r.json(); navigator.clipboard.writeText(d.sql); showToast("SQL copiado! Cole no Supabase Editor","success"); }}
+                        style={{ background:"rgba(245,158,11,.2)", border:"1px solid rgba(245,158,11,.4)", borderRadius:8, padding:"6px 14px", color:"#FCD34D", fontSize:12, fontWeight:700, cursor:"pointer" }}>
+                        📋 Copiar SQL
+                      </button>
+                    </div>
+                  )}
+
+                  {/* DI GENERATOR PANEL */}
+                  <div style={{ background:"linear-gradient(135deg,rgba(124,92,252,.08),rgba(168,85,247,.05))", border:"1px solid rgba(124,92,252,.2)", borderRadius:14, padding:"16px 20px", marginBottom:18 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+                      <div style={{ width:36, height:36, borderRadius:10, background:"linear-gradient(135deg,#7C3AED,#A855F7)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>🤖</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:14, fontWeight:800, color:"#E2E8F0" }}>Gerar Briefing com Di Síndica</div>
+                        <div style={{ fontSize:11, color:"#7C5CFC" }}>Claude analisa a equipe e cria um briefing personalizado</div>
+                      </div>
+                      <button onClick={gerarBriefingDi} disabled={briefingDiLoading}
+                        style={{ background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:10, padding:"8px 18px", color:"#fff", fontSize:13, fontWeight:700, cursor:briefingDiLoading?"wait":"pointer", opacity:briefingDiLoading?0.7:1 }}>
+                        {briefingDiLoading?"⏳ Gerando...":"🤖 Gerar com Di"}
+                      </button>
+                    </div>
+                    <div style={{ display:"flex", gap:10, flexWrap:"wrap" as const }}>
+                      <div style={{ flex:2, minWidth:200 }}>
+                        <div style={{ fontSize:11, color:"#64748B", marginBottom:6, fontWeight:600 }}>FUNCIONÁRIOS (deixe em branco para todos)</div>
+                        <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
+                          {funcList.filter(f=>f.status==="ativo").map(f=>{
+                            const sel = briefingFuncSel.includes(f.id);
+                            const cc = CARGO_COLOR[f.cargo] || CARGO_COLOR.outro;
+                            return (
+                              <button key={f.id} onClick={()=>setBriefingFuncSel(prev=>sel?prev.filter(x=>x!==f.id):[...prev,f.id])}
+                                style={{ background:sel?cc.badge:"rgba(255,255,255,.05)", border:`1px solid ${sel?cc.border:"rgba(255,255,255,.1)"}`, borderRadius:8, padding:"4px 10px", color:sel?cc.badgeTxt:"#64748B", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                                {sel?"✓ ":""}{f.nome.split(" ")[0]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div style={{ flex:3, minWidth:200 }}>
+                        <div style={{ fontSize:11, color:"#64748B", marginBottom:6, fontWeight:600 }}>INSTRUÇÕES ESPECIAIS (opcional)</div>
+                        <textarea value={briefingDiInstrucoes} onChange={e=>setBriefingDiInstrucoes(e.target.value)}
+                          placeholder="Ex: focar no controle de acesso no feriado, incluir alerta sobre o evento de sábado..."
+                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, resize:"vertical" as const, minHeight:56, fontFamily:"inherit", outline:"none" }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* BRIEFINGS LIST */}
+                  {briefingsSalvos.filter(b=> briefingFiltro==="todos" || b.tipo===briefingFiltro).length === 0 ? (
+                    <div style={{ textAlign:"center" as const, padding:50, color:"#475569" }}>
+                      <div style={{ fontSize:36, marginBottom:10 }}>📋</div>
+                      <div style={{ fontSize:14, fontWeight:700, color:"#64748B", marginBottom:6 }}>Nenhum briefing salvo</div>
+                      <div style={{ fontSize:12 }}>Crie um manualmente ou use a Di para gerar automaticamente</div>
                     </div>
                   ) : (
-                    <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:14 }}>
-                      {briefings.map(b => (
-                        <div key={b.funcionario_id} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:14, overflow:"hidden" }}>
-                          <div style={{ padding:"14px 16px", background:"rgba(124,92,252,.1)", display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setBriefingAberto(briefingAberto===b.funcionario_id ? null : b.funcionario_id)}>
-                            <span style={{ fontSize:22 }}>{CARGO_ICON[b.cargo]||"👤"}</span>
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontSize:14, fontWeight:800, color:"#E2E8F0" }}>{b.nome}</div>
-                              <div style={{ fontSize:11, color:"#7C5CFC" }}>{CARGO_LABEL[b.cargo]||b.cargo} · Turno {b.turno}</div>
-                            </div>
-                            {b.pontos_criticos.length > 0 && <span style={{ background:"rgba(239,68,68,.2)", color:"#F87171", borderRadius:6, padding:"3px 8px", fontSize:11, fontWeight:700 }}>⚠️ {b.pontos_criticos.length}</span>}
-                            <span style={{ color:"#475569", fontSize:16 }}>{briefingAberto===b.funcionario_id ? "▲" : "▼"}</span>
-                          </div>
-                          {briefingAberto === b.funcionario_id && (
-                            <div style={{ padding:"14px 16px" }}>
-                              <pre style={{ fontFamily:"inherit", fontSize:12, color:"#94A3B8", whiteSpace:"pre-wrap" as const, lineHeight:1.6, margin:0 }}>{b.texto}</pre>
-                              <div style={{ marginTop:12, display:"flex", gap:8 }}>
-                                <button onClick={()=>{ navigator.clipboard.writeText(b.texto); showToast("Briefing copiado!","success"); }}
-                                  style={{ background:"rgba(124,92,252,.15)", border:"1px solid rgba(124,92,252,.3)", borderRadius:8, padding:"6px 14px", color:"#A78BFA", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                                  📋 Copiar
-                                </button>
-                                <button onClick={()=>{ if(navigator.share){navigator.share({title:`Briefing — ${b.nome}`,text:b.texto}).catch(()=>{});} else { navigator.clipboard.writeText(b.texto); showToast("Copiado para enviar via WhatsApp","success"); }}}
-                                  style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"6px 14px", color:"#34D399", fontSize:12, fontWeight:700, cursor:"pointer" }}>
-                                  📱 Compartilhar
-                                </button>
+                    <div style={{ display:"flex", flexDirection:"column" as const, gap:10 }}>
+                      {(() => {
+                        const PRIO_COLOR: Record<string,string> = { baixa:"#10B981", normal:"#3B82F6", alta:"#F59E0B", urgente:"#EF4444" };
+                        const PRIO_BG: Record<string,string> = { baixa:"rgba(16,185,129,.15)", normal:"rgba(59,130,246,.15)", alta:"rgba(245,158,11,.15)", urgente:"rgba(239,68,68,.15)" };
+                        const PRIO_LABEL: Record<string,string> = { baixa:"Baixa", normal:"Normal", alta:"Alta", urgente:"Urgente" };
+                        const filtered = briefingsSalvos.filter(b=> briefingFiltro==="todos" || b.tipo===briefingFiltro);
+                        return filtered.map(b => (
+                          <div key={b.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.08)", borderLeft:`4px solid ${b.tipo==="di"?"#A855F7":"#3B82F6"}`, borderRadius:14, overflow:"hidden" }}>
+                            {/* CARD HEADER */}
+                            <div style={{ padding:"14px 18px", display:"flex", alignItems:"center", gap:12, cursor:"pointer" }} onClick={()=>setBriefingAberto(briefingAberto===b.id?null:b.id)}>
+                              <div style={{ width:38, height:38, borderRadius:10, background:b.tipo==="di"?"linear-gradient(135deg,#7C3AED,#A855F7)":"linear-gradient(135deg,#1E40AF,#3B82F6)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
+                                {b.tipo==="di"?"🤖":"📄"}
+                              </div>
+                              <div style={{ flex:1, minWidth:0 }}>
+                                <div style={{ fontSize:14, fontWeight:800, color:"#E2E8F0", marginBottom:3 }}>{b.titulo}</div>
+                                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" as const }}>
+                                  <span style={{ fontSize:10, background:b.tipo==="di"?"rgba(168,85,247,.2)":"rgba(59,130,246,.2)", color:b.tipo==="di"?"#D8B4FE":"#93C5FD", borderRadius:5, padding:"2px 7px", fontWeight:700 }}>{b.tipo==="di"?"🤖 Di":"✍️ Manual"}</span>
+                                  <span style={{ fontSize:10, background:PRIO_BG[b.prioridade], color:PRIO_COLOR[b.prioridade], borderRadius:5, padding:"2px 7px", fontWeight:700 }}>⚑ {PRIO_LABEL[b.prioridade]}</span>
+                                  {b.funcionarios_nomes?.length>0 && <span style={{ fontSize:10, color:"#64748B" }}>👥 {b.funcionarios_nomes.slice(0,2).join(", ")}{b.funcionarios_nomes.length>2?` +${b.funcionarios_nomes.length-2}`:""}</span>}
+                                  <span style={{ fontSize:10, color:"#334155" }}>{new Date(b.criado_em).toLocaleDateString("pt-BR",{day:"2-digit",month:"short",year:"numeric"})}</span>
+                                </div>
+                              </div>
+                              {/* Actions */}
+                              <div style={{ display:"flex", gap:6, flexShrink:0 }} onClick={e=>e.stopPropagation()}>
+                                <button title="Exportar PDF" onClick={()=>exportarBriefingPDF(b)}
+                                  style={{ background:"rgba(239,68,68,.15)", border:"1px solid rgba(239,68,68,.3)", borderRadius:8, padding:"6px 10px", color:"#F87171", fontSize:12, cursor:"pointer", fontWeight:700 }}>📄 PDF</button>
+                                <button title="Editar" onClick={()=>{ setBriefingEditando(b); setBriefingForm({ titulo:b.titulo, conteudo:b.conteudo, prioridade:b.prioridade, funcionarios_ids:b.funcionarios_ids||[] }); setBriefingModal(true); }}
+                                  style={{ background:"rgba(124,92,252,.15)", border:"1px solid rgba(124,92,252,.3)", borderRadius:8, padding:"6px 10px", color:"#A78BFA", fontSize:12, cursor:"pointer", fontWeight:700 }}>✏️</button>
+                                <button title="Excluir" onClick={()=>excluirBriefing(b.id, b.titulo)}
+                                  style={{ background:"rgba(239,68,68,.1)", border:"1px solid rgba(239,68,68,.2)", borderRadius:8, padding:"6px 10px", color:"#F87171", fontSize:12, cursor:"pointer", fontWeight:700 }}>🗑️</button>
+                                <span style={{ color:"#334155", fontSize:18, alignSelf:"center", userSelect:"none" as const }}>{briefingAberto===b.id?"▲":"▼"}</span>
                               </div>
                             </div>
-                          )}
+                            {/* EXPANDED CONTENT */}
+                            {briefingAberto === b.id && (
+                              <div style={{ borderTop:"1px solid rgba(255,255,255,.07)", padding:"16px 20px", background:"rgba(0,0,0,.15)" }}>
+                                {b.funcionarios_nomes?.length>0 && (
+                                  <div style={{ marginBottom:14 }}>
+                                    <div style={{ fontSize:11, color:"#64748B", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5, marginBottom:8 }}>Funcionários vinculados</div>
+                                    <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
+                                      {b.funcionarios_nomes.map((n,i)=>{
+                                        const fObj = funcList.find(f=>b.funcionarios_ids?.[i]===f.id);
+                                        const cc = fObj ? (CARGO_COLOR[fObj.cargo]||CARGO_COLOR.outro) : CARGO_COLOR.outro;
+                                        return (<span key={i} style={{ background:cc.badge, color:cc.badgeTxt, border:`1px solid ${cc.border}40`, borderRadius:8, padding:"4px 10px", fontSize:12, fontWeight:600 }}>👤 {n}</span>);
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                <pre style={{ fontFamily:"inherit", fontSize:13, color:"#CBD5E1", whiteSpace:"pre-wrap" as const, lineHeight:1.75, margin:0 }}>{b.conteudo}</pre>
+                                <div style={{ marginTop:14, display:"flex", gap:8, flexWrap:"wrap" as const }}>
+                                  <button onClick={()=>{ navigator.clipboard.writeText(b.conteudo); showToast("Copiado!","success"); }}
+                                    style={{ background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"6px 14px", color:"#94A3B8", fontSize:12, fontWeight:700, cursor:"pointer" }}>📋 Copiar</button>
+                                  <button onClick={()=>exportarBriefingPDF(b)}
+                                    style={{ background:"rgba(239,68,68,.15)", border:"1px solid rgba(239,68,68,.3)", borderRadius:8, padding:"6px 14px", color:"#F87171", fontSize:12, fontWeight:700, cursor:"pointer" }}>📄 Exportar PDF</button>
+                                  <button onClick={()=>{ if(navigator.share){navigator.share({title:b.titulo,text:b.conteudo}).catch(()=>{});}else{navigator.clipboard.writeText(b.conteudo);showToast("Copiado para compartilhar","success");}}}
+                                    style={{ background:"rgba(16,185,129,.15)", border:"1px solid rgba(16,185,129,.3)", borderRadius:8, padding:"6px 14px", color:"#34D399", fontSize:12, fontWeight:700, cursor:"pointer" }}>📱 Compartilhar</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  )}
+
+                  {/* MODAL: CRIAR / EDITAR BRIEFING MANUAL */}
+                  {briefingModal && (
+                    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:1200, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+                      <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:18, padding:28, width:"100%", maxWidth:680, maxHeight:"90vh", overflowY:"auto" }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:22 }}>
+                          <div style={{ width:40, height:40, borderRadius:10, background:"linear-gradient(135deg,#1E40AF,#3B82F6)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:20 }}>📄</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:17, fontWeight:900, color:"#E2E8F0" }}>{briefingEditando ? "Editar Briefing" : "Novo Briefing Manual"}</div>
+                            <div style={{ fontSize:12, color:"#475569" }}>Crie um briefing personalizado e vincule funcionários</div>
+                          </div>
+                          <button onClick={()=>{ setBriefingModal(false); setBriefingEditando(null); }} style={{ background:"rgba(255,255,255,.08)", border:"none", borderRadius:8, padding:"6px 10px", color:"#94A3B8", fontSize:18, cursor:"pointer" }}>✕</button>
                         </div>
-                      ))}
+
+                        {/* Título */}
+                        <div style={{ marginBottom:14 }}>
+                          <label style={{ fontSize:11, color:"#64748B", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:6 }}>Título *</label>
+                          <input value={briefingForm.titulo} onChange={e=>setBriefingForm(p=>({...p,titulo:e.target.value}))}
+                            placeholder="Ex: Briefing — Turno Noturno — Sexta-feira"
+                            style={{ width:"100%", background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"10px 14px", color:"#E2E8F0", fontSize:14, outline:"none", boxSizing:"border-box" as const }} />
+                        </div>
+
+                        {/* Prioridade */}
+                        <div style={{ marginBottom:14 }}>
+                          <label style={{ fontSize:11, color:"#64748B", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:6 }}>Prioridade</label>
+                          <div style={{ display:"flex", gap:8 }}>
+                            {(["baixa","normal","alta","urgente"] as const).map(p=>{
+                              const PCOL: Record<string,string> = { baixa:"#10B981", normal:"#3B82F6", alta:"#F59E0B", urgente:"#EF4444" };
+                              const PBG: Record<string,string>  = { baixa:"rgba(16,185,129,.15)", normal:"rgba(59,130,246,.15)", alta:"rgba(245,158,11,.15)", urgente:"rgba(239,68,68,.15)" };
+                              const sel = briefingForm.prioridade === p;
+                              return (<button key={p} onClick={()=>setBriefingForm(pr=>({...pr,prioridade:p}))}
+                                style={{ background:sel?PBG[p]:"rgba(255,255,255,.04)", border:`1px solid ${sel?PCOL[p]+"60":"rgba(255,255,255,.1)"}`, borderRadius:8, padding:"6px 14px", color:sel?PCOL[p]:"#64748B", fontSize:12, fontWeight:700, cursor:"pointer", textTransform:"capitalize" as const }}>{p}</button>);
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Funcionários vinculados */}
+                        <div style={{ marginBottom:14 }}>
+                          <label style={{ fontSize:11, color:"#64748B", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:8 }}>Funcionários Vinculados</label>
+                          <div style={{ display:"flex", flexWrap:"wrap" as const, gap:6 }}>
+                            {funcList.map(f=>{
+                              const sel = briefingForm.funcionarios_ids.includes(f.id);
+                              const cc = CARGO_COLOR[f.cargo] || CARGO_COLOR.outro;
+                              return (
+                                <button key={f.id} onClick={()=>setBriefingForm(p=>({...p,funcionarios_ids:sel?p.funcionarios_ids.filter(x=>x!==f.id):[...p.funcionarios_ids,f.id]}))}
+                                  style={{ background:sel?cc.badge:"rgba(255,255,255,.05)", border:`1px solid ${sel?cc.border:"rgba(255,255,255,.1)"}`, borderRadius:8, padding:"5px 12px", color:sel?cc.badgeTxt:"#64748B", fontSize:12, fontWeight:600, cursor:"pointer" }}>
+                                  {sel?"✓ ":""}{f.nome} <span style={{ opacity:0.7, fontSize:11 }}>({CARGO_LABEL[f.cargo]||f.cargo})</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Conteúdo */}
+                        <div style={{ marginBottom:20 }}>
+                          <label style={{ fontSize:11, color:"#64748B", fontWeight:600, textTransform:"uppercase" as const, letterSpacing:0.5, display:"block", marginBottom:6 }}>Conteúdo do Briefing *</label>
+                          <textarea value={briefingForm.conteudo} onChange={e=>setBriefingForm(p=>({...p,conteudo:e.target.value}))}
+                            placeholder="Digite o conteúdo completo do briefing aqui..."
+                            style={{ width:"100%", background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"12px 14px", color:"#E2E8F0", fontSize:13, lineHeight:1.7, resize:"vertical" as const, minHeight:220, fontFamily:"inherit", outline:"none", boxSizing:"border-box" as const }} />
+                        </div>
+
+                        {/* Actions */}
+                        <div style={{ display:"flex", gap:10, justifyContent:"flex-end" }}>
+                          <button onClick={()=>{ setBriefingModal(false); setBriefingEditando(null); }}
+                            style={{ background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:10, padding:"10px 20px", color:"#94A3B8", fontSize:13, fontWeight:700, cursor:"pointer" }}>Cancelar</button>
+                          <button onClick={salvarBriefingManual}
+                            style={{ background:"linear-gradient(135deg,#1E40AF,#3B82F6)", border:"none", borderRadius:10, padding:"10px 24px", color:"#fff", fontSize:13, fontWeight:700, cursor:"pointer" }}>
+                            {briefingEditando?"💾 Atualizar":"💾 Criar Briefing"}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
