@@ -156,6 +156,152 @@
                  border-radius:14px;padding:14px 40px;font-size:16px;font-weight:900;color:#fff;
                  cursor:pointer;box-shadow:0 4px 20px rgba(124,58,237,.4);animation:pulsar 2s infinite}
 
+    /* ── TELA 5: HÓSPEDE ────────────────────────────── */
+    #t-hosp{background:var(--bg);padding:0;flex-direction:column;justify-content:flex-start}
+    .hosp-header{width:100%;display:flex;align-items:center;gap:10px;padding:14px 16px;
+                 background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
+    .hosp-header .back-btn{background:none;border:none;color:var(--t2);font-size:20px;cursor:pointer;padding:4px}
+    .hosp-header .di-mini{width:36px;height:36px;border-radius:50%;overflow:hidden;
+                          border:2px solid rgba(251,146,60,.5);flex-shrink:0}
+    .hosp-header .di-mini img{width:100%;height:100%;object-fit:cover;object-position:center top}
+    .hosp-header .htitles{flex:1}
+    .hosp-header .ht1{font-size:14px;font-weight:900}
+    .hosp-header .ht2{font-size:10px;color:var(--t2)}
+
+    /* Tab nav */
+    .hosp-tabs{display:flex;width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;
+               background:rgba(0,0,0,.2);border-bottom:1px solid rgba(255,255,255,.06);
+               flex-shrink:0;scrollbar-width:none}
+    .hosp-tabs::-webkit-scrollbar{display:none}
+    .htab{flex:none;padding:12px 14px;font-size:11px;font-weight:800;color:var(--t3);
+          cursor:pointer;border-bottom:2px solid transparent;transition:all .18s;white-space:nowrap;
+          display:flex;align-items:center;gap:5px}
+    .htab.ativo{color:#fff;border-bottom-color:rgb(251,146,60)}
+    .htab.ativo .htab-ico{filter:none}
+    .htab-ico{font-size:16px}
+
+    /* Tab content */
+    .hosp-content{flex:1;overflow-y:auto;padding:14px;width:100%;-webkit-overflow-scrolling:touch}
+
+    /* Cards de área (2 colunas) */
+    .area-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    .area-card{background:linear-gradient(145deg,rgba(var(--ac),.2),rgba(var(--ac),.07));
+               border:1.5px solid rgba(var(--ac),.35);border-radius:18px;padding:16px 10px 12px;
+               cursor:pointer;text-align:center;
+               transition:all .2s cubic-bezier(.34,1.56,.64,1);
+               display:flex;flex-direction:column;align-items:center;gap:8px;position:relative;overflow:hidden}
+    .area-card::before{content:'';position:absolute;top:0;left:0;right:0;height:40%;
+      background:linear-gradient(180deg,rgba(var(--ac),.15),transparent);pointer-events:none}
+    .area-card:active{transform:scale(.97)}
+    .area-ico-box{width:52px;height:52px;border-radius:14px;
+      background:linear-gradient(145deg,rgba(var(--ac),.5),rgba(var(--ac),.22));
+      border:1px solid rgba(var(--ac),.55);
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:0 6px 16px rgba(var(--ac),.3),inset 0 1px 0 rgba(255,255,255,.18);
+      transform:perspective(160px) rotateX(8deg)}
+    .area-ico-box .aico{font-size:26px;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5));transform:translateY(-1px)}
+    .area-card .atitulo{font-size:12px;font-weight:900;color:#fff;position:relative;z-index:1}
+    .area-card .adesc{font-size:9px;color:rgba(255,255,255,.55);line-height:1.3;position:relative;z-index:1}
+    .status-chip{font-size:8px;font-weight:800;padding:2px 7px;border-radius:20px;position:relative;z-index:1}
+    .status-chip.aberto{background:rgba(34,197,94,.2);color:#4ade80}
+    .status-chip.fechado{background:rgba(239,68,68,.2);color:#fca5a5}
+    .status-chip.disponivel{background:rgba(99,102,241,.2);color:#a5b4fc}
+
+    /* Lista de serviços */
+    .servico-item{display:flex;align-items:center;gap:12px;padding:12px 14px;
+                  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);
+                  border-radius:14px;margin-bottom:8px}
+    .servico-ico{width:44px;height:44px;border-radius:12px;
+                 background:rgba(6,182,212,.2);border:1px solid rgba(6,182,212,.3);
+                 display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+    .servico-info{flex:1}
+    .servico-nome{font-size:13px;font-weight:800}
+    .servico-desc{font-size:10px;color:var(--t3);margin-top:2px}
+    .sdicas{margin-top:4px}
+    .sdica{font-size:9px;color:rgba(6,182,212,.8);background:rgba(6,182,212,.1);
+           border-radius:4px;padding:2px 6px;display:inline-block;margin:1px 2px}
+
+    /* Seções de região */
+    .regiao-secao{margin-bottom:18px}
+    .regiao-titulo{font-size:11px;font-weight:900;letter-spacing:.08em;color:var(--t3);
+                   text-transform:uppercase;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+    .regiao-titulo::after{content:'';flex:1;height:1px;background:rgba(255,255,255,.07)}
+    .ponto-item{display:flex;align-items:center;gap:10px;padding:10px 12px;
+                background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);
+                border-radius:12px;margin-bottom:6px}
+    .ponto-ico{font-size:24px;flex-shrink:0}
+    .ponto-info{flex:1}
+    .ponto-nome{font-size:12px;font-weight:800}
+    .ponto-desc{font-size:10px;color:var(--t3)}
+    .ponto-dist{font-size:9px;color:rgba(20,184,166,.8);font-weight:700;margin-top:2px}
+
+    /* Cards de parceria (dourado) */
+    .parceiro-card{background:linear-gradient(145deg,rgba(234,179,8,.15),rgba(234,179,8,.05));
+                   border:1.5px solid rgba(234,179,8,.35);border-radius:18px;padding:16px;
+                   margin-bottom:10px;position:relative;overflow:hidden}
+    .parceiro-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;
+      background:linear-gradient(90deg,transparent,rgba(234,179,8,.6),transparent)}
+    .parceiro-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+    .parceiro-ico{font-size:32px}
+    .parceiro-info{flex:1}
+    .parceiro-nome{font-size:13px;font-weight:900}
+    .parceiro-tipo{font-size:9px;color:rgba(234,179,8,.7);font-weight:700;text-transform:uppercase}
+    .desconto-badge{background:linear-gradient(135deg,rgba(234,179,8,.9),rgba(234,179,8,.6));
+                    color:#000;font-size:13px;font-weight:900;padding:5px 10px;
+                    border-radius:8px;flex-shrink:0}
+    .parceiro-dicas{list-style:none;margin:0;padding:0}
+    .parceiro-dicas li{font-size:10px;color:rgba(255,255,255,.6);padding:2px 0;
+                       padding-left:12px;position:relative}
+    .parceiro-dicas li::before{content:'›';position:absolute;left:0;color:rgba(234,179,8,.6)}
+
+    /* Emergência */
+    .emerg-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+    .emerg-btn{background:linear-gradient(145deg,rgba(239,68,68,.22),rgba(239,68,68,.08));
+               border:1.5px solid rgba(239,68,68,.4);border-radius:18px;
+               padding:20px 10px;cursor:pointer;text-align:center;
+               display:flex;flex-direction:column;align-items:center;gap:8px;
+               transition:all .18s}
+    .emerg-btn:active{transform:scale(.97)}
+    .emerg-ico{font-size:30px}
+    .emerg-nome{font-size:12px;font-weight:900;color:#fca5a5}
+    .emerg-num{font-size:22px;font-weight:900;color:#fff;letter-spacing:.05em}
+
+    /* ── TELA 6: DETALHE DE ÁREA (overlay) ────────────── */
+    #t-detalhe{background:var(--bg);display:none;flex-direction:column;justify-content:flex-start;
+               position:fixed;inset:0;z-index:200;
+               animation:slideUp .3s cubic-bezier(.34,1.56,.64,1)}
+    #t-detalhe.vis{display:flex}
+    @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+    .det-header{width:100%;padding:20px 16px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;
+                background:linear-gradient(135deg,rgba(var(--dac),.35),rgba(var(--dac),.12))}
+    .det-back{background:rgba(255,255,255,.1);border:none;color:#fff;font-size:18px;cursor:pointer;
+              width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .det-ico-box{width:54px;height:54px;border-radius:16px;
+                 background:linear-gradient(145deg,rgba(var(--dac),.6),rgba(var(--dac),.3));
+                 border:1px solid rgba(var(--dac),.7);
+                 display:flex;align-items:center;justify-content:center;font-size:28px;flex-shrink:0}
+    .det-title{flex:1}
+    .det-nome{font-size:18px;font-weight:900}
+    .det-desc{font-size:11px;color:rgba(255,255,255,.65);margin-top:2px}
+    .det-body{flex:1;overflow-y:auto;padding:16px}
+    .det-secao{margin-bottom:18px}
+    .det-secao-titulo{font-size:10px;font-weight:900;letter-spacing:.1em;color:rgba(var(--dac),1);
+                      text-transform:uppercase;margin-bottom:8px}
+    .horario-chips{display:flex;flex-wrap:wrap;gap:6px}
+    .horario-chip{background:rgba(var(--dac),.18);border:1px solid rgba(var(--dac),.4);
+                  border-radius:20px;padding:5px 12px;font-size:11px;font-weight:700}
+    .horario-chip b{color:rgba(var(--dac),1)}
+    .regra-item{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;margin-bottom:5px;
+                background:rgba(255,255,255,.04);border-radius:10px;font-size:11px;color:var(--t2);line-height:1.4}
+    .regra-item::before{content:'⚠';font-size:13px;flex-shrink:0}
+    .dica-item{display:flex;align-items:flex-start;gap:8px;padding:6px 0;
+               font-size:11px;color:rgba(255,255,255,.65);line-height:1.4}
+    .dica-item::before{content:'💡';font-size:13px;flex-shrink:0}
+    .det-chat-btn{width:100%;padding:16px;background:linear-gradient(135deg,var(--tema),var(--tema2));
+                  border:none;border-radius:16px;color:#fff;font-size:15px;font-weight:900;
+                  cursor:pointer;margin-top:4px;
+                  box-shadow:0 6px 24px rgba(var(--dac),.3)}
+
     /* ── MISC ───────────────────────────────────────── */
     #toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
            background:#1e1e40;border:1px solid rgba(168,85,247,.3);border-radius:10px;
@@ -200,7 +346,7 @@
       <div class="lbl">Sou Visitante</div>
       <div class="desc">Registrar entrada no condomínio</div>
     </div>
-    <div class="mod-btn" style="--cr:251,146,60" onclick="iniciarChat('hospede')">
+    <div class="mod-btn" style="--cr:251,146,60" onclick="irHospede()">
       <div class="ico-wrap"><div class="ico">🛎️</div></div>
       <div class="lbl">Sou Hóspede</div>
       <div class="desc">Guia, áreas e informações</div>
@@ -270,6 +416,42 @@
     <div class="chamada">Toque para iniciar o atendimento</div>
     <button id="btn-acordar" onclick="irBvs()">✨ Iniciar</button>
   </div>
+</div>
+
+<!-- ══ TELA 5: HÓSPEDE ════════════════════════════════════════════════════ -->
+<div class="tela" id="t-hosp">
+  <div class="hosp-header">
+    <button class="back-btn" onclick="irModulos()">‹</button>
+    <div class="di-mini"><img src="/concierge/assets/di-avatar.png" alt="Di"></div>
+    <div class="htitles">
+      <div class="ht1" id="hosp-di-nome">Di · Concierge</div>
+      <div class="ht2" id="hosp-condo-nome">Guia do Hóspede</div>
+    </div>
+  </div>
+  <div class="hosp-tabs" id="hosp-tabs">
+    <div class="htab ativo" onclick="hospAba('areas',this)"><span class="htab-ico">🏊</span> Áreas</div>
+    <div class="htab"       onclick="hospAba('servicos',this)"><span class="htab-ico">🛎</span> Serviços</div>
+    <div class="htab"       onclick="hospAba('regiao',this)"><span class="htab-ico">🗺</span> Região</div>
+    <div class="htab"       onclick="hospAba('parceiros',this)"><span class="htab-ico">🤝</span> Parceiros</div>
+    <div class="htab"       onclick="hospAba('emergencia',this)"><span class="htab-ico">🚨</span> Emergência</div>
+  </div>
+  <div class="hosp-content" id="hosp-content">
+    <div style="text-align:center;padding:40px;color:var(--t3);font-size:13px">Carregando guia…</div>
+  </div>
+</div>
+
+<!-- ══ TELA 6: DETALHE DE ÁREA ══════════════════════════════════════════ -->
+<div id="t-detalhe">
+  <div class="det-header">
+    <button class="det-back" onclick="fecharDetalhe()">‹</button>
+    <div class="det-ico-box" id="det-ico">🏊</div>
+    <div class="det-title">
+      <div class="det-nome" id="det-nome">Área</div>
+      <div class="det-desc" id="det-desc">Descrição</div>
+    </div>
+    <div class="status-chip" id="det-status"></div>
+  </div>
+  <div class="det-body" id="det-body"></div>
 </div>
 
 <div id="toast"></div>
@@ -514,6 +696,226 @@
   }
 
   // ── Start ─────────────────────────────────────────────────────────────────
+
+  // ── Hóspede Module ────────────────────────────────────────────────────────
+  const AREA_CORES = ['6,182,212','251,146,60','168,85,247','34,197,94','234,179,8','99,102,241','239,68,68','20,184,166'];
+  let guia = {};
+  let abaAtiva = 'areas';
+  let detItem  = null;
+
+  function irHospede() {
+    irTela('t-hosp');
+    document.getElementById('hosp-di-nome').textContent   = (cfg.nome_di || 'Di') + ' · Concierge';
+    document.getElementById('hosp-condo-nome').textContent = cfg.nome_condo || 'Guia do Hóspede';
+    const avSrc = cfg.avatar_url || '/concierge/assets/di-avatar.png';
+    document.querySelectorAll('.hosp-header .di-mini img').forEach(i => { i.src = avSrc; });
+    hospAbaForce('areas');
+    loadGuia();
+  }
+
+  async function loadGuia() {
+    try {
+      const r = await fetch(`${API}/guia`, { headers: authH() });
+      if (!r.ok) throw new Error(r.status);
+      guia = await r.json();
+    } catch (e) { console.warn('Guia offline:', e); guia = {}; }
+    renderHospede(abaAtiva);
+  }
+
+  function hospAba(aba, el) {
+    document.querySelectorAll('.htab').forEach(t => t.classList.remove('ativo'));
+    if (el) el.classList.add('ativo');
+    abaAtiva = aba;
+    renderHospede(aba);
+  }
+
+  function hospAbaForce(aba) {
+    abaAtiva = aba;
+    const tabAbas = ['areas','servicos','regiao','parceiros','emergencia'];
+    document.querySelectorAll('.htab').forEach((t, i) => t.classList.toggle('ativo', tabAbas[i] === aba));
+  }
+
+  function renderHospede(aba) {
+    const c = document.getElementById('hosp-content');
+    const map = { areas: renderAreas, servicos: renderServicos, regiao: renderRegiao,
+                  parceiros: renderParceiros, emergencia: renderEmergencia };
+    c.innerHTML = (map[aba] || renderAreas)();
+    c.scrollTop = 0;
+  }
+
+  function vazio(msg) {
+    return `<div style="text-align:center;padding:48px 20px;color:var(--t3);font-size:13px;line-height:1.6">${msg}</div>`;
+  }
+
+  function renderAreas() {
+    const items = guia.areas || [];
+    if (!items.length) return vazio('Nenhuma área cadastrada ainda.<br>Solicite ao síndico que cadastre as áreas no painel.');
+    return '<div class="area-grid">' + items.map((a, i) => {
+      const cor = AREA_CORES[i % AREA_CORES.length];
+      const sC  = a.status==='aberto'?'aberto':a.status==='fechado'?'fechado':'disponivel';
+      const sT  = a.status==='aberto'?'● Aberto':a.status==='fechado'?'● Fechado':'● Disponível';
+      return `<div class="area-card" style="--ac:${cor}" onclick="abrirDetalhe(${i})">
+        <div class="area-ico-box"><div class="aico">${a.icone||'🏠'}</div></div>
+        <div class="atitulo">${a.titulo}</div>
+        ${a.descricao?`<div class="adesc">${a.descricao}</div>`:''}
+        <div class="status-chip ${sC}">${sT}</div>
+      </div>`;
+    }).join('') + '</div>';
+  }
+
+  function renderServicos() {
+    const items = guia.servicos || [];
+    if (!items.length) return vazio('Nenhum serviço cadastrado.');
+    return items.map(s => {
+      const dics = (s.dicas||[]).map(d=>`<span class="sdica">💡 ${d}</span>`).join('');
+      return `<div class="servico-item">
+        <div class="servico-ico">${s.icone||'🛎'}</div>
+        <div class="servico-info">
+          <div class="servico-nome">${s.titulo}</div>
+          <div class="servico-desc">${s.descricao||''}</div>
+          ${dics?`<div class="sdicas">${dics}</div>`:''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderRegiao() {
+    const secoes = [
+      { titulo:'📸 Pontos Turísticos', grp: guia.passeios||[] },
+      { titulo:'🍽️ Restaurantes & Cafés', grp: guia.restaurantes||[] },
+    ].filter(s => s.grp.length);
+    if (!secoes.length) return vazio('Nenhum ponto da região cadastrado.');
+    return secoes.map(sec => {
+      const pontos = sec.grp.flatMap(g => (g.pontos||[]).map(p =>
+        `<div class="ponto-item">
+          <div class="ponto-ico">${p.icone||'📍'}</div>
+          <div class="ponto-info">
+            <div class="ponto-nome">${p.nome}</div>
+            <div class="ponto-desc">${p.descricao||''}</div>
+            ${p.distancia?`<div class="ponto-dist">📍 ${p.distancia}</div>`:''}
+          </div>
+        </div>`
+      )).join('');
+      const dicas = sec.grp.flatMap(g=>g.dicas||[]);
+      const dicaH = dicas.length?`<div style="margin-top:6px">${dicas.map(d=>`<div class="dica-item">${d}</div>`).join('')}</div>`:'';
+      return `<div class="regiao-secao">
+        <div class="regiao-titulo">${sec.titulo}</div>
+        ${pontos}${dicaH}
+      </div>`;
+    }).join('');
+  }
+
+  function renderParceiros() {
+    const items = guia.parcerias || [];
+    if (!items.length) return vazio('Nenhum parceiro cadastrado.');
+    return items.map(p => {
+      const dics = (p.dicas||[]).map(d=>`<li>${d}</li>`).join('');
+      return `<div class="parceiro-card">
+        <div class="parceiro-top">
+          <div class="parceiro-ico">${p.icone||'🤝'}</div>
+          <div class="parceiro-info">
+            <div class="parceiro-nome">${p.titulo}</div>
+            <div class="parceiro-tipo">${p.tipo_parceria||'Parceria'}</div>
+          </div>
+          ${p.desconto?`<div class="desconto-badge">${p.desconto}</div>`:''}
+        </div>
+        ${p.descricao?`<div style="font-size:11px;color:var(--t2);margin-bottom:8px">${p.descricao}</div>`:''}
+        ${dics?`<ul class="parceiro-dicas">${dics}</ul>`:''}
+      </div>`;
+    }).join('');
+  }
+
+  function renderEmergencia() {
+    const items = guia.emergencia || [];
+    const portaria = (cfg.contatos||{}).portaria || '';
+    let tels = items.flatMap(g => g.telefones||[]);
+    if (!tels.length) tels = [
+      {nome:'SAMU',numero:'192',icone:'🚑'},{nome:'Bombeiros',numero:'193',icone:'🚒'},
+      {nome:'Polícia',numero:'190',icone:'👮'},{nome:'Portaria',numero:portaria||'—',icone:'🏢'},
+    ];
+    // Injeta número da portaria
+    const pi = tels.findIndex(t=>t.nome==='Portaria');
+    if (pi>=0 && portaria && !tels[pi].numero) tels[pi].numero = portaria;
+    return `<div class="emerg-grid">
+      ${tels.map(t=>`<div class="emerg-btn" onclick="chamarEmerg('${t.numero}','${t.nome.replace(/'/g,"\\'")}')">
+        <div class="emerg-ico">${t.icone||'📞'}</div>
+        <div class="emerg-nome">${t.nome}</div>
+        <div class="emerg-num">${t.numero||'—'}</div>
+      </div>`).join('')}
+    </div>
+    <div style="margin-top:18px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);
+                border-radius:14px;padding:14px;font-size:11px;color:rgba(255,255,255,.55);
+                text-align:center;line-height:1.8">
+      Em caso de emergência médica ligue <b>192 (SAMU)</b><br>
+      Incêndio ou resgate: <b>193 (Bombeiros)</b><br>
+      Ocorrência policial: <b>190</b>
+    </div>`;
+  }
+
+  function chamarEmerg(num, nome) {
+    mostrarToast(num && num !== '—' ? `${nome}: ${num}` : `${nome}: consulte a portaria`);
+  }
+
+  function abrirDetalhe(idx) {
+    const items = guia.areas || [];
+    if (!items[idx]) return;
+    const a   = items[idx];
+    const cor = AREA_CORES[idx % AREA_CORES.length];
+    document.documentElement.style.setProperty('--dac', cor);
+    document.getElementById('det-ico').textContent  = a.icone||'🏠';
+    document.getElementById('det-nome').textContent = a.titulo;
+    document.getElementById('det-desc').textContent = a.descricao||'';
+    const sc = { aberto:'aberto', fechado:'fechado', disponivel:'disponivel' };
+    const st = { aberto:'● Aberto', fechado:'● Fechado', disponivel:'● Disponível' };
+    const sel = document.getElementById('det-status');
+    sel.className = 'status-chip ' + (sc[a.status]||'disponivel');
+    sel.textContent = st[a.status]||'';
+    // Body
+    let body = '';
+    const hors = a.horarios||{};
+    if (Object.keys(hors).length) {
+      const chips = Object.entries(hors).map(([k,v])=>`<div class="horario-chip"><b>${k}</b> · ${v}</div>`).join('');
+      body += `<div class="det-secao"><div class="det-secao-titulo">🕐 Horários de Funcionamento</div>
+        <div class="horario-chips">${chips}</div></div>`;
+    }
+    if ((a.regras||[]).length) {
+      body += `<div class="det-secao"><div class="det-secao-titulo">⚠️ Regras</div>
+        ${a.regras.map(r=>`<div class="regra-item">${r}</div>`).join('')}</div>`;
+    }
+    if ((a.dicas||[]).length) {
+      body += `<div class="det-secao"><div class="det-secao-titulo">💡 Dicas</div>
+        ${a.dicas.map(d=>`<div class="dica-item">${d}</div>`).join('')}</div>`;
+    }
+    const nomeDi = cfg.nome_di||'Di';
+    body += `<button class="det-chat-btn" onclick="iniciarChatArea('${a.titulo.replace(/'/g,"\\'")}')">
+      💬 Perguntar ${nomeDi} sobre ${a.titulo}
+    </button>`;
+    document.getElementById('det-body').innerHTML = body;
+    const el = document.getElementById('t-detalhe');
+    el.style.display = 'flex';
+    el.style.animation = 'slideUp .3s cubic-bezier(.34,1.56,.64,1)';
+  }
+
+  function fecharDetalhe() {
+    const el = document.getElementById('t-detalhe');
+    el.style.transition = 'transform .25s ease';
+    el.style.transform  = 'translateY(100%)';
+    setTimeout(() => {
+      el.style.display    = 'none';
+      el.style.transform  = '';
+      el.style.transition = '';
+      el.style.animation  = '';
+    }, 260);
+  }
+
+  function iniciarChatArea(titulo) {
+    fecharDetalhe();
+    setTimeout(() => {
+      iniciarChat('hospede');
+      setTimeout(() => enviarTexto(`Quero saber mais sobre a ${titulo}`), 600);
+    }, 300);
+  }
+
   init();
 </script>
 </body>

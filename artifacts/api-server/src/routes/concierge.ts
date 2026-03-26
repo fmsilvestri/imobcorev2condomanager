@@ -133,10 +133,12 @@ r.get('/config', async (req, res) => {
   try {
     const ctx = await carregarCtx((req as any).condoId);
     res.json({
-      condominio_id: ctx.condoId, nome_condo: ctx.nomeCondo, nome_di: ctx.nomeDi,
-      cor_tema: ctx.corTema, tts_provider: ctx.ttsProv, idle_seg: ctx.idleSeg,
-      saudacao: ctx.saudacao, horarios: ctx.horarios, contatos: ctx.contatos,
-      avatar_url: ctx.avatarUrl, faq: ctx.faq, midia: ctx.midia,
+      condominio_id: ctx.condoId,   nome_condo:   ctx.nomeCondo,  nome_di:    ctx.nomeDi,
+      cor_tema:      ctx.corTema,   tts_provider: ctx.ttsProv,    idle_seg:   ctx.idleSeg,
+      saudacao:      ctx.saudacao,  horarios:     ctx.horarios,   contatos:   ctx.contatos,
+      avatar_url:    ctx.avatarUrl, wifi_rede:    ctx.wifiRede,   wifi_senha: ctx.wifiSenha,
+      checkin_h:     ctx.checkinH,  checkout_h:   ctx.checkoutH,  cidade:     ctx.cidade,
+      faq:           ctx.faq,       midia:        ctx.midia,
     });
   } catch (e) { res.status(500).json({ error: (e as Error).message }); }
 });
