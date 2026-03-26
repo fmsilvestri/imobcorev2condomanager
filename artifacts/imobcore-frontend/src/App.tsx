@@ -5395,15 +5395,68 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
               style={{ background:"rgba(255,255,255,.2)", border:"none", borderRadius:10, padding:"7px 13px", color:"#fff", fontSize:12, fontWeight:700, cursor:"pointer" }}>+ Func.</button>
           </div>
 
-          {/* Tabs */}
-          <div style={{ display:"flex", gap:4, padding:"8px 12px", background:"rgba(0,0,0,.2)", flexShrink:0, overflowX:"auto" as const }}>
-            {([["equipe","👥 Equipe"],["escala","📅 Escala"],["briefings","📋 Briefings"],["areas","🏢 Áreas"],["di","🤖 Di"]] as const).map(([tab, lbl]) => (
-              <button key={tab} onClick={()=>{ setFuncTab(tab as any); if(tab==="briefings") loadBriefingsSalvos(); if(tab==="areas") loadAreas(); }}
-                style={{ background: funcTab===tab ? "linear-gradient(135deg,#0f766e,#14b8a6)" : "rgba(255,255,255,.06)", border:"none", borderRadius:8, padding:"6px 12px", color: funcTab===tab ? "#fff" : "#64748B", fontSize:12, fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" as const, flexShrink:0 }}>
-                {lbl}
-              </button>
-            ))}
-          </div>
+          {/* Tabs — coloridos, 3D, 20% maiores */}
+          {(() => {
+            const FUNC_TABS: { id: "equipe"|"escala"|"briefings"|"areas"|"di"; label: string; g1: string; g2: string; shadow: string; icon: string }[] = [
+              {
+                id:"equipe", label:"Equipe",
+                g1:"#2DD4BF", g2:"#0F766E", shadow:"rgba(13,148,136,.7)",
+                icon:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><defs><radialGradient id="tg-eq" cx="38%" cy="28%" r="72%"><stop offset="0%" stop-color="#5EEAD4"/><stop offset="100%" stop-color="#0F766E"/></radialGradient><filter id="tf-eq" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#0D9488" flood-opacity=".7"/></filter></defs><circle cx="14" cy="14" r="13" fill="url(#tg-eq)" filter="url(#tf-eq)"/><circle cx="11" cy="10.5" r="3" fill="white" opacity=".9"/><ellipse cx="11" cy="17" rx="4.5" ry="3" fill="white" opacity=".9"/><circle cx="18" cy="10.5" r="2.3" fill="white" opacity=".65"/><ellipse cx="18.5" cy="16.5" rx="3.2" ry="2.4" fill="white" opacity=".65"/></svg>`,
+              },
+              {
+                id:"escala", label:"Escala",
+                g1:"#60A5FA", g2:"#1D4ED8", shadow:"rgba(29,78,216,.7)",
+                icon:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><defs><radialGradient id="tg-es" cx="38%" cy="28%" r="72%"><stop offset="0%" stop-color="#93C5FD"/><stop offset="100%" stop-color="#1D4ED8"/></radialGradient><filter id="tf-es" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#1D4ED8" flood-opacity=".7"/></filter></defs><circle cx="14" cy="14" r="13" fill="url(#tg-es)" filter="url(#tf-es)"/><rect x="8" y="7.5" width="12" height="13" rx="2" fill="none" stroke="white" stroke-width="1.5" opacity=".9"/><line x1="11" y1="6" x2="11" y2="9.5" stroke="white" stroke-width="1.8" stroke-linecap="round" opacity=".9"/><line x1="17" y1="6" x2="17" y2="9.5" stroke="white" stroke-width="1.8" stroke-linecap="round" opacity=".9"/><line x1="10.5" y1="13" x2="17.5" y2="13" stroke="white" stroke-width="1.3" stroke-linecap="round" opacity=".8"/><line x1="10.5" y1="16" x2="15.5" y2="16" stroke="white" stroke-width="1.3" stroke-linecap="round" opacity=".7"/></svg>`,
+              },
+              {
+                id:"briefings", label:"Briefings",
+                g1:"#C084FC", g2:"#7C3AED", shadow:"rgba(124,58,237,.7)",
+                icon:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><defs><radialGradient id="tg-br" cx="38%" cy="28%" r="72%"><stop offset="0%" stop-color="#DDD6FE"/><stop offset="100%" stop-color="#7C3AED"/></radialGradient><filter id="tf-br" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#7C3AED" flood-opacity=".7"/></filter></defs><circle cx="14" cy="14" r="13" fill="url(#tg-br)" filter="url(#tf-br)"/><rect x="8.5" y="7" width="11" height="14" rx="1.8" fill="white" opacity=".9"/><line x1="11" y1="10.5" x2="17" y2="10.5" stroke="#7C3AED" stroke-width="1.3" stroke-linecap="round"/><line x1="11" y1="13" x2="17" y2="13" stroke="#7C3AED" stroke-width="1.3" stroke-linecap="round"/><line x1="11" y1="15.5" x2="14.5" y2="15.5" stroke="#7C3AED" stroke-width="1.3" stroke-linecap="round"/></svg>`,
+              },
+              {
+                id:"areas", label:"Áreas",
+                g1:"#FB923C", g2:"#C2410C", shadow:"rgba(194,65,12,.7)",
+                icon:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><defs><radialGradient id="tg-ar" cx="38%" cy="28%" r="72%"><stop offset="0%" stop-color="#FED7AA"/><stop offset="100%" stop-color="#C2410C"/></radialGradient><filter id="tf-ar" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#C2410C" flood-opacity=".7"/></filter></defs><circle cx="14" cy="14" r="13" fill="url(#tg-ar)" filter="url(#tf-ar)"/><rect x="7" y="13" width="6" height="8" rx="1" fill="white" opacity=".9"/><rect x="15" y="10" width="6" height="11" rx="1" fill="white" opacity=".75"/><polygon points="14,7 9,13 19,13" fill="white" opacity=".9"/></svg>`,
+              },
+              {
+                id:"di", label:"Di",
+                g1:"#F472B6", g2:"#7C3AED", shadow:"rgba(168,85,247,.8)",
+                icon:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 28 28" width="28" height="28"><defs><radialGradient id="tg-di" cx="38%" cy="28%" r="72%"><stop offset="0%" stop-color="#F9A8D4"/><stop offset="100%" stop-color="#7C3AED"/></radialGradient><filter id="tf-di" x="-25%" y="-25%" width="150%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#7C3AED" flood-opacity=".8"/></filter></defs><circle cx="14" cy="14" r="13" fill="url(#tg-di)" filter="url(#tf-di)"/><circle cx="14" cy="11.5" r="3.5" fill="white" opacity=".9"/><path d="M10,16.5 Q14,14.5 18,16.5 L18.5,20 Q14,22 9.5,20 Z" fill="white" opacity=".9"/><circle cx="11.5" cy="10.5" r=".8" fill="#7C3AED" opacity=".7"/><circle cx="16.5" cy="10.5" r=".8" fill="#7C3AED" opacity=".7"/></svg>`,
+              },
+            ];
+            return (
+              <div style={{ display:"flex", gap:6, padding:"10px 12px", background:"rgba(0,0,0,.25)", flexShrink:0, overflowX:"auto" as const, WebkitOverflowScrolling:"touch" as any }}>
+                {FUNC_TABS.map(t => {
+                  const isActive = funcTab === t.id;
+                  return (
+                    <button key={t.id}
+                      onClick={()=>{ setFuncTab(t.id as any); if(t.id==="briefings") loadBriefingsSalvos(); if(t.id==="areas") loadAreas(); }}
+                      style={{
+                        flexShrink:0, cursor:"pointer", borderRadius:14,
+                        padding:"9px 14px 8px",
+                        background: isActive
+                          ? `linear-gradient(145deg,${t.g1},${t.g2})`
+                          : "rgba(255,255,255,.05)",
+                        boxShadow: isActive
+                          ? `0 4px 14px ${t.shadow}, inset 0 1px 0 rgba(255,255,255,.25)`
+                          : "inset 0 1px 0 rgba(255,255,255,.06)",
+                        border: isActive ? `1.5px solid ${t.g1}88` : "1.5px solid rgba(255,255,255,.08)",
+                        display:"flex", flexDirection:"column" as const, alignItems:"center", gap:5,
+                        minWidth:60, transition:"all .18s ease",
+                        transform: isActive ? "translateY(-1px)" : "none",
+                      }}>
+                      {/* 3D icon */}
+                      <span dangerouslySetInnerHTML={{ __html: t.icon }} style={{ display:"block", filter: isActive ? "drop-shadow(0 3px 6px rgba(0,0,0,.45))" : "drop-shadow(0 1px 3px rgba(0,0,0,.35)) saturate(.55)" }} />
+                      {/* Label */}
+                      <span style={{ fontSize:10.5, fontWeight:800, color: isActive ? "#fff" : "#64748B", letterSpacing:.3, fontFamily:"inherit" }}>
+                        {t.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Content */}
           <div style={{ flex:1, overflowY:"auto" as const, padding:"12px 12px 80px" }}>
