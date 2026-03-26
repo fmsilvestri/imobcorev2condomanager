@@ -2183,12 +2183,12 @@ ${oposLst.length ? oposLst.map((o:any) => `• 💡 ${o.descricao}`).join("\n") 
     });
 
     const text = msg.content[0].type === "text" ? msg.content[0].text : "";
-    const diagnostico    = text.match(/DIAGNÓSTICO[^:]*[:\s]+([\s\S]+?)(?=\n\s*\d+\.|RISCO|OPORT|PLANO|$)/i)?.[1]?.trim() || text.slice(0,400);
-    const riscosText     = text.match(/RISCO[S]?[^:]*[:\s]+([\s\S]+?)(?=\n\s*\d+\.|OPORT|PLANO|$)/i)?.[1]?.trim() || "";
-    const oportunidades  = text.match(/OPORT[^:]*[:\s]+([\s\S]+?)(?=\n\s*\d+\.|PLANO|$)/i)?.[1]?.trim() || "";
-    const plano          = text.match(/PLANO[^:]*[:\s]+([\s\S]+)/i)?.[1]?.trim() || "";
+    const diagnostico      = text.match(/DIAGNÓSTICO[^:]*[:\s]+([\s\S]+?)(?=\n\s*\d+\.|RISCO|OPORT|PLANO|$)/i)?.[1]?.trim() || text.slice(0,400);
+    const riscosText       = text.match(/RISCO[S]?[^:]*[:\s]+([\s\S]+?)(?=\n\s*\d+\.|OPORT|PLANO|$)/i)?.[1]?.trim() || "";
+    const oportunidadesTxt = text.match(/OPORT[^:]*[:\s]+([\s\S]+?)(?=\n\s*\d+\.|PLANO|$)/i)?.[1]?.trim() || "";
+    const plano            = text.match(/PLANO[^:]*[:\s]+([\s\S]+)/i)?.[1]?.trim() || "";
 
-    res.json({ diagnostico, riscos: riscosText, oportunidades, plano, texto_completo: text, gerado_em: new Date().toISOString() });
+    res.json({ diagnostico, riscos: riscosText, oportunidades: oportunidadesTxt, plano, texto_completo: text, gerado_em: new Date().toISOString() });
   } catch (e: unknown) { res.status(500).json({ error: String(e) }); }
 });
 
