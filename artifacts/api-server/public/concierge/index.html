@@ -2,26 +2,68 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
+  <!-- Camada 1: viewport sem maximum-scale → JS Scale Engine controla o zoom -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="mobile-web-app-capable"              content="yes">
+  <meta name="apple-mobile-web-app-capable"        content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#04040c">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
   <title>Di · Concierge</title>
   <!-- [[TOTEM_CONFIG]] -->
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
   <style>
+    /* ══════════════════════════════════════════════════════
+       CAMADA 2 — SISTEMA DE ESCALA FLUIDA
+       Base de design: 390 × 720 px (iPhone Pro)
+       1 rem = 16 px na base → escala proporcional via font-size
+       ══════════════════════════════════════════════════════ */
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    html{height:100%;overflow:hidden}
     :root{
+      /* font-size raiz: 4.1 vw ≈ 16 px em 390 px */
+      font-size: clamp(14px, 4.1vw, 48px);
+
+      /* Paleta */
       --tema:#7c3aed;--tema2:#a855f7;--tema3:#c084fc;
       --bg:#04040c;--bg2:#0d0d1e;--bg3:#151530;
       --t:#f0eeff;--t2:#a9a4cf;--t3:#5a5480;
+
+      /* Raios em rem */
+      --r-sm:.5rem;--r-md:.75rem;--r-lg:.875rem;--r-xl:1rem;--r-2xl:1.5rem;
+
+      /* Escala tipográfica em rem */
+      --fs-xs:.5rem;  --fs-sm:.625rem;  --fs-md:.6875rem;
+      --fs-base:.75rem;--fs-lg:.8125rem;--fs-xl:.875rem;
+      --fs-2xl:1rem;  --fs-3xl:1.125rem;--fs-4xl:1.375rem;
+      --fs-hero:3.25rem;
     }
-    body{font-family:'Nunito',system-ui,sans-serif;background:var(--bg);color:var(--t);
-         min-height:100vh;overflow:hidden;user-select:none;position:relative}
+    body{
+      font-family:'Nunito',system-ui,sans-serif;
+      background:#000;color:var(--t);
+      height:100%;overflow:hidden;
+      user-select:none;touch-action:manipulation;
+    }
+
+    /* ── Wrapper externo: fundo preto que preenche a tela ── */
+    #stage-wrap{
+      position:fixed;inset:0;background:#000;
+      display:flex;align-items:center;justify-content:center;
+      overflow:hidden;
+    }
+
+    /* ── Stage: "tablet virtual" 390×720 px — JS aplica scale() ── */
+    #stage{
+      position:relative;
+      width:390px;height:720px;
+      transform-origin:top left;
+      background:var(--bg);
+      overflow:hidden;
+      /* Sobrescritas pelo Scale Engine via style inline */
+    }
 
     /* ── TELAS ───────────────────────────────────────── */
-    .tela{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    .tela{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
           justify-content:center;padding:24px;opacity:0;pointer-events:none;
           transition:opacity .4s ease,transform .4s ease;transform:scale(.97)}
     .tela.ativa{opacity:1;pointer-events:all;transform:scale(1)}
@@ -268,7 +310,7 @@
 
     /* ── TELA 6: DETALHE DE ÁREA (overlay) ────────────── */
     #t-detalhe{background:var(--bg);display:none;flex-direction:column;justify-content:flex-start;
-               position:fixed;inset:0;z-index:200;
+               position:absolute;inset:0;z-index:200;
                animation:slideUp .3s cubic-bezier(.34,1.56,.64,1)}
     #t-detalhe.vis{display:flex}
     @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
@@ -303,7 +345,7 @@
                   box-shadow:0 6px 24px rgba(var(--dac),.3)}
 
     /* ── MISC ───────────────────────────────────────── */
-    #toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
+    #toast{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);
            background:#1e1e40;border:1px solid rgba(168,85,247,.3);border-radius:10px;
            padding:10px 20px;font-size:13px;font-weight:700;color:var(--t);
            opacity:0;pointer-events:none;transition:opacity .3s;z-index:9999;white-space:nowrap}
@@ -311,6 +353,8 @@
   </style>
 </head>
 <body>
+<div id="stage-wrap">
+<div id="stage">
 
 <!-- ══ TELA 1: BOAS-VINDAS ═══════════════════════════════════════════════ -->
 <div class="tela ativa" id="t-bv">
@@ -455,6 +499,9 @@
 </div>
 
 <div id="toast"></div>
+
+</div><!-- /stage -->
+</div><!-- /stage-wrap -->
 
 <script>
   // ── Config injetada pelo servidor ──────────────────────────────────────────
@@ -917,6 +964,87 @@
   }
 
   init();
+
+  // ══════════════════════════════════════════════════════════════════════
+  // CAMADA 3 — TOTEM SCALE ENGINE
+  // Adapta o layout a qualquer tamanho de tela/tablet/totem.
+  // Estratégia: transform:scale() no #stage, centralizado no #stage-wrap
+  // Base de design: 390×720 px. Escala proporcionalmente sem overflow.
+  // ══════════════════════════════════════════════════════════════════════
+  (function TotemScaleEngine() {
+    const BASE_W = 390;
+    const BASE_H = 720;
+    const stage  = document.getElementById('stage');
+    const wrap   = document.getElementById('stage-wrap');
+    if (!stage || !wrap) { console.warn('[TotemScale] #stage ou #stage-wrap não encontrado.'); return; }
+
+    function aplicarEscala() {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      // Menor fator garante que o stage cabe sem cortar
+      const scale  = Math.min(vw / BASE_W, vh / BASE_H);
+      const realW  = BASE_W * scale;
+      const realH  = BASE_H * scale;
+      const offsetX = (vw - realW) / 2;
+      const offsetY = (vh - realH) / 2;
+      // Reposicionar e escalar
+      stage.style.transform       = `translate(${offsetX}px,${offsetY}px) scale(${scale})`;
+      stage.style.transformOrigin = 'top left';
+      stage.style.width           = BASE_W + 'px';
+      stage.style.height          = BASE_H + 'px';
+      stage.style.position        = 'absolute';
+      stage.style.top             = '0';
+      stage.style.left            = '0';
+      // Ajustar font-size raiz proporcional (reforça o rem system)
+      const fs = Math.max(12, Math.min(16 * scale, 80));
+      document.documentElement.style.fontSize = fs + 'px';
+      if (window.__TOTEM__?.debug)
+        console.log(`[TotemScale] ${vw}×${vh} → scale=${scale.toFixed(3)} | fs=${fs.toFixed(1)}px`);
+    }
+
+    aplicarEscala();
+
+    let rt;
+    window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(aplicarEscala, 50); });
+    window.addEventListener('orientationchange', () => setTimeout(aplicarEscala, 200));
+    if ('visualViewport' in window)
+      window.visualViewport.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(aplicarEscala, 50); });
+
+    window.totemRecalibrar = aplicarEscala;
+  })();
+
+  // ══════════════════════════════════════════════════════════════════════
+  // WAKE LOCK — impede o tablet/totem de dormir (Chrome 84+ / Edge 84+)
+  // Fallback via vídeo silencioso para Safari / Firefox / iOS
+  // ══════════════════════════════════════════════════════════════════════
+  (async function TotemWakeLock() {
+    let wl = null;
+
+    async function requestWL() {
+      if ('wakeLock' in navigator) {
+        try {
+          wl = await navigator.wakeLock.request('screen');
+          wl.addEventListener('release', () => {});
+        } catch { fallbackWL(); }
+      } else { fallbackWL(); }
+    }
+
+    function fallbackWL() {
+      const v = document.createElement('video');
+      Object.assign(v, { loop: true, muted: true, autoplay: true });
+      v.setAttribute('playsinline', '');
+      v.style.cssText = 'position:fixed;top:-1px;left:-1px;width:1px;height:1px;opacity:.001;pointer-events:none';
+      // WebM de 1×1 px, 1 frame (~80 bytes) — apenas para manter a tela acordada
+      v.src = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAASE4mNm4EAAAAAAAAWVcYAAAAAAAAAAGcBAAAAAAAAPmCD';
+      document.body.appendChild(v);
+      v.play().catch(() => {});
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') requestWL();
+    });
+    await requestWL();
+  })();
 </script>
 </body>
 </html>

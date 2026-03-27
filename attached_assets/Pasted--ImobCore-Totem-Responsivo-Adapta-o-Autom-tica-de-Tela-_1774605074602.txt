@@ -1,0 +1,550 @@
+# ImobCore · Totem Responsivo — Adaptação Automática de Tela
+# Cole as 3 camadas no public/concierge/index.html
+
+---
+
+## POR QUE 3 CAMADAS?
+
+```
+CAMADA 1 — meta viewport   → diz ao browser "não escale — vou cuidar disso"
+CAMADA 2 — CSS fluid       → font-size, espaçamentos e layout fluem com vw/vh
+CAMADA 3 — JS scale engine → escala tudo proporcionalmente em telas grandes
+```
+
+Resultado:
+  • iPhone 6 (375px)      → totem compacto e legível
+  • Samsung Tab A8 (600px) → 1.5× maior, sem overflow
+  • iPad Air (820px)       → 2× maior, usa bem o espaço
+  • Monitor 1080p (1080px) → 2.7× maior, cinematográfico
+  • TV 4K (3840px)         → 9× maior, sem pixelação (vetorial/rem)
+
+---
+
+## CAMADA 1 — <head>: substituir o meta viewport
+
+```html
+<head>
+  <meta charset="UTF-8">
+
+  <!--
+    NÃO use maximum-scale=1 aqui — o JS de escala vai cuidar disso.
+    initial-scale=1 garante que o browser não aplique zoom automático.
+    width=device-width permite que o JS leia window.innerWidth corretamente.
+  -->
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+  <!-- Wake lock: impede o tablet de dormir (Chrome 84+) -->
+  <meta name="mobile-web-app-capable"    content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#04040c">
+
+  <title>Di · Concierge</title>
+  <!-- [[TOTEM_CONFIG]] -->
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap"
+        rel="stylesheet">
+```
+
+---
+
+## CAMADA 2 — CSS: design base 390px → escala via rem + clamp
+
+Adicionar ao início do `<style>` do totem:
+
+```css
+/* ══════════════════════════════════════════════════════════════
+   SISTEMA DE ESCALA FLUIDA
+   Base de design: 390px de largura (iPhone Pro / referência)
+   1rem = 16px na base → escala proporcionalmente via font-size no :root
+   ══════════════════════════════════════════════════════════════ */
+
+/*
+  font-size no :root = "unidade base" do totem.
+  clamp(16px, 4.1vw, 999px):
+    - Em 390px: 4.1vw = 15.99px → ~16px   (base perfeita)
+    - Em 600px: 4.1vw = 24.6px             (escala 1.54×)
+    - Em 820px: 4.1vw = 33.6px             (escala 2.1×)
+    - Em 1080px: 4.1vw = 44.3px            (escala 2.77×)
+  O limite superior 999px deixa o JS resolver telas muito grandes.
+*/
+:root {
+  font-size: clamp(14px, 4.1vw, 48px);
+
+  /* Paleta — idêntica à original */
+  --bg: #04040c; --bg2: #08081a; --bg3: #0e0e24;
+  --card: #12122a; --b: #1e1e40; --b2: #2c2c56;
+  --tl: #14b8a6; --tl2: #2dd4bf; --tl3: #99f6e4;
+  --pu: #7c3aed; --pu2: #9d5cf0; --pu3: #c4a7f7; --pu4: #1a0840;
+  --t: #f0eeff; --t2: #8884b8; --t3: #38366a;
+  --gr: #22c55e; --am: #f59e0b; --re: #ef4444; --bl: #3b82f6;
+
+  /* Raios adaptados em rem — crescem junto com a fonte */
+  --r-sm:  0.5rem;   /* ~8px  na base */
+  --r-md:  0.75rem;  /* ~12px na base */
+  --r-lg:  0.875rem; /* ~14px na base */
+  --r-xl:  1rem;     /* ~16px na base */
+  --r-2xl: 1.5rem;   /* ~24px na base */
+}
+
+/* ── RESET responsivo ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; overflow: hidden; }
+body {
+  height: 100%;
+  font-family: 'Nunito', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--t);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+/* ── STAGE: container central que o JS vai escalar ── */
+/*
+  O JS calcula a escala e aplica transform: scale() neste elemento.
+  Mantemos width/height fixos em 390/720px (base de design).
+  O stage fica centralizado na tela; as bordas ficam com a cor de fundo.
+*/
+#stage {
+  position: fixed;
+  top: 0; left: 0;
+  width: 390px;
+  height: 720px;
+  transform-origin: top left;
+  /* transform: scale(...) aplicado pelo JS */
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* ── Wrapper externo: fundo que preenche o resto da tela ── */
+#stage-wrap {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* ── TIPOGRAFIA: tudo em rem → escala junto com :root font-size ── */
+/*
+  Hierarquia base (em 390px):
+    --fs-xs:   0.5rem  =  8px
+    --fs-sm:  0.625rem = 10px
+    --fs-md:  0.6875rem = 11px
+    --fs-base: 0.75rem = 12px
+    --fs-lg:   0.8125rem = 13px
+    --fs-xl:   0.875rem = 14px
+    --fs-2xl:  1rem    = 16px
+    --fs-3xl:  1.125rem = 18px
+    --fs-4xl:  1.375rem = 22px
+    --fs-hero: 3.25rem  = 52px (nome "Di")
+*/
+:root {
+  --fs-xs:   0.5rem;
+  --fs-sm:   0.625rem;
+  --fs-md:   0.6875rem;
+  --fs-base: 0.75rem;
+  --fs-lg:   0.8125rem;
+  --fs-xl:   0.875rem;
+  --fs-2xl:  1rem;
+  --fs-3xl:  1.125rem;
+  --fs-4xl:  1.375rem;
+  --fs-hero: 3.25rem;
+}
+
+/* ── HEADER do hóspede: altura proporcional ── */
+.h-hdr { flex-shrink: 0; }
+.hh-inner { padding: 0.875rem 0.9375rem 0.6875rem; }
+.hh-ico   { width: 2.75rem; height: 2.75rem; border-radius: var(--r-lg); font-size: 1.375rem; }
+.hh-title { font-size: var(--fs-2xl); }
+.hh-sub   { font-size: var(--fs-xs); }
+.hh-back  { width: 1.875rem; height: 1.875rem; font-size: var(--fs-xl); border-radius: 50%; }
+.hh-time  { font-size: var(--fs-base); }
+
+/* NAV pills */
+.h-nav  { padding: 0 0.875rem 0.6875rem; gap: 0.3125rem; }
+.npill  { padding: 0.3125rem 0.75rem; border-radius: 0.9375rem; font-size: var(--fs-xs); }
+
+/* Body scroll */
+.h-body { padding: 0 0.8125rem 0.875rem; }
+
+/* ── CARDS DE ÁREA: grid 2 colunas ── */
+.agrid { gap: 0.4375rem; }
+.acard { border-radius: var(--r-xl); padding: 0.75rem 0.6875rem; }
+.ac-ico  { width: 2.375rem; height: 2.375rem; border-radius: 0.625rem; font-size: 1.1875rem; }
+.ac-nm   { font-size: 0.6875rem; }
+.ac-s    { font-size: var(--fs-xs); }
+.ac-hr   { font-size: var(--fs-xs); }
+.st-ab, .st-oc { font-size: 0.4375rem; padding: 0.125rem 0.375rem; border-radius: 0.5rem; }
+
+/* ── LISTA DE SERVIÇOS ── */
+.slist { gap: 0.3125rem; }
+.sitem { padding: 0.625rem 0.6875rem; border-radius: 0.75rem; gap: 0.5625rem; }
+.si-ico  { width: 2.25rem; height: 2.25rem; border-radius: 0.5625rem; font-size: 1.125rem; }
+.si-nm   { font-size: 0.6875rem; }
+.si-s    { font-size: var(--fs-xs); }
+.si-tag  { font-size: 0.4375rem; padding: 0.125rem 0.375rem; border-radius: 0.5rem; }
+
+/* ── PARCEIROS ── */
+.pcard { border-radius: var(--r-xl); padding: 0.75rem 0.8125rem; }
+.pc-ico  { font-size: 1.6875rem; }
+.pc-nm   { font-size: 0.75rem; }
+.pc-s    { font-size: var(--fs-xs); }
+.pc-badge { font-size: var(--fs-xs); padding: 0.1875rem 0.5rem; border-radius: 0.5rem; }
+.pc-dica  { font-size: var(--fs-xs); }
+
+/* ── REGIÃO: pontos e info cards ── */
+.ptitem { padding: 0.5rem 0.625rem; border-radius: 0.5625rem; gap: 0.5rem; }
+.pt-nm  { font-size: 0.625rem; }
+.pt-ds  { font-size: var(--fs-xs); }
+.pt-di  { font-size: var(--fs-xs); }
+.icard  { padding: 0.6875rem 0.75rem; border-radius: 0.75rem; }
+.ic-ico { width: 2.0625rem; height: 2.0625rem; border-radius: 0.5rem; font-size: 1rem; }
+.ic-nm  { font-size: 0.6875rem; }
+.ic-s   { font-size: var(--fs-xs); }
+.chip   { font-size: var(--fs-xs); padding: 0.1875rem 0.5rem; border-radius: 0.5rem; }
+
+/* ── EMERGÊNCIA ── */
+.ecard  { border-radius: var(--r-xl); padding: 0.75rem 0.8125rem; }
+.ec-nr  { font-size: 1.375rem; }
+.epulse { width: 0.5rem; height: 0.5rem; }
+
+/* ── SEÇÃO LABELS ── */
+.slbl   { font-size: var(--fs-xs); margin: 0.6875rem 0 0.375rem; }
+.bv     { border-radius: var(--r-xl); padding: 0.8125rem; }
+.bv-nm  { font-size: 0.8125rem; }
+.bv-s   { font-size: 0.625rem; }
+.ask    { padding: 0.5625rem 0.6875rem; border-radius: 0.6875rem; font-size: 0.625rem; }
+
+/* ── CHAT ── */
+.chat-hdr { padding: 0.625rem 0.8125rem; }
+.cback    { width: 1.75rem; height: 1.75rem; font-size: 0.75rem; }
+.cav      { width: 1.75rem; height: 1.75rem; }
+.msg      { font-size: 0.6875rem; padding: 0.5625rem 0.75rem; border-radius: 0.875rem; }
+.typing   { padding: 0.5625rem 0.75rem; }
+.td       { width: 0.375rem; height: 0.375rem; }
+.sug      { font-size: var(--fs-xs); padding: 0.3125rem 0.625rem; border-radius: 0.875rem; }
+.inpa     { padding: 0.5rem 0.75rem 0.625rem; }
+.mic, .snd { width: 2.125rem; height: 2.125rem; font-size: 0.875rem; }
+.cin      { font-size: 0.6875rem; padding: 0.5rem 0.8125rem; border-radius: 1.1875rem; }
+.inst     { font-size: 0.4375rem; }
+
+/* ── DETALHE ÁREA ── */
+.dh-nm   { font-size: 1.1875rem; }
+.dh-sub  { font-size: 0.6875rem; }
+.hchip   { padding: 0.375rem 0.4375rem; border-radius: 0.5rem; }
+.hcl     { font-size: var(--fs-xs); }
+.hcv     { font-size: 0.625rem; }
+.reg     { font-size: 0.625rem; }
+.rdot    { width: 0.25rem; height: 0.25rem; }
+.dica    { font-size: 0.625rem; padding: 0.5rem 0.625rem; border-radius: 0.5625rem; }
+
+/* ── TELA BOAS-VINDAS (Di em destaque) ── */
+.wb-name      { font-size: var(--fs-hero); }
+.wb-pre       { font-size: var(--fs-xl); }
+.wb-role      { font-size: 0.75rem; }
+.wb-greeting  { font-size: 0.8125rem; }
+.wb-btn       { font-size: 1rem; padding: 0.9375rem 1.25rem; border-radius: 1.5rem; width: 11.5625rem; }
+.wb-hint      { font-size: var(--fs-xs); }
+.wb-badge     { padding: 0.4375rem 0.875rem 0.4375rem 0.4375rem; }
+.wb-badge-nm  { font-size: 0.6875rem; }
+.wb-badge-st  { font-size: var(--fs-xs); }
+.wb-score     { padding: 0.5rem 0.8125rem; border-radius: 1rem; }
+.wsv          { font-size: 1.1875rem; }
+.wsl          { font-size: var(--fs-xs); }
+.wb-claude    { font-size: var(--fs-xs); padding: 0.3125rem 0.75rem; }
+.wb-tag       { font-size: var(--fs-xs); padding: 0.25rem 0.75rem; }
+
+/* ── TELA MÓDULOS ── */
+.mh-name  { font-size: 1.625rem; }
+.mh-role  { font-size: 0.625rem; }
+.mh-st    { font-size: var(--fs-xs); }
+.mh-photo { width: 6.125rem; height: 8.375rem; }
+.mb-txt   { font-size: 0.6875rem; }
+.mb-nm    { font-size: var(--fs-xs); }
+.mbtn     { padding: 0.8125rem 0.6875rem; border-radius: 0.875rem; gap: 0.5rem; }
+.mico     { width: 2.5rem; height: 2.5rem; border-radius: 0.6875rem; font-size: 1.25rem; }
+.mtit     { font-size: 0.6875rem; }
+.msub     { font-size: var(--fs-xs); }
+.msec     { font-size: var(--fs-xs); }
+.emgbtn   { padding: 0.6875rem 0.8125rem; border-radius: 0.8125rem; }
+.modfooter { padding: 0.4375rem 0.8125rem 0.5625rem; }
+
+/* ── IDLE ── */
+.idle-img   { width: 14.25rem; height: 18rem; border-radius: 7.125rem 7.125rem 0 0; }
+.idle-title { font-size: 1.5rem; }
+.idle-sub   { font-size: 0.6875rem; }
+.idle-cta   { font-size: 0.875rem; padding: 0.875rem; border-radius: 1.625rem; }
+.idle-info  { padding: 1.125rem 1.375rem 1.75rem; }
+
+/* ── Media queries de suporte (fallback se JS falhar) ── */
+@media (min-width: 480px) and (max-width: 599px) {
+  #stage { width: 450px; height: 800px; }
+}
+@media (min-width: 600px) and (max-width: 767px) {
+  #stage { width: 520px; height: 924px; }
+}
+@media (min-width: 768px) {
+  #stage { width: 560px; height: 960px; }
+}
+
+/* ── Orientação landscape: ajuste de proporção ── */
+@media (orientation: landscape) and (max-height: 500px) {
+  #stage { width: 640px; height: 100vh; }
+  .wb-photo-zone { display: none; }   /* remove foto na horizontal estreita */
+  .wb-txt { width: 100%; }
+}
+```
+
+---
+
+## CAMADA 3 — JS: Scale Engine (colar no fim do `<script>`, antes do fechamento)
+
+```javascript
+// ══════════════════════════════════════════════════════════════════════════════
+// TOTEM SCALE ENGINE — adapta o layout a qualquer tamanho de tela/tablet
+// Estratégia: transform: scale() no #stage, centralizado no #stage-wrap
+// Base de design: 390×720px. Em qualquer outra tela, escala proporcionalmente.
+// ══════════════════════════════════════════════════════════════════════════════
+
+(function TotemScaleEngine() {
+
+  // Dimensões de design (base fixa — não alterar)
+  const BASE_W = 390;
+  const BASE_H = 720;
+
+  // Elementos do DOM
+  const stage = document.getElementById('stage');
+  const wrap  = document.getElementById('stage-wrap');
+
+  if (!stage || !wrap) {
+    console.warn('[TotemScale] #stage ou #stage-wrap não encontrado.');
+    return;
+  }
+
+  /**
+   * Calcula e aplica a escala ótima para a tela atual.
+   * Usa o menor fator entre largura e altura para garantir que
+   * o conteúdo sempre cabe na tela sem overflow.
+   */
+  function aplicarEscala() {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+
+    // Fator de escala: garante que o stage cabe sem cortar
+    const scaleW = vw / BASE_W;
+    const scaleH = vh / BASE_H;
+    const scale  = Math.min(scaleW, scaleH);
+
+    // Dimensões reais do stage após escala
+    const realW = BASE_W * scale;
+    const realH = BASE_H * scale;
+
+    // Offset para centralizar o stage na tela
+    const offsetX = (vw - realW) / 2;
+    const offsetY = (vh - realH) / 2;
+
+    // Aplicar transform: translate + scale
+    stage.style.transform       = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+    stage.style.transformOrigin = 'top left';
+    stage.style.width           = BASE_W + 'px';
+    stage.style.height          = BASE_H + 'px';
+
+    // Fundo que preenche a tela toda (bordas pretas, como TV)
+    wrap.style.background = '#000';
+
+    // Ajustar font-size raiz proporcional à escala (reforça o rem system)
+    // 16px × scale = font-size base escalada
+    // clamp garante mínimo legível e máximo sensato
+    const fs = Math.max(12, Math.min(16 * scale, 80));
+    document.documentElement.style.fontSize = fs + 'px';
+
+    // Log de diagnóstico (remover em produção)
+    if (window.__TOTEM__?.debug) {
+      console.log(`[TotemScale] ${vw}×${vh} → scale=${scale.toFixed(3)} | stage=${Math.round(realW)}×${Math.round(realH)} | fs=${fs.toFixed(1)}px`);
+    }
+  }
+
+  // Aplicar na inicialização
+  aplicarEscala();
+
+  // Reaplicar no resize (tablet girado, janela redimensionada)
+  let resizeTimer: ReturnType<typeof setTimeout>;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(aplicarEscala, 50); // debounce 50ms
+  });
+
+  // Reaplicar na mudança de orientação (portrait ↔ landscape)
+  window.addEventListener('orientationchange', () => {
+    // Aguarda o browser terminar a rotação antes de calcular
+    setTimeout(aplicarEscala, 200);
+  });
+
+  // Reaplicar quando o teclado virtual abrir/fechar (Android)
+  if ('visualViewport' in window) {
+    window.visualViewport!.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(aplicarEscala, 50);
+    });
+  }
+
+  // Expor função globalmente (útil para debug e recalibração manual)
+  (window as any).totemRecalibrar = aplicarEscala;
+
+})();
+```
+
+---
+
+## CAMADA EXTRA — Wake Lock (tablet não dorme no modo totem)
+
+```javascript
+// Impede o tablet de bloquear a tela enquanto o totem está ativo.
+// Wake Lock API — Chrome 84+, Edge 84+, Opera 71+.
+// Em Safari e Firefox mais antigos, usa fallback de vídeo silencioso.
+
+(async function TotemWakeLock() {
+  let wakeLock: WakeLockSentinel | null = null;
+
+  async function requestWakeLock() {
+    // Tenta API nativa primeiro
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLock = await (navigator as any).wakeLock.request('screen');
+        console.log('[WakeLock] Ativo — tela não vai dormir.');
+        wakeLock.addEventListener('release', () => {
+          console.log('[WakeLock] Liberado.');
+        });
+      } catch (err) {
+        console.warn('[WakeLock] Falhou:', err);
+        fallbackWakeLock();
+      }
+    } else {
+      fallbackWakeLock();
+    }
+  }
+
+  // Fallback: vídeo transparente em loop (truque clássico para iOS/Safari)
+  function fallbackWakeLock() {
+    const v = document.createElement('video');
+    v.setAttribute('loop', '');
+    v.setAttribute('muted', '');
+    v.setAttribute('playsinline', '');
+    v.setAttribute('autoplay', '');
+    v.style.cssText = 'position:fixed;top:-1px;left:-1px;width:1px;height:1px;opacity:0.001;pointer-events:none';
+    // Base64 de um vídeo WebM vazio (1×1 px, 1 frame, ~80 bytes)
+    v.src = 'data:video/webm;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAASE4mNm4EAAAAAAAAWVcYAAAAAAAAAAGcBAAAAAAAAPmCD';
+    document.body.appendChild(v);
+    v.play().catch(() => {});
+    console.log('[WakeLock] Fallback via vídeo ativo.');
+  }
+
+  // Reativar quando a aba/app volta ao foco (wake lock some ao sair)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') requestWakeLock();
+  });
+
+  await requestWakeLock();
+})();
+```
+
+---
+
+## COMO APLICAR NO `public/concierge/index.html`
+
+### Estrutura HTML obrigatória
+
+O HTML do totem precisa de dois elementos raiz:
+
+```html
+<body>
+  <!-- Fundo preto que preenche a tela toda -->
+  <div id="stage-wrap">
+    <!-- O stage é o "tablet virtual" de 390×720px -->
+    <div id="stage">
+
+      <!-- TELA BOAS-VINDAS -->
+      <div class="scr visible" id="scr-bv"> ... </div>
+
+      <!-- TELA MÓDULOS -->
+      <div class="scr hidden" id="scr-mod"> ... </div>
+
+      <!-- TELA HÓSPEDE -->
+      <div class="scr hidden" id="scr-hosp"> ... </div>
+
+      <!-- TELA CHAT -->
+      <div class="scr hidden" id="scr-chat"> ... </div>
+
+      <!-- TELA DETALHE ÁREA -->
+      <div class="scr hidden" id="scr-det"> ... </div>
+
+      <!-- TELA IDLE -->
+      <div class="idle" id="idle"> ... </div>
+
+    </div><!-- /stage -->
+  </div><!-- /stage-wrap -->
+
+  <script>
+    // ... todo o JS do totem ...
+    // Scale Engine (SEMPRE no final, após o DOM estar montado)
+  </script>
+</body>
+```
+
+### Checklist de migração do HTML existente
+
+```
+✅ Adicionar <div id="stage-wrap"> envolvendo tudo no body
+✅ Adicionar <div id="stage"> dentro do stage-wrap
+✅ Mover todas as telas (.scr, .idle) para dentro do #stage
+✅ Substituir px fixos por rem nas classes CSS (guia acima)
+✅ Adicionar CSS da Camada 2 ao início do <style>
+✅ Adicionar JS da Camada 3 ao fim do <script>
+✅ Adicionar JS do Wake Lock ao fim do <script>
+✅ Corrigir meta viewport (remover maximum-scale=1)
+```
+
+---
+
+## TESTE EM DIFERENTES DISPOSITIVOS
+
+```javascript
+// Colar no console do browser para simular diferentes telas:
+
+// iPad Air (820×1180)
+window.resizeTo(820, 1180); window.totemRecalibrar();
+
+// Samsung Tab A8 (600×960)
+window.resizeTo(600, 960); window.totemRecalibrar();
+
+// Totem Full HD portrait (1080×1920)
+window.resizeTo(1080, 1920); window.totemRecalibrar();
+
+// iPhone 14 (390×844)
+window.resizeTo(390, 844); window.totemRecalibrar();
+
+// Landscape (1280×800)
+window.resizeTo(1280, 800); window.totemRecalibrar();
+```
+
+---
+
+## RESULTADO POR DISPOSITIVO
+
+| Dispositivo            | Viewport   | Scale   | Stage renderizado |
+|------------------------|------------|---------|-------------------|
+| iPhone 14 Pro          | 390×844px  | 1.00×   | 390×720px         |
+| Samsung Tab A8 10.5"   | 600×960px  | 1.33×   | 519×720px (full h)|
+| iPad Mini 6            | 744×1024px | 1.42×   | 554×1024px        |
+| iPad Air 5             | 820×1180px | 1.64×   | 639×1180px        |
+| iPad Pro 12.9"         | 1024×1366px| 1.90×   | 741×1366px        |
+| Totem Android Full HD  | 1080×1920px| 2.67×   | 1041×1920px       |
+| Monitor 4K (totem)     | 2160×3840px| 5.33×   | 2079×3840px       |
+
+Conteúdo sempre centralizado, proporcional e sem overflow.
+Bordas pretas (letterbox) nas laterais quando o aspect ratio difere.
