@@ -2115,6 +2115,8 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
   const [aguaV6NovaLeit, setAguaV6NovaLeit] = useState(false);
   const [aguaV6LeitForm, setAguaV6LeitForm] = useState({ hidrometro_id:"", leitura_atual:"", data_leitura:new Date().toISOString().slice(0,10) });
   const [aguaV6LeitSaving, setAguaV6LeitSaving] = useState(false);
+  const [aguaV6LeitFoto, setAguaV6LeitFoto] = useState<File|null>(null);
+  const [aguaV6LeitFotoPreview, setAguaV6LeitFotoPreview] = useState<string|null>(null);
   // ── V6: Novo hidrômetro
   const [aguaV6NovoHidro, setAguaV6NovoHidro] = useState(false);
   const [aguaV6HidroForm, setAguaV6HidroForm] = useState({ numero_serie:"", tipo:"individual", localizacao:"" });
@@ -11420,7 +11422,18 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
               try {
                 const r = await fetch("/api/agua/leitura", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, hidrometro_id:aguaV6LeitForm.hidrometro_id, leitura_atual:Number(aguaV6LeitForm.leitura_atual), data_leitura:aguaV6LeitForm.data_leitura }) });
                 const j = await r.json();
-                if (j.ok) { setAguaV6NovaLeit(false); loadAguaV6Dash(); if (j.alerta) showToast(`⚠️ ${j.alerta.descricao}`, "warn"); else showToast("✅ Leitura registrada!", "success"); }
+                if (j.ok) {
+                  if (aguaV6LeitFoto && j.leitura?.id) {
+                    const fd = new FormData();
+                    fd.append("foto", aguaV6LeitFoto);
+                    await fetch(`/api/agua/leitura/${j.leitura.id}/foto`, { method:"POST", body:fd });
+                  }
+                  setAguaV6NovaLeit(false);
+                  setAguaV6LeitFoto(null);
+                  setAguaV6LeitFotoPreview(null);
+                  loadAguaV6Dash();
+                  if (j.alerta) showToast(`⚠️ ${j.alerta.descricao}`, "warn"); else showToast("✅ Leitura registrada!", "success");
+                }
               } catch {}
               setAguaV6LeitSaving(false);
             };
@@ -11692,34 +11705,87 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
 
                       {/* ── Modal: Nova Leitura V6 ── */}
                       {aguaV6NovaLeit && (
-                        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setAguaV6NovaLeit(false)}>
-                          <div style={{ background:"#0F172A", border:"1px solid rgba(14,165,233,.3)", borderRadius:16, padding:28, width:400, maxWidth:"95vw" }} onClick={e=>e.stopPropagation()}>
+                        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>{ setAguaV6NovaLeit(false); setAguaV6LeitFoto(null); setAguaV6LeitFotoPreview(null); }}>
+                          <div style={{ background:"#0F172A", border:"1px solid rgba(14,165,233,.3)", borderRadius:16, padding:28, width:420, maxWidth:"95vw", maxHeight:"90vh", overflowY:"auto" }} onClick={e=>e.stopPropagation()}>
                             <div style={{ fontSize:16, fontWeight:800, color:"#0EA5E9", marginBottom:4 }}>📖 Nova Leitura de Hidrômetro</div>
                             <div style={{ fontSize:11, color:"#475569", marginBottom:18 }}>O consumo será calculado automaticamente com base na leitura anterior.</div>
-                            {[
-                              { label:"Hidrômetro", field:"hidrometro_id", type:"select" },
-                              { label:"Leitura Atual (m³) *", field:"leitura_atual", type:"number" },
-                              { label:"Data da Leitura", field:"data_leitura", type:"date" },
-                            ].map(f => f.type === "select" ? (
-                              <div key={f.field} style={{ marginBottom:12 }}>
-                                <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>{f.label}</div>
-                                <select value={aguaV6LeitForm.hidrometro_id} onChange={e=>setAguaV6LeitForm(p=>({...p, hidrometro_id:e.target.value}))}
-                                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}>
-                                  <option value="">Selecione um hidrômetro</option>
-                                  {(aguaV6Dash?.hidrometros || aguaV6HidroList).map(h => (
-                                    <option key={h.id} value={h.id}>{h.numero_serie} — {h.tipo} {h.localizacao ? `· ${h.localizacao}` : ""}</option>
-                                  ))}
-                                </select>
-                              </div>
-                            ) : (
-                              <div key={f.field} style={{ marginBottom:12 }}>
-                                <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>{f.label}</div>
-                                <input type={f.type} value={(aguaV6LeitForm as any)[f.field]} onChange={e=>setAguaV6LeitForm(p=>({...p,[f.field]:e.target.value}))}
-                                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}/>
-                              </div>
-                            ))}
+
+                            {/* Hidrômetro */}
+                            <div style={{ marginBottom:12 }}>
+                              <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>Hidrômetro</div>
+                              <select value={aguaV6LeitForm.hidrometro_id} onChange={e=>setAguaV6LeitForm(p=>({...p, hidrometro_id:e.target.value}))}
+                                style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}>
+                                <option value="">Selecione um hidrômetro</option>
+                                {(aguaV6Dash?.hidrometros || aguaV6HidroList).map(h => (
+                                  <option key={h.id} value={h.id}>{h.numero_serie} — {h.tipo} {h.localizacao ? `· ${h.localizacao}` : ""}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Leitura Atual */}
+                            <div style={{ marginBottom:12 }}>
+                              <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>Leitura Atual (m³) *</div>
+                              <input type="number" value={aguaV6LeitForm.leitura_atual} onChange={e=>setAguaV6LeitForm(p=>({...p, leitura_atual:e.target.value}))}
+                                placeholder="Ex: 125.4"
+                                style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}/>
+                            </div>
+
+                            {/* Data da Leitura */}
+                            <div style={{ marginBottom:12 }}>
+                              <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>Data da Leitura</div>
+                              <input type="date" value={aguaV6LeitForm.data_leitura} onChange={e=>setAguaV6LeitForm(p=>({...p, data_leitura:e.target.value}))}
+                                style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}/>
+                            </div>
+
+                            {/* ── Foto da Leitura ── */}
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:11, color:"#94A3B8", marginBottom:6 }}>📷 Foto da Leitura <span style={{ color:"#475569" }}>(opcional)</span></div>
+                              {aguaV6LeitFotoPreview ? (
+                                <div style={{ position:"relative", borderRadius:10, overflow:"hidden", border:"1px solid rgba(14,165,233,.3)" }}>
+                                  <img src={aguaV6LeitFotoPreview} alt="Preview" style={{ width:"100%", maxHeight:200, objectFit:"cover", display:"block" }}/>
+                                  <div style={{ position:"absolute", inset:0, background:"rgba(0,0,0,.4)", display:"flex", alignItems:"center", justifyContent:"center", opacity:0, transition:"opacity .2s" }}
+                                    onMouseEnter={e=>(e.currentTarget.style.opacity="1")} onMouseLeave={e=>(e.currentTarget.style.opacity="0")}>
+                                    <label style={{ background:"rgba(0,0,0,.7)", border:"1px solid rgba(255,255,255,.3)", borderRadius:8, padding:"6px 14px", color:"#fff", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                                      🔄 Trocar foto
+                                      <input type="file" accept="image/*" capture="environment" style={{ display:"none" }} onChange={e=>{
+                                        const f = e.target.files?.[0];
+                                        if (!f) return;
+                                        setAguaV6LeitFoto(f);
+                                        setAguaV6LeitFotoPreview(URL.createObjectURL(f));
+                                      }}/>
+                                    </label>
+                                    <button onClick={()=>{ setAguaV6LeitFoto(null); setAguaV6LeitFotoPreview(null); }}
+                                      style={{ background:"rgba(239,68,68,.7)", border:"none", borderRadius:8, padding:"6px 14px", color:"#fff", fontSize:11, cursor:"pointer", fontWeight:600, marginLeft:8 }}>
+                                      🗑 Remover
+                                    </button>
+                                  </div>
+                                  <div style={{ position:"absolute", bottom:8, right:8, background:"rgba(16,185,129,.9)", borderRadius:6, padding:"2px 8px", fontSize:10, color:"#fff", fontWeight:700 }}>
+                                    ✓ Foto selecionada
+                                  </div>
+                                </div>
+                              ) : (
+                                <label style={{
+                                  display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8,
+                                  background:"rgba(14,165,233,.04)", border:"2px dashed rgba(14,165,233,.25)", borderRadius:10,
+                                  padding:"24px 16px", cursor:"pointer", transition:"all .15s",
+                                }}
+                                  onMouseEnter={e=>(e.currentTarget.style.borderColor="rgba(14,165,233,.5)")}
+                                  onMouseLeave={e=>(e.currentTarget.style.borderColor="rgba(14,165,233,.25)")}>
+                                  <span style={{ fontSize:32 }}>📷</span>
+                                  <span style={{ fontSize:12, fontWeight:700, color:"#0EA5E9" }}>Tirar foto ou selecionar</span>
+                                  <span style={{ fontSize:10, color:"#475569" }}>Câmera, galeria · JPG, PNG · máx 15 MB</span>
+                                  <input type="file" accept="image/*" capture="environment" style={{ display:"none" }} onChange={e=>{
+                                    const f = e.target.files?.[0];
+                                    if (!f) return;
+                                    setAguaV6LeitFoto(f);
+                                    setAguaV6LeitFotoPreview(URL.createObjectURL(f));
+                                  }}/>
+                                </label>
+                              )}
+                            </div>
+
                             <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:8 }}>
-                              <button onClick={()=>setAguaV6NovaLeit(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 18px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                              <button onClick={()=>{ setAguaV6NovaLeit(false); setAguaV6LeitFoto(null); setAguaV6LeitFotoPreview(null); }} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 18px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
                               <button onClick={salvarLeituraV6} disabled={aguaV6LeitSaving} style={{ background:"#0EA5E9", border:"none", borderRadius:8, padding:"8px 22px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>
                                 {aguaV6LeitSaving ? "⏳ Salvando..." : "💾 Registrar"}
                               </button>

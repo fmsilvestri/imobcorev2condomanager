@@ -1,6 +1,10 @@
 import { Router, type Request, type Response } from "express";
+import multer from "multer";
 import { supabase } from "../lib/supabase.js";
 import { anthropic } from "../lib/anthropic.js";
+
+const _aguaFotoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } });
+const AGUA_BUCKET = "agua-leituras-fotos";
 
 const router = Router();
 
@@ -247,6 +251,36 @@ router.post("/agua/leitura", async (req: Request, res: Response) => {
     console.error("[agua/leitura]", err);
     res.status(500).json({ ok: false, error: errMsg(err) });
   }
+});
+
+// ─── POST /api/agua/leitura/:id/foto ─────────────────────────────────────────
+// Upload foto de comprovação de leitura → Supabase Storage
+router.post("/agua/leitura/:id/foto", _aguaFotoUpload.single("foto"), async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!req.file) return res.status(400).json({ ok: false, error: "Arquivo obrigatório" });
+
+  const ext      = req.file.mimetype.split("/")[1]?.split("+")[0] || "jpg";
+  const filePath = `leituras/${id}.${ext}`;
+
+  let { error: upErr } = await supabase.storage.from(AGUA_BUCKET).upload(filePath, req.file.buffer, { contentType: req.file.mimetype, upsert: true });
+  if (upErr) {
+    await supabase.storage.createBucket(AGUA_BUCKET, { public: true });
+    const { error: upErr2 } = await supabase.storage.from(AGUA_BUCKET).upload(filePath, req.file.buffer, { contentType: req.file.mimetype, upsert: true });
+    if (upErr2) return res.status(500).json({ ok: false, error: upErr2.message });
+  }
+
+  const { data: urlData } = supabase.storage.from(AGUA_BUCKET).getPublicUrl(filePath);
+  const fotoUrl = urlData.publicUrl;
+
+  const { data, error } = await supabase
+    .from("leituras_agua")
+    .update({ foto_url: fotoUrl, foto_path: filePath })
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ ok: false, error: error.message });
+  res.json({ ok: true, foto_url: fotoUrl, leitura: data });
 });
 
 // ─── POST /api/agua/rateio ───────────────────────────────────────────────────
