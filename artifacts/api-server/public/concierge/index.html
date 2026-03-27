@@ -533,7 +533,14 @@
   }
   function irBvs()    { irTela('t-bv'); }
   function irModulos(){ irTela('t-mod'); historico = []; }
-  function irIdle()   { irBvs(); }
+  function irIdle()   {
+    // Se já está na tela inicial, apenas reinicia o timer sem piscar
+    if (document.getElementById('t-bv').classList.contains('ativa')) {
+      resetIdle();
+      return;
+    }
+    irBvs();
+  }
 
   // ── Idle Timer ────────────────────────────────────────────────────────────
   function resetIdle() {
@@ -541,8 +548,9 @@
     const seg = cfg.idle_seg || 90;
     idleTimer = setTimeout(irIdle, seg * 1000);
   }
-  document.addEventListener('touchstart', resetIdle);
-  document.addEventListener('click', resetIdle);
+  document.addEventListener('touchstart', resetIdle, { passive: true });
+  document.addEventListener('click',      resetIdle);
+  document.addEventListener('mousemove',  resetIdle, { passive: true });
 
   // ── Init ──────────────────────────────────────────────────────────────────
   async function init() {
