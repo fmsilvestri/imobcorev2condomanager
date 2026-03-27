@@ -2100,6 +2100,28 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
     { id:"g16", nivel:78, data:"20/01/2026", hora:"13:00", foto:false, obs:"" },
     { id:"g17", nivel:80, data:"20/01/2026", hora:"08:00", foto:true,  obs:"Início do período" },
   ]);
+  // ── Gás V6 state ────────────────────────────────────────────────────────────
+  const [gasV6Tab, setGasV6Tab] = useState<"dashboard"|"leituras"|"medidores"|"rateio"|"di">("dashboard");
+  const [gasV6Dash, setGasV6Dash] = useState<null|{
+    kpis:{consumoTotal:number;consumoGeral:number;variacaoPct:number;custoTotal:number;perdaM3:number;perdaPct:number;totalMedidores:number;alertasAtivos:number;previsaoM3:number};
+    historico:{mes:string;consumo:number;custo:number}[];
+    alertas:{id:string;tipo:string;nivel:string;descricao:string;created_at:string}[];
+    medidores:{id:string;numero_serie:string;tipo:string;localizacao:string}[];
+  }>(null);
+  const [gasV6Loading, setGasV6Loading] = useState(false);
+  const [gasV6MedidorList, setGasV6MedidorList] = useState<{id:string;numero_serie:string;tipo:string;localizacao:string}[]>([]);
+  const [gasV6NovaLeit, setGasV6NovaLeit] = useState(false);
+  const [gasV6LeitForm, setGasV6LeitForm] = useState({ medidor_id:"", leitura_atual:"", data_leitura:new Date().toISOString().slice(0,10) });
+  const [gasV6LeitSaving, setGasV6LeitSaving] = useState(false);
+  const [gasV6LeitFoto, setGasV6LeitFoto] = useState<File|null>(null);
+  const [gasV6LeitFotoPreview, setGasV6LeitFotoPreview] = useState<string|null>(null);
+  const [gasV6NovoMedidor, setGasV6NovoMedidor] = useState(false);
+  const [gasV6MedidorForm, setGasV6MedidorForm] = useState({ numero_serie:"", tipo:"individual" as "individual"|"geral", localizacao:"" });
+  const [gasV6RateioForm, setGasV6RateioForm] = useState({ valor_total:"", tipo_rateio:"hibrido" as "igualitario"|"consumo"|"hibrido", competencia:new Date().toISOString().slice(0,7) });
+  const [gasV6RateioResult, setGasV6RateioResult] = useState<null|{tipo_rateio:string;consumo_total:number;valor_total:number;n_unidades:number;unidades:{unidade_id:string;consumo:number;valor:number}[]}>(null);
+  const [gasV6RateioLoading, setGasV6RateioLoading] = useState(false);
+  const [gasV6DiAnalise, setGasV6DiAnalise] = useState<null|{resumo:string;score:number;alertas:{tipo:string;nivel:string;titulo:string;descricao:string}[];recomendacoes:{titulo:string;descricao:string;economia_estimada:string}[];previsao_proximo_mes:string}>(null);
+  const [gasV6DiLoading, setGasV6DiLoading] = useState(false);
   // ── Água state ─────────────────────────────────────────────────────────────
   const [aguaTab, setAguaTab] = useState<"reservatorios"|"leituras"|"hidrometro"|"historico"|"fornecedora"|"alertas"|"integracao"|"consumo"|"rateio"|"di-analise">("consumo");
   // ── V6: Dashboard de consumo / hidrômetros
@@ -15405,221 +15427,564 @@ Content-Type: application/json
 
           {/* PANEL: GÁS */}
           {panel === "gas" && (() => {
-            // ── Chart data (oldest → newest for correct line direction) ──
-            const chartData = [...gasLeituras].reverse().map(l => ({
-              label: `${l.data.slice(0,5)} ${l.hora.slice(0,5)}`,
-              nivel: l.nivel,
-            }));
+            const loadGasV6Dash = async () => {
+              if (!condId) return;
+              setGasV6Loading(true);
+              try {
+                const r = await fetch(`/api/gas/dashboard?condominio_id=${condId}`);
+                const j = await r.json();
+                if (j.ok) setGasV6Dash(j);
+              } catch {}
+              setGasV6Loading(false);
+            };
+            const loadGasV6Medidores = async () => {
+              if (!condId) return;
+              try {
+                const r = await fetch(`/api/gas/medidores?condominio_id=${condId}`);
+                const j = await r.json();
+                if (j.ok) setGasV6MedidorList(j.medidores);
+              } catch {}
+            };
+            const salvarNovoMedidor = async () => {
+              if (!condId || !gasV6MedidorForm.numero_serie) return;
+              try {
+                const r = await fetch("/api/gas/medidores", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, ...gasV6MedidorForm }) });
+                const j = await r.json();
+                if (j.ok) { loadGasV6Medidores(); setGasV6NovoMedidor(false); setGasV6MedidorForm({ numero_serie:"", tipo:"individual", localizacao:"" }); showToast("✅ Medidor cadastrado!", "success"); }
+              } catch {}
+            };
+            const salvarLeituraGasV6 = async () => {
+              if (!condId || !gasV6LeitForm.medidor_id || !gasV6LeitForm.leitura_atual) return;
+              setGasV6LeitSaving(true);
+              try {
+                const r = await fetch("/api/gas/leitura", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, medidor_id:gasV6LeitForm.medidor_id, leitura_atual:Number(gasV6LeitForm.leitura_atual), data_leitura:gasV6LeitForm.data_leitura }) });
+                const j = await r.json();
+                if (j.ok) {
+                  if (gasV6LeitFoto && j.leitura?.id) {
+                    const fd = new FormData(); fd.append("foto", gasV6LeitFoto);
+                    await fetch(`/api/gas/leitura/${j.leitura.id}/foto`, { method:"POST", body:fd });
+                  }
+                  setGasV6NovaLeit(false); setGasV6LeitFoto(null); setGasV6LeitFotoPreview(null);
+                  loadGasV6Dash();
+                  if (j.alerta) showToast(`🔥 ${j.alerta.descricao}`, "warn"); else showToast("✅ Leitura registrada!", "success");
+                }
+              } catch {}
+              setGasV6LeitSaving(false);
+            };
+            const calcularRateioGas = async () => {
+              if (!condId || !gasV6RateioForm.valor_total) return;
+              setGasV6RateioLoading(true);
+              try {
+                const r = await fetch("/api/gas/rateio", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, competencia:gasV6RateioForm.competencia, valor_total:Number(gasV6RateioForm.valor_total), tipo_rateio:gasV6RateioForm.tipo_rateio }) });
+                const j = await r.json();
+                if (j.ok) setGasV6RateioResult(j);
+              } catch {}
+              setGasV6RateioLoading(false);
+            };
+            const rodarAnaliseDiGas = async () => {
+              if (!condId || gasV6DiLoading) return;
+              setGasV6DiLoading(true);
+              try {
+                const r = await fetch("/api/gas/analise-di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, nome_condominio:"Condomínio" }) });
+                const j = await r.json();
+                if (j.ok) setGasV6DiAnalise(j.analise);
+              } catch {}
+              setGasV6DiLoading(false);
+            };
 
-            const nivelAtual = gasLeituras[0]?.nivel ?? 0;
-            const nivelMin    = Math.min(...gasLeituras.map(l => l.nivel));
-            const nivelMax    = Math.max(...gasLeituras.map(l => l.nivel));
-            const nivelMedio  = Math.round(gasLeituras.reduce((s,l) => s+l.nivel, 0) / gasLeituras.length);
+            const kpi = gasV6Dash?.kpis;
+            const hist = gasV6Dash?.historico || [];
+            const maxConsumo = Math.max(...hist.map(h => h.consumo), 1);
 
-            const nivelColor = (n: number) =>
-              n < 20 ? "#EF4444" : n < 40 ? "#F59E0B" : "#10B981";
-
-            const saveReading = saveGasReading;
+            const tabBtn = (id: typeof gasV6Tab, icon: string, label: string) => (
+              <button key={id} onClick={() => setGasV6Tab(id)} style={{
+                display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6,
+                padding:"12px 16px", borderRadius:10, cursor:"pointer", minWidth:100, border:"none",
+                background: gasV6Tab === id ? "#F97316" : "rgba(255,255,255,.03)",
+                color: gasV6Tab === id ? "#fff" : "#F97316",
+                fontWeight: gasV6Tab === id ? 800 : 500, fontSize:11, transition:"all .15s",
+                outline: gasV6Tab !== id ? "1px solid rgba(249,115,22,.15)" : "none",
+              }}>
+                <span style={{ fontSize:20 }}>{icon}</span>
+                <span style={{ textAlign:"center", lineHeight:1.3 }}>{label}</span>
+              </button>
+            );
 
             return (
               <div style={{ padding:20 }}>
-
-                {/* ── Cross-navigation tabs (Água / Gás / Energia) ── */}
-                <div style={{ display:"flex", gap:6, marginBottom:22 }}>
-                  {([["iot","💧","Água"],["gas","🔥","Gás"],["energia","⚡","Energia"]] as [string,string,string][]).map(([pid,icon,label]) => (
-                    <button key={pid} onClick={()=>setPanel(pid as any)} style={{
-                      background: panel===pid ? (pid==="gas"?"#F97316":pid==="iot"?"#3B82F6":"#6366F1") : "rgba(255,255,255,.05)",
-                      border: panel===pid ? "none" : "1px solid rgba(255,255,255,.1)",
-                      borderRadius:8, padding:"6px 16px", color: panel===pid?"#fff":"#64748B",
-                      fontSize:12, fontWeight: panel===pid?700:400, cursor:"pointer",
-                      display:"flex", alignItems:"center", gap:6,
-                    }}>{icon} {label}</button>
-                  ))}
-                </div>
-
                 {/* ── Header ── */}
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
-                  <div style={{ fontSize:20, fontWeight:800 }}>🔥 Leituras de Gás</div>
-                  <button onClick={()=>setGasNovaLeitModal(true)} style={{ background:"#3B82F6", border:"none", borderRadius:8, padding:"8px 18px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>
-                    + Nova Leitura
-                  </button>
-                </div>
-
-                {/* ── KPI row ── */}
-                <div style={{ display:"flex", gap:10, marginBottom:18, flexWrap:"wrap" }}>
-                  {[
-                    { label:"Nível Atual",    val:`${nivelAtual}%`,   color:nivelColor(nivelAtual) },
-                    { label:"Nível Mínimo",   val:`${nivelMin}%`,     color:"#EF4444" },
-                    { label:"Nível Máximo",   val:`${nivelMax}%`,     color:"#10B981" },
-                    { label:"Média Período",  val:`${nivelMedio}%`,   color:"#F97316" },
-                    { label:"Total Leituras", val:`${gasLeituras.length}`, color:"#A5B4FC" },
-                  ].map(k=>(
-                    <div key={k.label} style={{ flex:1, minWidth:110, background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"12px 14px" }}>
-                      <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{k.label}</div>
-                      <div style={{ fontSize:20, fontWeight:800, color:k.color }}>{k.val}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* ── Chart ── */}
-                <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, padding:"18px 20px", marginBottom:20 }}>
-                  <div style={{ fontSize:13, fontWeight:700, marginBottom:2 }}>Histórico de Nível de Gás</div>
-                  <div style={{ fontSize:11, color:"#475569", marginBottom:16 }}>Últimas {gasLeituras.length} leituras</div>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart data={chartData} margin={{ top:8, right:10, bottom:4, left:0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.05)" vertical={false}/>
-                      <XAxis dataKey="label" tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false}
-                        tickFormatter={(v:string)=>v.slice(0,5)}
-                        interval={Math.floor(chartData.length/3)}/>
-                      <YAxis domain={[0,100]} tick={{ fontSize:9, fill:"#475569" }} axisLine={false} tickLine={false} width={30}
-                        tickFormatter={(v:number)=>`${v}`}/>
-                      <Tooltip contentStyle={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, fontSize:11 }}
-                        formatter={(v:number)=>[`${v}%`, "Nível"]}
-                        labelFormatter={(l:string)=>l}/>
-                      <Line type="monotone" dataKey="nivel" stroke="#F97316" strokeWidth={2.5}
-                        dot={(props: any) => {
-                          const { cx, cy, payload } = props;
-                          const isKey = payload.nivel <= nivelMin || payload.nivel >= nivelMax;
-                          return isKey
-                            ? <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={5} fill="#F97316" stroke="#0F172A" strokeWidth={2}/>
-                            : <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={0} fill="none"/>;
-                        }}
-                        activeDot={{ r:6, fill:"#F97316", stroke:"#0F172A", strokeWidth:2 }}
-                        name="Nível (%)"/>
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-
-                {/* ── Reading list ── */}
-                <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.06)", borderRadius:12, overflow:"hidden" }}>
-                  <div style={{ padding:"14px 20px", borderBottom:"1px solid rgba(255,255,255,.06)", fontSize:13, fontWeight:700 }}>
-                    Histórico de Leituras
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:20 }}>
+                  <div>
+                    <div style={{ fontSize:22, fontWeight:800, marginBottom:2 }}>🔥 Gás — Gestão Inteligente</div>
+                    <div style={{ fontSize:12, color:"#475569" }}>Medição, rateio, detecção de vazamentos e análise IA</div>
                   </div>
-                  {gasLeituras.map((l, i) => {
-                    const nc = nivelColor(l.nivel);
-                    return (
-                      <div key={l.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"14px 20px",
-                        borderBottom: i < gasLeituras.length-1 ? "1px solid rgba(255,255,255,.04)" : "none",
-                        background: l.nivel<20?"rgba(239,68,68,.03)":l.nivel<40?"rgba(245,158,11,.02)":"" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-                          {/* Avatar circle */}
-                          <div style={{ width:40, height:40, borderRadius:"50%", flexShrink:0,
-                            background: l.nivel<20?"rgba(239,68,68,.2)":l.nivel<40?"rgba(245,158,11,.2)":"rgba(249,115,22,.2)",
-                            display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>
-                            🔥
+                  <div style={{ display:"flex", gap:8 }}>
+                    <button onClick={() => { setGasV6NovoMedidor(true); loadGasV6Medidores(); }} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 14px", color:"#E2E8F0", fontSize:12, cursor:"pointer" }}>
+                      + Novo Medidor
+                    </button>
+                    <button onClick={() => { setGasV6NovaLeit(true); loadGasV6Medidores(); }} style={{ background:"#F97316", border:"none", borderRadius:8, padding:"8px 16px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                      🔥 + Nova Leitura
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Tab bar ── */}
+                <div style={{ display:"flex", gap:8, marginBottom:20, overflowX:"auto", paddingBottom:4 }}>
+                  {tabBtn("dashboard", "📊", "Dashboard V6")}
+                  {tabBtn("leituras",  "📋", "Leituras")}
+                  {tabBtn("medidores", "🔵", "Medidores")}
+                  {tabBtn("rateio",    "📐", "Rateio")}
+                  {tabBtn("di",        "🧠", "Di Análise")}
+                </div>
+
+                {/* ════════ ABA: DASHBOARD V6 ════════ */}
+                {gasV6Tab === "dashboard" && (() => {
+                  return (
+                    <div>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                        <div style={{ fontSize:16, fontWeight:800 }}>🔥 Dashboard Consumo V6</div>
+                        <button onClick={loadGasV6Dash} disabled={gasV6Loading} style={{ background:"rgba(249,115,22,.15)", border:"1px solid rgba(249,115,22,.3)", borderRadius:8, padding:"6px 14px", color:"#F97316", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                          {gasV6Loading ? "⏳" : "↻"} Atualizar
+                        </button>
+                      </div>
+
+                      {/* KPI 2×2 grid */}
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:18 }}>
+                        {[
+                          { label:"Consumo Total",     val:`${kpi?.consumoTotal?.toFixed(1) ?? "—"} m³`, icon:"🔥", bg:"rgba(249,115,22,.1)",  border:"rgba(249,115,22,.25)" },
+                          { label:"Custo Total",        val:`R$ ${kpi?.custoTotal?.toFixed(0) ?? "—"}`,   icon:"💰", bg:"rgba(16,185,129,.08)", border:"rgba(16,185,129,.2)" },
+                          { label:"Perda/Desperdício",  val:`${kpi?.perdaM3?.toFixed(1) ?? "—"} m³`,     icon:"💨", bg:"rgba(239,68,68,.08)",  border:"rgba(239,68,68,.2)" },
+                          { label:"Alertas Ativos",     val:`${kpi?.alertasAtivos ?? "—"}`,               icon:"🚨", bg:"rgba(168,85,247,.08)", border:"rgba(168,85,247,.2)" },
+                        ].map(k => (
+                          <div key={k.label} style={{ background:k.bg, border:`1px solid ${k.border}`, borderRadius:12, padding:"16px 14px" }}>
+                            <div style={{ fontSize:10, color:"#475569", marginBottom:6 }}>{k.label}</div>
+                            <div style={{ fontSize:20, fontWeight:800 }}>{k.val}</div>
+                            <div style={{ fontSize:18, marginTop:4, opacity:.6 }}>{k.icon}</div>
                           </div>
+                        ))}
+                      </div>
+
+                      {/* Previsão próximo mês */}
+                      {kpi && kpi.previsaoM3 > 0 && (
+                        <div style={{ background:"rgba(249,115,22,.06)", border:"1px solid rgba(249,115,22,.2)", borderRadius:10, padding:"12px 16px", marginBottom:16, display:"flex", alignItems:"center", gap:12 }}>
+                          <span style={{ fontSize:24 }}>🔮</span>
                           <div>
-                            <div style={{ fontSize:13, fontWeight:700, color:nc }}>{l.nivel}% disponível</div>
-                            <div style={{ fontSize:11, color:"#475569", marginTop:1 }}>
-                              Nível: {l.nivel}% · {l.data} {l.hora}
-                            </div>
-                            {l.obs && <div style={{ fontSize:10, color:"#334155", marginTop:2 }}>{l.obs}</div>}
+                            <div style={{ fontSize:12, fontWeight:700, color:"#F97316" }}>Previsão próximo mês</div>
+                            <div style={{ fontSize:13, color:"#E2E8F0" }}>{kpi.previsaoM3} m³ · R$ {(kpi.previsaoM3 * 5.5).toFixed(0)}</div>
                           </div>
                         </div>
-                        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                          {/* Level pill */}
-                          <span style={{ background:`${nc}18`, color:nc, border:`1px solid ${nc}33`, borderRadius:6, padding:"3px 9px", fontSize:11, fontWeight:700 }}>
-                            {l.nivel<20?"Crítico":l.nivel<40?"Baixo":"Normal"}
-                          </span>
-                          {/* Photo icon */}
-                          {l.foto && (
-                            <div title="Foto anexada" style={{ width:32, height:32, borderRadius:6, background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, cursor:"pointer" }}>
-                              🖼️
+                      )}
+
+                      {/* Gráfico SVG 6 meses */}
+                      <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, padding:"16px", marginBottom:18 }}>
+                        <div style={{ fontSize:12, fontWeight:700, marginBottom:12, color:"#F97316" }}>📈 Consumo Últimos 6 Meses (m³)</div>
+                        <svg width="100%" height="100" viewBox="0 0 400 100" style={{ overflow:"visible" }}>
+                          {hist.map((h, i) => {
+                            const x = (i / (hist.length - 1 || 1)) * 380 + 10;
+                            const y = 80 - (h.consumo / maxConsumo) * 70;
+                            const barH = (h.consumo / maxConsumo) * 70;
+                            return (
+                              <g key={i}>
+                                <rect x={x-16} y={y} width={32} height={barH} rx={4} fill="rgba(249,115,22,.5)" />
+                                <text x={x} y={98} textAnchor="middle" fill="#475569" fontSize={8}>{h.mes}</text>
+                                {h.consumo > 0 && <text x={x} y={y-4} textAnchor="middle" fill="#F97316" fontSize={8} fontWeight="700">{h.consumo}</text>}
+                              </g>
+                            );
+                          })}
+                        </svg>
+                      </div>
+
+                      {/* Alertas */}
+                      {(gasV6Dash?.alertas || []).length > 0 && (
+                        <div style={{ marginBottom:18 }}>
+                          <div style={{ fontSize:12, fontWeight:700, marginBottom:8, color:"#EF4444" }}>🚨 Alertas Ativos</div>
+                          {(gasV6Dash?.alertas || []).map(a => (
+                            <div key={a.id} style={{ background:"rgba(239,68,68,.08)", border:"1px solid rgba(239,68,68,.25)", borderRadius:8, padding:"10px 14px", marginBottom:6, display:"flex", alignItems:"center", gap:10 }}>
+                              <span style={{ fontSize:16 }}>{a.nivel === "critico" ? "🚨" : a.nivel === "alto" ? "⚠️" : "💡"}</span>
+                              <div>
+                                <div style={{ fontSize:11, fontWeight:700, color:"#EF4444" }}>{a.tipo.replace("_"," ").toUpperCase()}</div>
+                                <div style={{ fontSize:11, color:"#94A3B8" }}>{a.descricao}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Lista de medidores */}
+                      <div>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                          <div style={{ fontSize:12, fontWeight:700 }}>🔵 Medidores Ativos ({(gasV6Dash?.medidores || []).length})</div>
+                          <button onClick={() => { setGasV6NovoMedidor(true); loadGasV6Medidores(); }} style={{ background:"transparent", border:"1px solid rgba(249,115,22,.3)", borderRadius:6, padding:"4px 10px", color:"#F97316", fontSize:11, cursor:"pointer" }}>+ Novo</button>
+                        </div>
+                        {(gasV6Dash?.medidores || []).length === 0 ? (
+                          <div style={{ textAlign:"center", padding:"24px", color:"#475569", fontSize:12 }}>
+                            <div style={{ fontSize:32, marginBottom:8 }}>🔵</div>
+                            <div>Nenhum medidor cadastrado</div>
+                            <button onClick={() => { setGasV6NovoMedidor(true); }} style={{ marginTop:10, background:"#F97316", border:"none", borderRadius:8, padding:"8px 18px", color:"#fff", fontSize:11, cursor:"pointer", fontWeight:600 }}>+ Cadastrar primeiro medidor</button>
+                          </div>
+                        ) : (
+                          (gasV6Dash?.medidores || []).map(m => (
+                            <div key={m.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:8, padding:"10px 14px", marginBottom:6, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                              <div>
+                                <div style={{ fontSize:12, fontWeight:700 }}>{m.numero_serie}</div>
+                                <div style={{ fontSize:10, color:"#64748B" }}>{m.tipo} {m.localizacao ? `· ${m.localizacao}` : ""}</div>
+                              </div>
+                              <button onClick={() => { setGasV6LeitForm(p=>({...p, medidor_id:m.id})); setGasV6NovaLeit(true); }} style={{ background:"rgba(249,115,22,.15)", border:"1px solid rgba(249,115,22,.3)", borderRadius:6, padding:"4px 10px", color:"#F97316", fontSize:10, cursor:"pointer", fontWeight:600 }}>
+                                + Leitura
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {/* Iniciar botão */}
+                      {!gasV6Dash && !gasV6Loading && (
+                        <div style={{ textAlign:"center", padding:"40px 20px" }}>
+                          <div style={{ fontSize:48, marginBottom:12 }}>🔥</div>
+                          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>Dashboard V6 de Gás</div>
+                          <div style={{ fontSize:12, color:"#475569", marginBottom:20 }}>Carregue o dashboard para ver KPIs, histórico e alertas</div>
+                          <button onClick={loadGasV6Dash} style={{ background:"#F97316", border:"none", borderRadius:10, padding:"12px 28px", color:"#fff", fontSize:13, cursor:"pointer", fontWeight:700 }}>🚀 Carregar Dashboard</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ════════ ABA: LEITURAS ════════ */}
+                {gasV6Tab === "leituras" && (() => {
+                  const [leituras, setLeituras] = React.useState<any[]>([]);
+                  const [loading, setLoading] = React.useState(false);
+                  React.useEffect(() => {
+                    if (!condId) return;
+                    setLoading(true);
+                    fetch(`/api/gas/consumo?condominio_id=${condId}`)
+                      .then(r=>r.json()).then(j=>{ if(j.ok) setLeituras(j.leituras); }).finally(()=>setLoading(false));
+                  }, [condId]);
+                  return (
+                    <div>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                        <div style={{ fontSize:16, fontWeight:800 }}>📋 Leituras do Mês</div>
+                        <button onClick={() => { setGasV6NovaLeit(true); loadGasV6Medidores(); }} style={{ background:"#F97316", border:"none", borderRadius:8, padding:"8px 16px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>🔥 + Nova Leitura</button>
+                      </div>
+                      {loading && <div style={{ textAlign:"center", padding:20, color:"#475569" }}>⏳ Carregando...</div>}
+                      {!loading && leituras.length === 0 && (
+                        <div style={{ textAlign:"center", padding:"40px 20px", color:"#475569" }}>
+                          <div style={{ fontSize:40, marginBottom:10 }}>📋</div>
+                          <div>Nenhuma leitura neste mês</div>
+                        </div>
+                      )}
+                      {leituras.map(l => (
+                        <div key={l.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"12px 16px", marginBottom:8 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                            <div>
+                              <div style={{ fontSize:12, fontWeight:700 }}>
+                                {l.gas_medidores?.numero_serie || "Medidor"} · {l.gas_medidores?.tipo || ""}
+                              </div>
+                              <div style={{ fontSize:10, color:"#64748B" }}>{l.data_leitura}</div>
+                            </div>
+                            <div style={{ textAlign:"right" }}>
+                              <div style={{ fontSize:16, fontWeight:800, color:"#F97316" }}>{l.consumo} m³</div>
+                              <div style={{ fontSize:10, color:"#64748B" }}>{l.leitura_anterior} → {l.leitura_atual}</div>
+                            </div>
+                          </div>
+                          {l.foto_url && (
+                            <div style={{ marginTop:8 }}>
+                              <img src={l.foto_url} alt="Foto leitura" style={{ width:"100%", maxHeight:120, objectFit:"cover", borderRadius:8 }}/>
                             </div>
                           )}
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* ── Medidores de Consumo (Gás) ── */}
-                <div style={{ marginTop:24 }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
-                    <div style={{ fontSize:13, fontWeight:700, color:"#F97316" }}>🔥 Medidores de Consumo (Gás)</div>
-                    <button onClick={()=>{ setNovoMedidorForm({numero_serie:"",local:"",unidade_medida:"m³",alerta_consumo_alto:""}); setNovoMedidorModal("gas"); }}
-                      style={{ background:"rgba(249,115,22,.15)", border:"1px solid rgba(249,115,22,.3)", borderRadius:8, padding:"6px 14px", color:"#F97316", fontSize:11, cursor:"pointer", fontWeight:600 }}>
-                      + Novo Medidor
-                    </button>
-                  </div>
-                  {medidoresLoading && <div style={{ color:"#475569", fontSize:12 }}>Carregando...</div>}
-                  {!medidoresLoading && medidoresGas.length === 0 && (
-                    <div style={{ background:"rgba(249,115,22,.05)", border:"1px solid rgba(249,115,22,.15)", borderRadius:10, padding:16, textAlign:"center", color:"#475569", fontSize:12 }}>
-                      Nenhum medidor de gás cadastrado. Cadastre medidores para registrar leituras mensais e a Di monitorar o consumo.
+                      ))}
                     </div>
-                  )}
-                  {medidoresGas.map(m => {
-                    const leituras = leiturasUtil.filter(l => l.medidor_id === m.id).sort((a,b)=>b.data_leitura.localeCompare(a.data_leitura));
-                    const ultima = leituras[0];
-                    return (
-                      <div key={m.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(249,115,22,.2)", borderRadius:10, padding:14, marginBottom:10 }}>
-                        <div style={{ display:"flex", justifyContent:"space-between" }}>
-                          <div>
-                            <div style={{ fontSize:12, fontWeight:700, color:"#F97316" }}>🔥 {m.numero_serie}</div>
-                            <div style={{ fontSize:11, color:"#94A3B8" }}>📍 {m.local} · {m.unidade_medida}</div>
-                          </div>
-                          <div style={{ textAlign:"right" }}>
-                            {ultima && <div style={{ fontSize:13, fontWeight:700, color:"#10B981" }}>{ultima.leitura_atual} {m.unidade_medida}</div>}
-                            {ultima && <div style={{ fontSize:10, color:"#475569" }}>{ultima.data_leitura}</div>}
-                            {ultima?.consumo != null && <div style={{ fontSize:11, color:"#F97316" }}>Δ {ultima.consumo} {m.unidade_medida}</div>}
-                          </div>
+                  );
+                })()}
+
+                {/* ════════ ABA: MEDIDORES ════════ */}
+                {gasV6Tab === "medidores" && (() => {
+                  React.useEffect(() => { loadGasV6Medidores(); }, []);
+                  return (
+                    <div>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                        <div style={{ fontSize:16, fontWeight:800 }}>🔵 Medidores de Gás</div>
+                        <button onClick={() => setGasV6NovoMedidor(true)} style={{ background:"#F97316", border:"none", borderRadius:8, padding:"8px 16px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:600 }}>+ Novo Medidor</button>
+                      </div>
+                      {gasV6MedidorList.length === 0 ? (
+                        <div style={{ textAlign:"center", padding:"40px 20px", color:"#475569" }}>
+                          <div style={{ fontSize:40, marginBottom:10 }}>🔵</div>
+                          <div>Nenhum medidor cadastrado</div>
                         </div>
-                        <div style={{ display:"flex", gap:6, marginTop:10 }}>
-                          <button onClick={()=>{ setMedidorSelecionado(m); setNovaLeituraForm({leitura_atual:"",custo:"",observacoes:"",data_leitura:new Date().toISOString().slice(0,10)}); setNovaLeituraModal(m.id); }}
-                            style={{ background:"rgba(249,115,22,.15)", border:"1px solid rgba(249,115,22,.3)", borderRadius:6, padding:"4px 10px", color:"#F97316", fontSize:11, cursor:"pointer", fontWeight:600 }}>
-                            📖 Nova Leitura
-                          </button>
+                      ) : (
+                        gasV6MedidorList.map(m => (
+                          <div key={m.id} style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"14px 16px", marginBottom:8, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                            <div>
+                              <div style={{ fontSize:13, fontWeight:700 }}>{m.numero_serie}</div>
+                              <div style={{ fontSize:11, color:"#64748B" }}>{m.tipo === "geral" ? "🔵 Geral" : "⚪ Individual"} {m.localizacao ? `· ${m.localizacao}` : ""}</div>
+                            </div>
+                            <button onClick={() => { setGasV6LeitForm(p=>({...p, medidor_id:m.id})); setGasV6NovaLeit(true); }} style={{ background:"rgba(249,115,22,.15)", border:"1px solid rgba(249,115,22,.3)", borderRadius:8, padding:"6px 12px", color:"#F97316", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                              🔥 + Leitura
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ════════ ABA: RATEIO ════════ */}
+                {gasV6Tab === "rateio" && (() => {
+                  const r = gasV6RateioResult;
+                  const maxVal = r ? Math.max(...r.unidades.map(u => u.valor), 1) : 1;
+                  return (
+                    <div>
+                      <div style={{ fontSize:16, fontWeight:800, marginBottom:4 }}>📐 Rateio Automático de Gás</div>
+                      <div style={{ fontSize:11, color:"#475569", marginBottom:18 }}>Calcule o valor por unidade com base no consumo do mês.</div>
+
+                      {/* Tipo de rateio */}
+                      <div style={{ marginBottom:14 }}>
+                        <div style={{ fontSize:11, color:"#94A3B8", marginBottom:6 }}>Método de Rateio</div>
+                        <div style={{ display:"flex", gap:6 }}>
+                          {(["igualitario","consumo","hibrido"] as const).map(t => (
+                            <button key={t} onClick={() => setGasV6RateioForm(p=>({...p, tipo_rateio:t}))}
+                              style={{ flex:1, padding:"8px 6px", borderRadius:8, border:`1px solid ${gasV6RateioForm.tipo_rateio===t?"#F97316":"rgba(255,255,255,.1)"}`, background:gasV6RateioForm.tipo_rateio===t?"rgba(249,115,22,.2)":"transparent", color:gasV6RateioForm.tipo_rateio===t?"#F97316":"#64748B", fontSize:11, cursor:"pointer", fontWeight:gasV6RateioForm.tipo_rateio===t?800:500 }}>
+                              {t==="igualitario"?"⚖️ Igualitário":t==="consumo"?"📊 Por Consumo":"🔀 Híbrido"}
+                            </button>
+                          ))}
                         </div>
-                        {leituras.length > 0 && (
-                          <div style={{ marginTop:10 }}>
-                            {leituras.slice(0,3).map(l=>(
-                              <div key={l.id} style={{ display:"flex", justifyContent:"space-between", fontSize:11, padding:"3px 0", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
-                                <span style={{ color:"#94A3B8" }}>{l.data_leitura}</span>
-                                <span style={{ color:"#fff" }}>{l.leitura_atual} {m.unidade_medida}</span>
-                                {l.consumo != null && <span style={{ color:"#F97316" }}>Δ {l.consumo}</span>}
-                                {l.custo != null && <span style={{ color:"#10B981" }}>R$ {l.custo}</span>}
+                        {gasV6RateioForm.tipo_rateio === "hibrido" && <div style={{ fontSize:10, color:"#64748B", marginTop:4 }}>70% consumo + 30% igualitário</div>}
+                      </div>
+
+                      <div style={{ marginBottom:12 }}>
+                        <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>Valor Total da Conta (R$)</div>
+                        <input type="number" value={gasV6RateioForm.valor_total} onChange={e=>setGasV6RateioForm(p=>({...p,valor_total:e.target.value}))} placeholder="Ex: 1850.00"
+                          style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:14, fontWeight:700, boxSizing:"border-box" as const }}/>
+                      </div>
+
+                      <div style={{ marginBottom:16 }}>
+                        <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>Competência</div>
+                        <input type="month" value={gasV6RateioForm.competencia} onChange={e=>setGasV6RateioForm(p=>({...p,competencia:e.target.value}))}
+                          style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}/>
+                      </div>
+
+                      <button onClick={calcularRateioGas} disabled={gasV6RateioLoading || !gasV6RateioForm.valor_total}
+                        style={{ width:"100%", background: gasV6RateioLoading || !gasV6RateioForm.valor_total ? "rgba(255,255,255,.1)" : "#F97316", border:"none", borderRadius:10, padding:"12px", color:"#fff", fontSize:13, cursor:"pointer", fontWeight:700, marginBottom:20 }}>
+                        {gasV6RateioLoading ? "⏳ Calculando..." : "📐 Calcular Rateio"}
+                      </button>
+
+                      {r && (
+                        <div>
+                          <div style={{ display:"flex", gap:10, marginBottom:14, flexWrap:"wrap" }}>
+                            {[["Total Consumo", `${r.consumo_total.toFixed(1)} m³`,"#F97316"],["Valor Total",`R$ ${r.valor_total.toFixed(2)}`,"#10B981"],["Unidades",`${r.n_unidades}`,"#818CF8"]].map(([l,v,c])=>(
+                              <div key={l as string} style={{ flex:1, minWidth:100, background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.08)", borderRadius:8, padding:"10px 12px" }}>
+                                <div style={{ fontSize:10, color:"#475569" }}>{l}</div>
+                                <div style={{ fontSize:16, fontWeight:800, color:c as string }}>{v}</div>
                               </div>
                             ))}
                           </div>
+                          {r.unidades.map(u => (
+                            <div key={u.unidade_id} style={{ marginBottom:8 }}>
+                              <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, marginBottom:3 }}>
+                                <span style={{ color:"#94A3B8" }}>{u.unidade_id}</span>
+                                <span style={{ fontWeight:700, color:"#F97316" }}>R$ {u.valor.toFixed(2)}</span>
+                              </div>
+                              <div style={{ height:6, background:"rgba(255,255,255,.06)", borderRadius:4 }}>
+                                <div style={{ width:`${Math.round((u.valor/maxVal)*100)}%`, height:"100%", background:"#F97316", borderRadius:4 }}/>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ════════ ABA: DI ANÁLISE ════════ */}
+                {gasV6Tab === "di" && (() => {
+                  const d = gasV6DiAnalise;
+                  const nivelCor = (n: string) => n==="critico"?"#EF4444":n==="alto"?"#F59E0B":n==="medio"?"#3B82F6":"#10B981";
+                  return (
+                    <div>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+                        <div>
+                          <div style={{ fontSize:16, fontWeight:800 }}>Di — Análise de Gás 🔥</div>
+                          <div style={{ fontSize:11, color:"#475569" }}>IA detecta vazamentos, desperdícios e riscos de segurança</div>
+                        </div>
+                        {d && (
+                          <button onClick={() => { setGasV6DiAnalise(null); rodarAnaliseDiGas(); }} disabled={gasV6DiLoading}
+                            style={{ background:"rgba(249,115,22,.15)", border:"1px solid rgba(249,115,22,.3)", borderRadius:8, padding:"6px 14px", color:"#F97316", fontSize:11, cursor:"pointer", fontWeight:600 }}>
+                            ↻ Reanalisar
+                          </button>
                         )}
                       </div>
-                    );
-                  })}
-                </div>
 
-                {/* ── Nova leitura modal ── */}
-                {gasNovaLeitModal && (
-                  <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.75)", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setGasNovaLeitModal(false)}>
-                    <div style={{ background:"#0F172A", border:"1px solid rgba(255,255,255,.12)", borderRadius:14, padding:28, width:400 }} onClick={e=>e.stopPropagation()}>
-                      <div style={{ fontSize:16, fontWeight:700, marginBottom:18 }}>🔥 Nova Leitura de Gás</div>
-                      <div style={{ marginBottom:14 }}>
-                        <div style={{ fontSize:11, color:"#475569", marginBottom:5 }}>Nível do Botijão / Reservatório (%)</div>
-                        <input type="number" min="0" max="100" value={gasNovaLeitForm.nivel}
-                          onChange={e=>setGasNovaLeitForm(f=>({...f,nivel:e.target.value}))}
-                          placeholder="0 – 100"
-                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"10px 12px", color:"#fff", fontSize:14, fontWeight:700, boxSizing:"border-box" }}/>
-                        {gasNovaLeitForm.nivel && (
-                          <div style={{ marginTop:10 }}>
-                            <div style={{ height:8, background:"rgba(255,255,255,.06)", borderRadius:4 }}>
-                              <div style={{ width:`${Math.min(100,Number(gasNovaLeitForm.nivel))}%`, height:"100%", borderRadius:4, transition:"width .3s",
-                                background: Number(gasNovaLeitForm.nivel)<20?"#EF4444":Number(gasNovaLeitForm.nivel)<40?"#F59E0B":"#10B981" }}/>
+                      {!d && !gasV6DiLoading && (
+                        <div style={{ textAlign:"center", padding:"40px 20px" }}>
+                          <div style={{ fontSize:56, marginBottom:12 }}>🧠</div>
+                          <div style={{ fontSize:16, fontWeight:700, marginBottom:8 }}>Di Análise de Segurança</div>
+                          <div style={{ fontSize:12, color:"#475569", marginBottom:24 }}>A IA vai analisar consumo, detectar vazamentos e gerar recomendações de segurança.</div>
+                          <button onClick={rodarAnaliseDiGas} style={{ background:"linear-gradient(135deg,#F97316,#EF4444)", border:"none", borderRadius:12, padding:"14px 32px", color:"#fff", fontSize:14, cursor:"pointer", fontWeight:800, boxShadow:"0 4px 20px rgba(249,115,22,.4)" }}>
+                            🚀 Iniciar Análise Di
+                          </button>
+                        </div>
+                      )}
+
+                      {gasV6DiLoading && (
+                        <div style={{ textAlign:"center", padding:"40px 20px" }}>
+                          <div style={{ fontSize:48, marginBottom:12 }}>⏳</div>
+                          <div style={{ fontSize:14, color:"#F97316", fontWeight:700 }}>Di está analisando o consumo de gás...</div>
+                          <div style={{ fontSize:11, color:"#475569", marginTop:8 }}>Verificando padrões de vazamento e riscos de segurança</div>
+                        </div>
+                      )}
+
+                      {d && (
+                        <div>
+                          {/* Score */}
+                          <div style={{ background:"linear-gradient(135deg,rgba(249,115,22,.15),rgba(239,68,68,.1))", border:"1px solid rgba(249,115,22,.3)", borderRadius:14, padding:"20px", marginBottom:16, display:"flex", alignItems:"center", gap:20 }}>
+                            <div style={{ textAlign:"center" }}>
+                              <div style={{ fontSize:42, fontWeight:900, color: d.score >= 70?"#10B981":d.score>=40?"#F59E0B":"#EF4444" }}>{d.score}</div>
+                              <div style={{ fontSize:10, color:"#64748B" }}>Score Segurança</div>
                             </div>
-                            <div style={{ fontSize:11, color:nivelColor(Number(gasNovaLeitForm.nivel)), marginTop:4, fontWeight:600 }}>
-                              {Number(gasNovaLeitForm.nivel)<20?"⚠️ Nível crítico — abastecer urgente":Number(gasNovaLeitForm.nivel)<40?"⚡ Nível baixo — programar abastecimento":"✅ Nível adequado"}
+                            <div>
+                              <div style={{ fontSize:13, fontWeight:700, marginBottom:6 }}>📊 Resumo Executivo</div>
+                              <div style={{ fontSize:12, color:"#94A3B8", lineHeight:1.5 }}>{d.resumo}</div>
                             </div>
                           </div>
+
+                          {/* Alertas */}
+                          {d.alertas?.length > 0 && (
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:13, fontWeight:700, marginBottom:8, color:"#EF4444" }}>🚨 Alertas Detectados</div>
+                              {d.alertas.map((a, i) => (
+                                <div key={i} style={{ background:`rgba(239,68,68,.06)`, border:`1px solid ${nivelCor(a.nivel)}30`, borderLeft:`3px solid ${nivelCor(a.nivel)}`, borderRadius:8, padding:"10px 14px", marginBottom:8 }}>
+                                  <div style={{ fontSize:11, fontWeight:800, color:nivelCor(a.nivel), marginBottom:2 }}>{a.titulo}</div>
+                                  <div style={{ fontSize:11, color:"#94A3B8" }}>{a.descricao}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Recomendações */}
+                          {d.recomendacoes?.length > 0 && (
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:13, fontWeight:700, marginBottom:8, color:"#10B981" }}>💡 Ações Recomendadas</div>
+                              {d.recomendacoes.map((rec, i) => (
+                                <div key={i} style={{ background:"rgba(16,185,129,.05)", border:"1px solid rgba(16,185,129,.15)", borderRadius:8, padding:"10px 14px", marginBottom:8 }}>
+                                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                                    <div style={{ fontSize:11, fontWeight:700, color:"#10B981", marginBottom:2 }}>{rec.titulo}</div>
+                                    <span style={{ background:"rgba(16,185,129,.15)", borderRadius:4, padding:"2px 6px", fontSize:10, color:"#10B981", fontWeight:600, whiteSpace:"nowrap" as const }}>{rec.economia_estimada}</span>
+                                  </div>
+                                  <div style={{ fontSize:11, color:"#94A3B8" }}>{rec.descricao}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Previsão */}
+                          <div style={{ background:"rgba(249,115,22,.06)", border:"1px solid rgba(249,115,22,.2)", borderRadius:10, padding:"12px 16px", display:"flex", alignItems:"center", gap:12 }}>
+                            <span style={{ fontSize:24 }}>🔮</span>
+                            <div>
+                              <div style={{ fontSize:11, fontWeight:700, color:"#F97316" }}>Previsão Próximo Mês</div>
+                              <div style={{ fontSize:13, color:"#E2E8F0" }}>{d.previsao_proximo_mes}</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ── Modal: Nova Leitura V6 ── */}
+                {gasV6NovaLeit && (
+                  <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>{ setGasV6NovaLeit(false); setGasV6LeitFoto(null); setGasV6LeitFotoPreview(null); }}>
+                    <div style={{ background:"#0F172A", border:"1px solid rgba(249,115,22,.3)", borderRadius:16, padding:28, width:420, maxWidth:"95vw", maxHeight:"90vh", overflowY:"auto" as const }} onClick={e=>e.stopPropagation()}>
+                      <div style={{ fontSize:16, fontWeight:800, color:"#F97316", marginBottom:4 }}>🔥 Nova Leitura de Gás</div>
+                      <div style={{ fontSize:11, color:"#475569", marginBottom:18 }}>O consumo será calculado automaticamente com base na leitura anterior.</div>
+
+                      <div style={{ marginBottom:12 }}>
+                        <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>Medidor</div>
+                        <select value={gasV6LeitForm.medidor_id} onChange={e=>setGasV6LeitForm(p=>({...p, medidor_id:e.target.value}))}
+                          style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}>
+                          <option value="">Selecione um medidor</option>
+                          {(gasV6Dash?.medidores || gasV6MedidorList).map(m => (
+                            <option key={m.id} value={m.id}>{m.numero_serie} — {m.tipo} {m.localizacao ? `· ${m.localizacao}` : ""}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div style={{ marginBottom:12 }}>
+                        <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>Leitura Atual (m³) *</div>
+                        <input type="number" value={gasV6LeitForm.leitura_atual} onChange={e=>setGasV6LeitForm(p=>({...p, leitura_atual:e.target.value}))} placeholder="Ex: 125.4"
+                          style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}/>
+                      </div>
+
+                      <div style={{ marginBottom:12 }}>
+                        <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>Data da Leitura</div>
+                        <input type="date" value={gasV6LeitForm.data_leitura} onChange={e=>setGasV6LeitForm(p=>({...p, data_leitura:e.target.value}))}
+                          style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}/>
+                      </div>
+
+                      {/* Foto */}
+                      <div style={{ marginBottom:16 }}>
+                        <div style={{ fontSize:11, color:"#94A3B8", marginBottom:6 }}>📷 Foto do Medidor <span style={{ color:"#475569" }}>(opcional)</span></div>
+                        {gasV6LeitFotoPreview ? (
+                          <div style={{ position:"relative" as const, borderRadius:10, overflow:"hidden", border:"1px solid rgba(249,115,22,.3)" }}>
+                            <img src={gasV6LeitFotoPreview} alt="Preview" style={{ width:"100%", maxHeight:180, objectFit:"cover" as const, display:"block" }}/>
+                            <div style={{ position:"absolute" as const, top:6, right:6, display:"flex", gap:6 }}>
+                              <label style={{ background:"rgba(0,0,0,.7)", borderRadius:6, padding:"4px 10px", color:"#fff", fontSize:10, cursor:"pointer", fontWeight:600 }}>
+                                🔄 Trocar
+                                <input type="file" accept="image/*" capture="environment" style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; if(!f)return; setGasV6LeitFoto(f); setGasV6LeitFotoPreview(URL.createObjectURL(f)); }}/>
+                              </label>
+                              <button onClick={()=>{ setGasV6LeitFoto(null); setGasV6LeitFotoPreview(null); }}
+                                style={{ background:"rgba(239,68,68,.8)", border:"none", borderRadius:6, padding:"4px 10px", color:"#fff", fontSize:10, cursor:"pointer", fontWeight:600 }}>🗑</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <label style={{ display:"flex", flexDirection:"column" as const, alignItems:"center", justifyContent:"center", gap:8, background:"rgba(249,115,22,.04)", border:"2px dashed rgba(249,115,22,.25)", borderRadius:10, padding:"22px 16px", cursor:"pointer" }}>
+                            <span style={{ fontSize:30 }}>📷</span>
+                            <span style={{ fontSize:12, fontWeight:700, color:"#F97316" }}>Tirar foto ou selecionar</span>
+                            <span style={{ fontSize:10, color:"#475569" }}>Câmera ou galeria · JPG, PNG · máx 15 MB</span>
+                            <input type="file" accept="image/*" capture="environment" style={{ display:"none" }} onChange={e=>{ const f=e.target.files?.[0]; if(!f)return; setGasV6LeitFoto(f); setGasV6LeitFotoPreview(URL.createObjectURL(f)); }}/>
+                          </label>
                         )}
                       </div>
+
+                      <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+                        <button onClick={()=>{ setGasV6NovaLeit(false); setGasV6LeitFoto(null); setGasV6LeitFotoPreview(null); }} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 18px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                        <button onClick={salvarLeituraGasV6} disabled={gasV6LeitSaving} style={{ background:"#F97316", border:"none", borderRadius:8, padding:"8px 22px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>
+                          {gasV6LeitSaving ? "⏳ Salvando..." : "🔥 Registrar"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Modal: Novo Medidor ── */}
+                {gasV6NovoMedidor && (
+                  <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setGasV6NovoMedidor(false)}>
+                    <div style={{ background:"#0F172A", border:"1px solid rgba(249,115,22,.3)", borderRadius:16, padding:28, width:400, maxWidth:"95vw" }} onClick={e=>e.stopPropagation()}>
+                      <div style={{ fontSize:16, fontWeight:800, color:"#F97316", marginBottom:18 }}>🔵 Novo Medidor de Gás</div>
+                      {[
+                        { label:"Número de Série *", field:"numero_serie", type:"text", ph:"Ex: MG-001" },
+                        { label:"Localização", field:"localizacao", type:"text", ph:"Ex: Apt 101 – Bloco A" },
+                      ].map(f => (
+                        <div key={f.field} style={{ marginBottom:12 }}>
+                          <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>{f.label}</div>
+                          <input type={f.type} value={(gasV6MedidorForm as any)[f.field]} onChange={e=>setGasV6MedidorForm(p=>({...p,[f.field]:e.target.value}))} placeholder={f.ph}
+                            style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}/>
+                        </div>
+                      ))}
                       <div style={{ marginBottom:16 }}>
-                        <div style={{ fontSize:11, color:"#475569", marginBottom:5 }}>Observação (opcional)</div>
-                        <input type="text" value={gasNovaLeitForm.obs}
-                          onChange={e=>setGasNovaLeitForm(f=>({...f,obs:e.target.value}))}
-                          placeholder="Ex: Após abastecimento"
-                          style={{ width:"100%", background:"rgba(255,255,255,.05)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 12px", color:"#fff", fontSize:12, boxSizing:"border-box" }}/>
+                        <div style={{ fontSize:11, color:"#94A3B8", marginBottom:6 }}>Tipo</div>
+                        <div style={{ display:"flex", gap:8 }}>
+                          {(["individual","geral"] as const).map(t => (
+                            <button key={t} onClick={()=>setGasV6MedidorForm(p=>({...p,tipo:t}))}
+                              style={{ flex:1, padding:"8px", borderRadius:8, border:`1px solid ${gasV6MedidorForm.tipo===t?"#F97316":"rgba(255,255,255,.1)"}`, background:gasV6MedidorForm.tipo===t?"rgba(249,115,22,.2)":"transparent", color:gasV6MedidorForm.tipo===t?"#F97316":"#64748B", fontSize:12, cursor:"pointer", fontWeight:gasV6MedidorForm.tipo===t?800:500 }}>
+                              {t === "individual" ? "⚪ Individual" : "🔵 Geral"}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
-                        <button onClick={()=>setGasNovaLeitModal(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 16px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
-                        <button onClick={saveReading} style={{ background:"#F97316", border:"none", borderRadius:8, padding:"8px 22px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>Registrar</button>
+                        <button onClick={()=>setGasV6NovoMedidor(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 18px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                        <button onClick={salvarNovoMedidor} style={{ background:"#F97316", border:"none", borderRadius:8, padding:"8px 22px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>💾 Salvar</button>
                       </div>
                     </div>
                   </div>
@@ -15627,6 +15992,7 @@ Content-Type: application/json
               </div>
             );
           })()}
+
 
           {/* PANEL: ENERGIA */}
           {panel === "energia" && (() => {

@@ -1,0 +1,270 @@
+# ============================================
+# 🔥 MÓDULO V6 — MEDIÇÃO DE GÁS INTELIGENTE
+# ImobCore • Leitura + Rateio + IA + Previsão
+# ============================================
+
+OBJETIVO:
+Criar módulo completo de gestão de consumo de gás para condomínios com:
+
+- Leitura individual de medidores de gás
+- Leitura do medidor geral (quando existir)
+- Rateio automático inteligente
+- Detecção de vazamentos e anomalias
+- Previsão de consumo
+- Integração com financeiro
+- Dashboard executivo estilo Nubank
+
+---
+
+# 🧱 BANCO DE DADOS (SUPABASE)
+
+## 1. MEDIDORES DE GÁS
+
+CREATE TABLE IF NOT EXISTS gas_medidores (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  unidade_id UUID,
+  tipo TEXT CHECK (tipo IN ('individual','geral')),
+  numero_serie TEXT,
+  localizacao TEXT,
+  ativo BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gas_condo ON gas_medidores(condominio_id);
+
+---
+
+## 2. LEITURAS DE GÁS
+
+CREATE TABLE IF NOT EXISTS gas_leituras (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  medidor_id UUID REFERENCES gas_medidores(id),
+  leitura_anterior NUMERIC,
+  leitura_atual NUMERIC,
+  consumo NUMERIC,
+  data_leitura DATE,
+  origem TEXT DEFAULT 'manual', -- manual | iot | importacao
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gas_leituras_condo ON gas_leituras(condominio_id);
+
+---
+
+## 3. RATEIO DE GÁS
+
+CREATE TABLE IF NOT EXISTS gas_rateio (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  competencia DATE,
+  consumo_total NUMERIC,
+  valor_total NUMERIC,
+  tipo_rateio TEXT, -- igualitario | consumo | hibrido
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+---
+
+## 4. RATEIO POR UNIDADE
+
+CREATE TABLE IF NOT EXISTS gas_rateio_unidades (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rateio_id UUID REFERENCES gas_rateio(id),
+  unidade_id UUID,
+  consumo NUMERIC,
+  valor NUMERIC
+);
+
+---
+
+## 5. ALERTAS DE GÁS
+
+CREATE TABLE IF NOT EXISTS gas_alertas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  unidade_id UUID,
+  tipo TEXT, -- vazamento | alto_consumo | anomalia | risco
+  descricao TEXT,
+  nivel TEXT, -- baixo | medio | alto | critico
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+---
+
+## 6. HISTÓRICO PARA IA
+
+CREATE TABLE IF NOT EXISTS gas_historico (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  unidade_id UUID,
+  mes DATE,
+  consumo NUMERIC,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+---
+
+# ⚙️ LÓGICA DO SISTEMA
+
+## 📥 REGISTRO DE LEITURA
+
+- Buscar última leitura do medidor
+- Calcular automaticamente:
+
+consumo = leitura_atual - leitura_anterior
+
+- Salvar no histórico
+
+---
+
+## 💰 RATEIO INTELIGENTE
+
+### 1. Consumo total:
+- Preferência: medidor geral
+- fallback: soma dos individuais
+
+### 2. Diferença técnica:
+perda = consumo_geral - soma_individual
+
+### 3. TIPOS DE RATEIO:
+
+🔹 IGUALITÁRIO
+- divide valor total igualmente
+
+🔹 POR CONSUMO
+- proporcional ao consumo individual
+
+🔹 HÍBRIDO (RECOMENDADO)
+- 70% consumo
+- 30% igualitário
+
+---
+
+## 🧠 DETECÇÃO DE PROBLEMAS (IA)
+
+### 🔥 Vazamento provável:
+- consumo > média histórica * 1.6
+
+### ⚠️ Anomalia:
+- variação > 40% mês anterior
+
+### 🚨 Risco:
+- consumo contínuo (24h estimado)
+
+---
+
+## 🔮 PREVISÃO DE CONSUMO
+
+Base:
+- últimos 3 a 6 meses
+
+Calcular:
+- tendência (subida/queda)
+- previsão próximo mês
+- estimativa de custo
+
+---
+
+# 🤖 IA — DI SÍNDICA (ANÁLISE DE GÁS)
+
+Prompt interno:
+
+"Analise o consumo de gás do condomínio.
+Identifique:
+
+- possíveis vazamentos
+- desperdícios
+- unidades com comportamento anormal
+- riscos de segurança
+
+Gere:
+1. resumo executivo
+2. alertas críticos
+3. ações recomendadas"
+
+---
+
+# 📊 DASHBOARD
+
+## 🔥 CARD PRINCIPAL
+
+- Consumo total (m³)
+- Custo total (R$)
+- Variação (%)
+- Perda (%)
+
+---
+
+## 📈 GRÁFICOS
+
+- Consumo mensal
+- Ranking de unidades
+- Tendência (previsão)
+
+---
+
+## 🚨 CENTRAL DE ALERTAS
+
+🔥 Vazamento detectado  
+⚠️ Consumo anormal  
+🚨 Risco de segurança  
+💡 Economia possível  
+
+---
+
+# 📱 MOBILE
+
+- Registro de leitura manual
+- Upload de foto do medidor
+- (Futuro) OCR automático
+- Notificação para moradores
+
+---
+
+# 🔗 INTEGRAÇÕES
+
+## 💰 Financeiro
+- gerar cobrança automática por unidade
+
+## 📡 IoT
+- leitura automática de medidores inteligentes
+
+## 🚨 Alertas Externos
+- cruzar com interrupções de gás
+
+---
+
+# 🚀 ENDPOINTS
+
+POST /api/gas/leitura
+GET  /api/gas/consumo
+POST /api/gas/rateio
+GET  /api/gas/dashboard
+GET  /api/gas/alertas
+POST /api/gas/analise-di
+
+---
+
+# 🎯 DIFERENCIAIS V6
+
+- Detecção automática de vazamentos
+- Rateio híbrido inteligente
+- Previsão de consumo
+- Alertas de risco (segurança)
+- Integração financeira automática
+- Dashboard nível fintech
+
+---
+
+# RESULTADO FINAL
+
+🔥 Sistema que transforma o gás em:
+
+- Controlado
+- Seguro
+- Previsível
+- Automatizado
+
+# ============================================

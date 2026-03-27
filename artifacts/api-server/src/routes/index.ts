@@ -8,6 +8,7 @@ import funcionariosRouter from "./funcionarios";
 import conciergeRouter   from "./concierge";
 import ttsRouter         from "./tts";
 import aguaRouter        from "./agua";
+import gasRouter         from "./gas";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(funcionariosRouter);
 router.use("/concierge", conciergeRouter);
 router.use("/di/tts",    ttsRouter);
 router.use(aguaRouter);
+router.use(gasRouter);
 
 export default router;
