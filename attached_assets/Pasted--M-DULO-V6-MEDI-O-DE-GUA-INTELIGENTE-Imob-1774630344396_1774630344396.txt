@@ -1,0 +1,245 @@
+# ============================================
+# 💧 MÓDULO V6 — MEDIÇÃO DE ÁGUA INTELIGENTE
+# ImobCore • Hidrômetros + Rateio + IA
+# ============================================
+
+OBJETIVO:
+Criar módulo completo de gestão de consumo de água para condomínios com:
+
+- Leitura de hidrômetros individuais
+- Leitura de hidrômetro geral
+- Rateio automático
+- Detecção de vazamentos
+- Previsão de consumo
+- Integração com financeiro
+- Dashboard inteligente estilo Nubank
+
+---
+
+# 🧱 ESTRUTURA DO BANCO (SUPABASE)
+
+## 1. HIDRÔMETROS
+
+CREATE TABLE IF NOT EXISTS hidrometros (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  unidade_id UUID,
+  tipo TEXT CHECK (tipo IN ('individual','geral')),
+  numero_serie TEXT,
+  localizacao TEXT,
+  ativo BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+---
+
+## 2. LEITURAS
+
+CREATE TABLE IF NOT EXISTS leituras_agua (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  hidrometro_id UUID REFERENCES hidrometros(id),
+  leitura_anterior NUMERIC,
+  leitura_atual NUMERIC,
+  consumo NUMERIC,
+  data_leitura DATE,
+  origem TEXT DEFAULT 'manual', -- manual | iot
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+---
+
+## 3. RATEIO
+
+CREATE TABLE IF NOT EXISTS rateio_agua (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  competencia DATE,
+  consumo_total NUMERIC,
+  valor_total NUMERIC,
+  tipo_rateio TEXT, -- igualitario | consumo | hibrido
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+---
+
+## 4. RATEIO POR UNIDADE
+
+CREATE TABLE IF NOT EXISTS rateio_unidades (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rateio_id UUID REFERENCES rateio_agua(id),
+  unidade_id UUID,
+  consumo NUMERIC,
+  valor NUMERIC
+);
+
+---
+
+## 5. ALERTAS DE CONSUMO
+
+CREATE TABLE IF NOT EXISTS alertas_agua (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  condominio_id UUID,
+  unidade_id UUID,
+  tipo TEXT, -- vazamento | alto_consumo | anomalia
+  descricao TEXT,
+  nivel TEXT,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+---
+
+# ⚙️ LÓGICA DO SISTEMA
+
+## 📥 Registrar leitura
+
+- Busca última leitura
+- Calcula consumo automaticamente:
+  consumo = leitura_atual - leitura_anterior
+
+---
+
+## 💰 RATEIO AUTOMÁTICO
+
+### 1. Consumo total:
+- Soma das unidades OU hidrômetro geral
+
+### 2. Diferença:
+perda = consumo_geral - soma_individual
+
+### 3. Regras:
+
+IGUALITÁRIO:
+- divide valor total igualmente
+
+CONSUMO:
+- proporcional ao consumo individual
+
+HIBRIDO:
+- 70% consumo
+- 30% igualitário
+
+---
+
+## 🧠 DETECÇÃO DE VAZAMENTO
+
+Se:
+- consumo > média histórica * 1.5
+→ gerar alerta "vazamento provável"
+
+Se:
+- consumo > 0 com imóvel vazio
+→ alerta crítico
+
+---
+
+## 🔮 PREVISÃO DE CONSUMO
+
+Base:
+- últimos 3 meses
+
+Calcular:
+- tendência (subindo / descendo)
+- previsão próximo mês
+
+---
+
+# 🤖 IA — DI SÍNDICA
+
+Prompt interno:
+
+"Analise consumo de água do condomínio.
+Identifique:
+- vazamentos
+- desperdícios
+- anomalias
+- oportunidades de economia
+
+Gere:
+1. resumo
+2. alertas
+3. recomendações"
+
+---
+
+# 📊 DASHBOARD
+
+## 💧 CARD PRINCIPAL
+
+- Consumo total mês
+- Variação (%)
+- Custo total
+- Perda (%)
+
+---
+
+## 📈 GRÁFICOS
+
+- Consumo por mês
+- Consumo por unidade
+- Comparativo histórico
+
+---
+
+## 🚨 ALERTAS
+
+🔥 Vazamento detectado  
+⚠️ Consumo acima do normal  
+💡 Economia possível  
+
+---
+
+# 📱 FUNCIONALIDADES MOBILE
+
+- Registrar leitura via celular
+- Foto do hidrômetro
+- OCR automático (futuro)
+- Notificação para morador
+
+---
+
+# 🔗 INTEGRAÇÃO
+
+## Financeiro:
+- rateio → gerar cobrança automática
+
+## IoT:
+- sensores enviam leitura automática
+
+## MISP:
+- cruzar com alertas externos (falta de água)
+
+---
+
+# 🚀 ENDPOINTS
+
+POST /api/agua/leitura
+GET /api/agua/consumo
+POST /api/agua/rateio
+GET /api/agua/dashboard
+GET /api/agua/alertas
+POST /api/agua/analise-di
+
+---
+
+# 🎯 DIFERENCIAL V6
+
+- IA detecta vazamentos automaticamente
+- Rateio inteligente híbrido
+- Previsão de consumo
+- Integração com financeiro
+- Preparado para IoT
+- Dashboard nível fintech
+
+---
+
+# RESULTADO FINAL
+
+Sistema que transforma o condomínio em:
+
+💧 Inteligente  
+📊 Previsível  
+💰 Controlado  
+🧠 Automatizado  
+
+# ============================================

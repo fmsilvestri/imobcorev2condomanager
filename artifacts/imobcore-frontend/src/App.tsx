@@ -2101,7 +2101,30 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
     { id:"g17", nivel:80, data:"20/01/2026", hora:"08:00", foto:true,  obs:"Início do período" },
   ]);
   // ── Água state ─────────────────────────────────────────────────────────────
-  const [aguaTab, setAguaTab] = useState<"reservatorios"|"leituras"|"hidrometro"|"historico"|"fornecedora"|"alertas"|"integracao">("reservatorios");
+  const [aguaTab, setAguaTab] = useState<"reservatorios"|"leituras"|"hidrometro"|"historico"|"fornecedora"|"alertas"|"integracao"|"consumo"|"rateio"|"di-analise">("consumo");
+  // ── V6: Dashboard de consumo / hidrômetros
+  const [aguaV6Dash, setAguaV6Dash] = useState<null|{
+    competencia:string; kpis:{consumoTotal:number;consumoGeral:number;variacaoPct:number;custoTotal:number;perdaM3:number;perdaPct:number;totalHidrometros:number;alertasAtivos:number};
+    historico:{mes:string;consumo:number;custo:number}[];
+    alertas:{id:string;tipo:string;nivel:string;descricao:string;created_at:string}[];
+    hidrometros:{id:string;numero_serie:string;tipo:string;localizacao:string}[];
+  }>(null);
+  const [aguaV6Loading, setAguaV6Loading] = useState(false);
+  // ── V6: Nova leitura de hidrômetro
+  const [aguaV6HidroList, setAguaV6HidroList] = useState<{id:string;numero_serie:string;tipo:string;localizacao:string}[]>([]);
+  const [aguaV6NovaLeit, setAguaV6NovaLeit] = useState(false);
+  const [aguaV6LeitForm, setAguaV6LeitForm] = useState({ hidrometro_id:"", leitura_atual:"", data_leitura:new Date().toISOString().slice(0,10) });
+  const [aguaV6LeitSaving, setAguaV6LeitSaving] = useState(false);
+  // ── V6: Novo hidrômetro
+  const [aguaV6NovoHidro, setAguaV6NovoHidro] = useState(false);
+  const [aguaV6HidroForm, setAguaV6HidroForm] = useState({ numero_serie:"", tipo:"individual", localizacao:"" });
+  // ── V6: Rateio
+  const [aguaV6RateioForm, setAguaV6RateioForm] = useState({ valor_total:"", tipo_rateio:"hibrido" as "igualitario"|"consumo"|"hibrido", competencia:new Date().toISOString().slice(0,7) });
+  const [aguaV6RateioResult, setAguaV6RateioResult] = useState<null|{tipo_rateio:string;consumo_total:number;valor_total:number;n_unidades:number;unidades:{unidade_id:string;consumo:number;valor:number}[]}>(null);
+  const [aguaV6RateioLoading, setAguaV6RateioLoading] = useState(false);
+  // ── V6: Análise Di
+  const [aguaV6DiAnalise, setAguaV6DiAnalise] = useState<null|{resumo:string;score:number;alertas:{tipo:string;nivel:string;titulo:string;descricao:string}[];recomendacoes:{titulo:string;descricao:string;economia_estimada:string}[];previsao_proximo_mes:string}>(null);
+  const [aguaV6DiLoading, setAguaV6DiLoading] = useState(false);
   const [aguaNovoResModal, setAguaNovoResModal] = useState(false);
   const [aguaNovoResForm, setAguaNovoResForm] = useState({ nome:"", local:"", capacidade:"", mac:"" });
   // ── Reservatórios state ────────────────────────────────────────────────────
@@ -11353,14 +11376,74 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
             const cfOnlineCount = resList.filter(r=>r.cf_online).length;
             const whOnlineCount = resList.filter(r=>r.wh_online).length;
             const tabDef: [typeof aguaTab, string, string, string][] = [
-              ["reservatorios", "🗂️", `Reservatórios (${resList.length})`, "#3B82F6"],
-              ["leituras",      "📋", `Leituras (${aguaLeituras.length})`, "#06B6D4"],
-              ["hidrometro",    "🔵", "Hidrômetro (1)",       "#6366F1"],
+              ["consumo",       "📊", "Consumo V6",           "#0EA5E9"],
+              ["rateio",        "📐", "Rateio",               "#10B981"],
+              ["di-analise",    "🧠", "Di Análise",           "#A855F7"],
+              ["reservatorios", "🗂️", `Reservatórios`,        "#3B82F6"],
+              ["leituras",      "📋", `Leituras IoT`,         "#06B6D4"],
+              ["hidrometro",    "🔵", "Hidrômetros",          "#6366F1"],
               ["historico",     "📊", "Histórico",            "#10B981"],
               ["fornecedora",   "🏢", "Fornecedora",          "#F59E0B"],
-              ["alertas",       "🔔", "Alertas Inteligentes", "#EF4444"],
-              ["integracao",    "☁️", `Integração CF/WH`, "#8B5CF6"],
+              ["alertas",       "🔔", "Alertas",              "#EF4444"],
+              ["integracao",    "☁️", "Integração CF/WH",     "#8B5CF6"],
             ];
+            // ── V6 loaders ────────────────────────────────────────────
+            const loadAguaV6Dash = async () => {
+              if (!condId || aguaV6Loading) return;
+              setAguaV6Loading(true);
+              try {
+                const r = await fetch(`/api/agua/dashboard?condominio_id=${condId}`);
+                const j = await r.json();
+                if (j.ok) setAguaV6Dash(j);
+              } catch {}
+              setAguaV6Loading(false);
+            };
+            const loadAguaV6Hidros = async () => {
+              if (!condId) return;
+              try {
+                const r = await fetch(`/api/agua/hidrometros?condominio_id=${condId}`);
+                const j = await r.json();
+                if (j.ok) setAguaV6HidroList(j.hidrometros);
+              } catch {}
+            };
+            const salvarNovoHidro = async () => {
+              if (!condId || !aguaV6HidroForm.numero_serie) return;
+              try {
+                const r = await fetch("/api/agua/hidrometros", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, ...aguaV6HidroForm }) });
+                const j = await r.json();
+                if (j.ok) { loadAguaV6Hidros(); setAguaV6NovoHidro(false); setAguaV6HidroForm({ numero_serie:"", tipo:"individual", localizacao:"" }); }
+              } catch {}
+            };
+            const salvarLeituraV6 = async () => {
+              if (!condId || !aguaV6LeitForm.hidrometro_id || !aguaV6LeitForm.leitura_atual) return;
+              setAguaV6LeitSaving(true);
+              try {
+                const r = await fetch("/api/agua/leitura", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, hidrometro_id:aguaV6LeitForm.hidrometro_id, leitura_atual:Number(aguaV6LeitForm.leitura_atual), data_leitura:aguaV6LeitForm.data_leitura }) });
+                const j = await r.json();
+                if (j.ok) { setAguaV6NovaLeit(false); loadAguaV6Dash(); if (j.alerta) showToast(`⚠️ ${j.alerta.descricao}`, "warn"); else showToast("✅ Leitura registrada!", "success"); }
+              } catch {}
+              setAguaV6LeitSaving(false);
+            };
+            const calcularRateio = async () => {
+              if (!condId || !aguaV6RateioForm.valor_total) return;
+              setAguaV6RateioLoading(true);
+              try {
+                const r = await fetch("/api/agua/rateio", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, competencia:aguaV6RateioForm.competencia, valor_total:Number(aguaV6RateioForm.valor_total), tipo_rateio:aguaV6RateioForm.tipo_rateio }) });
+                const j = await r.json();
+                if (j.ok) setAguaV6RateioResult(j);
+              } catch {}
+              setAguaV6RateioLoading(false);
+            };
+            const rodarAnalyseDi = async () => {
+              if (!condId || aguaV6DiLoading) return;
+              setAguaV6DiLoading(true);
+              try {
+                const r = await fetch("/api/agua/analise-di", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ condominio_id:condId, nome_condominio: dash?.condominios?.find(c=>c.id===condId)?.nome || "Condomínio" }) });
+                const j = await r.json();
+                if (j.ok) setAguaV6DiAnalise(j.analise);
+              } catch {}
+              setAguaV6DiLoading(false);
+            };
 
             const tabBtn = (id: typeof aguaTab, icon: string, label: string, col: string) => (
               <button key={id} onClick={() => setAguaTab(id)} style={{
@@ -11481,6 +11564,437 @@ ${b.funcionarios_nomes?.length ? `<div class="funcs"><div class="funcs-title">Fu
                     </div>
                   </div>
                 )}
+
+                {/* ════════════════════════════════════════════════════
+                    ABA V6: CONSUMO — Dashboard de Hidrômetros
+                ════════════════════════════════════════════════════ */}
+                {aguaTab === "consumo" && (() => {
+                  const d = aguaV6Dash;
+                  const k = d?.kpis;
+                  const hist = d?.historico || [];
+                  const maxHist = Math.max(...hist.map(h=>h.consumo), 1);
+                  const alertasV6 = d?.alertas || [];
+                  const corAlerta = (n:string) => n==="critico"?"#EF4444":n==="alto"?"#F97316":n==="medio"?"#F59E0B":"#10B981";
+                  const iconeAlerta = (t:string) => t==="vazamento"?"🚨":t==="alto_consumo"?"📈":"💡";
+                  return (
+                    <div>
+                      {/* ── Header com reload ── */}
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+                        <div>
+                          <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0" }}>💧 Dashboard Consumo V6</div>
+                          <div style={{ fontSize:11, color:"#475569" }}>Hidrômetros · Rateio · Detecção de Vazamentos</div>
+                        </div>
+                        <div style={{ display:"flex", gap:8 }}>
+                          <button onClick={()=>setAguaV6NovaLeit(true)} style={{ background:"rgba(14,165,233,.15)", border:"1px solid rgba(14,165,233,.3)", borderRadius:8, padding:"7px 14px", color:"#0EA5E9", fontSize:12, cursor:"pointer", fontWeight:600 }}>
+                            + Leitura
+                          </button>
+                          <button onClick={loadAguaV6Dash} disabled={aguaV6Loading} style={{ background:"#0EA5E9", border:"none", borderRadius:8, padding:"7px 14px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>
+                            {aguaV6Loading ? "⏳" : "↻ Atualizar"}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* ── KPI Cards 2×2 ── */}
+                      {k ? (
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+                          {[
+                            { label:"Consumo Total", val:`${k.consumoTotal} m³`, icon:"💧", sub: k.variacaoPct > 0 ? `▲ ${k.variacaoPct}% vs mês ant.` : k.variacaoPct < 0 ? `▼ ${Math.abs(k.variacaoPct)}% vs mês ant.` : "= igual ao mês ant.", subColor: k.variacaoPct > 10 ? "#EF4444" : k.variacaoPct < 0 ? "#10B981" : "#94A3B8", grad:"linear-gradient(135deg,#075985,#0EA5E9)", glow:"rgba(14,165,233,.4)", edge:"#0369A1" },
+                            { label:"Custo Total",   val:`R$${k.custoTotal.toFixed(0)}`, icon:"💰", sub:`${k.n_unidades??k.totalHidrometros} hidrômetros`, subColor:"#94A3B8", grad:"linear-gradient(135deg,#064E3B,#10B981)", glow:"rgba(16,185,129,.4)", edge:"#065F46" },
+                            { label:"Perda/Desperdício", val:`${k.perdaM3} m³`, icon:"⚠️", sub:`${k.perdaPct}% do total`, subColor: k.perdaPct > 20 ? "#EF4444" : k.perdaPct > 10 ? "#F59E0B" : "#10B981", grad:`linear-gradient(135deg,${k.perdaPct>20?"#7F1D1D,#EF4444":"#78350F,#F59E0B"})`, glow:`rgba(${k.perdaPct>20?"239,68,68":"245,158,11"},.4)`, edge: k.perdaPct>20?"#B91C1C":"#B45309" },
+                            { label:"Alertas Ativos", val:`${k.alertasAtivos}`, icon:"🔔", sub:`${k.totalHidrometros} hidrômetros cadastrados`, subColor:"#94A3B8", grad:"linear-gradient(135deg,#4C1D95,#A855F7)", glow:"rgba(168,85,247,.4)", edge:"#6D28D9" },
+                          ].map(c => (
+                            <div key={c.label} style={{ background:c.grad, borderRadius:14, padding:"14px 12px 12px", position:"relative", overflow:"hidden", boxShadow:`0 4px 0 ${c.edge}, 0 8px 20px ${c.glow}, inset 0 1px 0 rgba(255,255,255,.2)` }}>
+                              <div style={{ position:"absolute", top:0, left:0, right:0, height:"45%", background:"linear-gradient(180deg,rgba(255,255,255,.2),rgba(255,255,255,0))", borderRadius:"14px 14px 0 0", pointerEvents:"none" }} />
+                              <div style={{ position:"absolute", bottom:-6, right:4, fontSize:32, opacity:.12 }}>{c.icon}</div>
+                              <div style={{ fontSize:22, marginBottom:4 }}>{c.icon}</div>
+                              <div style={{ fontSize:22, fontWeight:900, color:"#fff", letterSpacing:"-.5px" }}>{c.val}</div>
+                              <div style={{ fontSize:9, color:"rgba(255,255,255,.7)", textTransform:"uppercase" as const, fontWeight:700 }}>{c.label}</div>
+                              <div style={{ fontSize:9, color:c.subColor, marginTop:2 }}>{c.sub}</div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ background:"rgba(14,165,233,.06)", border:"1px solid rgba(14,165,233,.15)", borderRadius:12, padding:32, textAlign:"center" as const, marginBottom:16, color:"#475569" }}>
+                          <div style={{ fontSize:36, marginBottom:10 }}>💧</div>
+                          <div style={{ fontSize:14, fontWeight:700, color:"#94A3B8", marginBottom:8 }}>Carregue o dashboard de consumo</div>
+                          <div style={{ fontSize:12, marginBottom:14 }}>Clique em "Atualizar" para buscar dados de hidrômetros e consumo.</div>
+                          <button onClick={loadAguaV6Dash} style={{ background:"#0EA5E9", border:"none", borderRadius:8, padding:"9px 22px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>
+                            Carregar Dados
+                          </button>
+                        </div>
+                      )}
+
+                      {/* ── Gráfico histórico 6 meses (SVG) ── */}
+                      {hist.length > 0 && (
+                        <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(255,255,255,.07)", borderRadius:14, padding:"16px 18px", marginBottom:14 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:"#94A3B8", marginBottom:14 }}>📈 Consumo — Últimos {hist.length} meses</div>
+                          <svg viewBox={`0 0 ${hist.length*56} 90`} style={{ width:"100%", height:90 }}>
+                            {hist.map((h, i) => {
+                              const barH = Math.round((h.consumo / maxHist) * 65);
+                              const x = i * 56 + 4;
+                              const barColor = h.consumo === Math.max(...hist.map(h=>h.consumo)) ? "#EF4444" : "#0EA5E9";
+                              return (
+                                <g key={i}>
+                                  <rect x={x} y={72-barH} width={42} height={barH} rx={5} fill={barColor} opacity={.85}/>
+                                  <rect x={x} y={72-barH} width={42} height={8} rx={5} fill="rgba(255,255,255,.18)"/>
+                                  <text x={x+21} y={85} textAnchor="middle" fill="#475569" fontSize={8}>{h.mes}</text>
+                                  <text x={x+21} y={72-barH-4} textAnchor="middle" fill="#94A3B8" fontSize={8}>{h.consumo}m³</text>
+                                </g>
+                              );
+                            })}
+                          </svg>
+                        </div>
+                      )}
+
+                      {/* ── Alertas do banco ── */}
+                      {alertasV6.length > 0 && (
+                        <div style={{ background:"rgba(239,68,68,.05)", border:"1px solid rgba(239,68,68,.15)", borderRadius:12, padding:"14px 16px", marginBottom:14 }}>
+                          <div style={{ fontSize:12, fontWeight:800, color:"#F87171", marginBottom:10 }}>🚨 Alertas Automáticos ({alertasV6.length})</div>
+                          {alertasV6.map((a, i) => (
+                            <div key={a.id || i} style={{ display:"flex", gap:10, padding:"8px 0", borderBottom: i < alertasV6.length-1 ? "1px solid rgba(255,255,255,.05)" : "none" }}>
+                              <span style={{ fontSize:16 }}>{iconeAlerta(a.tipo)}</span>
+                              <div>
+                                <span style={{ background:`${corAlerta(a.nivel)}20`, color:corAlerta(a.nivel), border:`1px solid ${corAlerta(a.nivel)}40`, borderRadius:6, padding:"1px 7px", fontSize:9, fontWeight:800, marginRight:6 }}>{a.nivel}</span>
+                                <span style={{ fontSize:11, color:"#CBD5E1" }}>{a.descricao}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* ── Hidrômetros cadastrados ── */}
+                      <div style={{ background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.07)", borderRadius:12, overflow:"hidden" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 16px", borderBottom:"1px solid rgba(255,255,255,.06)" }}>
+                          <div style={{ fontSize:12, fontWeight:700, color:"#94A3B8" }}>🔵 Hidrômetros Cadastrados</div>
+                          <button onClick={()=>{ setAguaV6NovoHidro(true); loadAguaV6Hidros(); }} style={{ background:"rgba(99,102,241,.15)", border:"1px solid rgba(99,102,241,.3)", borderRadius:6, padding:"4px 10px", color:"#818CF8", fontSize:11, cursor:"pointer", fontWeight:600 }}>+ Novo</button>
+                        </div>
+                        {(aguaV6HidroList.length === 0 && !aguaV6Dash) ? (
+                          <div style={{ padding:"24px 16px", textAlign:"center" as const, color:"#475569", fontSize:12 }}>Carregue o dashboard para ver os hidrômetros.</div>
+                        ) : (aguaV6Dash?.hidrometros || aguaV6HidroList).length === 0 ? (
+                          <div style={{ padding:"24px 16px", textAlign:"center" as const, color:"#475569", fontSize:12 }}>Nenhum hidrômetro cadastrado. Clique em + Novo.</div>
+                        ) : (
+                          (aguaV6Dash?.hidrometros || aguaV6HidroList).map((h, i) => (
+                            <div key={h.id} style={{ display:"flex", alignItems:"center", gap:14, padding:"11px 16px", borderBottom:"1px solid rgba(255,255,255,.04)" }}>
+                              <div style={{ width:36, height:36, borderRadius:10, background: h.tipo==="geral"?"rgba(14,165,233,.15)":"rgba(99,102,241,.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, flexShrink:0 }}>
+                                {h.tipo === "geral" ? "🔵" : "⚪"}
+                              </div>
+                              <div style={{ flex:1 }}>
+                                <div style={{ fontSize:12, fontWeight:700, color:"#E2E8F0" }}>#{h.numero_serie}</div>
+                                <div style={{ fontSize:10, color:"#475569" }}>{h.localizacao || "Sem localização"} · <span style={{ color: h.tipo==="geral"?"#0EA5E9":"#818CF8" }}>{h.tipo}</span></div>
+                              </div>
+                              <button onClick={()=>{ setAguaV6LeitForm(f=>({...f, hidrometro_id:h.id})); setAguaV6NovaLeit(true); }} style={{ background:"rgba(14,165,233,.1)", border:"1px solid rgba(14,165,233,.25)", borderRadius:6, padding:"4px 10px", color:"#0EA5E9", fontSize:10, cursor:"pointer", fontWeight:700, whiteSpace:"nowrap" as const }}>
+                                📖 Leitura
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+
+                      {/* ── Modal: Nova Leitura V6 ── */}
+                      {aguaV6NovaLeit && (
+                        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setAguaV6NovaLeit(false)}>
+                          <div style={{ background:"#0F172A", border:"1px solid rgba(14,165,233,.3)", borderRadius:16, padding:28, width:400, maxWidth:"95vw" }} onClick={e=>e.stopPropagation()}>
+                            <div style={{ fontSize:16, fontWeight:800, color:"#0EA5E9", marginBottom:4 }}>📖 Nova Leitura de Hidrômetro</div>
+                            <div style={{ fontSize:11, color:"#475569", marginBottom:18 }}>O consumo será calculado automaticamente com base na leitura anterior.</div>
+                            {[
+                              { label:"Hidrômetro", field:"hidrometro_id", type:"select" },
+                              { label:"Leitura Atual (m³) *", field:"leitura_atual", type:"number" },
+                              { label:"Data da Leitura", field:"data_leitura", type:"date" },
+                            ].map(f => f.type === "select" ? (
+                              <div key={f.field} style={{ marginBottom:12 }}>
+                                <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>{f.label}</div>
+                                <select value={aguaV6LeitForm.hidrometro_id} onChange={e=>setAguaV6LeitForm(p=>({...p, hidrometro_id:e.target.value}))}
+                                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}>
+                                  <option value="">Selecione um hidrômetro</option>
+                                  {(aguaV6Dash?.hidrometros || aguaV6HidroList).map(h => (
+                                    <option key={h.id} value={h.id}>{h.numero_serie} — {h.tipo} {h.localizacao ? `· ${h.localizacao}` : ""}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : (
+                              <div key={f.field} style={{ marginBottom:12 }}>
+                                <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>{f.label}</div>
+                                <input type={f.type} value={(aguaV6LeitForm as any)[f.field]} onChange={e=>setAguaV6LeitForm(p=>({...p,[f.field]:e.target.value}))}
+                                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}/>
+                              </div>
+                            ))}
+                            <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:8 }}>
+                              <button onClick={()=>setAguaV6NovaLeit(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 18px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                              <button onClick={salvarLeituraV6} disabled={aguaV6LeitSaving} style={{ background:"#0EA5E9", border:"none", borderRadius:8, padding:"8px 22px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>
+                                {aguaV6LeitSaving ? "⏳ Salvando..." : "💾 Registrar"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── Modal: Novo Hidrômetro ── */}
+                      {aguaV6NovoHidro && (
+                        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.8)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={()=>setAguaV6NovoHidro(false)}>
+                          <div style={{ background:"#0F172A", border:"1px solid rgba(99,102,241,.3)", borderRadius:16, padding:28, width:400, maxWidth:"95vw" }} onClick={e=>e.stopPropagation()}>
+                            <div style={{ fontSize:16, fontWeight:800, color:"#818CF8", marginBottom:18 }}>🔵 Novo Hidrômetro</div>
+                            {[
+                              { label:"Número de Série *", field:"numero_serie", type:"text", ph:"Ex: HM-001" },
+                              { label:"Localização", field:"localizacao", type:"text", ph:"Ex: Apt 101 – Bloco A" },
+                            ].map(f => (
+                              <div key={f.field} style={{ marginBottom:12 }}>
+                                <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>{f.label}</div>
+                                <input type={f.type} value={(aguaV6HidroForm as any)[f.field]} onChange={e=>setAguaV6HidroForm(p=>({...p,[f.field]:e.target.value}))} placeholder={f.ph}
+                                  style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"8px 12px", color:"#E2E8F0", fontSize:12, boxSizing:"border-box" as const }}/>
+                              </div>
+                            ))}
+                            <div style={{ marginBottom:16 }}>
+                              <div style={{ fontSize:11, color:"#94A3B8", marginBottom:6 }}>Tipo</div>
+                              <div style={{ display:"flex", gap:8 }}>
+                                {(["individual","geral"] as const).map(t => (
+                                  <button key={t} onClick={()=>setAguaV6HidroForm(p=>({...p,tipo:t}))}
+                                    style={{ flex:1, padding:"8px", borderRadius:8, border:`1px solid ${aguaV6HidroForm.tipo===t?"#818CF8":"rgba(255,255,255,.1)"}`, background: aguaV6HidroForm.tipo===t?"rgba(99,102,241,.2)":"transparent", color: aguaV6HidroForm.tipo===t?"#818CF8":"#64748B", fontSize:12, cursor:"pointer", fontWeight: aguaV6HidroForm.tipo===t?800:500 }}>
+                                    {t === "individual" ? "⚪ Individual" : "🔵 Geral"}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+                              <button onClick={()=>setAguaV6NovoHidro(false)} style={{ background:"rgba(255,255,255,.06)", border:"1px solid rgba(255,255,255,.1)", borderRadius:8, padding:"8px 18px", color:"#94A3B8", fontSize:12, cursor:"pointer" }}>Cancelar</button>
+                              <button onClick={salvarNovoHidro} style={{ background:"#6366F1", border:"none", borderRadius:8, padding:"8px 22px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:700 }}>💾 Salvar</button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ════════════════════════════════════════════════════
+                    ABA V6: RATEIO AUTOMÁTICO
+                ════════════════════════════════════════════════════ */}
+                {aguaTab === "rateio" && (() => {
+                  const r = aguaV6RateioResult;
+                  const maxVal = r ? Math.max(...r.unidades.map(u=>u.valor), 1) : 1;
+                  return (
+                    <div>
+                      <div style={{ fontSize:15, fontWeight:800, color:"#E2E8F0", marginBottom:4 }}>📐 Rateio Automático de Água</div>
+                      <div style={{ fontSize:11, color:"#475569", marginBottom:20 }}>Calcule como a conta de água será dividida entre as unidades do condomínio.</div>
+
+                      {/* ── Formulário ── */}
+                      <div style={{ background:"rgba(16,185,129,.06)", border:"1px solid rgba(16,185,129,.2)", borderRadius:14, padding:"20px 22px", marginBottom:18 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:"#10B981", marginBottom:16 }}>⚙️ Configurar Rateio</div>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
+                          <div>
+                            <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>Valor Total da Conta (R$) *</div>
+                            <input type="number" value={aguaV6RateioForm.valor_total} onChange={e=>setAguaV6RateioForm(p=>({...p,valor_total:e.target.value}))} placeholder="Ex: 1250.00"
+                              style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" as const }}/>
+                          </div>
+                          <div>
+                            <div style={{ fontSize:11, color:"#94A3B8", marginBottom:4 }}>Competência (mês)</div>
+                            <input type="month" value={aguaV6RateioForm.competencia} onChange={e=>setAguaV6RateioForm(p=>({...p,competencia:e.target.value}))}
+                              style={{ width:"100%", background:"rgba(255,255,255,.07)", border:"1px solid rgba(255,255,255,.12)", borderRadius:8, padding:"9px 12px", color:"#E2E8F0", fontSize:13, boxSizing:"border-box" as const }}/>
+                          </div>
+                        </div>
+                        <div style={{ marginBottom:16 }}>
+                          <div style={{ fontSize:11, color:"#94A3B8", marginBottom:8 }}>Método de Rateio</div>
+                          <div style={{ display:"flex", gap:8 }}>
+                            {([
+                              { val:"igualitario", label:"⚖️ Igualitário", desc:"Divide em partes iguais" },
+                              { val:"consumo",     label:"📊 Por Consumo", desc:"Proporcional ao m³ medido" },
+                              { val:"hibrido",     label:"🔀 Híbrido",     desc:"70% consumo + 30% igualitário" },
+                            ] as const).map(m => (
+                              <button key={m.val} onClick={()=>setAguaV6RateioForm(p=>({...p,tipo_rateio:m.val}))}
+                                style={{ flex:1, padding:"10px 8px", borderRadius:10, border:`1.5px solid ${aguaV6RateioForm.tipo_rateio===m.val?"#10B981":"rgba(255,255,255,.08)"}`, background: aguaV6RateioForm.tipo_rateio===m.val?"rgba(16,185,129,.15)":"rgba(255,255,255,.02)", color: aguaV6RateioForm.tipo_rateio===m.val?"#10B981":"#64748B", cursor:"pointer", textAlign:"center" as const }}>
+                                <div style={{ fontSize:12, fontWeight:800 }}>{m.label}</div>
+                                <div style={{ fontSize:9, marginTop:2, opacity:.7 }}>{m.desc}</div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <button onClick={calcularRateio} disabled={aguaV6RateioLoading || !aguaV6RateioForm.valor_total}
+                          style={{ width:"100%", padding:"12px", borderRadius:10, background: aguaV6RateioLoading||!aguaV6RateioForm.valor_total?"rgba(16,185,129,.3)":"#10B981", border:"none", color:"#fff", fontSize:14, fontWeight:800, cursor:"pointer" }}>
+                          {aguaV6RateioLoading ? "⏳ Calculando..." : "📐 Calcular Rateio"}
+                        </button>
+                      </div>
+
+                      {/* ── Resultado ── */}
+                      {r && (
+                        <div>
+                          <div style={{ background:"rgba(255,255,255,.03)", border:"1px solid rgba(16,185,129,.2)", borderRadius:14, padding:"18px 20px", marginBottom:14 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                              <div style={{ fontSize:13, fontWeight:800, color:"#10B981" }}>✅ Resultado do Rateio</div>
+                              <div style={{ display:"flex", gap:8 }}>
+                                <span style={{ background:"rgba(16,185,129,.15)", color:"#10B981", border:"1px solid rgba(16,185,129,.3)", borderRadius:20, padding:"3px 10px", fontSize:10, fontWeight:800 }}>
+                                  {r.tipo_rateio === "igualitario" ? "⚖️ Igualitário" : r.tipo_rateio === "consumo" ? "📊 Por Consumo" : "🔀 Híbrido"}
+                                </span>
+                              </div>
+                            </div>
+                            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:16 }}>
+                              {[
+                                { label:"Total da Conta", val:`R$ ${r.valor_total.toFixed(2)}`, color:"#10B981" },
+                                { label:"Consumo Total", val:`${r.consumo_total.toFixed(1)} m³`, color:"#0EA5E9" },
+                                { label:"Nº de Unidades", val:`${r.n_unidades}`, color:"#A855F7" },
+                              ].map(s=>(
+                                <div key={s.label} style={{ background:"rgba(255,255,255,.04)", border:"1px solid rgba(255,255,255,.07)", borderRadius:10, padding:"10px 12px", textAlign:"center" as const }}>
+                                  <div style={{ fontSize:10, color:"#475569", marginBottom:4 }}>{s.label}</div>
+                                  <div style={{ fontSize:18, fontWeight:900, color:s.color }}>{s.val}</div>
+                                </div>
+                              ))}
+                            </div>
+                            {r.unidades.length > 0 ? (
+                              <div>
+                                <div style={{ fontSize:11, color:"#64748B", fontWeight:700, marginBottom:10 }}>DISTRIBUIÇÃO POR UNIDADE</div>
+                                {r.unidades.map((u, i) => {
+                                  const pct = r.valor_total > 0 ? (u.valor / r.valor_total) * 100 : 0;
+                                  return (
+                                    <div key={u.unidade_id} style={{ marginBottom:8 }}>
+                                      <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                                        <span style={{ fontSize:11, color:"#CBD5E1" }}>Unidade {i+1} <span style={{ color:"#475569", fontSize:9 }}>({u.consumo.toFixed(1)} m³)</span></span>
+                                        <span style={{ fontSize:12, fontWeight:800, color:"#10B981" }}>R$ {u.valor.toFixed(2)}</span>
+                                      </div>
+                                      <div style={{ background:"rgba(255,255,255,.06)", borderRadius:6, height:6 }}>
+                                        <div style={{ height:"100%", width:`${pct}%`, background:`linear-gradient(90deg,#10B981,#34D399)`, borderRadius:6, transition:"width .5s" }}/>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ padding:"16px", textAlign:"center" as const, color:"#475569", fontSize:12, background:"rgba(255,255,255,.02)", borderRadius:10 }}>
+                                <div style={{ marginBottom:6 }}>📋 Nenhuma leitura individual encontrada neste período</div>
+                                <div style={{ fontSize:11 }}>O rateio proporcional requer leituras de hidrômetros individuais. Use o modo Igualitário para dividir sem leituras.</div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {!r && (
+                        <div style={{ textAlign:"center" as const, padding:"32px 0", color:"#475569", fontSize:12 }}>
+                          <div style={{ fontSize:36, marginBottom:10 }}>📐</div>
+                          <div style={{ fontSize:13, fontWeight:600, color:"#64748B", marginBottom:6 }}>Preencha os dados acima e clique em Calcular</div>
+                          <div>O sistema calculará automaticamente o valor por unidade conforme o método escolhido.</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* ════════════════════════════════════════════════════
+                    ABA V6: ANÁLISE DI (IA)
+                ════════════════════════════════════════════════════ */}
+                {aguaTab === "di-analise" && (() => {
+                  const a = aguaV6DiAnalise;
+                  const corNivel = (n:string) => n==="critico"?"#EF4444":n==="alto"?"#F97316":n==="medio"?"#F59E0B":"#10B981";
+                  const iconeAlerta = (t:string) => t==="vazamento"?"🚨":t==="alto_consumo"?"📈":"💡";
+                  const scoreColor = a?.score ? (a.score>=80?"#10B981":a.score>=60?"#F59E0B":"#EF4444") : "#64748B";
+                  return (
+                    <div>
+                      {/* ── Header ── */}
+                      <div style={{ background:"linear-gradient(135deg,#0D0921 0%,#1A0A3E 100%)", border:"1px solid rgba(168,85,247,.25)", borderRadius:16, padding:"18px 20px", marginBottom:18, display:"flex", alignItems:"center", gap:16 }}>
+                        <div style={{ width:52, height:52, borderRadius:"50%", background:"rgba(168,85,247,.15)", border:"1px solid rgba(168,85,247,.3)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>🧠</div>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:15, fontWeight:900, color:"#E9D5FF", marginBottom:2 }}>Di — Análise Inteligente de Água</div>
+                          <div style={{ fontSize:11, color:"#6D28D9" }}>Powered by Claude AI · Detecta vazamentos, desperdícios e anomalias</div>
+                        </div>
+                        <button onClick={rodarAnalyseDi} disabled={aguaV6DiLoading}
+                          style={{ background: aguaV6DiLoading?"rgba(168,85,247,.3)":"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:10, padding:"10px 18px", color:"#fff", fontSize:12, cursor:"pointer", fontWeight:800, whiteSpace:"nowrap" as const }}>
+                          {aguaV6DiLoading ? "⏳ Analisando..." : "🚀 Analisar"}
+                        </button>
+                      </div>
+
+                      {aguaV6DiLoading && (
+                        <div style={{ textAlign:"center" as const, padding:"40px 0", color:"#A855F7" }}>
+                          <div style={{ fontSize:36, marginBottom:12 }}>💧</div>
+                          <div style={{ fontSize:14, fontWeight:700, marginBottom:6 }}>Di está analisando o consumo...</div>
+                          <div style={{ fontSize:11, color:"#6D28D9" }}>Aguarde enquanto a IA processa os dados de hidrômetros</div>
+                        </div>
+                      )}
+
+                      {a && !aguaV6DiLoading && (
+                        <div>
+                          {/* Score */}
+                          {a.score != null && (
+                            <div style={{ background:"rgba(255,255,255,.03)", border:`1px solid ${scoreColor}40`, borderRadius:14, padding:"18px 20px", marginBottom:14, display:"flex", alignItems:"center", gap:20 }}>
+                              <div style={{ textAlign:"center" as const, flexShrink:0 }}>
+                                <div style={{ fontSize:42, fontWeight:900, color:scoreColor, lineHeight:1 }}>{a.score}</div>
+                                <div style={{ fontSize:9, color:"#64748B", textTransform:"uppercase" as const, fontWeight:700 }}>Score Hídrico</div>
+                              </div>
+                              <div style={{ flex:1 }}>
+                                <div style={{ background:"rgba(255,255,255,.08)", borderRadius:8, height:10, overflow:"hidden", marginBottom:6 }}>
+                                  <div style={{ height:"100%", width:`${a.score}%`, background:scoreColor, borderRadius:8, transition:"width .8s" }}/>
+                                </div>
+                                <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.6 }}>{a.resumo}</div>
+                              </div>
+                            </div>
+                          )}
+                          {!a.score && a.resumo && (
+                            <div style={{ background:"rgba(168,85,247,.08)", border:"1px solid rgba(168,85,247,.2)", borderRadius:14, padding:"14px 18px", marginBottom:14 }}>
+                              <div style={{ fontSize:12, color:"#D8B4FE", lineHeight:1.6 }}>{a.resumo}</div>
+                            </div>
+                          )}
+
+                          {/* Alertas Di */}
+                          {a.alertas?.length > 0 && (
+                            <div style={{ marginBottom:14 }}>
+                              <div style={{ fontSize:11, color:"#64748B", fontWeight:800, textTransform:"uppercase" as const, marginBottom:10 }}>🚨 Alertas Detectados</div>
+                              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                                {a.alertas.map((al, i) => (
+                                  <div key={i} style={{ background:`${corNivel(al.nivel)}08`, border:`1px solid ${corNivel(al.nivel)}30`, borderRadius:12, padding:"12px 16px", display:"flex", gap:12, alignItems:"flex-start" }}>
+                                    <span style={{ fontSize:18, flexShrink:0 }}>{iconeAlerta(al.tipo)}</span>
+                                    <div>
+                                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                                        <span style={{ fontSize:12, fontWeight:800, color:corNivel(al.nivel) }}>{al.titulo}</span>
+                                        <span style={{ background:`${corNivel(al.nivel)}20`, color:corNivel(al.nivel), borderRadius:20, padding:"1px 8px", fontSize:9, fontWeight:800, border:`1px solid ${corNivel(al.nivel)}40` }}>{al.nivel}</span>
+                                      </div>
+                                      <div style={{ fontSize:11, color:"#94A3B8", lineHeight:1.5 }}>{al.descricao}</div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Recomendações */}
+                          {a.recomendacoes?.length > 0 && (
+                            <div style={{ marginBottom:14 }}>
+                              <div style={{ fontSize:11, color:"#64748B", fontWeight:800, textTransform:"uppercase" as const, marginBottom:10 }}>💡 Recomendações</div>
+                              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                                {a.recomendacoes.map((rec, i) => (
+                                  <div key={i} style={{ background:"rgba(16,185,129,.06)", border:"1px solid rgba(16,185,129,.18)", borderRadius:12, padding:"14px 14px" }}>
+                                    <div style={{ fontSize:12, fontWeight:800, color:"#10B981", marginBottom:6 }}>{rec.titulo}</div>
+                                    <div style={{ fontSize:11, color:"#94A3B8", lineHeight:1.5, marginBottom:8 }}>{rec.descricao}</div>
+                                    {rec.economia_estimada && (
+                                      <div style={{ background:"rgba(16,185,129,.15)", borderRadius:8, padding:"5px 10px", fontSize:11, fontWeight:700, color:"#34D399" }}>
+                                        💰 Economia: {rec.economia_estimada}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Previsão */}
+                          {a.previsao_proximo_mes && (
+                            <div style={{ background:"linear-gradient(135deg,rgba(14,165,233,.08),rgba(168,85,247,.08))", border:"1px solid rgba(14,165,233,.2)", borderRadius:12, padding:"14px 18px" }}>
+                              <div style={{ fontSize:11, fontWeight:800, color:"#0EA5E9", marginBottom:6 }}>🔮 Previsão Próximo Mês</div>
+                              <div style={{ fontSize:12, color:"#CBD5E1", lineHeight:1.6 }}>{a.previsao_proximo_mes}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!a && !aguaV6DiLoading && (
+                        <div style={{ textAlign:"center" as const, padding:"48px 0", color:"#475569" }}>
+                          <div style={{ fontSize:48, marginBottom:14 }}>🧠</div>
+                          <div style={{ fontSize:14, fontWeight:700, color:"#64748B", marginBottom:8 }}>Análise Inteligente de Água</div>
+                          <div style={{ fontSize:12, marginBottom:20, lineHeight:1.6, maxWidth:400, margin:"0 auto 20px" }}>
+                            A Di vai analisar o consumo de água, detectar possíveis vazamentos, identificar desperdícios e gerar recomendações personalizadas.
+                          </div>
+                          <button onClick={rodarAnalyseDi} style={{ background:"linear-gradient(135deg,#7C3AED,#A855F7)", border:"none", borderRadius:12, padding:"12px 28px", color:"#fff", fontSize:14, cursor:"pointer", fontWeight:800, boxShadow:"0 6px 20px rgba(168,85,247,.4)" }}>
+                            🚀 Iniciar Análise Di
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* ════════════════════════════════════════════════════
                     ABA: RESERVATÓRIOS
