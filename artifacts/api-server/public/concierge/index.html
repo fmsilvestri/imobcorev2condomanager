@@ -533,11 +533,7 @@
   }
   function irBvs()    { irTela('t-bv'); }
   function irModulos(){ irTela('t-mod'); historico = []; }
-  function irIdle()   {
-    irTela('t-idle');
-    clearTimeout(idleTimer);
-    iniciarIdleSlide();
-  }
+  function irIdle()   { irBvs(); }
 
   // ── Idle Timer ────────────────────────────────────────────────────────────
   function resetIdle() {
